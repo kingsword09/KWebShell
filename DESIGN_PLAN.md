@@ -268,16 +268,34 @@ Acceptance:
 
 Deliver:
 
-- Opaque native handles.
-- Kotlin lifecycle and error types.
-- JNI callbacks and thread dispatch.
-- Resource ownership and close semantics.
+- A versioned C ABI with integer opaque handles, sized configuration/event
+  structures, stable status codes, and no exported C++ or CEF type.
+- A native-owned asynchronous session queue that accepts navigation requests,
+  viewport changes, and close commands without claiming browser completion.
+- A dynamically registered JNI adapter with exact UTF-8/UTF-16 conversion,
+  JVM thread attachment, and bounded global-reference ownership.
+- Kotlin lifecycle/error types, `StateFlow` state observation, one serialized
+  callback dispatcher per session, and idempotent `close` semantics.
+
+The Phase 2 session is an internal transport and ownership contract. It emits
+`navigation_requested`, not `navigation_committed`, and does not publish
+`KWebEngine` or `KWebPage`. Browser-facing operations remain absent until a
+complete vertical slice can report real Chromium results.
 
 Acceptance:
 
 - No CEF C++ types appear in common Kotlin.
-- Repeated create/navigate/resize/close cycles pass leak and race tests.
-- Callback-after-close is rejected or safely ignored according to the contract.
+- The C ABI and JNI shared libraries are built and loaded as real native
+  artifacts on Windows, macOS, and Linux; JVM tests do not replace them with a
+  mock implementation.
+- At least 256 repeated create/request-navigation/resize/close cycles leave the
+  native live-session count at zero.
+- Concurrent command/close races return only declared status codes and never
+  leak, deadlock, reuse a stale handle, or cross session ownership.
+- JNI callbacks arrive on the declared Kotlin dispatcher, preserve non-ASCII
+  text exactly, and no callback can begin after `close` returns.
+- Use-after-close fails immediately with a typed `KWebError`; a repeated Kotlin
+  `close` is idempotent and never calls native code with a stale handle.
 
 ### Phase 3: Profiles and web platform features
 

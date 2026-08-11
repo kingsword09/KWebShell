@@ -1,10 +1,12 @@
 [versions]
 junit-platform = "1.14.4"
 kotlin = "2.4.10"
+coroutines = "1.11.0"
 kotlinx-serialization = "1.11.0"
 
 [libraries]
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit-platform" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 
 [plugins]

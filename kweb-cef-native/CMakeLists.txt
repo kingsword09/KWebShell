@@ -34,6 +34,64 @@ option(
   OFF
 )
 
+find_package(Threads REQUIRED)
+find_package(JNI REQUIRED COMPONENTS JVM)
+
+set(KWEB_CONTRACT_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/contract")
+
+function(KWEB_CONFIGURE_CONTRACT_TARGET target)
+  target_include_directories(${target} PRIVATE include)
+  if(MSVC)
+    target_compile_options(${target} PRIVATE
+      /W4 /WX /utf-8
+      $<$<COMPILE_LANGUAGE:CXX>:/EHsc>
+    )
+  else()
+    target_compile_options(${target} PRIVATE
+      -Wall -Wextra -Wpedantic -Werror
+    )
+  endif()
+endfunction()
+
+add_library(kweb_native_abi SHARED src/native_abi.cc)
+KWEB_CONFIGURE_CONTRACT_TARGET(kweb_native_abi)
+target_compile_definitions(kweb_native_abi PRIVATE KWEB_ABI_BUILD)
+target_link_libraries(kweb_native_abi PRIVATE Threads::Threads)
+set_target_properties(kweb_native_abi PROPERTIES
+  OUTPUT_NAME "kwebshell_abi"
+  VERSION "1.0.0"
+  SOVERSION "1"
+  CXX_VISIBILITY_PRESET hidden
+  VISIBILITY_INLINES_HIDDEN YES
+  ARCHIVE_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
+  LIBRARY_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
+  RUNTIME_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
+)
+
+add_library(kweb_jni SHARED src/jni_bridge.cc)
+KWEB_CONFIGURE_CONTRACT_TARGET(kweb_jni)
+target_link_libraries(kweb_jni PRIVATE
+  kweb_native_abi
+  JNI::JNI
+)
+set_target_properties(kweb_jni PROPERTIES
+  OUTPUT_NAME "kwebshell_jni"
+  CXX_VISIBILITY_PRESET hidden
+  VISIBILITY_INLINES_HIDDEN YES
+  ARCHIVE_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
+  LIBRARY_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
+  RUNTIME_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
+)
+if(APPLE)
+  set_target_properties(kweb_jni PROPERTIES
+    BUILD_RPATH "@loader_path"
+  )
+elseif(UNIX)
+  set_target_properties(kweb_jni PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+  )
+endif()
+
 add_subdirectory("${CEF_LIBCEF_DLL_WRAPPER_PATH}" libcef_dll_wrapper)
 
 add_library(kweb_host_support STATIC
@@ -51,6 +109,54 @@ else()
 endif()
 
 enable_testing()
+add_executable(kweb_native_abi_c_test tests/native_abi_c_test.c)
+KWEB_CONFIGURE_CONTRACT_TARGET(kweb_native_abi_c_test)
+target_link_libraries(kweb_native_abi_c_test PRIVATE kweb_native_abi)
+set_target_properties(kweb_native_abi_c_test PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF
+  RUNTIME_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
+)
+if(APPLE)
+  set_target_properties(kweb_native_abi_c_test PROPERTIES
+    BUILD_RPATH "@loader_path"
+  )
+elseif(UNIX)
+  set_target_properties(kweb_native_abi_c_test PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+  )
+endif()
+add_test(NAME kweb_native_abi_c_test COMMAND kweb_native_abi_c_test)
+set_tests_properties(kweb_native_abi_c_test PROPERTIES
+  LABELS "abi;c;contract;native"
+  TIMEOUT 10
+)
+
+add_executable(kweb_native_abi_tests tests/native_abi_tests.cc)
+KWEB_CONFIGURE_CONTRACT_TARGET(kweb_native_abi_tests)
+target_link_libraries(kweb_native_abi_tests PRIVATE
+  kweb_native_abi
+  Threads::Threads
+)
+set_target_properties(kweb_native_abi_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
+)
+if(APPLE)
+  set_target_properties(kweb_native_abi_tests PROPERTIES
+    BUILD_RPATH "@loader_path"
+  )
+elseif(UNIX)
+  set_target_properties(kweb_native_abi_tests PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+  )
+endif()
+add_test(NAME kweb_native_abi_tests COMMAND kweb_native_abi_tests)
+set_tests_properties(kweb_native_abi_tests PROPERTIES
+  LABELS "abi;contract;lifecycle;native"
+  TIMEOUT 30
+)
+
 add_executable(kweb_host_unit_tests tests/host_unit_tests.cc)
 target_link_libraries(kweb_host_unit_tests PRIVATE kweb_host_support)
 if(MSVC)

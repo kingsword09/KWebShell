@@ -17,5 +17,6 @@ dependencyResolutionManagement {
 rootProject.name = "KWebShell"
 
 include(":kweb-core")
+include(":kweb-desktop")
 include(":kweb-runtime-pack")
 include(":kweb-cef-native")

@@ -1,9 +1,6 @@
-name: CI
+name: Hardware GPU Validation
 
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -11,25 +8,23 @@ permissions:
 
 jobs:
   verify:
-    name: Verify (${{ matrix.target }}, ${{ matrix.gpu-contract }})
+    name: Verify (${{ matrix.target }}, hardware GPU)
     strategy:
       fail-fast: false
       matrix:
         include:
           - target: linux-x64
-            os: ubuntu-24.04
-            gpu-contract: GPU unavailable contract
-            expect-hardware-gpu-unavailable: true
+            runner-os: Linux
+            runner-arch: X64
           - target: windows-x64
-            os: windows-2022
-            gpu-contract: GPU unavailable contract
-            expect-hardware-gpu-unavailable: true
-          - target: macos-arm64
-            os: macos-15
-            gpu-contract: GPU required
-            expect-hardware-gpu-unavailable: false
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+            runner-os: Windows
+            runner-arch: X64
+    runs-on:
+      - self-hosted
+      - kwebshell-gpu
+      - ${{ matrix.runner-os }}
+      - ${{ matrix.runner-arch }}
+    timeout-minutes: 90
 
     steps:
       - name: Check out repository
@@ -48,19 +43,22 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Install Linux native dependencies
-        if: runner.os == 'Linux'
+      - name: Verify hardware prerequisites
         shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes libasound2-dev libgtk-3-dev xvfb
-
-      - name: Verify native build prerequisites
-        shell: bash
-        run: |
+          set -euo pipefail
           java -version
           cmake --version
           ninja --version
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            test -e /dev/dri/renderD128 || {
+              echo "A Linux render node is required for positive GPU validation." >&2
+              exit 2
+            }
+          else
+            powershell.exe -NoProfile -NonInteractive -Command \
+              '$gpu = Get-CimInstance Win32_VideoController | Where-Object { $_.Name -notmatch "WARP|Basic Render Driver|Microsoft Remote Display" }; if (-not $gpu) { throw "A physical Windows GPU is required for positive GPU validation." }'
+          fi
 
       - name: Resolve pinned CEF artifact
         shell: bash
@@ -79,11 +77,12 @@ jobs:
         uses: actions/cache@v6
         with:
           path: .cef-ci/archives
-          key: cef-${{ matrix.target }}-${{ hashFiles('runtime/cef-runtime.json') }}
+          key: cef-gpu-${{ matrix.target }}-${{ hashFiles('runtime/cef-runtime.json') }}
 
       - name: Download pinned CEF archive
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p .cef-ci/archives
           archive=".cef-ci/archives/$CEF_ARCHIVE"
           if [[ ! -f "$archive" ]]; then
@@ -92,23 +91,19 @@ jobs:
               "https://cef-builds.spotifycdn.com/$CEF_ARCHIVE"
           fi
 
-      - name: Verify pinned CEF archive
+      - name: Verify and extract pinned CEF archive
         shell: bash
         run: |
+          set -euo pipefail
           ./gradlew --no-daemon :kweb-runtime-pack:verifyCefRuntimeArtifact \
             -PkwebTarget=${{ matrix.target }} \
             -PcefRuntimeArchive="$PWD/.cef-ci/archives/$CEF_ARCHIVE"
-
-      - name: Extract verified CEF archive
-        shell: bash
-        run: |
           mkdir -p .cef-ci/source
-          tar -xjf ".cef-ci/archives/$CEF_ARCHIVE" \
-            -C .cef-ci/source
+          tar -xjf ".cef-ci/archives/$CEF_ARCHIVE" -C .cef-ci/source
 
-      - name: Run complete verification
+      - name: Run complete hardware verification
         shell: bash
         run: |
           ./gradlew --no-daemon check \
             -PcefRoot="$PWD/.cef-ci/source/$CEF_DIRECTORY" \
-            -PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}
+            -PkwebExpectHardwareGpuUnavailable=false

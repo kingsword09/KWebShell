@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "cefVersion": "151.3.16+gbe1e15d+chromium-151.0.7922.109",
+  "chromiumVersion": "151.0.7922.109",
+  "channel": "stable",
+  "distributionType": "minimal",
+  "baseUrl": "https://cef-builds.spotifycdn.com",
+  "sourceCatalog": "https://cef-builds.spotifycdn.com/index.json",
+  "artifacts": [
+    {
+      "target": "windows-x64",
+      "cefPlatform": "windows64",
+      "fileName": "cef_binary_151.3.16+gbe1e15d+chromium-151.0.7922.109_windows64_minimal.tar.bz2",
+      "size": 170651934,
+      "checksum": {
+        "algorithm": "SHA-1",
+        "value": "98071a2767a174d789be3d4d6146690e024746a4"
+      }
+    },
+    {
+      "target": "windows-arm64",
+      "cefPlatform": "windowsarm64",
+      "fileName": "cef_binary_151.3.16+gbe1e15d+chromium-151.0.7922.109_windowsarm64_minimal.tar.bz2",
+      "size": 165918515,
+      "checksum": {
+        "algorithm": "SHA-1",
+        "value": "2467aab607a713d8adb69078a5ee6c0437126fb0"
+      }
+    },
+    {
+      "target": "macos-x64",
+      "cefPlatform": "macosx64",
+      "fileName": "cef_binary_151.3.16+gbe1e15d+chromium-151.0.7922.109_macosx64_minimal.tar.bz2",
+      "size": 136690516,
+      "checksum": {
+        "algorithm": "SHA-1",
+        "value": "75f3d54cb44e160f4cfe726ac1ead5b46fa0bc6f"
+      }
+    },
+    {
+      "target": "macos-arm64",
+      "cefPlatform": "macosarm64",
+      "fileName": "cef_binary_151.3.16+gbe1e15d+chromium-151.0.7922.109_macosarm64_minimal.tar.bz2",
+      "size": 130995318,
+      "checksum": {
+        "algorithm": "SHA-1",
+        "value": "9686f8f6ef1343aa813af2c200db29f8b95abe7f"
+      }
+    },
+    {
+      "target": "linux-x64",
+      "cefPlatform": "linux64",
+      "fileName": "cef_binary_151.3.16+gbe1e15d+chromium-151.0.7922.109_linux64_minimal.tar.bz2",
+      "size": 321455968,
+      "checksum": {
+        "algorithm": "SHA-1",
+        "value": "13042a73aeaf0e853a719d3ddad0751514665bb9"
+      }
+    },
+    {
+      "target": "linux-arm64",
+      "cefPlatform": "linuxarm64",
+      "fileName": "cef_binary_151.3.16+gbe1e15d+chromium-151.0.7922.109_linuxarm64_minimal.tar.bz2",
+      "size": 412689653,
+      "checksum": {
+        "algorithm": "SHA-1",
+        "value": "f1a82ce3bde5ea4338da5a41e0bcae22265f36f9"
+      }
+    }
+  ]
+}

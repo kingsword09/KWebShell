@@ -17,7 +17,8 @@ class BrowserClient final : public CefClient,
                             public CefRequestHandler {
 public:
   BrowserClient(BrowserApp *app, NativeWindow *native_window,
-                std::shared_ptr<EventRecorder> recorder, bool self_test);
+                std::shared_ptr<EventRecorder> recorder, bool native_self_test,
+                bool profile_self_test);
 
   CefRefPtr<CefDisplayHandler> GetDisplayHandler() override;
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override;
@@ -58,7 +59,8 @@ private:
   BrowserApp *const app_;
   NativeWindow *const native_window_;
   const std::shared_ptr<EventRecorder> recorder_;
-  const bool self_test_;
+  const bool native_self_test_;
+  const bool profile_self_test_;
   CefRefPtr<CefBrowser> browser_;
   bool native_self_test_started_ = false;
 #if defined(OS_WIN) || defined(OS_LINUX)

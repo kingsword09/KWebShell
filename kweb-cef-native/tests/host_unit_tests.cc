@@ -32,13 +32,17 @@ std::string AbsoluteTestPath(const std::string &name) {
 }
 
 std::string RootCacheArgument(const std::string &name = "profile") {
-  return "--kweb-root-cache-path=" + AbsoluteTestPath(name);
+  return "--kweb-root-cache-path=" + AbsoluteTestPath(name + "-root");
+}
+
+std::string ProfileArgument(const std::string &name = "profile") {
+  return "--kweb-profile-path=" + AbsoluteTestPath(name + "-root/primary");
 }
 
 void TestValidConfiguration() {
   std::string error;
   const auto configuration = kwebshell::HostConfiguration::Parse(
-      {RootCacheArgument(),
+      {RootCacheArgument(), ProfileArgument(),
        "--kweb-event-log-path=" + AbsoluteTestPath("events.jsonl"),
        "--kweb-url=https://example.com", "--kweb-width=1024",
        "--kweb-height=768"},
@@ -50,17 +54,42 @@ void TestValidConfiguration() {
     Check(configuration->width == 1024, "width should be parsed");
     Check(configuration->height == 768, "height should be parsed");
     Check(configuration->url == "https://example.com", "URL should be parsed");
+    Check(kwebshell::IsDirectProfileChild(configuration->root_cache_path,
+                                          configuration->profile_path),
+          "profile path should be retained as a direct root child");
   }
 }
 
 void TestStrictConfigurationFailures() {
   const std::vector<std::vector<std::string>> invalid_arguments = {
       {"--kweb-url=https://example.com"},
-      {"--kweb-root-cache-path=relative", "--kweb-url=https://example.com"},
-      {RootCacheArgument(), "--kweb-width=0", "--kweb-url=https://example.com"},
-      {RootCacheArgument(), "--kweb-unknown=true",
+      {RootCacheArgument(), "--kweb-url=https://example.com"},
+      {"--kweb-root-cache-path=relative", ProfileArgument(),
        "--kweb-url=https://example.com"},
-      {RootCacheArgument()},
+      {RootCacheArgument(), "--kweb-profile-path=relative",
+       "--kweb-url=https://example.com"},
+      {RootCacheArgument(),
+       "--kweb-profile-path=" + AbsoluteTestPath("outside-profile"),
+       "--kweb-url=https://example.com"},
+      {RootCacheArgument(),
+       "--kweb-profile-path=" + AbsoluteTestPath("profile-root/Default"),
+       "--kweb-url=https://example.com"},
+      {RootCacheArgument(),
+       "--kweb-profile-path=" + AbsoluteTestPath("profile-root/dEfAuLt"),
+       "--kweb-url=https://example.com"},
+      {RootCacheArgument(), ProfileArgument(), "--kweb-width=0",
+       "--kweb-url=https://example.com"},
+      {RootCacheArgument(), ProfileArgument(), "--kweb-unknown=true",
+       "--kweb-url=https://example.com"},
+      {RootCacheArgument(), ProfileArgument()},
+      {RootCacheArgument(), ProfileArgument(), "--kweb-self-test",
+       "--kweb-profile-self-test=read", "--kweb-profile-test-value=value"},
+      {RootCacheArgument(), ProfileArgument(),
+       "--kweb-profile-self-test=unknown", "--kweb-profile-test-value=value"},
+      {RootCacheArgument(), ProfileArgument(),
+       "--kweb-profile-self-test=write"},
+      {RootCacheArgument(), ProfileArgument(),
+       "--kweb-profile-test-value=value", "--kweb-url=https://example.com"},
   };
 
   for (const auto &arguments : invalid_arguments) {
@@ -74,7 +103,7 @@ void TestStrictConfigurationFailures() {
 void TestSelfTestConfigurationDoesNotRequireExternalUrl() {
   std::string error;
   const auto configuration = kwebshell::HostConfiguration::Parse(
-      {RootCacheArgument(), "--kweb-self-test"}, &error);
+      {RootCacheArgument(), ProfileArgument(), "--kweb-self-test"}, &error);
   Check(configuration.has_value(), "self-test configuration should parse");
   Check(configuration && configuration->self_test,
         "self-test flag should be retained");
@@ -85,7 +114,9 @@ void TestConfigurationPreservesUtf8Paths() {
   const std::string expected_path = AbsoluteTestPath(utf8_name);
   std::string error;
   const auto configuration = kwebshell::HostConfiguration::Parse(
-      {"--kweb-root-cache-path=" + expected_path, "--kweb-self-test"}, &error);
+      {"--kweb-root-cache-path=" + expected_path,
+       "--kweb-profile-path=" + expected_path + "/primary", "--kweb-self-test"},
+      &error);
   Check(configuration.has_value(),
         "UTF-8 configuration path should parse: " + error);
   if (configuration) {
@@ -95,6 +126,52 @@ void TestConfigurationPreservesUtf8Paths() {
     Check(actual_path == expected_path,
           "filesystem path should preserve UTF-8 command-line bytes");
   }
+}
+
+void TestProfileSelfTestConfigurationIsStrict() {
+  std::string error;
+  const auto configuration = kwebshell::HostConfiguration::Parse(
+      {RootCacheArgument(), ProfileArgument(), "--kweb-profile-self-test=write",
+       "--kweb-profile-test-value=profile-token_01"},
+      &error);
+  Check(configuration.has_value(),
+        "profile self-test configuration should parse: " + error);
+  if (configuration) {
+    Check(configuration->IsProfileSelfTest(),
+          "profile self-test mode should be retained");
+    Check(configuration->IsAnySelfTest(),
+          "profile self-test should suppress the external URL requirement");
+    Check(configuration->profile_self_test_mode ==
+              kwebshell::ProfileSelfTestMode::kWrite,
+          "profile write mode should be explicit");
+    Check(configuration->profile_test_value == "profile-token_01",
+          "profile test value should be retained exactly");
+  }
+
+  Check(kwebshell::IsDirectProfileChild(
+            std::filesystem::path(AbsoluteTestPath("root")),
+            std::filesystem::path(AbsoluteTestPath("root/a"))),
+        "direct profile child should be accepted");
+  Check(!kwebshell::IsDirectProfileChild(
+            std::filesystem::path(AbsoluteTestPath("root")),
+            std::filesystem::path(AbsoluteTestPath("root"))),
+        "root itself must not be accepted as a profile");
+  Check(!kwebshell::IsDirectProfileChild(
+            std::filesystem::path(AbsoluteTestPath("root")),
+            std::filesystem::path(AbsoluteTestPath("other/profile"))),
+        "sibling directory must not be accepted as a profile");
+  Check(!kwebshell::IsDirectProfileChild(
+            std::filesystem::path(AbsoluteTestPath("root")),
+            std::filesystem::path(AbsoluteTestPath("root/profiles/a"))),
+        "nested profile must not be accepted by the Chrome bootstrap");
+  Check(!kwebshell::IsSupportedPersistentProfilePath(
+            std::filesystem::path(AbsoluteTestPath("root")),
+            std::filesystem::path(AbsoluteTestPath("root/Default"))),
+        "Chromium's Default profile name must be reserved");
+  Check(!kwebshell::IsSupportedPersistentProfilePath(
+            std::filesystem::path(AbsoluteTestPath("root")),
+            std::filesystem::path(AbsoluteTestPath("root/dEfAuLt"))),
+        "the Default profile reservation must be case-insensitive");
 }
 
 void TestEventRecorderEscapesJsonAndTracksState() {
@@ -196,6 +273,7 @@ int main() {
   TestStrictConfigurationFailures();
   TestSelfTestConfigurationDoesNotRequireExternalUrl();
   TestConfigurationPreservesUtf8Paths();
+  TestProfileSelfTestConfigurationIsStrict();
   TestEventRecorderEscapesJsonAndTracksState();
   TestShutdownWatchdogRejectsInvalidConfiguration();
   TestShutdownWatchdogCompletionSuppressesTimeout();

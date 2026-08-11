@@ -304,6 +304,34 @@ Deliver:
 - Persistent Profile creation/open/flush.
 - Cookies, storage, downloads, permissions, custom schemes, and request interception.
 
+#### Objective 3.1: Native persistent Profile and storage lifecycle
+
+This objective establishes the real CEF/Chromium Profile boundary before a
+public `KWebProfile` is exposed. The global CEF context owns only an explicit
+`root_cache_path`; each browser receives an asynchronously initialized,
+non-global `CefRequestContext` whose cache path is an absolute direct child of
+that root. Nested Profile paths are rejected because the Chrome bootstrap
+otherwise creates a unique OffTheRecord Profile instead of the requested
+disk-backed Profile. The Chromium-owned `Default` Profile name is also reserved
+case-insensitively to prevent database ownership conflicts on macOS and Windows.
+
+Acceptance:
+
+- The browser is created only after its Profile request context initializes,
+  and runtime inspection proves that it owns that exact context.
+- Session-cookie persistence is enabled explicitly, and the cookie store flush
+  completes before browser close begins.
+- Three separate real CEF processes execute `Profile A write -> Profile B
+  expect-absent -> Profile A read` against a controlled HTTPS origin.
+- Profile A retains both `localStorage` and a session cookie across restart;
+  Profile B observes neither value.
+- After clean Chromium shutdown, each tested Profile contains its declared
+  Preferences, Cookies, and Local Storage state on disk. A missing artifact,
+  mismatched context, rejected flush, timeout, or invalid path fails the test.
+- The same contract runs on macOS, Windows, and Linux. The public
+  `KWebProfile` remains absent until the native Profile lifecycle is connected
+  through the real JNI/browser session boundary.
+
 Acceptance:
 
 - Data survives restart in the same Profile.

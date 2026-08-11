@@ -7,6 +7,7 @@
 
 #include "include/cef_browser.h"
 #include "include/cef_client.h"
+#include "include/cef_request_context.h"
 #include "kwebshell/native/host_configuration.h"
 
 namespace kwebshell {
@@ -28,6 +29,7 @@ public:
 
   virtual bool CreateBrowser(const HostConfiguration &configuration,
                              CefRefPtr<CefClient> client,
+                             CefRefPtr<CefRequestContext> request_context,
                              const std::string &url, std::string *error) = 0;
   virtual void OnBrowserCreated(CefRefPtr<CefBrowser> browser) = 0;
   virtual void OnBrowserCloseAccepted() = 0;

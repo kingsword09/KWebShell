@@ -113,8 +113,9 @@ public:
   }
 
   bool CreateBrowser(const HostConfiguration &configuration,
-                     CefRefPtr<CefClient> client, const std::string &url,
-                     std::string *error) override {
+                     CefRefPtr<CefClient> client,
+                     CefRefPtr<CefRequestContext> request_context,
+                     const std::string &url, std::string *error) override {
     CEF_REQUIRE_UI_THREAD();
 
     const NSWindowStyleMask style =
@@ -154,7 +155,7 @@ public:
     CefBrowserSettings browser_settings;
     browser_settings.background_color = CefColorSetARGB(255, 16, 32, 51);
     const bool accepted = CefBrowserHost::CreateBrowser(
-        window_info, client, url, browser_settings, nullptr, nullptr);
+        window_info, client, url, browser_settings, nullptr, request_context);
     if (!accepted) {
       *error = "CefBrowserHost::CreateBrowser rejected the native child.";
       return false;

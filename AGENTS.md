@@ -57,6 +57,8 @@ The browser engine is a product boundary, not an implementation detail. The desk
 - Reuse Chromium's extension service, Service Worker lifecycle, permission enforcement, content-script injection, and network rule engines. Do not reimplement them in Kotlin or JavaScript.
 - Profiles are explicit and persistent when extensions are enabled. Never share extension state implicitly between profiles.
 - Native child rendering is the required high-performance path. Off-screen rendering is a separately declared capability and must not be substituted silently.
+- The primary embedded page uses the Chrome bootstrap with explicit Alloy runtime style on every desktop platform. Chrome-style top-level surfaces are separate contracts, not a substitute for the Compose native child.
+- Manifest V3 support for the embedded Alloy `WebContents` requires the pinned Chromium extension-service patch series. Never use the removed CEF Alloy extension API or emulate `chrome.*` in Kotlin/JavaScript.
 - DevTools and CDP are first-class contracts. Remote debugging must be explicitly configured and secured, not enabled accidentally.
 
 ## Manifest V3 Requirements

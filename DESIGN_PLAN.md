@@ -18,7 +18,7 @@ The public product name is **KWebShell**. The implementation must not expose CEF
 
 ### 2.1 Engine
 
-CEF backed by a pinned Chromium release is the desktop engine. The project must use the Chrome runtime and Chrome-style browser hosts for extension-capable pages. A native child surface is the required performance path.
+CEF backed by a pinned Chromium release is the desktop engine. The project uses the Chrome bootstrap process model and an explicit Alloy-style native child for the primary Compose-embedded page on every platform. This is required because CEF forces Alloy style for an external macOS parent view. A version-pinned CEF/Chromium patch connects that embedded `WebContents` to Chromium's real Profile and extension services; the removed CEF Alloy extension API is never used.
 
 CEF's public extension API is not a sufficient MV3 product surface. The native layer must add a small, version-pinned adapter to Chromium's extension service. Chromium must own Service Workers, extension permissions, content scripts, isolated worlds, extension origins, and network rule evaluation.
 
@@ -53,7 +53,7 @@ Compose Desktop JVM
   kweb-cef-native (C++)
         |
         v
- CEF Chrome runtime / Chromium Profile
+ CEF Chrome bootstrap / patched Chromium Profile
         |
         +-- Browser / GPU / Network / CDP
         +-- Chromium ExtensionService (MV3)
@@ -96,7 +96,7 @@ The common module describes behavior, not the implementation mechanism. CEF hand
 
 ### 5.1 Native child surface
 
-This is the default rendering mode. Chromium renders to its native child surface with GPU acceleration. Compose owns the surrounding layout and overlays. This path is required for production performance and extension pages.
+This is the default rendering mode. Chromium renders to an explicit Alloy-style native child surface under the Chrome bootstrap with GPU acceleration. Compose owns the surrounding layout and overlays. The style is identical on all three platforms; KWebShell does not silently create a Chrome-style child where one platform happens to allow it. This path is required for production performance and extension-capable pages backed by the patched Chromium Profile integration.
 
 Acceptance criteria:
 
@@ -196,6 +196,8 @@ Chromium's internal extension runtime must provide:
 - Permission enforcement.
 - `chrome.runtime`, `storage.local`, `scripting`, `tabs`, `windows`, `action`, context menus, and `declarativeNetRequest` as advertised.
 
+The adapter must attach these Chromium-owned services to the primary Alloy-style embedded `WebContents`. It must not depend on CEF's removed Alloy extension API or report stock CEF behavior as MV3 support.
+
 Kotlin/C++ code supplies the embedder-specific browser model and UI hosts:
 
 - Tab/window mapping for `chrome.tabs` and `chrome.windows`.
@@ -252,12 +254,13 @@ Deliver:
 
 - CEF initialization and shutdown.
 - Browser process, renderer process, GPU process, and subprocess packaging.
-- Chrome runtime and Chrome-style native child browser.
+- Chrome bootstrap and explicit Alloy-style native child browser.
 - Navigation, resize, focus, input, DPI, and lifecycle callbacks.
 
 Acceptance:
 
 - A real page renders with GPU acceleration on all three platforms.
+- Runtime inspection proves the primary embedded browser is Alloy style under the Chrome bootstrap, with windowless rendering disabled.
 - Process failures and shutdown are observable typed errors.
 - Native surface tests pass without OSR pixel copying.
 

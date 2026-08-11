@@ -20,9 +20,10 @@ std::string DisplayUrl(const CefString &url) {
 
 BrowserClient::BrowserClient(BrowserApp *app, NativeWindow *native_window,
                              std::shared_ptr<EventRecorder> recorder,
-                             bool self_test)
+                             bool native_self_test, bool profile_self_test)
     : app_(app), native_window_(native_window), recorder_(std::move(recorder)),
-      self_test_(self_test) {}
+      native_self_test_(native_self_test),
+      profile_self_test_(profile_self_test) {}
 
 CefRefPtr<CefDisplayHandler> BrowserClient::GetDisplayHandler() { return this; }
 
@@ -41,7 +42,16 @@ void BrowserClient::OnTitleChange(CefRefPtr<CefBrowser> browser,
   native_window_->SetTitle(title_string);
   recorder_->Record("title_changed", {{"title", title_string}});
 
-  if (!self_test_) {
+  if (profile_self_test_) {
+    if (title_string.starts_with("KWEB_PROFILE_SELF_TEST_PASS|")) {
+      app_->OnProfileSelfTestPagePassed(title_string);
+    } else if (title_string.starts_with("KWEB_PROFILE_SELF_TEST_FAIL|")) {
+      app_->OnFatalBrowserError("native.profile.self-test-failed",
+                                {{"result", title_string}});
+    }
+    return;
+  }
+  if (!native_self_test_) {
     return;
   }
   if (title_string.starts_with("KWEB_SELF_TEST_GPU_FAIL|")) {
@@ -154,6 +164,9 @@ void BrowserClient::OnLoadEnd(CefRefPtr<CefBrowser> browser,
     recorder_->Record("load_end",
                       {{"http_status", std::to_string(http_status_code)},
                        {"url", DisplayUrl(frame->GetURL())}});
+    if (profile_self_test_) {
+      app_->OnProfileSelfTestPageLoaded();
+    }
   }
 }
 

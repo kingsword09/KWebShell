@@ -116,6 +116,30 @@ int RunBrowserProcess(const CefMainArgs &main_args,
                     {"message", directory_error.message()}});
     return static_cast<int>(HostExitCode::kConfigurationError);
   }
+  std::filesystem::create_directories(configuration.profile_path,
+                                      directory_error);
+  if (directory_error) {
+    recorder->Fail("native.profile.create-failed",
+                   {{"path", PathForLog(configuration.profile_path)},
+                    {"message", directory_error.message()}});
+    return static_cast<int>(HostExitCode::kConfigurationError);
+  }
+  configuration.profile_path =
+      std::filesystem::canonical(configuration.profile_path, directory_error);
+  if (directory_error) {
+    recorder->Fail("native.profile.canonicalize-failed",
+                   {{"path", PathForLog(configuration.profile_path)},
+                    {"message", directory_error.message()}});
+    return static_cast<int>(HostExitCode::kConfigurationError);
+  }
+  if (!IsSupportedPersistentProfilePath(configuration.root_cache_path,
+                                        configuration.profile_path)) {
+    recorder->Fail(
+        "native.profile.path-invalid",
+        {{"root_cache_path", PathForLog(configuration.root_cache_path)},
+         {"profile_path", PathForLog(configuration.profile_path)}});
+    return static_cast<int>(HostExitCode::kConfigurationError);
+  }
 
   CefSettings settings;
   settings.no_sandbox = sandbox_info == nullptr;
@@ -124,8 +148,6 @@ int RunBrowserProcess(const CefMainArgs &main_args,
   settings.external_message_pump = false;
   settings.remote_debugging_port = 0;
   AssignCefPath(&settings.root_cache_path, configuration.root_cache_path);
-  AssignCefPath(&settings.cache_path,
-                configuration.root_cache_path / "Default");
   AssignCefPath(&settings.log_file,
                 configuration.root_cache_path / "kweb-cef.log");
   settings.log_severity = LOGSEVERITY_INFO;

@@ -4,7 +4,7 @@ KWebShell is a Kotlin Multiplatform browser shell for Compose and Chromium. The 
 
 ## Current Status
 
-The repository contains the multiplatform build foundation, a native CEF host vertical slice, the verified CEF runtime catalog, and the internal Phase 2 C ABI/JNI lifecycle contract. The host uses the Chrome bootstrap with an explicit Alloy, windowed native child and reports fatal capability errors instead of selecting a fallback backend. Phase 2 deliberately exposes no public browser API: its navigation event means that a request crossed the ownership boundary, not that Chromium committed a navigation.
+The repository contains the multiplatform build foundation, a native CEF host vertical slice, the verified CEF runtime catalog, the internal Phase 2 C ABI/JNI lifecycle contract, and the first Phase 3 persistent-Profile slice. The host uses the Chrome bootstrap with an explicit Alloy, windowed native child and reports fatal capability errors instead of selecting a fallback backend. Each browser receives an explicitly initialized disk-backed request context; Profile paths that are not direct children of the CEF root cache are rejected because Chromium would otherwise create an OffTheRecord Profile. Phase 2 deliberately exposes no public browser API, and the native Profile slice does not yet publish `KWebProfile`: its navigation event means that a request crossed the ownership boundary, not that Chromium committed a navigation.
 
 Current verification evidence is intentionally platform-specific:
 
@@ -14,7 +14,9 @@ Current verification evidence is intentionally platform-specific:
 
 The Phase 2 contract is verified locally on macOS arm64 through a pure C consumer, native concurrency/lifetime tests, and a JVM that loads the real JNI shared library by absolute path. Windows and Linux support is accepted only when the same sources and real shared libraries pass the hosted matrix; there is no mock or alternate native backend in those jobs.
 
-See [DESIGN_PLAN.md](DESIGN_PLAN.md) for architecture and delivery phases, [ADR 0003](docs/adr/0003-versioned-native-session-contract.md) for the native ownership contract, and [AGENTS.md](AGENTS.md) for the non-fallback implementation rules.
+The Phase 3 Profile contract runs three real CEF processes against a controlled HTTPS origin. It proves that `localStorage` and a session cookie survive restart in Profile A, remain invisible to Profile B, flush cookies before browser close, and create Chromium Preferences, Cookies, and Local Storage files under each declared Profile after shutdown. The same CTest contract is part of the macOS, Windows, and Linux verification matrix.
+
+See [DESIGN_PLAN.md](DESIGN_PLAN.md) for architecture and delivery phases, [ADR 0003](docs/adr/0003-versioned-native-session-contract.md) for the native ownership contract, [ADR 0004](docs/adr/0004-persistent-chromium-profile-context.md) for the Profile path and persistence contract, and [AGENTS.md](AGENTS.md) for the non-fallback implementation rules.
 
 ## Requirements
 

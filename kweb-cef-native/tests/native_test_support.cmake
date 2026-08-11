@@ -12,16 +12,27 @@ function(kweb_require_test_inputs)
 endfunction()
 
 function(kweb_run_host)
-  cmake_parse_arguments(PARSE_ARGV 0 KWEB "" "TIMEOUT" "ARGUMENTS")
+  cmake_parse_arguments(PARSE_ARGV 0 KWEB "PRESERVE_ROOT"
+    "TIMEOUT;PROFILE_NAME;EVENT_LOG_NAME" "ARGUMENTS")
   if(NOT DEFINED KWEB_TIMEOUT OR KWEB_TIMEOUT STREQUAL "")
     set(KWEB_TIMEOUT 75)
   endif()
+  if(NOT DEFINED KWEB_PROFILE_NAME OR KWEB_PROFILE_NAME STREQUAL "")
+    set(KWEB_PROFILE_NAME primary)
+  endif()
+  if(NOT DEFINED KWEB_EVENT_LOG_NAME OR KWEB_EVENT_LOG_NAME STREQUAL "")
+    set(KWEB_EVENT_LOG_NAME events.jsonl)
+  endif()
 
-  file(REMOVE_RECURSE "${TEST_ROOT}")
-  set(profile_path "${TEST_ROOT}/profile")
-  set(event_log_path "${TEST_ROOT}/events.jsonl")
+  if(NOT KWEB_PRESERVE_ROOT)
+    file(REMOVE_RECURSE "${TEST_ROOT}")
+  endif()
+  set(root_cache_path "${TEST_ROOT}/root")
+  set(profile_path "${root_cache_path}/${KWEB_PROFILE_NAME}")
+  set(event_log_path "${TEST_ROOT}/${KWEB_EVENT_LOG_NAME}")
   set(xauthority_path "${TEST_ROOT}/xauthority")
   file(MAKE_DIRECTORY "${profile_path}")
+  file(REMOVE "${event_log_path}")
 
   set(host_command)
   if(DEFINED HOST_LAUNCHER AND NOT "${HOST_LAUNCHER}" STREQUAL "")
@@ -30,7 +41,8 @@ function(kweb_run_host)
          "--server-args=-screen 0 1280x1024x24")
   endif()
   list(APPEND host_command "${HOST_EXECUTABLE}"
-       "--kweb-root-cache-path=${profile_path}"
+       "--kweb-root-cache-path=${root_cache_path}"
+       "--kweb-profile-path=${profile_path}"
        "--kweb-event-log-path=${event_log_path}"
        ${KWEB_ARGUMENTS})
 

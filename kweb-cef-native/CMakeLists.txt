@@ -169,6 +169,7 @@ set(KWEB_HOST_COMMON_SOURCES
   src/browser_app.cc
   src/browser_client.cc
   src/host_main.cc
+  src/profile_test_page.cc
   src/self_test_page.cc
 )
 
@@ -349,6 +350,12 @@ else()
     "cef;gpu;integration;native"
   )
 endif()
+KWEB_ADD_NATIVE_SCRIPT_TEST(
+  kweb_profile_persistence_test
+  run_profile_persistence_test.cmake
+  240
+  "cef;integration;native;profile;storage"
+)
 KWEB_ADD_NATIVE_SCRIPT_TEST(
   kweb_renderer_failure_test
   run_browser_failure_test.cmake

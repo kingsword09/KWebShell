@@ -39,11 +39,14 @@ The browser engine is a product boundary, not an implementation detail. The desk
 ### Commit discipline
 
 - Make one focused implementation objective per commit.
+- Keep each pull request scoped to one focused implementation objective.
 - Commit only after the objective's tests and validation pass.
 - Do not combine unrelated refactors, generated metadata, dependency upgrades, or formatting churn with an objective.
 - Commit messages must state the completed objective and verification, for example: `cef: load MV3 extension service workers`.
 - If a change is intentionally breaking, state that in the commit body and list the migration required for the next objective.
 - Keep the worktree clean between objectives. Do not move on to the next objective with failing or skipped tests.
+- Integrate pull requests with squash merge only. Do not create merge commits or use GitHub's merge-commit strategy.
+- Delete the merged topic branch and verify the squash result on `main` before starting the next objective.
 
 ## Architecture Rules
 
@@ -97,5 +100,6 @@ Do not promise compatibility with every Chrome Web Store extension. Publish a ve
 3. Implement the smallest complete vertical slice, including native and Kotlin sides.
 4. Run the required tests on every advertised target, or record a blocking platform defect instead of pretending support.
 5. Update documentation and the capability matrix.
-6. Commit the objective as one focused commit.
-7. Repeat for the next objective.
+6. Commit the objective as one focused commit and open a single-objective pull request.
+7. Squash-merge the green pull request, delete its topic branch, and verify the resulting `main` commit.
+8. Repeat for the next objective.

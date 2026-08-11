@@ -4,7 +4,7 @@ KWebShell is a Kotlin Multiplatform browser shell for Compose and Chromium. The 
 
 ## Current Status
 
-The repository contains the multiplatform build foundation, a native CEF host vertical slice, and the verified CEF runtime catalog. The host uses the Chrome bootstrap with an explicit Alloy, windowed native child and reports fatal capability errors instead of selecting a fallback backend. Public Kotlin browser APIs begin with the separately verified JNI contract in Phase 2.
+The repository contains the multiplatform build foundation, a native CEF host vertical slice, the verified CEF runtime catalog, and the internal Phase 2 C ABI/JNI lifecycle contract. The host uses the Chrome bootstrap with an explicit Alloy, windowed native child and reports fatal capability errors instead of selecting a fallback backend. Phase 2 deliberately exposes no public browser API: its navigation event means that a request crossed the ownership boundary, not that Chromium committed a navigation.
 
 Current verification evidence is intentionally platform-specific:
 
@@ -12,7 +12,9 @@ Current verification evidence is intentionally platform-specific:
 - Linux arm64 and x64: GCC 13 builds and links the real CEF runtime; GTK/X11 parent validation, root screen bounds, renderer/GPU failure, bounded shutdown, and the strict no-GPU contract pass on both architectures, including the hosted x64 Actions job. The available runners have no `/dev/dri`; positive Linux hardware rendering remains unverified and fails with `native.gpu.hardware-acceleration-unavailable`.
 - Windows x64: MSVC 19.44 builds and links the complete real CEF host and all four hosted CTest contracts pass, including Win32 focus, DPI, screen bounds, input routing, renderer/GPU failure, and bounded shutdown. The hosted Microsoft Basic Render Driver is rejected explicitly; the `Hardware GPU Validation` workflow is the positive D3D11 gate for a self-hosted physical-GPU runner.
 
-See [DESIGN_PLAN.md](DESIGN_PLAN.md) for architecture and delivery phases, and [AGENTS.md](AGENTS.md) for the non-fallback implementation rules.
+The Phase 2 contract is verified locally on macOS arm64 through a pure C consumer, native concurrency/lifetime tests, and a JVM that loads the real JNI shared library by absolute path. Windows and Linux support is accepted only when the same sources and real shared libraries pass the hosted matrix; there is no mock or alternate native backend in those jobs.
+
+See [DESIGN_PLAN.md](DESIGN_PLAN.md) for architecture and delivery phases, [ADR 0003](docs/adr/0003-versioned-native-session-contract.md) for the native ownership contract, and [AGENTS.md](AGENTS.md) for the non-fallback implementation rules.
 
 ## Requirements
 

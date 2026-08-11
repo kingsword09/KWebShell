@@ -13,4 +13,16 @@ class KWebExceptionTest {
 
         assertEquals("initial", error.details["field"])
     }
+
+    @Test
+    fun nativeErrorsUseTheSharedTypedErrorContract() {
+        val error = KWebNativeException(
+            code = "native.session.closed",
+            details = mapOf("operation" to "resize"),
+            message = "The native session is closed.",
+        )
+
+        assertEquals("native.session.closed", error.code)
+        assertEquals("resize", error.details["operation"])
+    }
 }

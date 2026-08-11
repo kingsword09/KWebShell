@@ -15,3 +15,10 @@ public class KWebConfigurationException(
     message: String,
     cause: Throwable? = null,
 ) : KWebException(code, details, message, cause)
+
+public class KWebNativeException(
+    code: String,
+    details: Map<String, String>,
+    message: String,
+    cause: Throwable? = null,
+) : KWebException(code, details, message, cause)

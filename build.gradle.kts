@@ -15,6 +15,7 @@ subprojects {
 
 tasks.named("check") {
     dependsOn(":kweb-core:check")
+    dependsOn(":kweb-cef-native:check")
     dependsOn(":kweb-runtime-pack:check")
     dependsOn(":kweb-runtime-pack:verifyCefRuntimeManifest")
 }

@@ -18,3 +18,4 @@ rootProject.name = "KWebShell"
 
 include(":kweb-core")
 include(":kweb-runtime-pack")
+include(":kweb-cef-native")

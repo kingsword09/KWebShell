@@ -173,6 +173,7 @@ pnpm-debug.log*
 
 # CEF, Chromium, and KWebShell runtime caches
 .cef/
+.cef-ci/
 .cef-cache/
 cef-cache/
 cef_binary_*/

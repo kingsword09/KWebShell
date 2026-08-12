@@ -1,10 +1,16 @@
 KWEBSHELL_ENGINE_1 {
   global:
+    kweb_browser_close;
+    kweb_browser_create;
+    kweb_browser_navigate;
+    kweb_browser_resize;
     kweb_engine_abi_version;
     kweb_engine_close;
     kweb_engine_create;
     kweb_engine_platform_startup;
+    kweb_live_browser_count;
     kweb_live_engine_count;
+    kweb_status_name;
   local:
     *;
 };

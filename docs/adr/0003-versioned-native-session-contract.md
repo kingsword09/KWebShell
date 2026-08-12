@@ -1,13 +1,13 @@
 # ADR 0003: Use a versioned native session contract
 
-- Status: Accepted
+- Status: Superseded by ADR 0006
 - Date: 2026-08-11
 
 ## Context
 
 KWebShell needs a stable boundary between Kotlin/JVM orchestration and the C++ Chromium host. CEF objects, callbacks, allocators, and standard-library types cannot safely cross a binary boundary compiled by different platform toolchains. JNI also has different text, thread, exception, and reference-lifetime rules from both Kotlin and C++.
 
-Phase 2 must prove that boundary without publishing a browser API before a real CEF page is connected. A queued navigation request is not evidence that Chromium committed or rendered the URL.
+Phase 2 proved the JNI ownership boundary without publishing a browser API before a real CEF page was connected. A queued navigation request was not evidence that Chromium committed or rendered the URL. Objective 3.3 deliberately removes this echo contract.
 
 ## Decision
 

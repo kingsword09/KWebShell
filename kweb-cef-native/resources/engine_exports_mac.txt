@@ -1,5 +1,11 @@
+_kweb_browser_close
+_kweb_browser_create
+_kweb_browser_navigate
+_kweb_browser_resize
 _kweb_engine_abi_version
 _kweb_engine_close
 _kweb_engine_create
 _kweb_engine_platform_startup
+_kweb_live_browser_count
 _kweb_live_engine_count
+_kweb_status_name

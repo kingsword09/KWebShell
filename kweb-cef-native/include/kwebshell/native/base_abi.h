@@ -11,7 +11,7 @@
 #define KWEB_ABI_CALL
 #endif
 
-#define KWEB_ABI_VERSION ((uint32_t)1)
+#define KWEB_ABI_VERSION ((uint32_t)2)
 
 typedef uint32_t kweb_status;
 
@@ -45,5 +45,13 @@ typedef uint32_t kweb_status;
 #define KWEB_STATUS_WRONG_THREAD ((kweb_status)27)
 #define KWEB_STATUS_CEF_INITIALIZE_FAILED ((kweb_status)28)
 #define KWEB_STATUS_ENGINE_CLOSING ((kweb_status)29)
+#define KWEB_STATUS_ENGINE_HAS_LIVE_BROWSERS ((kweb_status)30)
+#define KWEB_STATUS_PROFILE_PATH_INVALID ((kweb_status)31)
+#define KWEB_STATUS_PARENT_SURFACE_INVALID ((kweb_status)32)
+#define KWEB_STATUS_BROWSER_CREATE_FAILED ((kweb_status)33)
+#define KWEB_STATUS_BROWSER_NOT_READY ((kweb_status)34)
+#define KWEB_STATUS_BROWSER_CLOSING ((kweb_status)35)
+#define KWEB_STATUS_CEF_UI_TASK_FAILED ((kweb_status)36)
+#define KWEB_STATUS_NAVIGATION_INVALID ((kweb_status)37)
 
 #endif // KWEBSHELL_NATIVE_BASE_ABI_H_

@@ -8,13 +8,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.awt.EventQueue
 import java.awt.Toolkit
 import java.time.Duration
+import java.nio.file.Path
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.FutureTask
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
@@ -37,15 +37,14 @@ internal data class NativeEngineEvent(
 internal class NativeEngine private constructor(
     private val listener: (NativeEngineEvent) -> Unit,
     private val awtLifecycleAnchor: AwtEngineLifecycleAnchor,
+    private val configuration: NativeEngineConfiguration,
 ) : AutoCloseable {
     private val mutableLifecycle = MutableStateFlow(KWebLifecycleState.OPENING)
     private val nativeHandle = AtomicLong(0)
     private val callbackHandle = AtomicLong(0)
     private val nextSequence = AtomicLong(1)
     private val opened = CountDownLatch(1)
-    private val closeStarted = AtomicBoolean(false)
     private val closed = CountDownLatch(1)
-    private val closeCompleted = CountDownLatch(1)
     private val callbackFailure = AtomicReference<KWebNativeException?>()
     private val closeFailure = AtomicReference<KWebNativeException?>()
     private val callbackThread = AtomicReference<Thread?>()
@@ -59,6 +58,26 @@ internal class NativeEngine private constructor(
 
     internal val lifecycle: StateFlow<KWebLifecycleState> = mutableLifecycle.asStateFlow()
 
+    internal fun requireLiveHandle(operation: String): Long {
+        if (mutableLifecycle.value != KWebLifecycleState.OPEN) {
+            throw KWebNativeException(
+                code = "native.engine.closed",
+                details = mapOf("operation" to operation),
+                message = "The native engine is not open.",
+            )
+        }
+        return nativeHandle.get().takeIf { it != 0L } ?: throw KWebNativeException(
+            code = "native.engine.handle-missing",
+            details = mapOf("operation" to operation),
+            message = "The native engine handle is unavailable.",
+        )
+    }
+
+    internal fun rootCachePath(): Path = configuration.rootCache
+
+    internal fun ownsHandle(handle: Long): Boolean = handle != 0L && callbackHandle.get() == handle
+
+    @Synchronized
     override fun close() {
         if (Thread.currentThread() === callbackThread.get()) {
             throw KWebNativeException(
@@ -67,48 +86,57 @@ internal class NativeEngine private constructor(
                 message = "The native engine cannot close from its callback dispatcher.",
             )
         }
-        if (!closeStarted.compareAndSet(false, true)) {
-            awaitConcurrentClose()
+        if (nativeHandle.get() == 0L) {
             closeFailure.get()?.let { throw it }
-            return
+            if (mutableLifecycle.value == KWebLifecycleState.CLOSED) return
+            throw KWebNativeException(
+                code = "native.engine.handle-missing",
+                details = emptyMap(),
+                message = "The native engine lost ownership of its handle.",
+            )
         }
 
+        val stateBeforeClose = mutableLifecycle.value
         var failure: KWebNativeException? = null
-        try {
-            if (mutableLifecycle.value != KWebLifecycleState.FAILED) {
-                mutableLifecycle.value = KWebLifecycleState.CLOSING
+        if (stateBeforeClose != KWebLifecycleState.FAILED) {
+            mutableLifecycle.value = KWebLifecycleState.CLOSING
+        }
+        val handle = nativeHandle.get()
+        val status = onAwtEventDispatchThread { NativeBindings.engineClose(handle) }
+        val closeAccepted = status == NativeStatus.OK.value ||
+            status == NativeStatus.CALLBACK_FAILED.value ||
+            status == NativeStatus.PLATFORM_INITIALIZATION_FAILED.value
+        if (!closeAccepted) {
+            if (stateBeforeClose != KWebLifecycleState.FAILED) {
+                mutableLifecycle.value = stateBeforeClose
             }
-            val handle = nativeHandle.getAndSet(0)
-            if (handle == 0L) {
-                failure = KWebNativeException(
-                    code = "native.engine.handle-missing",
-                    details = emptyMap(),
-                    message = "The native engine lost ownership of its handle.",
+            throw nativeStatusException(
+                operation = "engine-close",
+                value = status,
+                details = mapOf("handle" to handle.toString()),
+            )
+        }
+        if (!nativeHandle.compareAndSet(handle, 0L)) {
+            failure = KWebNativeException(
+                code = "native.engine.handle-mismatch",
+                details = mapOf("expected" to handle.toString(), "actual" to nativeHandle.get().toString()),
+                message = "The native engine handle changed while close was accepted.",
+            )
+        }
+
+        try {
+            if (!awaitTerminalEvent()) {
+                failure = failure ?: KWebNativeException(
+                    code = "native.engine.closed-event-timeout",
+                    details = mapOf("timeoutMs" to CALLBACK_TIMEOUT.toMillis().toString()),
+                    message = "The native engine terminal callback did not arrive in time.",
                 )
-            } else {
-                val status = onAwtEventDispatchThread { NativeBindings.engineClose(handle) }
-                val closeAccepted = status == NativeStatus.OK.value ||
-                    status == NativeStatus.CALLBACK_FAILED.value ||
-                    status == NativeStatus.PLATFORM_INITIALIZATION_FAILED.value
-                if (!closeAccepted) {
-                    failure = nativeStatusException(
-                        operation = "engine-close",
-                        value = status,
-                        details = mapOf("handle" to handle.toString()),
-                    )
-                } else if (!awaitTerminalEvent()) {
-                    failure = KWebNativeException(
-                        code = "native.engine.closed-event-timeout",
-                        details = mapOf("timeoutMs" to CALLBACK_TIMEOUT.toMillis().toString()),
-                        message = "The native engine terminal callback did not arrive in time.",
-                    )
-                } else if (status != NativeStatus.OK.value) {
-                    failure = nativeStatusException(
-                        operation = "engine-close",
-                        value = status,
-                        details = mapOf("handle" to handle.toString()),
-                    )
-                }
+            } else if (status != NativeStatus.OK.value) {
+                failure = failure ?: nativeStatusException(
+                    operation = "engine-close",
+                    value = status,
+                    details = mapOf("handle" to handle.toString()),
+                )
             }
 
             callbackExecutor.shutdown()
@@ -151,7 +179,6 @@ internal class NativeEngine private constructor(
                 mutableLifecycle.value = KWebLifecycleState.FAILED
                 closeFailure.compareAndSet(null, failure)
             }
-            closeCompleted.countDown()
         }
         failure?.let { throw it }
     }
@@ -296,26 +323,6 @@ internal class NativeEngine private constructor(
         opened.countDown()
     }
 
-    private fun awaitConcurrentClose() {
-        try {
-            if (!closeCompleted.await(CALLBACK_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
-                throw KWebNativeException(
-                    code = "native.engine.concurrent-close-timeout",
-                    details = mapOf("timeoutMs" to CALLBACK_TIMEOUT.toMillis().toString()),
-                    message = "A concurrent native engine close did not complete in time.",
-                )
-            }
-        } catch (error: InterruptedException) {
-            Thread.currentThread().interrupt()
-            throw KWebNativeException(
-                code = "native.engine.concurrent-close-interrupted",
-                details = emptyMap(),
-                message = "Waiting for a concurrent engine close was interrupted.",
-                cause = error,
-            )
-        }
-    }
-
     private fun awaitExecutorTermination(): Boolean = try {
         callbackExecutor.awaitTermination(CALLBACK_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)
     } catch (error: InterruptedException) {
@@ -360,10 +367,6 @@ internal class NativeEngine private constructor(
             configuration: NativeEngineConfiguration,
         ): NativeEngineConfiguration {
             val validated = configuration.validated()
-            val sessionAbiVersion = NativeBindings.abiVersion()
-            if (sessionAbiVersion != NATIVE_ABI_VERSION) {
-                throw abiVersionMismatch("session", sessionAbiVersion)
-            }
             val loadStatus = NativeBindings.loadEngineLibrary(
                 NativeBindings.libraryPaths.engine.toString(),
                 validated.cefRuntime.toString(),
@@ -391,7 +394,7 @@ internal class NativeEngine private constructor(
         ): NativeEngine {
             val validated = prepareNativeRuntime(configuration)
             val awtLifecycleAnchor = onAwtEventDispatchThread(AwtEngineLifecycleAnchor::create)
-            val engine = NativeEngine(listener, awtLifecycleAnchor)
+            val engine = NativeEngine(listener, awtLifecycleAnchor, validated)
             val createResult = try {
                 onAwtEventDispatchThread {
                     check(EventQueue.isDispatchThread())

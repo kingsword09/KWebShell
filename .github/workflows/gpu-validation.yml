@@ -57,7 +57,7 @@ jobs:
             }
           else
             powershell.exe -NoProfile -NonInteractive -Command \
-              '$gpu = Get-CimInstance Win32_VideoController | Where-Object { $_.Name -notmatch "WARP|Basic Render Driver|Microsoft Remote Display" }; if (-not $gpu) { throw "A physical Windows GPU is required for positive GPU validation." }'
+              "\$gpu = Get-CimInstance Win32_VideoController | Where-Object { \$_.Name -notmatch 'WARP|Basic Render Driver|Microsoft Remote Display' }; if (-not \$gpu) { throw 'A physical Windows GPU is required for positive GPU validation.' }"
           fi
 
       - name: Resolve pinned CEF artifact

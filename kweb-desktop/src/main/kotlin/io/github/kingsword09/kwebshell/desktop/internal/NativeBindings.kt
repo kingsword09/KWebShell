@@ -6,27 +6,15 @@ import java.nio.file.Files
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
 import java.util.Locale
+import java.awt.Component
 import kotlin.jvm.JvmName
 
 internal const val NATIVE_LIBRARY_PATH_PROPERTY: String = "kweb.native.library.path"
 
 internal data class NativeLibraryPaths(
-    val abi: Path,
     val engine: Path,
     val jni: Path,
 )
-
-internal fun nativeAbiLibraryFileName(operatingSystem: String): String =
-    when {
-        operatingSystem.lowercase(Locale.ROOT).startsWith("windows") -> "kwebshell_abi.dll"
-        operatingSystem.lowercase(Locale.ROOT).startsWith("mac") -> "libkwebshell_abi.dylib"
-        operatingSystem.lowercase(Locale.ROOT).startsWith("linux") -> "libkwebshell_abi.so"
-        else -> throw KWebConfigurationException(
-            code = "native.platform.unsupported",
-            details = mapOf("osName" to operatingSystem),
-            message = "The current operating system is not supported by the KWebShell native contract.",
-        )
-    }
 
 internal fun nativeEngineLibraryFileName(operatingSystem: String): String =
     when {
@@ -44,7 +32,6 @@ internal fun resolveNativeLibraryPaths(
     configuredJniPath: String,
     operatingSystem: String,
 ): NativeLibraryPaths {
-    val abiFileName = nativeAbiLibraryFileName(operatingSystem)
     val engineFileName = nativeEngineLibraryFileName(operatingSystem)
     val jniPath = try {
         Path.of(configuredJniPath)
@@ -63,14 +50,6 @@ internal fun resolveNativeLibraryPaths(
             message = "The KWebShell JNI library path must identify a regular file.",
         )
     }
-    val abiPath = jniPath.resolveSibling(abiFileName)
-    if (!Files.isRegularFile(abiPath)) {
-        throw KWebConfigurationException(
-            code = "native.abi-library.path-invalid",
-            details = mapOf("path" to abiPath.toString()),
-            message = "The KWebShell ABI library must be adjacent to the JNI library.",
-        )
-    }
     val enginePath = jniPath.resolveSibling(engineFileName)
     if (!Files.isRegularFile(enginePath)) {
         throw KWebConfigurationException(
@@ -79,7 +58,7 @@ internal fun resolveNativeLibraryPaths(
             message = "The KWebShell engine library must be adjacent to the JNI library.",
         )
     }
-    return NativeLibraryPaths(abi = abiPath, engine = enginePath, jni = jniPath)
+    return NativeLibraryPaths(engine = enginePath, jni = jniPath)
 }
 
 internal object NativeBindings {
@@ -94,11 +73,6 @@ internal object NativeBindings {
             )
         val paths = resolveNativeLibraryPaths(configuredPath, System.getProperty("os.name"))
         libraryPaths = paths
-        loadNativeLibrary(
-            path = paths.abi,
-            errorCode = "native.abi-library.load-failed",
-            errorMessage = "The KWebShell ABI library could not be loaded.",
-        )
         loadNativeLibrary(
             path = paths.jni,
             errorCode = "native.library.load-failed",
@@ -118,24 +92,6 @@ internal object NativeBindings {
             )
         }
     }
-
-    @JvmName("abiVersion")
-    internal external fun abiVersion(): Int
-
-    @JvmName("create")
-    internal external fun create(sink: NativeEventSink): Long
-
-    @JvmName("requestNavigation")
-    internal external fun requestNavigation(handle: Long, url: String): Int
-
-    @JvmName("resize")
-    internal external fun resize(handle: Long, width: Int, height: Int): Int
-
-    @JvmName("close")
-    internal external fun close(handle: Long): Int
-
-    @JvmName("liveSessionCount")
-    internal external fun liveSessionCount(): Long
 
     @JvmName("loadEngineLibrary")
     internal external fun loadEngineLibrary(enginePath: String, cefRuntimePath: String): Int
@@ -159,22 +115,31 @@ internal object NativeBindings {
 
     @JvmName("liveEngineCount")
     internal external fun liveEngineCount(): Long
-}
 
-internal class NativeEventSink(
-    private val callback: (Long, Long, Int, String, Int, Int) -> Unit,
-) {
-    @JvmName("onNativeEvent")
-    internal fun onNativeEvent(
-        handle: Long,
-        sequence: Long,
-        type: Int,
-        text: String,
+    @JvmName("browserCreate")
+    internal external fun browserCreate(
+        engine: Long,
+        sink: NativeBrowserEventSink,
+        component: Component,
+        profilePath: String,
+        initialUrl: String,
+        x: Int,
+        y: Int,
         width: Int,
         height: Int,
-    ) {
-        callback(handle, sequence, type, text, width, height)
-    }
+    ): Long
+
+    @JvmName("browserNavigate")
+    internal external fun browserNavigate(handle: Long, url: String): Int
+
+    @JvmName("browserResize")
+    internal external fun browserResize(handle: Long, width: Int, height: Int): Int
+
+    @JvmName("browserClose")
+    internal external fun browserClose(handle: Long): Int
+
+    @JvmName("liveBrowserCount")
+    internal external fun liveBrowserCount(): Long
 }
 
 internal class NativeEngineEventSink(
@@ -187,5 +152,24 @@ internal class NativeEngineEventSink(
         type: Int,
     ) {
         callback(handle, sequence, type)
+    }
+}
+
+internal class NativeBrowserEventSink(
+    private val callback: (Long, Long, Long, Int, Int, String, Int, Int, Int) -> Unit,
+) {
+    @JvmName("onNativeBrowserEvent")
+    internal fun onNativeBrowserEvent(
+        engine: Long,
+        browser: Long,
+        sequence: Long,
+        type: Int,
+        flags: Int,
+        text: String,
+        statusCode: Int,
+        width: Int,
+        height: Int,
+    ) {
+        callback(engine, browser, sequence, type, flags, text, statusCode, width, height)
     }
 }

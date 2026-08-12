@@ -73,13 +73,6 @@ val jniLibraryFileName = providers.systemProperty("os.name").map { operatingSyst
         else -> "libkwebshell_jni.so"
     }
 }
-val abiLibraryFileName = providers.systemProperty("os.name").map { operatingSystem ->
-    when {
-        operatingSystem.lowercase(Locale.ROOT).startsWith("windows") -> "kwebshell_abi.dll"
-        operatingSystem.lowercase(Locale.ROOT).startsWith("mac") -> "libkwebshell_abi.dylib"
-        else -> "libkwebshell_abi.so"
-    }
-}
 val engineLibraryFileName = providers.systemProperty("os.name").map { operatingSystem ->
     when {
         operatingSystem.lowercase(Locale.ROOT).startsWith("windows") -> "kwebshell_engine.dll"
@@ -136,9 +129,6 @@ tasks.register<Exec>("buildNative") {
     inputs.dir(layout.projectDirectory.dir("tests"))
     outputs.dir(nativeBuildDirectory.map { it.dir("Release") })
     outputs.file(nativeContractDirectory.zip(jniLibraryFileName) { directory, fileName ->
-        directory.file(fileName)
-    })
-    outputs.file(nativeContractDirectory.zip(abiLibraryFileName) { directory, fileName ->
         directory.file(fileName)
     })
     outputs.file(nativeContractDirectory.zip(engineLibraryFileName) { directory, fileName ->

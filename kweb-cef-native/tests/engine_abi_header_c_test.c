@@ -7,9 +7,21 @@ _Static_assert(KWEB_INVALID_ENGINE_HANDLE == 0,
                "the invalid engine handle must remain zero");
 _Static_assert(KWEB_ENGINE_EVENT_OPENED != KWEB_ENGINE_EVENT_CLOSED,
                "engine lifecycle events must remain distinct");
+_Static_assert(KWEB_INVALID_BROWSER_HANDLE == 0,
+               "the invalid browser handle must remain zero");
+_Static_assert(KWEB_BROWSER_EVENT_CREATED != KWEB_BROWSER_EVENT_CLOSED,
+               "browser lifecycle events must remain distinct");
 
 static void KWEB_ABI_CALL receive_engine_event(void *user_data,
                                                const kweb_engine_event *event) {
+  uint64_t *sequence = (uint64_t *)user_data;
+  if (event != NULL) {
+    *sequence = event->sequence;
+  }
+}
+
+static void KWEB_ABI_CALL receive_browser_event(
+    void *user_data, const kweb_browser_event *event) {
   uint64_t *sequence = (uint64_t *)user_data;
   if (event != NULL) {
     *sequence = event->sequence;
@@ -36,9 +48,42 @@ int main(void) {
                                    0,
                                    1,
                                    1};
+  const kweb_browser_config browser_configuration = {
+      (uint32_t)sizeof(kweb_browser_config),
+      KWEB_ABI_VERSION,
+      1,
+      0,
+      (uintptr_t)1,
+      0,
+      0,
+      800,
+      600,
+      {"/cache/Profile", 14},
+      {"https://example.test", 20},
+      receive_browser_event,
+      &sequence,
+  };
+  const kweb_browser_event browser_event = {
+      (uint32_t)sizeof(kweb_browser_event),
+      KWEB_ABI_VERSION,
+      KWEB_BROWSER_EVENT_CREATED,
+      0,
+      1,
+      1,
+      2,
+      {"", 0},
+      0,
+      800,
+      600,
+      0,
+  };
   configuration.callback(configuration.user_data, &event);
+  browser_configuration.callback(browser_configuration.user_data,
+                                 &browser_event);
   if (configuration.struct_size != sizeof(kweb_engine_config) ||
-      event.struct_size != sizeof(kweb_engine_event) || sequence != 1) {
+      browser_configuration.struct_size != sizeof(kweb_browser_config) ||
+      event.struct_size != sizeof(kweb_engine_event) ||
+      browser_event.struct_size != sizeof(kweb_browser_event) || sequence != 2) {
     return 1;
   }
   return 0;

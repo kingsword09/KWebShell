@@ -2,7 +2,7 @@ package io.github.kingsword09.kwebshell.desktop.internal
 
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 
-internal const val NATIVE_ABI_VERSION: Int = 1
+internal const val NATIVE_ABI_VERSION: Int = 2
 
 internal enum class NativeStatus(
     val value: Int,
@@ -38,33 +38,20 @@ internal enum class NativeStatus(
     WRONG_THREAD(27, "wrong-thread"),
     CEF_INITIALIZE_FAILED(28, "cef-initialize-failed"),
     ENGINE_CLOSING(29, "engine-closing"),
+    ENGINE_HAS_LIVE_BROWSERS(30, "engine-has-live-browsers"),
+    PROFILE_PATH_INVALID(31, "profile-path-invalid"),
+    PARENT_SURFACE_INVALID(32, "parent-surface-invalid"),
+    BROWSER_CREATE_FAILED(33, "browser-create-failed"),
+    BROWSER_NOT_READY(34, "browser-not-ready"),
+    BROWSER_CLOSING(35, "browser-closing"),
+    CEF_UI_TASK_FAILED(36, "cef-ui-task-failed"),
+    NAVIGATION_INVALID(37, "navigation-invalid"),
     ;
 
     companion object {
         fun fromValue(value: Int): NativeStatus? = entries.singleOrNull { it.value == value }
     }
 }
-
-internal enum class NativeEventType(val value: Int) {
-    SESSION_OPENED(1),
-    NAVIGATION_REQUESTED(2),
-    VIEWPORT_CHANGED(3),
-    SESSION_CLOSED(4),
-    ;
-
-    companion object {
-        fun fromValue(value: Int): NativeEventType? = entries.singleOrNull { it.value == value }
-    }
-}
-
-internal data class NativeContractEvent(
-    val type: NativeEventType,
-    val handle: Long,
-    val sequence: Long,
-    val text: String,
-    val width: Int,
-    val height: Int,
-)
 
 internal fun nativeStatusException(
     operation: String,

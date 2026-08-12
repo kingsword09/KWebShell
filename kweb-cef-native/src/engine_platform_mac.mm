@@ -461,6 +461,8 @@ void ConfigureEngineCommandLineOnPlatform(
   }
   command_line->AppendSwitch("disable-in-process-stack-traces");
   command_line->AppendSwitch("use-mock-keychain");
+  command_line->AppendSwitchWithValue("remote-debugging-address",
+                                      "127.0.0.1");
   if (command_line->HasSwitch("disable-in-process-stack-traces") &&
       command_line->HasSwitch("use-mock-keychain")) {
     fprintf(stderr, "KWEBSHELL_NATIVE_ENGINE:macos_browser_policy_applied\n");

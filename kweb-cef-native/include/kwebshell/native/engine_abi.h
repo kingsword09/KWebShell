@@ -78,6 +78,8 @@ typedef struct kweb_engine_config {
   kweb_string_view locales_path;
   kweb_string_view root_cache_path;
   kweb_string_view log_path;
+  int32_t remote_debugging_port;
+  uint32_t reserved;
 } kweb_engine_config;
 
 typedef struct kweb_browser_event {

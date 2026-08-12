@@ -1,10 +1,20 @@
 #include "engine_configuration.h"
+#include "remote_debugging_port.h"
 
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
+
+#if defined(_WIN32)
+#include <winsock2.h>
+#else
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
 
 namespace {
 
@@ -93,6 +103,7 @@ struct ConfigurationStorage final {
   std::string locales;
   std::string cache;
   std::string log;
+  int32_t remote_debugging_port = 0;
 
   explicit ConfigurationStorage(const Fixture &fixture)
       : runtime(fixture.runtime.string()),
@@ -115,7 +126,9 @@ struct ConfigurationStorage final {
             View(resources),
             View(locales),
             View(cache),
-            View(log)};
+            View(log),
+            remote_debugging_port,
+            0};
   }
 };
 
@@ -164,12 +177,78 @@ void TestMismatchedLayoutFails() {
         "a log outside the declared root cache should be rejected");
 }
 
+void TestRemoteDebuggingPortValidation() {
+  Fixture fixture;
+  ConfigurationStorage storage(fixture);
+  kwebshell::ValidatedEngineConfiguration validated;
+  storage.remote_debugging_port = 1023;
+  Check(kwebshell::ValidateEngineConfiguration(storage.Configuration(),
+                                               &validated) ==
+            KWEB_STATUS_REMOTE_DEBUGGING_PORT_INVALID,
+        "ports below the explicit remote-debugging range must fail");
+  storage.remote_debugging_port = 9222;
+  Check(kwebshell::ValidateEngineConfiguration(storage.Configuration(),
+                                               &validated) == KWEB_STATUS_OK,
+        "a fixed remote-debugging port must be accepted");
+}
+
+void TestRemoteDebuggingPortAvailability() {
+  Check(kwebshell::ValidateRemoteDebuggingPortAvailability(0) ==
+            KWEB_STATUS_OK,
+        "port zero should disable remote debugging without probing");
+#if defined(_WIN32)
+  WSADATA data{};
+  Check(WSAStartup(MAKEWORD(2, 2), &data) == 0,
+        "the test should initialize Winsock");
+  SOCKET socket_fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  Check(socket_fd != INVALID_SOCKET,
+        "the test should create an IPv4 loopback socket");
+  if (socket_fd == INVALID_SOCKET) {
+    WSACleanup();
+    return;
+  }
+#else
+  const int socket_fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  Check(socket_fd >= 0, "the test should create an IPv4 loopback socket");
+  if (socket_fd < 0) {
+    return;
+  }
+#endif
+  sockaddr_in address{};
+  address.sin_family = AF_INET;
+  address.sin_port = 0;
+  address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  Check(::bind(socket_fd, reinterpret_cast<sockaddr *>(&address),
+               sizeof(address)) == 0,
+        "the test should reserve an IPv4 loopback port");
+#if defined(_WIN32)
+  int address_size = sizeof(address);
+#else
+  socklen_t address_size = sizeof(address);
+#endif
+  Check(::getsockname(socket_fd, reinterpret_cast<sockaddr *>(&address),
+                      &address_size) == 0,
+        "the test should discover the reserved port");
+  Check(kwebshell::ValidateRemoteDebuggingPortAvailability(
+            ntohs(address.sin_port)) ==
+            KWEB_STATUS_REMOTE_DEBUGGING_PORT_UNAVAILABLE,
+        "an occupied loopback port should be rejected");
+#if defined(_WIN32)
+  closesocket(socket_fd);
+  WSACleanup();
+#else
+  ::close(socket_fd);
+#endif
+}
+
 } // namespace
 
 int main() {
   TestValidExplicitLayout();
   TestRelativeAndMissingPathsFail();
   TestMismatchedLayoutFails();
+  TestRemoteDebuggingPortValidation();
+  TestRemoteDebuggingPortAvailability();
   if (failures != 0) {
     std::cerr << failures << " engine configuration assertion(s) failed."
               << std::endl;

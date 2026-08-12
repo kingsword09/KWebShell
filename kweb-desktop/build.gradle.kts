@@ -17,6 +17,7 @@ kotlin {
 dependencies {
     api(project(":kweb-core"))
     implementation(libs.kotlinx.coroutines.core)
+    testImplementation(libs.kotlinx.serialization.json)
 
     testImplementation(kotlin("test-junit5"))
     testRuntimeOnly(libs.junit.platform.launcher)

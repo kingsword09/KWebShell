@@ -523,7 +523,8 @@ jlong JNICALL NativeEngineCreate(JNIEnv *env, jobject, jobject sink,
                                  jstring cef_runtime_path,
                                  jstring browser_subprocess_path,
                                  jstring resources_path, jstring locales_path,
-                                 jstring root_cache_path, jstring log_path) {
+                                 jstring root_cache_path, jstring log_path,
+                                 jint remote_debugging_port) {
   if (sink == nullptr) {
     return EncodeCreateFailure(KWEB_STATUS_INVALID_ARGUMENT);
   }
@@ -591,6 +592,8 @@ jlong JNICALL NativeEngineCreate(JNIEnv *env, jobject, jobject sink,
         {locales->data(), locales->size()},
         {root_cache->data(), root_cache->size()},
         {log->data(), log->size()},
+        remote_debugging_port,
+        0,
     };
     kweb_engine_handle handle = KWEB_INVALID_ENGINE_HANDLE;
     const kweb_status status = api.create(&configuration, &handle);
@@ -811,7 +814,7 @@ jint RegisterEngineNatives(JNIEnv *env, jclass bindings) {
            "(Lio/github/kingsword09/kwebshell/desktop/internal/"
            "NativeEngineEventSink;Ljava/lang/String;Ljava/lang/String;"
            "Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;"
-           "Ljava/lang/String;)J"),
+           "Ljava/lang/String;I)J"),
        JniFunctionAddress(&NativeEngineCreate)},
       {const_cast<char *>("engineClose"), const_cast<char *>("(J)I"),
        JniFunctionAddress(&NativeEngineClose)},

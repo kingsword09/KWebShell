@@ -26,6 +26,9 @@ int main() {
   Check(std::strcmp(kweb_status_name(KWEB_STATUS_BROWSER_CLOSING),
                     "browser-closing") == 0,
         "browser closing status must have a stable name");
+  Check(std::strcmp(kweb_status_name(KWEB_STATUS_REMOTE_DEBUGGING_PORT_UNAVAILABLE),
+                    "remote-debugging-port-unavailable") == 0,
+        "remote debugging port collision status must have a stable name");
   Check(kweb_browser_create(nullptr, nullptr) == KWEB_STATUS_INVALID_ARGUMENT,
         "null browser create arguments must fail immediately");
   Check(kweb_browser_navigate(KWEB_INVALID_BROWSER_HANDLE, nullptr, 0) ==

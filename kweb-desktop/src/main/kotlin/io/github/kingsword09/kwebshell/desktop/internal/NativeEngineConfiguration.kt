@@ -14,11 +14,19 @@ internal data class NativeEngineConfiguration(
     val locales: Path,
     val rootCache: Path,
     val log: Path,
+    val remoteDebuggingPort: Int = 0,
 ) {
     internal fun validated(
         operatingSystem: String = System.getProperty("os.name"),
     ): NativeEngineConfiguration {
         val runtimePath = requireRegularFile("cefRuntime", cefRuntime)
+        if (remoteDebuggingPort != 0 && remoteDebuggingPort !in 1024..65535) {
+            throw KWebConfigurationException(
+                code = "native.engine.remote-debugging-port-invalid",
+                details = mapOf("port" to remoteDebuggingPort.toString()),
+                message = "The remote debugging port must be 0 or between 1024 and 65535.",
+            )
+        }
         val subprocessPath = requireRegularFile("browserSubprocess", browserSubprocess)
         val resourcesPath = requireDirectory("resources", resources)
         val localesPath = requireDirectory("locales", locales)
@@ -69,6 +77,7 @@ internal data class NativeEngineConfiguration(
             locales = localesPath,
             rootCache = rootCachePath,
             log = logPath,
+            remoteDebuggingPort = remoteDebuggingPort,
         )
         normalized.validatePlatformLayout(operatingSystem)
         return normalized

@@ -457,6 +457,34 @@ Acceptance:
 - A generated bridge method round-trips typed values, errors, cancellation, and timeout.
 - Remote debugging security tests pass.
 
+#### Objective 4.1: Explicit loopback CDP endpoint
+
+This objective adds the first real DevTools/CDP vertical slice without
+advertising a public browser API. The engine ABI gains one breaking
+configuration field for a fixed remote-debugging port. Port `0` disables CDP;
+`1024..65535` enables one fixed endpoint. The native engine always constrains
+the endpoint to loopback and never selects an ephemeral port, opens a public
+interface, or falls back to another debugging transport.
+
+Acceptance:
+
+- ABI, JNI, Kotlin configuration, status mapping, and native layout tests agree
+  on the explicit port field and reject every value outside `0` or
+  `1024..65535`.
+- When enabled, the real CEF browser process exposes `/json/version` and
+  `/json/list` on the configured port. Every advertised HTTP and WebSocket URL
+  is IPv4 or IPv6 loopback only; a routable address is a test failure.
+- A real browser target is discovered by URL and a WebSocket CDP session
+  executes `Runtime.evaluate`, returning an exact Unicode page title. The test
+  runs against the same in-process Alloy child and persistent Profile as the
+  Phase 3 contract.
+- When disabled, no CDP listener is created. Fixed-port collision is a typed
+  startup failure; the implementation does not silently choose another port.
+- The endpoint is closed before engine terminal completion. macOS, Windows, and
+  Linux use the same ABI and security contract; Linux integration remains under
+  Xvfb. No public `KWebDevTools` or bridge API is exposed until the next
+  objective implements its complete lifecycle.
+
 ### Phase 5: MV3 core runtime
 
 Deliver:

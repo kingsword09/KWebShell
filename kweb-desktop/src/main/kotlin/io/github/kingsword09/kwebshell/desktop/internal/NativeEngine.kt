@@ -57,6 +57,7 @@ internal class NativeEngine private constructor(
     private val sink = NativeEngineEventSink(::receiveNativeEvent)
 
     internal val lifecycle: StateFlow<KWebLifecycleState> = mutableLifecycle.asStateFlow()
+    internal val remoteDebuggingPort: Int = configuration.remoteDebuggingPort
 
     internal fun requireLiveHandle(operation: String): Long {
         if (mutableLifecycle.value != KWebLifecycleState.OPEN) {
@@ -406,6 +407,7 @@ internal class NativeEngine private constructor(
                         validated.locales.toString(),
                         validated.rootCache.toString(),
                         validated.log.toString(),
+                        validated.remoteDebuggingPort,
                     )
                 }
             } catch (error: Throwable) {

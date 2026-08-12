@@ -108,6 +108,7 @@ internal object NativeBindings {
         localesPath: String,
         rootCachePath: String,
         logPath: String,
+        remoteDebuggingPort: Int,
     ): Long
 
     @JvmName("engineClose")

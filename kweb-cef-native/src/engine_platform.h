@@ -6,6 +6,7 @@
 
 #include "include/cef_app.h"
 #include "kwebshell/native/base_abi.h"
+#include "remote_debugging_port.h"
 
 namespace kwebshell {
 

@@ -9,6 +9,8 @@ _Static_assert(KWEB_ENGINE_EVENT_OPENED != KWEB_ENGINE_EVENT_CLOSED,
                "engine lifecycle events must remain distinct");
 _Static_assert(KWEB_INVALID_BROWSER_HANDLE == 0,
                "the invalid browser handle must remain zero");
+_Static_assert(KWEB_STATUS_REMOTE_DEBUGGING_PORT_UNAVAILABLE == 39,
+               "the remote debugging port unavailable status is ABI-stable");
 _Static_assert(KWEB_BROWSER_EVENT_CREATED != KWEB_BROWSER_EVENT_CLOSED,
                "browser lifecycle events must remain distinct");
 
@@ -41,6 +43,8 @@ int main(void) {
       {"/locales", 8},
       {"/cache", 6},
       {"/cache/cef.log", 14},
+      0,
+      0,
   };
   const kweb_engine_event event = {(uint32_t)sizeof(kweb_engine_event),
                                    KWEB_ABI_VERSION,

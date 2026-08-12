@@ -18,6 +18,10 @@ namespace {
 
 constexpr size_t kMaximumPathSize = 32768;
 
+bool IsValidRemoteDebuggingPort(int32_t port) {
+  return port == 0 || (port >= 1024 && port <= 65535);
+}
+
 std::optional<std::filesystem::path> ReadPath(kweb_string_view view,
                                               kweb_status *status_out) {
   if (view.data == nullptr || view.size == 0) {
@@ -214,6 +218,9 @@ ValidateEngineConfiguration(const kweb_engine_config &config,
   if (validated_out == nullptr) {
     return KWEB_STATUS_INVALID_ARGUMENT;
   }
+  if (!IsValidRemoteDebuggingPort(config.remote_debugging_port)) {
+    return KWEB_STATUS_REMOTE_DEBUGGING_PORT_INVALID;
+  }
 
   kweb_status status = KWEB_STATUS_OK;
   auto cef_runtime = ReadPath(config.cef_runtime_path, &status);
@@ -264,7 +271,8 @@ ValidateEngineConfiguration(const kweb_engine_config &config,
 
   ValidatedEngineConfiguration configuration{
       *cef_runtime,    *subprocess, *resources, *locales,
-      *canonical_root, *log,        {},         {}};
+      *canonical_root, *log,        {},         {},
+      config.remote_debugging_port};
   return ValidatePlatformLayout(configuration, validated_out);
 }
 

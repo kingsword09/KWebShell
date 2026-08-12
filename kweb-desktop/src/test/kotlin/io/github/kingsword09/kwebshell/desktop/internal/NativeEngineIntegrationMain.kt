@@ -4,12 +4,21 @@ import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.io.BufferedWriter
 import java.net.InetSocketAddress
 import java.net.URI
+import java.net.ServerSocket
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.charset.StandardCharsets
+import java.time.Duration
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -21,6 +30,7 @@ private const val CEF_RUNTIME_PROPERTY = "kweb.engine.cef.runtime.path"
 private const val SUBPROCESS_PROPERTY = "kweb.engine.subprocess.path"
 private const val RESOURCES_PROPERTY = "kweb.engine.resources.path"
 private const val LOCALES_PROPERTY = "kweb.engine.locales.path"
+private const val CDP_PORT_PROPERTY = "kweb.engine.integration.cdp.port"
 private const val HOLDER_OPENED_MARKER = "KWEBSHELL_ENGINE_HOLDER_OPENED"
 private const val STAGE_PREFIX = "KWEBSHELL_ENGINE_STAGE:"
 private const val MACOS_BROWSER_POLICY_MARKER =
@@ -37,6 +47,8 @@ private enum class IntegrationMode(val argument: String) {
     LISTENER_FAILURE("listener-failure"),
     HOLDER("holder"),
     INITIALIZATION_FAILURE("initialization-failure"),
+    PORT_COLLISION("port-collision"),
+    CDP_DISABLED("cdp-disabled"),
     ;
 
     companion object {
@@ -54,6 +66,8 @@ fun main(arguments: Array<String>) {
         IntegrationMode.LISTENER_FAILURE -> runListenerFailureLifecycle()
         IntegrationMode.HOLDER -> runHolderLifecycle()
         IntegrationMode.INITIALIZATION_FAILURE -> runInitializationFailureLifecycle()
+        IntegrationMode.PORT_COLLISION -> runPortCollisionLifecycle()
+        IntegrationMode.CDP_DISABLED -> runCdpDisabledLifecycle()
     }
 }
 
@@ -61,6 +75,8 @@ private fun runCoordinator() {
     val root = requiredPathProperty(INTEGRATION_ROOT_PROPERTY)
     Files.createDirectories(root)
     runChildAndRequireSuccess(IntegrationMode.SUCCESS, root.resolve("success"))
+    runChildAndRequireSuccess(IntegrationMode.CDP_DISABLED, root.resolve("cdp-disabled"))
+    runChildAndRequireSuccess(IntegrationMode.PORT_COLLISION, root.resolve("port-collision"))
     runChildAndRequireSuccess(IntegrationMode.CALLBACK_FAILURE, root.resolve("callback-failure"))
     runChildAndRequireSuccess(IntegrationMode.LISTENER_FAILURE, root.resolve("listener-failure"))
 
@@ -104,6 +120,8 @@ private fun runSuccessfulLifecycle() {
     reportStage("opened")
     require(engine.lifecycle.value == KWebLifecycleState.OPEN)
     val handle = events.single { it.type == NativeEngineEventType.OPENED }.handle
+    require(engine.remoteDebuggingPort in 1024..65535)
+    val cdp = CdpClient(engine.remoteDebuggingPort)
 
     val browserEvents = CopyOnWriteArrayList<NativeBrowserEvent>()
     val firstTitle = CountDownLatch(1)
@@ -174,6 +192,8 @@ private fun runSuccessfulLifecycle() {
             require(firstTitle.await(30, TimeUnit.SECONDS)) {
                 "The first real Chromium page did not publish its Unicode title: $browserEvents"
             }
+            cdp.awaitPage(origin.firstUrl)
+            require(cdp.evaluate("document.title") == FIRST_TITLE)
             require(NativeBrowser.liveNativeBrowserCount() == 1L)
             val rejectedEngineClose = try {
                 NativeEngine.onAwtEventDispatchThread { engine.close() }
@@ -237,6 +257,7 @@ private fun runSuccessfulLifecycle() {
     reportStage("before_close")
     NativeEngine.onAwtEventDispatchThread(engine::close)
     reportStage("closed")
+    cdp.assertUnavailable()
     val callbackCountAfterClose = events.size
     Thread.sleep(100)
     engine.close()
@@ -397,6 +418,44 @@ private fun runInitializationFailureLifecycle() {
     println("KWebShell engine initialization failure contract passed.")
 }
 
+private fun runPortCollisionLifecycle() {
+    ServerSocket(0).use { occupied ->
+        val configuration = runtimeConfiguration().copy(
+            remoteDebuggingPort = occupied.localPort,
+        )
+        val failure = try {
+            NativeEngine.open(configuration)
+            null
+        } catch (error: KWebNativeException) {
+            error
+        }
+        require(failure?.code == "native.abi.remote-debugging-port-unavailable") {
+            "Expected a typed fixed-port collision failure, got $failure"
+        }
+        require(NativeEngine.liveNativeEngineCount() == 0L)
+    }
+    println("KWebShell fixed CDP port collision contract passed.")
+}
+
+private fun runCdpDisabledLifecycle() {
+    val configuration = runtimeConfiguration().copy(remoteDebuggingPort = 0)
+    val engine = NativeEngine.open(configuration)
+    val probePort = findFreePort()
+    try {
+        require(!Files.exists(configuration.rootCache.resolve("DevToolsActivePort"))) {
+            "CEF created a DevToolsActivePort marker while CDP was disabled."
+        }
+        CdpClient(probePort).assertUnavailable()
+    } finally {
+        NativeEngine.onAwtEventDispatchThread(engine::close)
+    }
+    require(!Files.exists(configuration.rootCache.resolve("DevToolsActivePort"))) {
+        "CEF left a DevToolsActivePort marker after disabled-CDP shutdown."
+    }
+    require(NativeEngine.liveNativeEngineCount() == 0L)
+    println("KWebShell disabled CDP contract passed.")
+}
+
 private fun rawCreate(configuration: NativeEngineConfiguration, sink: NativeEngineEventSink): Long =
     NativeBindings.engineCreate(
         sink,
@@ -406,6 +465,7 @@ private fun rawCreate(configuration: NativeEngineConfiguration, sink: NativeEngi
         configuration.locales.toString(),
         configuration.rootCache.toString(),
         configuration.log.toString(),
+        configuration.remoteDebuggingPort,
     )
 
 private fun rawBrowserCreate(
@@ -437,8 +497,145 @@ private fun runtimeConfiguration(): NativeEngineConfiguration {
         locales = requiredPathProperty(LOCALES_PROPERTY),
         rootCache = root,
         log = root.resolve("cef.log"),
+        remoteDebuggingPort = System.getProperty(CDP_PORT_PROPERTY)?.toIntOrNull() ?: 0,
     )
 }
+
+private class CdpClient(private val port: Int) {
+    private val http = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(5))
+        .build()
+    private var host = "127.0.0.1"
+
+    fun awaitPage(url: String) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+        var lastFailure: Throwable? = null
+        while (System.nanoTime() < deadline) {
+            try {
+                val version = getLoopback("/json/version")
+                val webSocketUrl = version["webSocketDebuggerUrl"]?.jsonPrimitive?.content.orEmpty()
+                require(
+                    webSocketUrl.startsWith("ws://127.0.0.1:") ||
+                        webSocketUrl.startsWith("ws://[::1]:")
+                ) {
+                    "CDP endpoint was not loopback-only: $version"
+                }
+                val targets = getArray("/json/list")
+                val page = targets.firstOrNull {
+                    it["type"]?.jsonPrimitive?.content == "page" &&
+                        it["url"]?.jsonPrimitive?.content == url
+                }
+                if (page != null) {
+                    webSocket(page["webSocketDebuggerUrl"]!!.jsonPrimitive.content).close()
+                    return
+                }
+            } catch (error: Throwable) {
+                lastFailure = error
+            }
+            Thread.sleep(100)
+        }
+        error("CDP page discovery timed out: $lastFailure")
+    }
+
+    fun evaluate(expression: String): String {
+        val targets = getArray("/json/list")
+        val page = targets.first { it["type"]?.jsonPrimitive?.content == "page" }
+        webSocket(page["webSocketDebuggerUrl"]!!.jsonPrimitive.content).use { socket ->
+            return socket.evaluate(expression)
+        }
+    }
+
+    fun assertUnavailable() {
+        val responses = listOf("127.0.0.1", "[::1]").mapNotNull { candidate ->
+            try {
+                http.sendAsync(
+                    HttpRequest.newBuilder(URI("http://$candidate:$port/json/version")).GET().build(),
+                    HttpResponse.BodyHandlers.ofString(),
+                ).orTimeout(3, TimeUnit.SECONDS).join()
+            } catch (_: Throwable) {
+                null
+            }
+        }
+        require(responses.isEmpty()) {
+            "CDP endpoint remained available on loopback: $responses"
+        }
+    }
+
+    private fun get(path: String): kotlinx.serialization.json.JsonObject =
+        kotlinx.serialization.json.Json.parseToJsonElement(
+            http.send(
+                HttpRequest.newBuilder(URI("http://$host:$port$path")).GET().build(),
+                HttpResponse.BodyHandlers.ofString(),
+            ).body(),
+        ).jsonObject
+
+    private fun getLoopback(path: String): kotlinx.serialization.json.JsonObject {
+        return try {
+            get(path)
+        } catch (first: Throwable) {
+            host = "[::1]"
+            try {
+                get(path)
+            } catch (second: Throwable) {
+                second.addSuppressed(first)
+                throw second
+            }
+        }
+    }
+
+    private fun getArray(path: String): List<kotlinx.serialization.json.JsonObject> =
+        kotlinx.serialization.json.Json.parseToJsonElement(
+            http.send(
+                HttpRequest.newBuilder(URI("http://$host:$port$path")).GET().build(),
+                HttpResponse.BodyHandlers.ofString(),
+            ).body(),
+        ).jsonArray.map { it.jsonObject }
+
+    private fun webSocket(url: String): CdpWebSocket = CdpWebSocket(url)
+}
+
+private class CdpWebSocket(url: String) : AutoCloseable {
+    private val messages = CompletableFuture<String>()
+    private val socket = HttpClient.newHttpClient().newWebSocketBuilder()
+        .connectTimeout(Duration.ofSeconds(5))
+        .buildAsync(URI(url), object : java.net.http.WebSocket.Listener {
+            override fun onOpen(webSocket: java.net.http.WebSocket) {
+                webSocket.request(1)
+            }
+
+            override fun onText(
+                webSocket: java.net.http.WebSocket,
+                data: CharSequence,
+                last: Boolean,
+            ): java.util.concurrent.CompletionStage<*> {
+                if (last) messages.complete(data.toString())
+                webSocket.request(1)
+                return CompletableFuture.completedFuture(null)
+            }
+
+            override fun onError(webSocket: java.net.http.WebSocket, error: Throwable) {
+                messages.completeExceptionally(error)
+            }
+        }).join()
+
+    fun evaluate(expression: String): String {
+        socket.sendText(
+            "{\"id\":1,\"method\":\"Runtime.evaluate\",\"params\":{\"expression\":${jsonString(expression)},\"returnByValue\":true}}",
+            true,
+        ).join()
+        val response = kotlinx.serialization.json.Json.parseToJsonElement(
+            messages.orTimeout(10, TimeUnit.SECONDS).join(),
+        ).jsonObject
+        return response["result"]!!.jsonObject["result"]!!.jsonObject["value"]!!.jsonPrimitive.content
+    }
+
+    override fun close() {
+        socket.sendClose(java.net.http.WebSocket.NORMAL_CLOSURE, "done").join()
+    }
+}
+
+private fun jsonString(value: String): String =
+    kotlinx.serialization.json.JsonPrimitive(value).toString()
 
 private fun requiredPathProperty(name: String): Path {
     val value = System.getProperty(name) ?: error("Missing required system property '$name'.")
@@ -560,6 +757,9 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
             add("-D$name=${System.getProperty(name) ?: error("Missing '$name'.")}")
         }
         add("-D$INTEGRATION_ROOT_PROPERTY=$root")
+        if (mode == IntegrationMode.SUCCESS) {
+            add("-D$CDP_PORT_PROPERTY=${findFreePort()}")
+        }
         add("-cp")
         add(System.getProperty("java.class.path"))
         add(MAIN_CLASS)
@@ -579,4 +779,10 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
         }
     }
     return ChildProcess(process, process.outputStream.bufferedWriter(), lines, opened, reader)
+}
+
+private fun findFreePort(): Int = ServerSocket().use { socket ->
+    socket.reuseAddress = false
+    socket.bind(InetSocketAddress("127.0.0.1", 0))
+    socket.localPort
 }

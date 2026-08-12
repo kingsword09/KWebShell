@@ -78,7 +78,7 @@ public:
     settings.no_sandbox = true;
     settings.windowless_rendering_enabled = false;
     settings.command_line_args_disabled = true;
-    settings.remote_debugging_port = 0;
+    settings.remote_debugging_port = configuration_.remote_debugging_port;
     settings.log_severity = LOGSEVERITY_INFO;
 #if !defined(_WIN32)
     settings.disable_signal_handlers = true;
@@ -246,6 +246,9 @@ public:
         config->abi_version != KWEB_ABI_VERSION) {
       return KWEB_STATUS_ABI_MISMATCH;
     }
+    if (config->reserved != 0) {
+      return KWEB_STATUS_INVALID_ARGUMENT;
+    }
     if (config->callback == nullptr) {
       return KWEB_STATUS_INVALID_ARGUMENT;
     }
@@ -273,6 +276,13 @@ public:
     if (!EnginePlatformRuntimeMatches(validated.cef_runtime_path)) {
       ResetBeforeInitialization();
       return KWEB_STATUS_CEF_RUNTIME_MISMATCH;
+    }
+    const kweb_status remote_debugging_status =
+        ValidateRemoteDebuggingPortAvailability(
+            validated.remote_debugging_port);
+    if (remote_debugging_status != KWEB_STATUS_OK) {
+      ResetBeforeInitialization();
+      return remote_debugging_status;
     }
 
     const kweb_engine_handle handle = next_handle_++;
@@ -502,6 +512,10 @@ const char *KWEB_ABI_CALL kweb_status_name(kweb_status status) {
     return "cef-ui-task-failed";
   case KWEB_STATUS_NAVIGATION_INVALID:
     return "navigation-invalid";
+  case KWEB_STATUS_REMOTE_DEBUGGING_PORT_INVALID:
+    return "remote-debugging-port-invalid";
+  case KWEB_STATUS_REMOTE_DEBUGGING_PORT_UNAVAILABLE:
+    return "remote-debugging-port-unavailable";
   default:
     return "unknown-status";
   }

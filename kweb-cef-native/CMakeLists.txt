@@ -103,10 +103,16 @@ if(NOT APPLE)
   ADD_LOGICAL_TARGET("libcef_lib" "${CEF_LIB_DEBUG}" "${CEF_LIB_RELEASE}")
 endif()
 
-add_library(kweb_engine_configuration STATIC src/engine_configuration.cc)
+add_library(kweb_engine_configuration STATIC
+  src/engine_configuration.cc
+  src/remote_debugging_port.cc
+)
 KWEB_CONFIGURE_CONTRACT_TARGET(kweb_engine_configuration)
 target_include_directories(kweb_engine_configuration PUBLIC include src)
 target_link_libraries(kweb_engine_configuration PUBLIC kweb_contract_support)
+if(WIN32)
+  target_link_libraries(kweb_engine_configuration PUBLIC ws2_32)
+endif()
 set_target_properties(kweb_engine_configuration PROPERTIES
   POSITION_INDEPENDENT_CODE ON
 )
@@ -147,7 +153,7 @@ else()
   )
 endif()
 if(WIN32)
-  target_link_libraries(kweb_engine_abi PRIVATE libcef_lib)
+  target_link_libraries(kweb_engine_abi PRIVATE libcef_lib ws2_32)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   find_package(X11 REQUIRED)
   target_link_libraries(kweb_jni PRIVATE X11::X11)

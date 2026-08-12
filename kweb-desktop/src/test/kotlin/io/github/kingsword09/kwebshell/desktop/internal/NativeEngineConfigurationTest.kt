@@ -40,6 +40,15 @@ class NativeEngineConfigurationTest {
         }
 
         RuntimeLayoutFixture().use { fixture ->
+            val invalidPort = assertFailsWith<KWebConfigurationException> {
+                fixture.configuration.copy(remoteDebuggingPort = 1023).validated()
+            }
+            assertEquals("native.engine.remote-debugging-port-invalid", invalidPort.code)
+            assertEquals(9222, fixture.configuration.copy(remoteDebuggingPort = 9222)
+                .validated().remoteDebuggingPort)
+        }
+
+        RuntimeLayoutFixture().use { fixture ->
             val other = fixture.root.resolve("other").createDirectories()
             val mismatchError = assertFailsWith<KWebConfigurationException> {
                 fixture.configuration.copy(log = other.resolve("cef.log")).validated()

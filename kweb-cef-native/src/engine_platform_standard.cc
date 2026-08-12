@@ -145,8 +145,10 @@ bool InitializeCefOnPlatform(const CefMainArgs &main_args,
 
 void ConfigureEngineCommandLineOnPlatform(
     const CefString &process_type, CefRefPtr<CefCommandLine> command_line) {
-  (void)process_type;
-  (void)command_line;
+  if (process_type.empty()) {
+    command_line->AppendSwitchWithValue("remote-debugging-address",
+                                        "127.0.0.1");
+  }
 }
 
 void CleanupPlatformAfterCefInitializeFailure() {}

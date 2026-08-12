@@ -53,10 +53,21 @@ function(KWEB_CONFIGURE_CONTRACT_TARGET target)
   endif()
 endfunction()
 
+add_library(kweb_contract_support STATIC src/utf8_validation.cc)
+KWEB_CONFIGURE_CONTRACT_TARGET(kweb_contract_support)
+target_include_directories(kweb_contract_support PUBLIC src)
+set_target_properties(kweb_contract_support PROPERTIES
+  POSITION_INDEPENDENT_CODE ON
+)
+
 add_library(kweb_native_abi SHARED src/native_abi.cc)
 KWEB_CONFIGURE_CONTRACT_TARGET(kweb_native_abi)
+target_include_directories(kweb_native_abi PRIVATE src)
 target_compile_definitions(kweb_native_abi PRIVATE KWEB_ABI_BUILD)
-target_link_libraries(kweb_native_abi PRIVATE Threads::Threads)
+target_link_libraries(kweb_native_abi PRIVATE
+  kweb_contract_support
+  Threads::Threads
+)
 set_target_properties(kweb_native_abi PROPERTIES
   OUTPUT_NAME "kwebshell_abi"
   VERSION "1.0.0"
@@ -68,11 +79,17 @@ set_target_properties(kweb_native_abi PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
 )
 
-add_library(kweb_jni SHARED src/jni_bridge.cc)
+add_library(kweb_jni SHARED
+  src/engine_jni_bridge.cc
+  src/jni_bridge.cc
+  src/jni_string.cc
+)
 KWEB_CONFIGURE_CONTRACT_TARGET(kweb_jni)
+target_include_directories(kweb_jni PRIVATE src)
 target_link_libraries(kweb_jni PRIVATE
   kweb_native_abi
   JNI::JNI
+  ${CMAKE_DL_LIBS}
 )
 set_target_properties(kweb_jni PROPERTIES
   OUTPUT_NAME "kwebshell_jni"
@@ -93,6 +110,73 @@ elseif(UNIX)
 endif()
 
 add_subdirectory("${CEF_LIBCEF_DLL_WRAPPER_PATH}" libcef_dll_wrapper)
+
+if(NOT APPLE)
+  ADD_LOGICAL_TARGET("libcef_lib" "${CEF_LIB_DEBUG}" "${CEF_LIB_RELEASE}")
+endif()
+
+add_library(kweb_engine_configuration STATIC src/engine_configuration.cc)
+KWEB_CONFIGURE_CONTRACT_TARGET(kweb_engine_configuration)
+target_include_directories(kweb_engine_configuration PUBLIC include src)
+target_link_libraries(kweb_engine_configuration PUBLIC kweb_contract_support)
+set_target_properties(kweb_engine_configuration PROPERTIES
+  POSITION_INDEPENDENT_CODE ON
+)
+
+if(APPLE)
+  set(KWEB_ENGINE_PLATFORM_SOURCE src/engine_platform_mac.mm)
+else()
+  set(KWEB_ENGINE_PLATFORM_SOURCE src/engine_platform_standard.cc)
+endif()
+
+add_library(kweb_engine_abi SHARED
+  src/engine_abi.cc
+  ${KWEB_ENGINE_PLATFORM_SOURCE}
+)
+SET_LIBRARY_TARGET_PROPERTIES(kweb_engine_abi)
+target_include_directories(kweb_engine_abi PRIVATE include src)
+target_compile_definitions(kweb_engine_abi PRIVATE KWEB_ENGINE_ABI_BUILD)
+target_link_libraries(kweb_engine_abi PRIVATE
+  kweb_engine_configuration
+  libcef_dll_wrapper
+  ${CEF_STANDARD_LIBS}
+  ${CMAKE_DL_LIBS}
+)
+if(MSVC)
+  target_compile_options(kweb_engine_abi PRIVATE /EHsc)
+else()
+  target_compile_options(kweb_engine_abi PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-fexceptions -fthreadsafe-statics>
+    $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc -fexceptions -fthreadsafe-statics>
+  )
+endif()
+if(WIN32)
+  target_link_libraries(kweb_engine_abi PRIVATE libcef_lib)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  find_package(X11 REQUIRED)
+  target_link_libraries(kweb_jni PRIVATE X11::X11)
+  target_link_libraries(kweb_engine_abi PRIVATE X11::X11 libcef_lib)
+endif()
+if(APPLE)
+  target_link_options(kweb_engine_abi PRIVATE
+    "LINKER:-exported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/resources/engine_exports_mac.txt"
+  )
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_link_options(kweb_engine_abi PRIVATE
+    "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/resources/engine_exports_linux.map"
+  )
+endif()
+set_target_properties(kweb_engine_abi PROPERTIES
+  OUTPUT_NAME "kwebshell_engine"
+  VERSION "1.0.0"
+  SOVERSION "1"
+  CXX_VISIBILITY_PRESET hidden
+  VISIBILITY_INLINES_HIDDEN YES
+  ARCHIVE_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
+  LIBRARY_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
+  RUNTIME_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
+)
+add_dependencies(kweb_jni kweb_engine_abi)
 
 add_library(kweb_host_support STATIC
   src/event_recorder.cc
@@ -157,6 +241,43 @@ set_tests_properties(kweb_native_abi_tests PROPERTIES
   TIMEOUT 30
 )
 
+add_executable(kweb_engine_abi_header_c_test
+  tests/engine_abi_header_c_test.c
+)
+KWEB_CONFIGURE_CONTRACT_TARGET(kweb_engine_abi_header_c_test)
+set_target_properties(kweb_engine_abi_header_c_test PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS OFF
+  RUNTIME_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
+)
+add_test(NAME kweb_engine_abi_header_c_test
+  COMMAND kweb_engine_abi_header_c_test
+)
+set_tests_properties(kweb_engine_abi_header_c_test PROPERTIES
+  LABELS "abi;c;engine;header;native"
+  TIMEOUT 10
+)
+
+add_executable(kweb_engine_configuration_tests
+  tests/engine_configuration_tests.cc
+)
+KWEB_CONFIGURE_CONTRACT_TARGET(kweb_engine_configuration_tests)
+target_include_directories(kweb_engine_configuration_tests PRIVATE src)
+target_link_libraries(kweb_engine_configuration_tests PRIVATE
+  kweb_engine_configuration
+)
+set_target_properties(kweb_engine_configuration_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
+)
+add_test(NAME kweb_engine_configuration_tests
+  COMMAND kweb_engine_configuration_tests
+)
+set_tests_properties(kweb_engine_configuration_tests PROPERTIES
+  LABELS "configuration;engine;native;paths"
+  TIMEOUT 30
+)
+
 add_executable(kweb_host_unit_tests tests/host_unit_tests.cc)
 target_link_libraries(kweb_host_unit_tests PRIVATE kweb_host_support)
 if(MSVC)
@@ -176,10 +297,6 @@ set(KWEB_HOST_COMMON_SOURCES
 set(KWEB_HOST_TARGET "kweb_cef_host")
 SET_CEF_TARGET_OUT_DIR()
 set(KWEB_TARGET_OUT_DIR "${CEF_TARGET_OUT_DIR}")
-
-if(NOT APPLE)
-  ADD_LOGICAL_TARGET("libcef_lib" "${CEF_LIB_DEBUG}" "${CEF_LIB_RELEASE}")
-endif()
 
 if(APPLE)
   set(KWEB_HELPER_TARGET "kweb_cef_host_Helper")

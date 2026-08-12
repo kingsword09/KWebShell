@@ -45,10 +45,9 @@ void KWEB_ABI_CALL CollectEvent(void *user_data, const kweb_event *event) {
     collector->invalid_event = true;
     return;
   }
-  collector->events.push_back(
-      EventSnapshot{event->type, event->session, event->sequence,
-                    std::string(event->text, event->text_size), event->width,
-                    event->height});
+  collector->events.push_back(EventSnapshot{
+      event->type, event->session, event->sequence,
+      std::string(event->text, event->text_size), event->width, event->height});
 }
 
 kweb_session_config Configuration(EventCollector *collector) {
@@ -75,6 +74,9 @@ void TestVersionAndConfigurationContract() {
   Check(std::string(kweb_status_name(KWEB_STATUS_REENTRANT_CLOSE)) ==
             "reentrant-close",
         "status names should be stable and actionable");
+  Check(std::string(kweb_status_name(KWEB_STATUS_CEF_RUNTIME_MISMATCH)) ==
+            "cef-runtime-mismatch",
+        "engine status names should be stable and actionable");
   Check(std::string(kweb_status_name(9999)) == "unknown-status",
         "unknown status values should be named explicitly");
 
@@ -114,10 +116,9 @@ void TestOrderedUnicodeLifecycle() {
   Check(handle != KWEB_INVALID_SESSION_HANDLE,
         "created session should have an opaque handle");
 
-  const std::string url =
-      "https://example.test/"
-      "\xE8\xB7\xAF\xE5\xBE\x84?q="
-      "\xF0\x9F\x99\x82";
+  const std::string url = "https://example.test/"
+                          "\xE8\xB7\xAF\xE5\xBE\x84?q="
+                          "\xF0\x9F\x99\x82";
   Check(kweb_session_request_navigation(handle, url.data(), url.size()) ==
             KWEB_STATUS_OK,
         "UTF-8 navigation request should be accepted");
@@ -127,7 +128,8 @@ void TestOrderedUnicodeLifecycle() {
         "session should close and drain accepted commands");
 
   const auto events = Snapshot(&collector);
-  Check(!collector.invalid_event, "all callback event structures should be valid");
+  Check(!collector.invalid_event,
+        "all callback event structures should be valid");
   Check(events.size() == 4, "ordered lifecycle should emit four events");
   if (events.size() == 4) {
     Check(events[0].type == KWEB_EVENT_SESSION_OPENED,
@@ -180,8 +182,7 @@ void TestInvalidCommandArguments() {
                                         oversized.size()) ==
             KWEB_STATUS_TEXT_TOO_LARGE,
         "oversized text should be rejected");
-  Check(kweb_session_resize(handle, 0, 720) ==
-            KWEB_STATUS_INVALID_DIMENSIONS,
+  Check(kweb_session_resize(handle, 0, 720) == KWEB_STATUS_INVALID_DIMENSIONS,
         "zero width should be rejected");
   Check(kweb_session_resize(handle, 800, 32769) ==
             KWEB_STATUS_INVALID_DIMENSIONS,
@@ -202,8 +203,7 @@ void TestRepeatedCyclesDoNotLeakOrReuseHandles() {
     Check(kweb_session_create(&config, &handle) == KWEB_STATUS_OK,
           "repeated session should be created");
     handles.insert(handle);
-    const std::string url =
-        "https://cycle.test/" + std::to_string(cycle);
+    const std::string url = "https://cycle.test/" + std::to_string(cycle);
     Check(kweb_session_request_navigation(handle, url.data(), url.size()) ==
               KWEB_STATUS_OK,
           "repeated navigation request should be accepted");
@@ -246,13 +246,12 @@ void TestConcurrentCommandsAndCloseHaveDeclaredResults() {
           const std::string url = "https://race.test/" +
                                   std::to_string(thread_index) + "/" +
                                   std::to_string(request);
-          status = kweb_session_request_navigation(handle, url.data(),
-                                                   url.size());
+          status =
+              kweb_session_request_navigation(handle, url.data(), url.size());
         } else {
           status = kweb_session_resize(handle, 800 + request, 600 + request);
         }
-        if (status != KWEB_STATUS_OK &&
-            status != KWEB_STATUS_SESSION_CLOSING &&
+        if (status != KWEB_STATUS_OK && status != KWEB_STATUS_SESSION_CLOSING &&
             status != KWEB_STATUS_INVALID_HANDLE) {
           unexpected_statuses.fetch_add(1);
         }
@@ -278,8 +277,7 @@ void TestConcurrentCommandsAndCloseHaveDeclaredResults() {
   Check(unexpected_statuses.load() == 0,
         "racing commands should return only declared statuses");
   const auto events = Snapshot(&collector);
-  Check(!events.empty() &&
-            events.back().type == KWEB_EVENT_SESSION_CLOSED,
+  Check(!events.empty() && events.back().type == KWEB_EVENT_SESSION_CLOSED,
         "race should still end with the closed event");
   CheckContiguousSequence(events, "racing lifecycle");
   Check(kweb_live_session_count() == 0,
@@ -310,9 +308,9 @@ void KWEB_ABI_CALL ReentrantCloseCallback(void *user_data,
 void TestReentrantCloseIsRejectedWithoutLosingOwnership() {
   ReentrantCloseContext context;
   context.collector.events.reserve(2);
-  const kweb_session_config config = {
-      sizeof(kweb_session_config), KWEB_ABI_VERSION,
-      &ReentrantCloseCallback, &context};
+  const kweb_session_config config = {sizeof(kweb_session_config),
+                                      KWEB_ABI_VERSION, &ReentrantCloseCallback,
+                                      &context};
   kweb_session_handle handle = KWEB_INVALID_SESSION_HANDLE;
   Check(kweb_session_create(&config, &handle) == KWEB_STATUS_OK,
         "reentrant-close session should be created");

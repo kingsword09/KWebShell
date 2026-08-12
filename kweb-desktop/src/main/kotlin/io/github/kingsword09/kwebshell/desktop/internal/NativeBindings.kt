@@ -12,6 +12,7 @@ internal const val NATIVE_LIBRARY_PATH_PROPERTY: String = "kweb.native.library.p
 
 internal data class NativeLibraryPaths(
     val abi: Path,
+    val engine: Path,
     val jni: Path,
 )
 
@@ -27,11 +28,24 @@ internal fun nativeAbiLibraryFileName(operatingSystem: String): String =
         )
     }
 
+internal fun nativeEngineLibraryFileName(operatingSystem: String): String =
+    when {
+        operatingSystem.lowercase(Locale.ROOT).startsWith("windows") -> "kwebshell_engine.dll"
+        operatingSystem.lowercase(Locale.ROOT).startsWith("mac") -> "libkwebshell_engine.dylib"
+        operatingSystem.lowercase(Locale.ROOT).startsWith("linux") -> "libkwebshell_engine.so"
+        else -> throw KWebConfigurationException(
+            code = "native.platform.unsupported",
+            details = mapOf("osName" to operatingSystem),
+            message = "The current operating system is not supported by the KWebShell native engine.",
+        )
+    }
+
 internal fun resolveNativeLibraryPaths(
     configuredJniPath: String,
     operatingSystem: String,
 ): NativeLibraryPaths {
     val abiFileName = nativeAbiLibraryFileName(operatingSystem)
+    val engineFileName = nativeEngineLibraryFileName(operatingSystem)
     val jniPath = try {
         Path.of(configuredJniPath)
     } catch (error: InvalidPathException) {
@@ -57,10 +71,20 @@ internal fun resolveNativeLibraryPaths(
             message = "The KWebShell ABI library must be adjacent to the JNI library.",
         )
     }
-    return NativeLibraryPaths(abi = abiPath, jni = jniPath)
+    val enginePath = jniPath.resolveSibling(engineFileName)
+    if (!Files.isRegularFile(enginePath)) {
+        throw KWebConfigurationException(
+            code = "native.engine-library.path-invalid",
+            details = mapOf("path" to enginePath.toString()),
+            message = "The KWebShell engine library must be adjacent to the JNI library.",
+        )
+    }
+    return NativeLibraryPaths(abi = abiPath, engine = enginePath, jni = jniPath)
 }
 
 internal object NativeBindings {
+    internal val libraryPaths: NativeLibraryPaths
+
     init {
         val configuredPath = System.getProperty(NATIVE_LIBRARY_PATH_PROPERTY)
             ?: throw KWebConfigurationException(
@@ -69,6 +93,7 @@ internal object NativeBindings {
                 message = "The absolute KWebShell JNI library path is required.",
             )
         val paths = resolveNativeLibraryPaths(configuredPath, System.getProperty("os.name"))
+        libraryPaths = paths
         loadNativeLibrary(
             path = paths.abi,
             errorCode = "native.abi-library.load-failed",
@@ -111,6 +136,29 @@ internal object NativeBindings {
 
     @JvmName("liveSessionCount")
     internal external fun liveSessionCount(): Long
+
+    @JvmName("loadEngineLibrary")
+    internal external fun loadEngineLibrary(enginePath: String, cefRuntimePath: String): Int
+
+    @JvmName("engineAbiVersion")
+    internal external fun engineAbiVersion(): Int
+
+    @JvmName("engineCreate")
+    internal external fun engineCreate(
+        sink: NativeEngineEventSink,
+        cefRuntimePath: String,
+        browserSubprocessPath: String,
+        resourcesPath: String,
+        localesPath: String,
+        rootCachePath: String,
+        logPath: String,
+    ): Long
+
+    @JvmName("engineClose")
+    internal external fun engineClose(handle: Long): Int
+
+    @JvmName("liveEngineCount")
+    internal external fun liveEngineCount(): Long
 }
 
 internal class NativeEventSink(
@@ -126,5 +174,18 @@ internal class NativeEventSink(
         height: Int,
     ) {
         callback(handle, sequence, type, text, width, height)
+    }
+}
+
+internal class NativeEngineEventSink(
+    private val callback: (Long, Long, Int) -> Unit,
+) {
+    @JvmName("onNativeEngineEvent")
+    internal fun onNativeEngineEvent(
+        handle: Long,
+        sequence: Long,
+        type: Int,
+    ) {
+        callback(handle, sequence, type)
     }
 }

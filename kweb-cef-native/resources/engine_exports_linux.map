@@ -1,0 +1,10 @@
+KWEBSHELL_ENGINE_1 {
+  global:
+    kweb_engine_abi_version;
+    kweb_engine_close;
+    kweb_engine_create;
+    kweb_engine_platform_startup;
+    kweb_live_engine_count;
+  local:
+    *;
+};

@@ -304,6 +304,12 @@ Deliver:
 - Persistent Profile creation/open/flush.
 - Cookies, storage, downloads, permissions, custom schemes, and request interception.
 
+Acceptance:
+
+- Data survives restart in the same Profile.
+- Different Profiles cannot see each other's data.
+- Custom protocol and permission tests run on all platforms.
+
 #### Objective 3.1: Native persistent Profile and storage lifecycle
 
 This objective establishes the real CEF/Chromium Profile boundary before a
@@ -332,11 +338,50 @@ Acceptance:
   `KWebProfile` remains absent until the native Profile lifecycle is connected
   through the real JNI/browser session boundary.
 
+#### Objective 3.2: In-process JVM/CEF engine lifecycle
+
+This objective replaces no Phase 2 browser semantics and exposes no public
+`KWebEngine`. It establishes the internal process-wide CEF engine that a later
+real browser session will own. CEF runs in the Compose/JVM process so native
+child views can belong to the same Windows, AppKit, or X11 window hierarchy;
+an out-of-process browser host is not used as an embedding fallback.
+
 Acceptance:
 
-- Data survives restart in the same Profile.
-- Different Profiles cannot see each other's data.
-- Custom protocol and permission tests run on all platforms.
+- A small versioned C ABI creates and closes exactly one CEF engine lifecycle
+  per process without exporting CEF, C++, JNI, AWT, or platform-window types.
+- Kotlin supplies explicit absolute paths for the pinned CEF runtime,
+  subprocess executable, resources, locales, root cache, and log. Missing,
+  mismatched, relative, or unsupported paths fail before CEF initialization;
+  no loader search or system Chromium fallback is used.
+- Native initialization and shutdown are orchestrated from the AWT
+  event-dispatch thread. macOS synchronously initializes CEF on AppKit, then
+  requests shutdown asynchronously so the AWT event-dispatch thread remains
+  available until AppKit reports the real terminal callback; the external
+  message pump runs on AppKit throughout. The macOS browser process uses a
+  fixed embedder command-line policy with mock Keychain storage so a JVM that
+  has no application Keychain identity cannot leave OSCrypt blocked during
+  shutdown; arbitrary host arguments remain disabled. Windows and Linux use
+  CEF's supported multi-threaded windowed message loop.
+- The engine emits one ordered `opened` event only after
+  `CefBrowserProcessHandler::OnContextInitialized`, and one terminal `closed`
+  event only after `CefShutdown` returns. No callback begins after Kotlin
+  `close` completes.
+- Duplicate create, wrong-thread close, callback failure, initialization
+  failure, stale handle, and post-close operations return declared typed
+  errors. Reinitialization after terminal shutdown is rejected because CEF
+  supports one lifecycle per process.
+- A dedicated JVM integration process loads the real native libraries and
+  pinned CEF runtime, opens the engine, observes the real context callback,
+  closes it cleanly directly from the AWT event-dispatch thread, and leaves the
+  native live-engine count at zero on macOS, Windows, and Linux. On macOS the
+  process also proves that the fixed browser policy is installed exactly once
+  before the context callback. A timeout captures a JVM thread dump and, on
+  macOS, a native process sample before terminating the child. Linux runs under
+  an explicit Xvfb launcher.
+- The existing Phase 2 echo session remains internal and unchanged until the
+  next objective replaces its request-only events with real Chromium browser
+  callbacks.
 
 ### Phase 4: DevTools, CDP, and typed bridge
 

@@ -21,6 +21,9 @@ class NativeContractSessionTest {
         assertEquals("kwebshell_abi.dll", nativeAbiLibraryFileName("Windows 11"))
         assertEquals("libkwebshell_abi.dylib", nativeAbiLibraryFileName("Mac OS X"))
         assertEquals("libkwebshell_abi.so", nativeAbiLibraryFileName("Linux"))
+        assertEquals("kwebshell_engine.dll", nativeEngineLibraryFileName("Windows 11"))
+        assertEquals("libkwebshell_engine.dylib", nativeEngineLibraryFileName("Mac OS X"))
+        assertEquals("libkwebshell_engine.so", nativeEngineLibraryFileName("Linux"))
 
         val error = assertFailsWith<KWebConfigurationException> {
             nativeAbiLibraryFileName("FreeBSD")
@@ -45,6 +48,22 @@ class NativeContractSessionTest {
         } finally {
             Files.deleteIfExists(jniFile)
             Files.deleteIfExists(directory)
+        }
+
+        val completeDirectory = Files.createTempDirectory("kwebshell-native-engine-path-test")
+        val completeJni = Files.createFile(completeDirectory.resolve("jni-library"))
+        val completeAbi = Files.createFile(
+            completeDirectory.resolve(nativeAbiLibraryFileName(System.getProperty("os.name"))),
+        )
+        try {
+            val missingEngineError = assertFailsWith<KWebConfigurationException> {
+                resolveNativeLibraryPaths(completeJni.toString(), System.getProperty("os.name"))
+            }
+            assertEquals("native.engine-library.path-invalid", missingEngineError.code)
+        } finally {
+            Files.deleteIfExists(completeAbi)
+            Files.deleteIfExists(completeJni)
+            Files.deleteIfExists(completeDirectory)
         }
     }
 

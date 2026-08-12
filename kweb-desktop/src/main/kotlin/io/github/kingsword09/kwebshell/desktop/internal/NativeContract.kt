@@ -22,6 +22,22 @@ internal enum class NativeStatus(
     REENTRANT_CLOSE(11, "reentrant-close"),
     CALLBACK_FAILED(12, "callback-failed"),
     INTERNAL_ERROR(13, "internal-error"),
+    ENGINE_LIBRARY_LOAD_FAILED(14, "engine-library-load-failed"),
+    ENGINE_SYMBOL_MISSING(15, "engine-symbol-missing"),
+    CEF_RUNTIME_LOAD_FAILED(16, "cef-runtime-load-failed"),
+    CEF_RUNTIME_MISMATCH(17, "cef-runtime-mismatch"),
+    PATH_REQUIRED(18, "path-required"),
+    PATH_NOT_ABSOLUTE(19, "path-not-absolute"),
+    PATH_NOT_FOUND(20, "path-not-found"),
+    PATH_TYPE_INVALID(21, "path-type-invalid"),
+    PATH_MISMATCH(22, "path-mismatch"),
+    PATH_NOT_WRITABLE(23, "path-not-writable"),
+    PLATFORM_INITIALIZATION_FAILED(24, "platform-initialization-failed"),
+    ENGINE_ALREADY_EXISTS(25, "engine-already-exists"),
+    ENGINE_RESTART_FORBIDDEN(26, "engine-restart-forbidden"),
+    WRONG_THREAD(27, "wrong-thread"),
+    CEF_INITIALIZE_FAILED(28, "cef-initialize-failed"),
+    ENGINE_CLOSING(29, "engine-closing"),
     ;
 
     companion object {

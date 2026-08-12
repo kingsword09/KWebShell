@@ -13,72 +13,14 @@
 #include <thread>
 #include <utility>
 
+#include "utf8_validation.h"
+
 namespace {
 
 constexpr size_t kMaximumTextSize = 1024 * 1024;
 constexpr int32_t kMaximumViewportDimension = 32768;
 constexpr kweb_session_handle kMaximumSessionHandle =
     static_cast<kweb_session_handle>(std::numeric_limits<int64_t>::max());
-
-bool IsContinuationByte(uint8_t value) { return (value & 0xC0U) == 0x80U; }
-
-bool IsValidUtf8(const char *text, size_t size) {
-  size_t index = 0;
-  while (index < size) {
-    const auto first = static_cast<uint8_t>(text[index]);
-    if (first == 0) {
-      return false;
-    }
-    if (first <= 0x7FU) {
-      ++index;
-      continue;
-    }
-    if (first >= 0xC2U && first <= 0xDFU) {
-      if (index + 1 >= size ||
-          !IsContinuationByte(static_cast<uint8_t>(text[index + 1]))) {
-        return false;
-      }
-      index += 2;
-      continue;
-    }
-    if (first >= 0xE0U && first <= 0xEFU) {
-      if (index + 2 >= size) {
-        return false;
-      }
-      const auto second = static_cast<uint8_t>(text[index + 1]);
-      const auto third = static_cast<uint8_t>(text[index + 2]);
-      const bool second_valid =
-          IsContinuationByte(second) &&
-          !(first == 0xE0U && second < 0xA0U) &&
-          !(first == 0xEDU && second > 0x9FU);
-      if (!second_valid || !IsContinuationByte(third)) {
-        return false;
-      }
-      index += 3;
-      continue;
-    }
-    if (first >= 0xF0U && first <= 0xF4U) {
-      if (index + 3 >= size) {
-        return false;
-      }
-      const auto second = static_cast<uint8_t>(text[index + 1]);
-      const auto third = static_cast<uint8_t>(text[index + 2]);
-      const auto fourth = static_cast<uint8_t>(text[index + 3]);
-      const bool second_valid =
-          IsContinuationByte(second) &&
-          !(first == 0xF0U && second < 0x90U) &&
-          !(first == 0xF4U && second > 0x8FU);
-      if (!second_valid || !IsContinuationByte(third) ||
-          !IsContinuationByte(fourth)) {
-        return false;
-      }
-      index += 4;
-      continue;
-    }
-    return false;
-  }
-  return true;
-}
 
 enum class CommandType { kNavigate, kResize };
 
@@ -142,8 +84,7 @@ public:
     if (!accepting_commands_) {
       return KWEB_STATUS_SESSION_CLOSING;
     }
-    commands_.push_back(
-        Command{CommandType::kNavigate, std::move(url), 0, 0});
+    commands_.push_back(Command{CommandType::kNavigate, std::move(url), 0, 0});
     condition_.notify_one();
     return KWEB_STATUS_OK;
   }
@@ -232,8 +173,8 @@ private:
   void Emit(kweb_event_type type, const std::string &text, int32_t width,
             int32_t height) {
     const kweb_event event = {
-        sizeof(kweb_event), KWEB_ABI_VERSION, type, 0, handle_, ++sequence_,
-        text.data(), text.size(), width, height};
+        sizeof(kweb_event), KWEB_ABI_VERSION, type,        0,     handle_,
+        ++sequence_,        text.data(),      text.size(), width, height};
     callback_(user_data_, &event);
   }
 
@@ -281,8 +222,8 @@ public:
         return KWEB_STATUS_HANDLE_EXHAUSTED;
       }
       handle = next_handle_++;
-      session =
-          std::make_shared<Session>(handle, config->callback, config->user_data);
+      session = std::make_shared<Session>(handle, config->callback,
+                                          config->user_data);
       const kweb_status start_status = session->Start();
       if (start_status != KWEB_STATUS_OK) {
         return start_status;
@@ -430,39 +371,67 @@ const char *KWEB_ABI_CALL kweb_status_name(kweb_status status) {
     return "callback-failed";
   case KWEB_STATUS_INTERNAL_ERROR:
     return "internal-error";
+  case KWEB_STATUS_ENGINE_LIBRARY_LOAD_FAILED:
+    return "engine-library-load-failed";
+  case KWEB_STATUS_ENGINE_SYMBOL_MISSING:
+    return "engine-symbol-missing";
+  case KWEB_STATUS_CEF_RUNTIME_LOAD_FAILED:
+    return "cef-runtime-load-failed";
+  case KWEB_STATUS_CEF_RUNTIME_MISMATCH:
+    return "cef-runtime-mismatch";
+  case KWEB_STATUS_PATH_REQUIRED:
+    return "path-required";
+  case KWEB_STATUS_PATH_NOT_ABSOLUTE:
+    return "path-not-absolute";
+  case KWEB_STATUS_PATH_NOT_FOUND:
+    return "path-not-found";
+  case KWEB_STATUS_PATH_TYPE_INVALID:
+    return "path-type-invalid";
+  case KWEB_STATUS_PATH_MISMATCH:
+    return "path-mismatch";
+  case KWEB_STATUS_PATH_NOT_WRITABLE:
+    return "path-not-writable";
+  case KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED:
+    return "platform-initialization-failed";
+  case KWEB_STATUS_ENGINE_ALREADY_EXISTS:
+    return "engine-already-exists";
+  case KWEB_STATUS_ENGINE_RESTART_FORBIDDEN:
+    return "engine-restart-forbidden";
+  case KWEB_STATUS_WRONG_THREAD:
+    return "wrong-thread";
+  case KWEB_STATUS_CEF_INITIALIZE_FAILED:
+    return "cef-initialize-failed";
+  case KWEB_STATUS_ENGINE_CLOSING:
+    return "engine-closing";
   default:
     return "unknown-status";
   }
 }
 
-kweb_status KWEB_ABI_CALL
-kweb_session_create(const kweb_session_config *config,
-                    kweb_session_handle *session_out) {
-  return GuardStatus(
-      [&] { return Registry().Create(config, session_out); });
+kweb_status KWEB_ABI_CALL kweb_session_create(
+    const kweb_session_config *config, kweb_session_handle *session_out) {
+  return GuardStatus([&] { return Registry().Create(config, session_out); });
 }
 
-kweb_status KWEB_ABI_CALL
-kweb_session_request_navigation(kweb_session_handle session,
-                                const char *url_utf8, size_t url_size) {
+kweb_status KWEB_ABI_CALL kweb_session_request_navigation(
+    kweb_session_handle session, const char *url_utf8, size_t url_size) {
   if (url_utf8 == nullptr || url_size == 0) {
     return KWEB_STATUS_INVALID_ARGUMENT;
   }
   if (url_size > kMaximumTextSize) {
     return KWEB_STATUS_TEXT_TOO_LARGE;
   }
-  if (!IsValidUtf8(url_utf8, url_size)) {
+  if (!kwebshell::IsValidUtf8(url_utf8, url_size)) {
     return KWEB_STATUS_INVALID_TEXT_ENCODING;
   }
   return GuardStatus([&] {
-    return Registry().RequestNavigation(
-        session, std::string(url_utf8, url_size));
+    return Registry().RequestNavigation(session,
+                                        std::string(url_utf8, url_size));
   });
 }
 
 kweb_status KWEB_ABI_CALL kweb_session_resize(kweb_session_handle session,
-                                               int32_t width,
-                                               int32_t height) {
+                                              int32_t width, int32_t height) {
   if (width <= 0 || height <= 0 || width > kMaximumViewportDimension ||
       height > kMaximumViewportDimension) {
     return KWEB_STATUS_INVALID_DIMENSIONS;

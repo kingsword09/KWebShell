@@ -5,7 +5,7 @@
 #include <filesystem>
 
 #include "include/cef_app.h"
-#include "kwebshell/native/abi.h"
+#include "kwebshell/native/base_abi.h"
 
 namespace kwebshell {
 

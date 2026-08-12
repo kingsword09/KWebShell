@@ -264,7 +264,7 @@ Acceptance:
 - Process failures and shutdown are observable typed errors.
 - Native surface tests pass without OSR pixel copying.
 
-### Phase 2: Kotlin/JNI contract
+### Phase 2: Kotlin/JNI contract (historical, superseded by Objective 3.3)
 
 Deliver:
 
@@ -277,10 +277,10 @@ Deliver:
 - Kotlin lifecycle/error types, `StateFlow` state observation, one serialized
   callback dispatcher per session, and idempotent `close` semantics.
 
-The Phase 2 session is an internal transport and ownership contract. It emits
-`navigation_requested`, not `navigation_committed`, and does not publish
-`KWebEngine` or `KWebPage`. Browser-facing operations remain absent until a
-complete vertical slice can report real Chromium results.
+The former Phase 2 session was an internal transport and ownership contract. It
+emitted `navigation_requested`, not `navigation_committed`, and did not publish
+`KWebEngine` or `KWebPage`. Objective 3.3 deletes that contract and supplies the
+complete real Chromium vertical slice below.
 
 Acceptance:
 
@@ -379,9 +379,69 @@ Acceptance:
   before the context callback. A timeout captures a JVM thread dump and, on
   macOS, a native process sample before terminating the child. Linux runs under
   an explicit Xvfb launcher.
-- The existing Phase 2 echo session remains internal and unchanged until the
-  next objective replaces its request-only events with real Chromium browser
-  callbacks.
+- The Phase 2 echo session is intentionally deleted by Objective 3.3. Any
+  consumer of its request-only events must migrate to the real browser event
+  contract in the same breaking change; no compatibility alias remains.
+
+#### Objective 3.3: In-process Chromium browser session in an AWT surface
+
+This objective makes the intentional breaking replacement of the Phase 2 echo
+session. A JVM session owns one real CEF browser, one persistent Profile request
+context, and one Alloy-style native child attached to a displayable AWT parent.
+Navigation, loading, failure, resize, and close observations come from Chromium
+and the platform window hierarchy; request-echo and simulated viewport events
+are deleted. The contract remains internal, and no public `KWebEngine`,
+`KWebPage`, or Compose API is exposed by this objective.
+
+Acceptance:
+
+- The obsolete standalone session shared library, fake worker thread, and
+  `navigation_requested`/`viewport_changed` events are removed. Browser
+  operations extend the versioned engine C ABI and use the same native engine
+  instance and JNI ownership path; there is no compatibility alias, fallback
+  browser, or second session implementation.
+- Browser creation requires a live engine, a displayable AWT parent, an
+  absolute direct-child Profile path under the configured root cache, a valid
+  initial URL, and positive bounds. It creates a non-global
+  `CefRequestContext` with persistent session cookies, waits for context
+  initialization, and verifies that the created browser owns that exact
+  context.
+- The embedded browser is a windowed, hardware-accelerated native child with
+  explicit Alloy runtime style. Windows uses the Canvas `HWND`, Linux uses its
+  X11 drawable, and macOS resolves the AWT top-level peer to its AppKit
+  `NSWindow` and owns a dedicated intermediate `NSView`. An unavailable or
+  incompatible native peer fails with a typed status; OSR or a hidden top-level
+  Chromium window is never substituted.
+- Ordered events report browser-created, main-frame navigation-started,
+  address-committed, loading-state changes, load completion or failure,
+  resize-applied, fatal renderer failure, and terminal browser-closed directly
+  from CEF or verified platform operations. UTF-8 payloads, HTTP/error codes,
+  and navigation flags cross the C ABI and JNI boundary without loss.
+- Navigation and resize commands are serialized onto the CEF UI thread.
+  Resizing changes the real native child bounds and a platform query proves the
+  applied size. Commands racing with close return only declared terminal or
+  closing statuses and never target a released browser.
+- Close flushes the Profile cookie store before requesting native destruction.
+  Windows destroys the child `HWND`, Linux requests forced CEF close, and
+  macOS removes the CEF `NSView` from its AppKit hierarchy, which is the
+  windowed Alloy operation that causes CEF to deliver `OnBeforeClose`. The
+  platform child is released only after that callback, exactly one terminal
+  event is emitted, and the JNI global reference is released only after that
+  event has returned. Engine close is rejected while any browser is live; the
+  Kotlin engine retains its handle and remains OPEN so the caller can close
+  the browser and retry. Clean browser then engine shutdown leaves both live
+  counts at zero.
+- A dedicated JVM integration process creates a real visible AWT host and real
+  CEF browser, loads a controlled page, observes navigation and load callbacks,
+  navigates to a second non-ASCII URL, resizes the native child, closes it, and
+  then shuts down CEF. The test rejects callback reordering, Profile mismatch,
+  non-Alloy/windowless rendering, missing native parentage, post-close callback,
+  leaked handles, and persistence artifacts missing after shutdown.
+- The real integration contract passes locally on macOS with the pinned
+  Temurin and CEF artifacts and runs as mandatory GitHub Actions acceptance on
+  macOS arm64, Windows x64, and Linux x64 under Xvfb. C header conformance,
+  exported-symbol checks, native unit tests, Kotlin tests, formatting, and
+  packaging checks remain green.
 
 ### Phase 4: DevTools, CDP, and typed bridge
 

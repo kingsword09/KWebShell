@@ -2,11 +2,17 @@ package io.github.kingsword09.kwebshell.desktop.internal
 
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebNativeException
+import com.sun.net.httpserver.HttpExchange
+import com.sun.net.httpserver.HttpServer
 import java.io.BufferedWriter
+import java.net.InetSocketAddress
+import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
@@ -21,6 +27,8 @@ private const val MACOS_BROWSER_POLICY_MARKER =
     "KWEBSHELL_NATIVE_ENGINE:macos_browser_policy_applied"
 private const val MAIN_CLASS =
     "io.github.kingsword09.kwebshell.desktop.internal.NativeEngineIntegrationMainKt"
+private const val FIRST_TITLE = "KWebShell profile 第一页🙂"
+private const val SECOND_TITLE = "KWebShell navigation 路径🚀"
 
 private enum class IntegrationMode(val argument: String) {
     COORDINATOR("coordinator"),
@@ -97,6 +105,125 @@ private fun runSuccessfulLifecycle() {
     require(engine.lifecycle.value == KWebLifecycleState.OPEN)
     val handle = events.single { it.type == NativeEngineEventType.OPENED }.handle
 
+    val browserEvents = CopyOnWriteArrayList<NativeBrowserEvent>()
+    val firstTitle = CountDownLatch(1)
+    val secondTitle = CountDownLatch(1)
+    val secondLoad = CountDownLatch(1)
+    val resized = CountDownLatch(1)
+    val profile = configuration.rootCache.resolve("integration-profile")
+    BrowserOrigin().use { origin ->
+        val surface = NativeEngine.onAwtEventDispatchThread { AwtBrowserSurface.create(800, 600) }
+        try {
+            requireCreateFailure(
+                NativeEngine.onAwtEventDispatchThread {
+                    rawBrowserCreate(
+                        engine,
+                        surface.component,
+                        configuration.rootCache.resolve("nested/profile"),
+                        origin.firstUrl,
+                        800,
+                        600,
+                    )
+                },
+                NativeStatus.PROFILE_PATH_INVALID,
+            )
+            requireCreateFailure(
+                NativeEngine.onAwtEventDispatchThread {
+                    rawBrowserCreate(
+                        engine,
+                        surface.component,
+                        configuration.rootCache.resolve("invalid-url-profile"),
+                        "not-a-url",
+                        800,
+                        600,
+                    )
+                },
+                NativeStatus.NAVIGATION_INVALID,
+            )
+            requireStatus(
+                NativeEngine.onAwtEventDispatchThread {
+                    NativeBindings.browserResize(0L, 0, 600)
+                },
+                NativeStatus.INVALID_DIMENSIONS,
+                "invalid browser dimensions",
+            )
+            val browser = NativeBrowser.open(
+                engine = engine,
+                component = surface.component,
+                profilePath = profile,
+                initialUrl = origin.firstUrl,
+                width = 800,
+                height = 600,
+            ) { event ->
+                browserEvents += event
+                when {
+                    event.type == NativeBrowserEventType.TITLE_CHANGED && event.text == FIRST_TITLE -> {
+                        firstTitle.countDown()
+                    }
+                    event.type == NativeBrowserEventType.TITLE_CHANGED && event.text == SECOND_TITLE -> {
+                        secondTitle.countDown()
+                    }
+                    event.type == NativeBrowserEventType.LOAD_ENDED && event.text == origin.secondUrl -> {
+                        secondLoad.countDown()
+                    }
+                    event.type == NativeBrowserEventType.RESIZED && event.width == 960 && event.height == 640 -> {
+                        resized.countDown()
+                    }
+                }
+            }
+            require(firstTitle.await(30, TimeUnit.SECONDS)) {
+                "The first real Chromium page did not publish its Unicode title: $browserEvents"
+            }
+            require(NativeBrowser.liveNativeBrowserCount() == 1L)
+            val rejectedEngineClose = try {
+                NativeEngine.onAwtEventDispatchThread { engine.close() }
+                null
+            } catch (error: KWebNativeException) {
+                error
+            }
+            require(rejectedEngineClose?.code == "native.abi.engine-has-live-browsers") {
+                "Engine close with a live browser returned $rejectedEngineClose."
+            }
+            requireEquals(KWebLifecycleState.OPEN, engine.lifecycle.value, "engine remains open after rejected close")
+            requireEquals(handle, engine.requireLiveHandle("browser-test"), "engine handle remains owned")
+
+            browser.navigate(origin.secondUrl)
+            require(secondTitle.await(30, TimeUnit.SECONDS)) {
+                "The second real Chromium page did not publish its Unicode title: $browserEvents"
+            }
+            require(secondLoad.await(30, TimeUnit.SECONDS)) {
+                "The second real Chromium navigation did not complete: $browserEvents"
+            }
+            browser.resize(960, 640)
+            require(resized.await(30, TimeUnit.SECONDS)) {
+                "The native Chromium child did not confirm the requested size: $browserEvents"
+            }
+
+            browser.close()
+            val staleBrowserHandle = browserEvents.first().browser
+            val browserCallbackCountAfterClose = browserEvents.size
+            Thread.sleep(100)
+            browser.close()
+            require(browserEvents.size == browserCallbackCountAfterClose)
+            require(browser.lifecycle.value == KWebLifecycleState.CLOSED)
+            require(NativeBrowser.liveNativeBrowserCount() == 0L)
+            requireStatus(
+                NativeEngine.onAwtEventDispatchThread { NativeBindings.browserClose(staleBrowserHandle) },
+                NativeStatus.INVALID_HANDLE,
+                "stale browser close",
+            )
+            require(browserEvents.first().type == NativeBrowserEventType.CREATED)
+            require(browserEvents.last().type == NativeBrowserEventType.CLOSED)
+            require(browserEvents.map { it.sequence } == (1L..browserEvents.size.toLong()).toList())
+            require(browserEvents.any { it.type == NativeBrowserEventType.NAVIGATION_STARTED && it.text == origin.secondUrl })
+            require(browserEvents.any { it.type == NativeBrowserEventType.ADDRESS_CHANGED && it.text == origin.secondUrl })
+            require(browserEvents.none { it.type == NativeBrowserEventType.FATAL_ERROR })
+        }
+        finally {
+            NativeEngine.onAwtEventDispatchThread(surface::close)
+        }
+    }
+
     val duplicateCreate = NativeEngine.onAwtEventDispatchThread {
         rawCreate(configuration, NativeEngineEventSink { _, _, _ -> })
     }
@@ -121,6 +248,7 @@ private fun runSuccessfulLifecycle() {
     require(callbackThreads.toSet().single().startsWith("KWebShell-engine-callback-"))
     require(engine.lifecycle.value == KWebLifecycleState.CLOSED)
     require(NativeEngine.liveNativeEngineCount() == 0L)
+    requireProfileDiskState(profile)
 
     val staleClose = NativeEngine.onAwtEventDispatchThread { NativeBindings.engineClose(handle) }
     requireStatus(staleClose, NativeStatus.INVALID_HANDLE, "stale engine close")
@@ -130,6 +258,76 @@ private fun runSuccessfulLifecycle() {
     requireCreateFailure(restart, NativeStatus.ENGINE_RESTART_FORBIDDEN)
     reportStage("main_complete")
     println("KWebShell engine success lifecycle passed.")
+}
+
+private class BrowserOrigin : AutoCloseable {
+    private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    private val port: Int
+
+    val firstUrl: String
+    val secondUrl: String
+
+    init {
+        server.createContext("/", ::serve)
+        server.executor = Executors.newSingleThreadExecutor { task ->
+            Thread(task, "KWebShell-browser-origin").also { it.isDaemon = true }
+        }
+        server.start()
+        port = server.address.port
+        firstUrl = "http://127.0.0.1:$port/first"
+        secondUrl = URI("http", null, "127.0.0.1", port, "/路径", "q=🙂", null).toASCIIString()
+    }
+
+    private fun serve(exchange: HttpExchange) {
+        val second = exchange.requestURI.rawPath != "/first"
+        val title = if (second) SECOND_TITLE else FIRST_TITLE
+        val script = if (second) {
+            "document.title = ${javascriptString(title)};"
+        } else {
+            "localStorage.setItem('kwebshell-integration', 'persisted');" +
+                "document.cookie = 'kwebshell-session=persisted; path=/';" +
+                "document.title = ${javascriptString(title)};"
+        }
+        val body = "<!doctype html><meta charset=\"utf-8\"><script>$script</script>".toByteArray(StandardCharsets.UTF_8)
+        exchange.responseHeaders.set("Content-Type", "text/html; charset=utf-8")
+        exchange.responseHeaders.set("Cache-Control", "no-store")
+        exchange.sendResponseHeaders(200, body.size.toLong())
+        exchange.responseBody.use { it.write(body) }
+    }
+
+    override fun close() {
+        server.stop(0)
+        (server.executor as? java.util.concurrent.ExecutorService)?.shutdownNow()
+    }
+}
+
+private fun javascriptString(value: String): String = buildString {
+    append('\'')
+    value.forEach { character ->
+        when (character) {
+            '\\' -> append("\\\\")
+            '\'' -> append("\\'")
+            else -> append(character)
+        }
+    }
+    append('\'')
+}
+
+private fun requireProfileDiskState(profile: Path) {
+    val cookieStore = if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
+        profile.resolve("Network/Cookies")
+    } else {
+        profile.resolve("Cookies")
+    }
+    listOf(
+        profile.resolve("Preferences"),
+        cookieStore,
+        profile.resolve("Local Storage/leveldb/CURRENT"),
+    ).forEach { path ->
+        require(Files.isRegularFile(path) && Files.size(path) > 0L) {
+            "Chromium did not persist required Profile state at '$path'."
+        }
+    }
 }
 
 private fun runCallbackFailureLifecycle() {
@@ -210,6 +408,25 @@ private fun rawCreate(configuration: NativeEngineConfiguration, sink: NativeEngi
         configuration.log.toString(),
     )
 
+private fun rawBrowserCreate(
+    engine: NativeEngine,
+    component: java.awt.Component,
+    profile: Path,
+    initialUrl: String,
+    width: Int,
+    height: Int,
+): Long = NativeBindings.browserCreate(
+    engine.requireLiveHandle("browser-create-test"),
+    NativeBrowserEventSink { _, _, _, _, _, _, _, _, _ -> },
+    component,
+    profile.toString(),
+    initialUrl,
+    0,
+    0,
+    width,
+    height,
+)
+
 private fun runtimeConfiguration(): NativeEngineConfiguration {
     val root = requiredPathProperty(INTEGRATION_ROOT_PROPERTY)
     Files.createDirectories(root)
@@ -234,9 +451,13 @@ private fun requireStatus(actual: Int, expected: NativeStatus, operation: String
     }
 }
 
+private fun requireEquals(expected: Any, actual: Any, operation: String) {
+    require(expected == actual) { "$operation was $actual instead of $expected." }
+}
+
 private fun requireCreateFailure(result: Long, expected: NativeStatus) {
     require(result == -expected.value.toLong()) {
-        "Engine create returned $result instead of -${expected.value} (${expected.id})."
+        "Native create returned $result instead of -${expected.value} (${expected.id})."
     }
 }
 

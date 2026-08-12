@@ -15,6 +15,8 @@
 #endif
 
 #include "engine_configuration.h"
+#include "browser_session.h"
+#include "engine_internal.h"
 #include "engine_platform.h"
 #include "include/cef_app.h"
 #include "include/cef_browser_process_handler.h"
@@ -158,6 +160,10 @@ public:
     if (!ScheduleCefMessagePumpWorkOnPlatform(delay_ms)) {
       platform_failure_.store(true, std::memory_order_release);
     }
+  }
+
+  const std::filesystem::path &root_cache_path() const {
+    return configuration_.root_cache_path;
   }
 
 private:
@@ -324,6 +330,9 @@ public:
       if (state_ != RegistryState::kRunning) {
         return KWEB_STATUS_INVALID_HANDLE;
       }
+      if (LiveBrowserSessionCount() != 0) {
+        return KWEB_STATUS_ENGINE_HAS_LIVE_BROWSERS;
+      }
       state_ = RegistryState::kClosing;
       engine = engine_;
     }
@@ -338,6 +347,27 @@ public:
   uint64_t LiveCount() const {
     std::lock_guard lock(mutex_);
     return engine_ && state_ != RegistryState::kClosing ? 1U : 0U;
+  }
+
+  kweb_status ValidateForBrowser(
+      kweb_engine_handle handle,
+      std::filesystem::path *root_cache_out) const {
+    if (root_cache_out == nullptr) {
+      return KWEB_STATUS_INVALID_ARGUMENT;
+    }
+    std::lock_guard lock(mutex_);
+    if (handle == KWEB_INVALID_ENGINE_HANDLE || !engine_ ||
+        handle != current_handle()) {
+      return KWEB_STATUS_INVALID_HANDLE;
+    }
+    if (state_ == RegistryState::kClosing) {
+      return KWEB_STATUS_ENGINE_CLOSING;
+    }
+    if (state_ != RegistryState::kRunning) {
+      return KWEB_STATUS_INVALID_HANDLE;
+    }
+    *root_cache_out = engine_->root_cache_path();
+    return KWEB_STATUS_OK;
   }
 
 private:
@@ -381,12 +411,100 @@ template <typename Operation> kweb_status GuardStatus(Operation operation) {
 }
 
 } // namespace
+
+kweb_status ValidateEngineForBrowser(
+    kweb_engine_handle engine, std::filesystem::path *root_cache_out) {
+  return Registry().ValidateForBrowser(engine, root_cache_out);
+}
 } // namespace kwebshell
 
 extern "C" {
 
 uint32_t KWEB_ABI_CALL kweb_engine_abi_version(void) {
   return KWEB_ABI_VERSION;
+}
+
+const char *KWEB_ABI_CALL kweb_status_name(kweb_status status) {
+  switch (status) {
+  case KWEB_STATUS_OK:
+    return "ok";
+  case KWEB_STATUS_INVALID_ARGUMENT:
+    return "invalid-argument";
+  case KWEB_STATUS_ABI_MISMATCH:
+    return "abi-mismatch";
+  case KWEB_STATUS_ALLOCATION_FAILED:
+    return "allocation-failed";
+  case KWEB_STATUS_THREAD_START_FAILED:
+    return "thread-start-failed";
+  case KWEB_STATUS_HANDLE_EXHAUSTED:
+    return "handle-exhausted";
+  case KWEB_STATUS_INVALID_HANDLE:
+    return "invalid-handle";
+  case KWEB_STATUS_SESSION_CLOSING:
+    return "session-closing";
+  case KWEB_STATUS_INVALID_TEXT_ENCODING:
+    return "invalid-text-encoding";
+  case KWEB_STATUS_TEXT_TOO_LARGE:
+    return "text-too-large";
+  case KWEB_STATUS_INVALID_DIMENSIONS:
+    return "invalid-dimensions";
+  case KWEB_STATUS_REENTRANT_CLOSE:
+    return "reentrant-close";
+  case KWEB_STATUS_CALLBACK_FAILED:
+    return "callback-failed";
+  case KWEB_STATUS_INTERNAL_ERROR:
+    return "internal-error";
+  case KWEB_STATUS_ENGINE_LIBRARY_LOAD_FAILED:
+    return "engine-library-load-failed";
+  case KWEB_STATUS_ENGINE_SYMBOL_MISSING:
+    return "engine-symbol-missing";
+  case KWEB_STATUS_CEF_RUNTIME_LOAD_FAILED:
+    return "cef-runtime-load-failed";
+  case KWEB_STATUS_CEF_RUNTIME_MISMATCH:
+    return "cef-runtime-mismatch";
+  case KWEB_STATUS_PATH_REQUIRED:
+    return "path-required";
+  case KWEB_STATUS_PATH_NOT_ABSOLUTE:
+    return "path-not-absolute";
+  case KWEB_STATUS_PATH_NOT_FOUND:
+    return "path-not-found";
+  case KWEB_STATUS_PATH_TYPE_INVALID:
+    return "path-type-invalid";
+  case KWEB_STATUS_PATH_MISMATCH:
+    return "path-mismatch";
+  case KWEB_STATUS_PATH_NOT_WRITABLE:
+    return "path-not-writable";
+  case KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED:
+    return "platform-initialization-failed";
+  case KWEB_STATUS_ENGINE_ALREADY_EXISTS:
+    return "engine-already-exists";
+  case KWEB_STATUS_ENGINE_RESTART_FORBIDDEN:
+    return "engine-restart-forbidden";
+  case KWEB_STATUS_WRONG_THREAD:
+    return "wrong-thread";
+  case KWEB_STATUS_CEF_INITIALIZE_FAILED:
+    return "cef-initialize-failed";
+  case KWEB_STATUS_ENGINE_CLOSING:
+    return "engine-closing";
+  case KWEB_STATUS_ENGINE_HAS_LIVE_BROWSERS:
+    return "engine-has-live-browsers";
+  case KWEB_STATUS_PROFILE_PATH_INVALID:
+    return "profile-path-invalid";
+  case KWEB_STATUS_PARENT_SURFACE_INVALID:
+    return "parent-surface-invalid";
+  case KWEB_STATUS_BROWSER_CREATE_FAILED:
+    return "browser-create-failed";
+  case KWEB_STATUS_BROWSER_NOT_READY:
+    return "browser-not-ready";
+  case KWEB_STATUS_BROWSER_CLOSING:
+    return "browser-closing";
+  case KWEB_STATUS_CEF_UI_TASK_FAILED:
+    return "cef-ui-task-failed";
+  case KWEB_STATUS_NAVIGATION_INVALID:
+    return "navigation-invalid";
+  default:
+    return "unknown-status";
+  }
 }
 
 kweb_status KWEB_ABI_CALL kweb_engine_platform_startup(
@@ -414,6 +532,30 @@ uint64_t KWEB_ABI_CALL kweb_live_engine_count(void) {
   } catch (...) {
     return std::numeric_limits<uint64_t>::max();
   }
+}
+
+kweb_status KWEB_ABI_CALL kweb_browser_create(
+    const kweb_browser_config *config, kweb_browser_handle *browser_out) {
+  return kwebshell::CreateBrowserSession(config, browser_out);
+}
+
+kweb_status KWEB_ABI_CALL kweb_browser_navigate(kweb_browser_handle browser,
+                                                const char *url_utf8,
+                                                size_t url_size) {
+  return kwebshell::NavigateBrowserSession(browser, url_utf8, url_size);
+}
+
+kweb_status KWEB_ABI_CALL kweb_browser_resize(kweb_browser_handle browser,
+                                              int32_t width, int32_t height) {
+  return kwebshell::ResizeBrowserSession(browser, width, height);
+}
+
+kweb_status KWEB_ABI_CALL kweb_browser_close(kweb_browser_handle browser) {
+  return kwebshell::CloseBrowserSession(browser);
+}
+
+uint64_t KWEB_ABI_CALL kweb_live_browser_count(void) {
+  return kwebshell::LiveBrowserSessionCount();
 }
 
 } // extern "C"

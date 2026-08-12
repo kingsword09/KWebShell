@@ -35,7 +35,10 @@ option(
 )
 
 find_package(Threads REQUIRED)
-find_package(JNI REQUIRED COMPONENTS JVM)
+find_package(JNI REQUIRED COMPONENTS AWT JVM)
+if(WIN32)
+  find_program(KWEB_DUMPBIN_EXECUTABLE dumpbin REQUIRED)
+endif()
 
 set(KWEB_CONTRACT_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/contract")
 
@@ -60,25 +63,6 @@ set_target_properties(kweb_contract_support PROPERTIES
   POSITION_INDEPENDENT_CODE ON
 )
 
-add_library(kweb_native_abi SHARED src/native_abi.cc)
-KWEB_CONFIGURE_CONTRACT_TARGET(kweb_native_abi)
-target_include_directories(kweb_native_abi PRIVATE src)
-target_compile_definitions(kweb_native_abi PRIVATE KWEB_ABI_BUILD)
-target_link_libraries(kweb_native_abi PRIVATE
-  kweb_contract_support
-  Threads::Threads
-)
-set_target_properties(kweb_native_abi PROPERTIES
-  OUTPUT_NAME "kwebshell_abi"
-  VERSION "1.0.0"
-  SOVERSION "1"
-  CXX_VISIBILITY_PRESET hidden
-  VISIBILITY_INLINES_HIDDEN YES
-  ARCHIVE_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
-  LIBRARY_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
-  RUNTIME_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
-)
-
 add_library(kweb_jni SHARED
   src/engine_jni_bridge.cc
   src/jni_bridge.cc
@@ -87,8 +71,8 @@ add_library(kweb_jni SHARED
 KWEB_CONFIGURE_CONTRACT_TARGET(kweb_jni)
 target_include_directories(kweb_jni PRIVATE src)
 target_link_libraries(kweb_jni PRIVATE
-  kweb_native_abi
   JNI::JNI
+  JNI::AWT
   ${CMAKE_DL_LIBS}
 )
 set_target_properties(kweb_jni PROPERTIES
@@ -102,6 +86,10 @@ set_target_properties(kweb_jni PROPERTIES
 if(APPLE)
   set_target_properties(kweb_jni PROPERTIES
     BUILD_RPATH "@loader_path"
+  )
+  target_link_libraries(kweb_jni PRIVATE
+    "-framework Cocoa"
+    "-framework QuartzCore"
   )
 elseif(UNIX)
   set_target_properties(kweb_jni PROPERTIES
@@ -125,11 +113,19 @@ set_target_properties(kweb_engine_configuration PROPERTIES
 
 if(APPLE)
   set(KWEB_ENGINE_PLATFORM_SOURCE src/engine_platform_mac.mm)
+  set(KWEB_BROWSER_SURFACE_SOURCE src/browser_surface_mac.mm)
+  set(KWEB_AWT_PARENT_SOURCE src/awt_parent_mac.mm)
 else()
   set(KWEB_ENGINE_PLATFORM_SOURCE src/engine_platform_standard.cc)
+  set(KWEB_BROWSER_SURFACE_SOURCE src/browser_surface.cc)
+  set(KWEB_AWT_PARENT_SOURCE src/awt_parent.cc)
 endif()
 
+target_sources(kweb_jni PRIVATE ${KWEB_AWT_PARENT_SOURCE})
+
 add_library(kweb_engine_abi SHARED
+  src/browser_session.cc
+  ${KWEB_BROWSER_SURFACE_SOURCE}
   src/engine_abi.cc
   ${KWEB_ENGINE_PLATFORM_SOURCE}
 )
@@ -193,54 +189,6 @@ else()
 endif()
 
 enable_testing()
-add_executable(kweb_native_abi_c_test tests/native_abi_c_test.c)
-KWEB_CONFIGURE_CONTRACT_TARGET(kweb_native_abi_c_test)
-target_link_libraries(kweb_native_abi_c_test PRIVATE kweb_native_abi)
-set_target_properties(kweb_native_abi_c_test PROPERTIES
-  C_STANDARD 11
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS OFF
-  RUNTIME_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
-)
-if(APPLE)
-  set_target_properties(kweb_native_abi_c_test PROPERTIES
-    BUILD_RPATH "@loader_path"
-  )
-elseif(UNIX)
-  set_target_properties(kweb_native_abi_c_test PROPERTIES
-    BUILD_RPATH "$ORIGIN"
-  )
-endif()
-add_test(NAME kweb_native_abi_c_test COMMAND kweb_native_abi_c_test)
-set_tests_properties(kweb_native_abi_c_test PROPERTIES
-  LABELS "abi;c;contract;native"
-  TIMEOUT 10
-)
-
-add_executable(kweb_native_abi_tests tests/native_abi_tests.cc)
-KWEB_CONFIGURE_CONTRACT_TARGET(kweb_native_abi_tests)
-target_link_libraries(kweb_native_abi_tests PRIVATE
-  kweb_native_abi
-  Threads::Threads
-)
-set_target_properties(kweb_native_abi_tests PROPERTIES
-  RUNTIME_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
-)
-if(APPLE)
-  set_target_properties(kweb_native_abi_tests PROPERTIES
-    BUILD_RPATH "@loader_path"
-  )
-elseif(UNIX)
-  set_target_properties(kweb_native_abi_tests PROPERTIES
-    BUILD_RPATH "$ORIGIN"
-  )
-endif()
-add_test(NAME kweb_native_abi_tests COMMAND kweb_native_abi_tests)
-set_tests_properties(kweb_native_abi_tests PROPERTIES
-  LABELS "abi;contract;lifecycle;native"
-  TIMEOUT 30
-)
-
 add_executable(kweb_engine_abi_header_c_test
   tests/engine_abi_header_c_test.c
 )
@@ -257,6 +205,34 @@ add_test(NAME kweb_engine_abi_header_c_test
 set_tests_properties(kweb_engine_abi_header_c_test PROPERTIES
   LABELS "abi;c;engine;header;native"
   TIMEOUT 10
+)
+
+add_executable(kweb_browser_abi_contract_tests
+  tests/browser_abi_contract_tests.cc
+)
+KWEB_CONFIGURE_CONTRACT_TARGET(kweb_browser_abi_contract_tests)
+target_link_libraries(kweb_browser_abi_contract_tests PRIVATE kweb_engine_abi)
+set_target_properties(kweb_browser_abi_contract_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
+)
+add_test(NAME kweb_browser_abi_contract_tests
+  COMMAND kweb_browser_abi_contract_tests
+)
+set_tests_properties(kweb_browser_abi_contract_tests PROPERTIES
+  LABELS "abi;browser;contract;native"
+  TIMEOUT 30
+)
+
+add_test(NAME kweb_engine_export_contract
+  COMMAND ${CMAKE_COMMAND}
+    "-DENGINE_LIBRARY=$<TARGET_FILE:kweb_engine_abi>"
+    "-DPLATFORM=${CMAKE_SYSTEM_NAME}"
+    "-DDUMPBIN=${KWEB_DUMPBIN_EXECUTABLE}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_engine_exports.cmake"
+)
+set_tests_properties(kweb_engine_export_contract PROPERTIES
+  LABELS "abi;exports;native"
+  TIMEOUT 30
 )
 
 add_executable(kweb_engine_configuration_tests

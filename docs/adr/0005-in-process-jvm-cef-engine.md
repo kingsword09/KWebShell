@@ -35,13 +35,12 @@ and exposes no public `KWebEngine`.
 ### Binary boundary and loading
 
 - The engine is a separate shared library with a versioned C header and opaque
-  `uint64_t` handle. Its exported surface is limited to ABI version, platform
-  startup, create, close, and live-count functions. CEF, C++, JNI, AWT, and
+  `uint64_t` engine/browser handles. Its exported surface contains the complete
+  engine and browser operation set plus live counts. CEF, C++, JNI, AWT, and
   platform types do not cross the C ABI.
-- The Phase 2 session ABI remains a CEF-independent shared library. JNI loads
-  the session ABI first, then preloads the exact CEF runtime and dynamically
-  opens the adjacent engine library by absolute path. It resolves only the five
-  declared engine symbols. There is no library-name search.
+- The old Phase 2 session library and its echo event ABI are removed. JNI loads
+  the exact engine library by absolute path and resolves only the complete
+  versioned engine and browser symbol set. There is no library-name search.
 - The caller supplies absolute paths for the CEF binary or framework,
   subprocess executable, resources, locales, existing root cache, and log.
   Kotlin and C++ both validate the platform layout and required resource files.
@@ -129,8 +128,8 @@ explicit Xvfb launcher.
 - A later browser session can attach a real Chromium native child to a
   Compose/JVM parent without an overlay or cross-process window trick.
 - Engine, browser, Profile, and Compose surface responsibilities remain
-  separate. The Phase 2 request echo contract is unchanged until real browser
-  callbacks replace it in a later objective.
+  separate. Objective 3.3 intentionally replaces the Phase 2 request echo with
+  real browser callbacks; consumers migrate in one breaking change.
 - Applications must provision one exact platform runtime layout and must plan
   for a single terminal engine lifecycle per JVM process.
 - macOS shutdown cost belongs to the real CEF lifecycle and remains observable;

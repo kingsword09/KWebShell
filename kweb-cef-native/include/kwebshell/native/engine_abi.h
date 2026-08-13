@@ -29,6 +29,7 @@ typedef uint64_t kweb_engine_handle;
 typedef uint64_t kweb_browser_handle;
 typedef uint32_t kweb_engine_event_type;
 typedef uint32_t kweb_browser_event_type;
+typedef uint32_t kweb_bridge_event_type;
 
 #define KWEB_ENGINE_EVENT_OPENED ((kweb_engine_event_type)1)
 #define KWEB_ENGINE_EVENT_CLOSED ((kweb_engine_event_type)2)
@@ -46,6 +47,9 @@ typedef uint32_t kweb_browser_event_type;
 #define KWEB_BROWSER_EVENT_DEVTOOLS_OPENED ((kweb_browser_event_type)11)
 #define KWEB_BROWSER_EVENT_DEVTOOLS_CLOSED ((kweb_browser_event_type)12)
 #define KWEB_BROWSER_EVENT_DEVTOOLS_FAILED ((kweb_browser_event_type)13)
+
+#define KWEB_BRIDGE_EVENT_REQUEST ((kweb_bridge_event_type)1)
+#define KWEB_BRIDGE_EVENT_CANCELLED ((kweb_bridge_event_type)2)
 
 #define KWEB_BROWSER_FLAG_LOADING ((uint32_t)1)
 #define KWEB_BROWSER_FLAG_CAN_GO_BACK ((uint32_t)2)
@@ -103,6 +107,20 @@ typedef struct kweb_browser_event {
 typedef void(KWEB_ABI_CALL *kweb_browser_event_callback)(
     void *user_data, const kweb_browser_event *event);
 
+typedef struct kweb_bridge_event {
+  uint32_t struct_size;
+  uint32_t abi_version;
+  kweb_bridge_event_type type;
+  uint32_t reserved;
+  kweb_engine_handle engine;
+  kweb_browser_handle browser;
+  uint64_t request_id;
+  kweb_string_view payload;
+} kweb_bridge_event;
+
+typedef void(KWEB_ABI_CALL *kweb_bridge_event_callback)(
+    void *user_data, const kweb_bridge_event *event);
+
 typedef struct kweb_browser_config {
   uint32_t struct_size;
   uint32_t abi_version;
@@ -117,6 +135,9 @@ typedef struct kweb_browser_config {
   kweb_string_view initial_url;
   kweb_browser_event_callback callback;
   void *user_data;
+  kweb_string_view bridge_origin;
+  kweb_bridge_event_callback bridge_callback;
+  void *bridge_user_data;
 } kweb_browser_config;
 
 KWEB_ENGINE_ABI_EXPORT uint32_t KWEB_ABI_CALL kweb_engine_abi_version(void);
@@ -152,6 +173,14 @@ kweb_browser_open_devtools(kweb_browser_handle browser);
 
 KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
 kweb_browser_close_devtools(kweb_browser_handle browser);
+
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
+kweb_browser_bridge_respond(kweb_browser_handle browser, uint64_t request_id,
+                            const char *response_utf8, size_t response_size);
+
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
+kweb_browser_bridge_fail(kweb_browser_handle browser, uint64_t request_id,
+                         const char *failure_utf8, size_t failure_size);
 
 KWEB_ENGINE_ABI_EXPORT uint64_t KWEB_ABI_CALL kweb_live_browser_count(void);
 

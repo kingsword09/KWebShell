@@ -14,6 +14,10 @@ kweb_status ResizeBrowserSession(kweb_browser_handle browser, int32_t width,
 kweb_status CloseBrowserSession(kweb_browser_handle browser);
 kweb_status OpenDevToolsSession(kweb_browser_handle browser);
 kweb_status CloseDevToolsSession(kweb_browser_handle browser);
+kweb_status RespondToBridgeSession(kweb_browser_handle browser,
+                                   uint64_t request_id,
+                                   const char *response_utf8,
+                                   size_t response_size, bool success);
 uint64_t LiveBrowserSessionCount();
 
 } // namespace kwebshell

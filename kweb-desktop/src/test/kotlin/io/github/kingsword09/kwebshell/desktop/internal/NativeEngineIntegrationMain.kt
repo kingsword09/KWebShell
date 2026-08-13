@@ -1,12 +1,22 @@
 package io.github.kingsword09.kwebshell.desktop.internal
 
+import io.github.kingsword09.kwebshell.bridge.KWebBridgeException
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebNativeException
+import io.github.kingsword09.kwebshell.desktop.generated.AckResponse
+import io.github.kingsword09.kwebshell.desktop.generated.ConformanceBridgeDispatcher
+import io.github.kingsword09.kwebshell.desktop.generated.ConformanceBridgeHandler
+import io.github.kingsword09.kwebshell.desktop.generated.FailureRequest
+import io.github.kingsword09.kwebshell.desktop.generated.ProbeRequest
+import io.github.kingsword09.kwebshell.desktop.generated.ProbeResponse
+import io.github.kingsword09.kwebshell.desktop.generated.WaitRequest
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import java.io.BufferedWriter
 import java.net.InetSocketAddress
 import java.net.URI
@@ -22,8 +32,11 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.concurrent.thread
+import kotlin.system.exitProcess
 
 private const val INTEGRATION_ROOT_PROPERTY = "kweb.engine.integration.root"
 private const val CEF_RUNTIME_PROPERTY = "kweb.engine.cef.runtime.path"
@@ -31,6 +44,7 @@ private const val SUBPROCESS_PROPERTY = "kweb.engine.subprocess.path"
 private const val RESOURCES_PROPERTY = "kweb.engine.resources.path"
 private const val LOCALES_PROPERTY = "kweb.engine.locales.path"
 private const val CDP_PORT_PROPERTY = "kweb.engine.integration.cdp.port"
+private const val BRIDGE_JAVASCRIPT_PROPERTY = "kweb.engine.integration.bridge.javascript"
 private const val HOLDER_OPENED_MARKER = "KWEBSHELL_ENGINE_HOLDER_OPENED"
 private const val STAGE_PREFIX = "KWEBSHELL_ENGINE_STAGE:"
 private const val MACOS_BROWSER_POLICY_MARKER =
@@ -58,16 +72,21 @@ private enum class IntegrationMode(val argument: String) {
 }
 
 fun main(arguments: Array<String>) {
-    val mode = IntegrationMode.parse(arguments.singleOrNull() ?: IntegrationMode.COORDINATOR.argument)
-    when (mode) {
-        IntegrationMode.COORDINATOR -> runCoordinator()
-        IntegrationMode.SUCCESS -> runSuccessfulLifecycle()
-        IntegrationMode.CALLBACK_FAILURE -> runCallbackFailureLifecycle()
-        IntegrationMode.LISTENER_FAILURE -> runListenerFailureLifecycle()
-        IntegrationMode.HOLDER -> runHolderLifecycle()
-        IntegrationMode.INITIALIZATION_FAILURE -> runInitializationFailureLifecycle()
-        IntegrationMode.PORT_COLLISION -> runPortCollisionLifecycle()
-        IntegrationMode.CDP_DISABLED -> runCdpDisabledLifecycle()
+    try {
+        val mode = IntegrationMode.parse(arguments.singleOrNull() ?: IntegrationMode.COORDINATOR.argument)
+        when (mode) {
+            IntegrationMode.COORDINATOR -> runCoordinator()
+            IntegrationMode.SUCCESS -> runSuccessfulLifecycle()
+            IntegrationMode.CALLBACK_FAILURE -> runCallbackFailureLifecycle()
+            IntegrationMode.LISTENER_FAILURE -> runListenerFailureLifecycle()
+            IntegrationMode.HOLDER -> runHolderLifecycle()
+            IntegrationMode.INITIALIZATION_FAILURE -> runInitializationFailureLifecycle()
+            IntegrationMode.PORT_COLLISION -> runPortCollisionLifecycle()
+            IntegrationMode.CDP_DISABLED -> runCdpDisabledLifecycle()
+        }
+    } catch (error: Throwable) {
+        error.printStackTrace(System.err)
+        exitProcess(1)
     }
 }
 
@@ -159,6 +178,7 @@ private fun runSuccessfulLifecycle() {
                 },
                 NativeStatus.NAVIGATION_INVALID,
             )
+            runRawBridgeAbiConformance(engine, surface.component, configuration.rootCache, origin, cdp)
             requireStatus(
                 NativeEngine.onAwtEventDispatchThread {
                     NativeBindings.browserResize(0L, 0, 600)
@@ -166,6 +186,7 @@ private fun runSuccessfulLifecycle() {
                 NativeStatus.INVALID_DIMENSIONS,
                 "invalid browser dimensions",
             )
+            val bridgeHandler = ConformanceBridgeTestHandler()
             val browser = NativeBrowser.open(
                 engine = engine,
                 component = surface.component,
@@ -173,6 +194,8 @@ private fun runSuccessfulLifecycle() {
                 initialUrl = origin.firstUrl,
                 width = 800,
                 height = 600,
+                bridgeOrigin = origin.origin,
+                bridgeDispatcher = ConformanceBridgeDispatcher(bridgeHandler),
             ) { event ->
                 browserEvents += event
                 when {
@@ -197,7 +220,20 @@ private fun runSuccessfulLifecycle() {
                 "The first real Chromium page did not publish its Unicode title: $browserEvents"
             }
             cdp.awaitPage(origin.firstUrl)
+            cdp.awaitBridge()
             require(cdp.evaluate("document.title") == FIRST_TITLE)
+            runBridgeConformance(cdp, bridgeHandler)
+            require(cdp.evaluate("typeof document.getElementById('bridge-frame').contentWindow.__kwebBridgeQuery") == "undefined")
+            require(cdp.evaluate("void ConformanceBridge.createClient().wait({delayMs:60000}); 'started'") == "started")
+            bridgeHandler.awaitStarted("navigation")
+            browser.navigate(origin.crossOriginUrl)
+            cdp.awaitPage(origin.crossOriginUrl)
+            bridgeHandler.awaitCancelled("navigation")
+            require(cdp.evaluate("typeof globalThis.__kwebBridgeQuery") == "undefined")
+            require(cdp.evaluate("typeof globalThis.ConformanceBridge") == "undefined")
+            browser.navigate(origin.firstUrl)
+            cdp.awaitPage(origin.firstUrl)
+            cdp.awaitBridge()
             requireStatus(
                 NativeBindings.browserCloseDevTools(browser.requireLiveHandle("devtools-test")),
                 NativeStatus.DEVTOOLS_NOT_OPEN,
@@ -255,6 +291,7 @@ private fun runSuccessfulLifecycle() {
             require(secondLoad.await(30, TimeUnit.SECONDS)) {
                 "The second real Chromium navigation did not complete: $browserEvents"
             }
+            cdp.awaitBridge()
             browser.resize(960, 640)
             require(resized.await(30, TimeUnit.SECONDS)) {
                 "The native Chromium child did not confirm the requested size: $browserEvents"
@@ -263,7 +300,11 @@ private fun runSuccessfulLifecycle() {
             browser.openDevTools()
             cdp.awaitDevToolsTarget()
 
+            require(cdp.evaluate("void ConformanceBridge.createClient().wait({delayMs:60000}); 'started'") == "started")
+            bridgeHandler.awaitStarted("browser close")
+
             browser.close()
+            bridgeHandler.awaitCancelled("browser close")
             require(browserEvents.any { it.type == NativeBrowserEventType.DEVTOOLS_CLOSED }) {
                 "Closing the page did not close its native DevTools window."
             }
@@ -338,12 +379,210 @@ private fun runSuccessfulLifecycle() {
     println("KWebShell engine success lifecycle passed.")
 }
 
+private data class RawBridgeEvent(
+    val requestId: Long,
+    val type: NativeBridgeEventType,
+    val payload: String,
+)
+
+private fun runRawBridgeAbiConformance(
+    engine: NativeEngine,
+    component: java.awt.Component,
+    rootCache: Path,
+    origin: BrowserOrigin,
+    cdp: CdpClient,
+) {
+    val eventSink = NativeBrowserEventSink { _, _, _, _, _, _, _, _, _ -> }
+    val bridgeSink = NativeBridgeEventSink { _, _, _, _, _ -> }
+    requireCreateFailure(
+        NativeEngine.onAwtEventDispatchThread {
+            NativeBindings.browserCreate(
+                engine.requireLiveHandle("bridge-config-test"),
+                eventSink,
+                component,
+                rootCache.resolve("bridge-origin-without-sink").toString(),
+                origin.firstUrl,
+                0,
+                0,
+                800,
+                600,
+                origin.origin,
+                null,
+            )
+        },
+        NativeStatus.INVALID_ARGUMENT,
+    )
+    requireCreateFailure(
+        NativeEngine.onAwtEventDispatchThread {
+            NativeBindings.browserCreate(
+                engine.requireLiveHandle("bridge-config-test"),
+                eventSink,
+                component,
+                rootCache.resolve("bridge-sink-without-origin").toString(),
+                origin.firstUrl,
+                0,
+                0,
+                800,
+                600,
+                "",
+                bridgeSink,
+            )
+        },
+        NativeStatus.INVALID_ARGUMENT,
+    )
+    requireCreateFailure(
+        NativeEngine.onAwtEventDispatchThread {
+            NativeBindings.browserCreate(
+                engine.requireLiveHandle("bridge-origin-test"),
+                eventSink,
+                component,
+                rootCache.resolve("bridge-invalid-origin").toString(),
+                origin.firstUrl,
+                0,
+                0,
+                800,
+                600,
+                "https://example.com/path",
+                bridgeSink,
+            )
+        },
+        NativeStatus.BRIDGE_ORIGIN_INVALID,
+    )
+    val created = CountDownLatch(1)
+    val closed = CountDownLatch(1)
+    val browserHandle = AtomicLong(0)
+    val browserEvents = NativeBrowserEventSink { _, browser, _, type, _, _, _, _, _ ->
+        browserHandle.compareAndSet(0, browser)
+        when (NativeBrowserEventType.fromValue(type)) {
+            NativeBrowserEventType.CREATED -> created.countDown()
+            NativeBrowserEventType.CLOSED -> closed.countDown()
+            else -> Unit
+        }
+    }
+    val bridgeEvents = LinkedBlockingQueue<RawBridgeEvent>()
+    val rawBridgeSink = NativeBridgeEventSink { _, browser, requestId, type, payload ->
+        require(browser == browserHandle.get())
+        val eventType = requireNotNull(NativeBridgeEventType.fromValue(type))
+        bridgeEvents.put(RawBridgeEvent(requestId, eventType, payload))
+    }
+    val handle = NativeEngine.onAwtEventDispatchThread {
+        NativeBindings.browserCreate(
+            engine.requireLiveHandle("raw-bridge-create"),
+            browserEvents,
+            component,
+            rootCache.resolve("raw-bridge-profile").toString(),
+            origin.firstUrl,
+            0,
+            0,
+            800,
+            600,
+            origin.origin,
+            rawBridgeSink,
+        )
+    }
+    require(handle > 0L) { "Raw bridge browser create returned $handle." }
+    browserHandle.compareAndSet(0, handle)
+    try {
+        require(created.await(30, TimeUnit.SECONDS)) {
+            "The raw bridge browser did not publish its created event."
+        }
+        cdp.awaitPage(origin.firstUrl)
+        cdp.awaitBridge()
+        require(
+            cdp.evaluate(
+                """
+                void (globalThis.rawBridgePromise = new Promise((resolve, reject) => {
+                  globalThis.rawBridgeQueryId = __kwebBridgeQuery({
+                    request: JSON.stringify({version:1, method:"rawProbe", payload:{value:"请求🙂"}}),
+                    persistent: false,
+                    onSuccess: resolve,
+                    onFailure: reject
+                  });
+                }));
+                "started"
+                """.trimIndent(),
+            ) == "started",
+        )
+        val request = requireNotNull(bridgeEvents.poll(30, TimeUnit.SECONDS)) {
+            "The raw bridge request event did not arrive."
+        }
+        require(request.type == NativeBridgeEventType.REQUEST)
+        require(request.payload.contains("请求🙂"))
+        requireStatus(
+            NativeBindings.browserBridgeRespond(handle, request.requestId, "not-json"),
+            NativeStatus.BRIDGE_RESPONSE_INVALID,
+            "invalid raw bridge response",
+        )
+        requireStatus(
+            NativeBindings.browserBridgeRespond(handle, request.requestId, "{\"accepted\":true}"),
+            NativeStatus.OK,
+            "valid raw bridge response",
+        )
+        requireStatus(
+            NativeBindings.browserBridgeRespond(handle, request.requestId, "{\"accepted\":true}"),
+            NativeStatus.BRIDGE_REQUEST_NOT_FOUND,
+            "duplicate raw bridge response",
+        )
+        val response = cdp.evaluate("globalThis.rawBridgePromise")
+        require(response == "{\"accepted\":true}") {
+            "The raw bridge returned '$response'."
+        }
+
+        require(
+            cdp.evaluate(
+                """
+                globalThis.rawBridgeQueryId = __kwebBridgeQuery({
+                  request: JSON.stringify({version:1, method:"rawCancel", payload:{}}),
+                  persistent: false,
+                  onSuccess: () => {},
+                  onFailure: () => {}
+                });
+                "started"
+                """.trimIndent(),
+            ) == "started",
+        )
+        val cancelledRequest = requireNotNull(bridgeEvents.poll(30, TimeUnit.SECONDS)) {
+            "The cancellable raw bridge request event did not arrive."
+        }
+        require(cancelledRequest.type == NativeBridgeEventType.REQUEST)
+        require(cdp.evaluate("__kwebBridgeCancel(globalThis.rawBridgeQueryId); 'cancelled'") == "cancelled")
+        val cancellation = requireNotNull(bridgeEvents.poll(30, TimeUnit.SECONDS)) {
+            "The raw bridge cancellation event did not arrive."
+        }
+        require(cancellation.type == NativeBridgeEventType.CANCELLED)
+        require(cancellation.requestId == cancelledRequest.requestId)
+        requireStatus(
+            NativeBindings.browserBridgeFail(
+                handle,
+                cancelledRequest.requestId,
+                "{\"code\":\"late\",\"message\":\"late\"}",
+            ),
+            NativeStatus.BRIDGE_REQUEST_NOT_FOUND,
+            "late raw bridge response",
+        )
+    } finally {
+        requireStatus(
+            NativeEngine.onAwtEventDispatchThread { NativeBindings.browserClose(handle) },
+            NativeStatus.OK,
+            "close raw bridge browser",
+        )
+        require(closed.await(30, TimeUnit.SECONDS)) {
+            "The raw bridge browser did not publish its terminal event."
+        }
+    }
+    require(NativeBrowser.liveNativeBrowserCount() == 0L)
+}
+
 private class BrowserOrigin : AutoCloseable {
     private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    private val crossOriginServer = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
     private val port: Int
+    private val bridgeJavascript = Files.readString(requiredPathProperty(BRIDGE_JAVASCRIPT_PROPERTY))
 
+    val origin: String
     val firstUrl: String
     val secondUrl: String
+    val crossOriginUrl: String
 
     init {
         server.createContext("/", ::serve)
@@ -351,12 +590,33 @@ private class BrowserOrigin : AutoCloseable {
             Thread(task, "KWebShell-browser-origin").also { it.isDaemon = true }
         }
         server.start()
+        crossOriginServer.createContext("/") { exchange ->
+            val body = "<!doctype html><meta charset=\"utf-8\"><title>cross-origin</title>"
+                .toByteArray(StandardCharsets.UTF_8)
+            exchange.responseHeaders.set("Content-Type", "text/html; charset=utf-8")
+            exchange.sendResponseHeaders(200, body.size.toLong())
+            exchange.responseBody.use { it.write(body) }
+        }
+        crossOriginServer.executor = Executors.newSingleThreadExecutor { task ->
+            Thread(task, "KWebShell-cross-origin").also { it.isDaemon = true }
+        }
+        crossOriginServer.start()
         port = server.address.port
+        origin = "http://127.0.0.1:$port"
         firstUrl = "http://127.0.0.1:$port/first"
         secondUrl = URI("http", null, "127.0.0.1", port, "/路径", "q=🙂", null).toASCIIString()
+        crossOriginUrl = "http://127.0.0.1:${crossOriginServer.address.port}/cross"
     }
 
     private fun serve(exchange: HttpExchange) {
+        if (exchange.requestURI.rawPath == "/frame") {
+            val frameBody = "<!doctype html><meta charset=\"utf-8\"><title>frame</title>"
+                .toByteArray(StandardCharsets.UTF_8)
+            exchange.responseHeaders.set("Content-Type", "text/html; charset=utf-8")
+            exchange.sendResponseHeaders(200, frameBody.size.toLong())
+            exchange.responseBody.use { it.write(frameBody) }
+            return
+        }
         val second = exchange.requestURI.rawPath != "/first"
         val title = if (second) SECOND_TITLE else FIRST_TITLE
         val script = if (second) {
@@ -366,7 +626,11 @@ private class BrowserOrigin : AutoCloseable {
                 "document.cookie = 'kwebshell-session=persisted; path=/';" +
                 "document.title = ${javascriptString(title)};"
         }
-        val body = "<!doctype html><meta charset=\"utf-8\"><script>$script</script>".toByteArray(StandardCharsets.UTF_8)
+        val body = (
+            "<!doctype html><meta charset=\"utf-8\">" +
+                "<iframe id=\"bridge-frame\" src=\"/frame\"></iframe>" +
+                "<script>$bridgeJavascript</script><script>$script</script>"
+            ).toByteArray(StandardCharsets.UTF_8)
         exchange.responseHeaders.set("Content-Type", "text/html; charset=utf-8")
         exchange.responseHeaders.set("Cache-Control", "no-store")
         exchange.sendResponseHeaders(200, body.size.toLong())
@@ -375,9 +639,124 @@ private class BrowserOrigin : AutoCloseable {
 
     override fun close() {
         server.stop(0)
+        crossOriginServer.stop(0)
         (server.executor as? java.util.concurrent.ExecutorService)?.shutdownNow()
+        (crossOriginServer.executor as? java.util.concurrent.ExecutorService)?.shutdownNow()
     }
 }
+
+private class ConformanceBridgeTestHandler : ConformanceBridgeHandler {
+    private val started = LinkedBlockingQueue<Unit>()
+    private val cancelled = LinkedBlockingQueue<Unit>()
+
+    override suspend fun probe(request: ProbeRequest): ProbeResponse = ProbeResponse(
+        text = "${request.text}|host🙂",
+        count = request.count + 1,
+        tags = request.tags.reversed(),
+        note = request.note?.uppercase(),
+        metadata = request.metadata.copy(ratio = request.metadata.ratio * 2),
+        handlerThread = Thread.currentThread().name,
+    )
+
+    override suspend fun fail(request: FailureRequest): AckResponse {
+        throw KWebBridgeException("conformance.${request.reason}", "拒绝:${request.reason}🙂")
+    }
+
+    override suspend fun crash(request: FailureRequest): AckResponse {
+        throw IllegalStateException("internal:${request.reason}")
+    }
+
+    override suspend fun wait(request: WaitRequest): AckResponse {
+        started.put(Unit)
+        try {
+            delay(request.delayMs.toLong())
+            return AckResponse(accepted = true)
+        } catch (error: CancellationException) {
+            cancelled.put(Unit)
+            throw error
+        }
+    }
+
+    fun awaitStarted(operation: String) {
+        require(started.poll(30, TimeUnit.SECONDS) != null) {
+            "The bridge handler did not start for $operation."
+        }
+    }
+
+    fun awaitCancelled(operation: String) {
+        require(cancelled.poll(30, TimeUnit.SECONDS) != null) {
+            "The bridge handler was not cancelled for $operation."
+        }
+    }
+}
+
+private fun runBridgeConformance(cdp: CdpClient, handler: ConformanceBridgeTestHandler) {
+    val probe = kotlinx.serialization.json.Json.parseToJsonElement(
+        cdp.evaluate(
+            """
+            (async () => JSON.stringify(await ConformanceBridge.createClient().probe({
+              text: "请求🙂", count: 41, tags: ["甲", "乙"], note: "mix",
+              metadata: { enabled: true, ratio: 1.25 }
+            })))()
+            """.trimIndent(),
+        ),
+    ).jsonObject
+    require(probe["text"]!!.jsonPrimitive.content == "请求🙂|host🙂")
+    require(probe["count"]!!.jsonPrimitive.content == "42")
+    require(probe["tags"]!!.jsonArray.map { it.jsonPrimitive.content } == listOf("乙", "甲"))
+    require(probe["note"]!!.jsonPrimitive.content == "MIX")
+    require(probe["metadata"]!!.jsonObject["ratio"]!!.jsonPrimitive.content == "2.5")
+    require(probe["handlerThread"]!!.jsonPrimitive.content.startsWith("DefaultDispatcher-worker-"))
+
+    val failure = bridgeFailure(cdp, "ConformanceBridge.createClient().fail({reason:'denied'})")
+    require(failure["code"]!!.jsonPrimitive.content == "conformance.denied")
+    require(failure["message"]!!.jsonPrimitive.content == "拒绝:denied🙂")
+
+    val unexpected = bridgeFailure(cdp, "ConformanceBridge.createClient().crash({reason:'secret'})")
+    require(unexpected["code"]!!.jsonPrimitive.content == "bridge.handler.failed")
+    require(unexpected["message"]!!.jsonPrimitive.content == "The bridge handler failed.")
+
+    val unknown = kotlinx.serialization.json.Json.parseToJsonElement(
+        cdp.evaluate(
+            """
+            new Promise(resolve => __kwebBridgeQuery({
+              request: JSON.stringify({version:1, method:"missing", payload:{}}),
+              persistent: false,
+              onSuccess: response => resolve(response),
+              onFailure: (_code, message) => resolve(message)
+            }))
+            """.trimIndent(),
+        ),
+    ).jsonObject
+    require(unknown["code"]!!.jsonPrimitive.content == "bridge.method.unknown")
+
+    val timeout = bridgeFailure(
+        cdp,
+        "ConformanceBridge.createClient().wait({delayMs:10000},{timeoutMs:100})",
+    )
+    require(timeout["code"]!!.jsonPrimitive.content == "bridge.call.timeout")
+    handler.awaitStarted("timeout")
+    handler.awaitCancelled("timeout")
+
+    val aborted = bridgeFailure(
+        cdp,
+        """
+        (() => {
+          const controller = new AbortController();
+          setTimeout(() => controller.abort(), 100);
+          return ConformanceBridge.createClient().wait({delayMs:10000},{signal:controller.signal});
+        })()
+        """.trimIndent(),
+    )
+    require(aborted["code"]!!.jsonPrimitive.content == "bridge.call.cancelled")
+    handler.awaitStarted("AbortSignal")
+    handler.awaitCancelled("AbortSignal")
+}
+
+private fun bridgeFailure(cdp: CdpClient, call: String): kotlinx.serialization.json.JsonObject =
+    kotlinx.serialization.json.Json.parseToJsonElement(
+        cdp.evaluate("(async()=>{try{await ($call);return 'unexpected-success'}catch(e){return JSON.stringify({code:e.code,message:e.message})}})()"),
+    ).jsonObject
 
 private fun javascriptString(value: String): String = buildString {
     append('\'')
@@ -542,6 +921,8 @@ private fun rawBrowserCreate(
     0,
     width,
     height,
+    "",
+    null,
 )
 
 private fun runtimeConfiguration(): NativeEngineConfiguration {
@@ -563,6 +944,7 @@ private class CdpClient(private val port: Int) {
         .connectTimeout(Duration.ofSeconds(5))
         .build()
     private var host = "127.0.0.1"
+    private var activePageTargetId: String? = null
 
     fun awaitPage(url: String) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
@@ -583,6 +965,7 @@ private class CdpClient(private val port: Int) {
                         it["url"]?.jsonPrimitive?.content == url
                 }
                 if (page != null) {
+                    activePageTargetId = page["id"]!!.jsonPrimitive.content
                     webSocket(page["webSocketDebuggerUrl"]!!.jsonPrimitive.content).close()
                     return
                 }
@@ -595,11 +978,38 @@ private class CdpClient(private val port: Int) {
     }
 
     fun evaluate(expression: String): String {
+        val targetId = checkNotNull(activePageTargetId) {
+            "awaitPage must select a browser page before CDP evaluation."
+        }
         val targets = getArray("/json/list")
-        val page = targets.first { it["type"]?.jsonPrimitive?.content == "page" }
+        val page = targets.singleOrNull { it["id"]?.jsonPrimitive?.content == targetId }
+            ?: error("The selected CDP page target '$targetId' is no longer available: $targets")
         webSocket(page["webSocketDebuggerUrl"]!!.jsonPrimitive.content).use { socket ->
             return socket.evaluate(expression)
         }
+    }
+
+    fun awaitExpression(expression: String) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+        var lastResult: String? = null
+        var lastFailure: Throwable? = null
+        while (System.nanoTime() < deadline) {
+            try {
+                lastResult = evaluate(expression)
+                if (lastResult == "true") return
+            } catch (error: Throwable) {
+                lastFailure = error
+            }
+            Thread.sleep(100)
+        }
+        error("CDP expression did not become true: '$expression', last result=$lastResult, last failure=$lastFailure")
+    }
+
+    fun awaitBridge() {
+        awaitExpression(
+            "typeof globalThis.ConformanceBridge === 'object' && " +
+                "typeof globalThis.__kwebBridgeQuery === 'function'",
+        )
     }
 
     fun awaitDevToolsTarget() {
@@ -702,12 +1112,15 @@ private class CdpWebSocket(url: String) : AutoCloseable {
 
     fun evaluate(expression: String): String {
         socket.sendText(
-            "{\"id\":1,\"method\":\"Runtime.evaluate\",\"params\":{\"expression\":${jsonString(expression)},\"returnByValue\":true}}",
+            "{\"id\":1,\"method\":\"Runtime.evaluate\",\"params\":{\"expression\":${jsonString(expression)},\"returnByValue\":true,\"awaitPromise\":true}}",
             true,
         ).join()
         val response = kotlinx.serialization.json.Json.parseToJsonElement(
             messages.orTimeout(10, TimeUnit.SECONDS).join(),
         ).jsonObject
+        require(response["result"]!!.jsonObject["exceptionDetails"] == null) {
+            "CDP evaluation failed: $response"
+        }
         return response["result"]!!.jsonObject["result"]!!.jsonObject["value"]!!.jsonPrimitive.content
     }
 
@@ -831,6 +1244,7 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
         SUBPROCESS_PROPERTY,
         RESOURCES_PROPERTY,
         LOCALES_PROPERTY,
+        BRIDGE_JAVASCRIPT_PROPERTY,
     )
     val command = buildList {
         add(javaExecutable.toString())

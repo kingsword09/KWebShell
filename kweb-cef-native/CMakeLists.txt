@@ -130,6 +130,7 @@ endif()
 target_sources(kweb_jni PRIVATE ${KWEB_AWT_PARENT_SOURCE})
 
 add_library(kweb_engine_abi SHARED
+  src/bridge_protocol.cc
   src/browser_session.cc
   ${KWEB_BROWSER_SURFACE_SOURCE}
   src/engine_abi.cc
@@ -269,6 +270,8 @@ endif()
 add_test(NAME kweb_host_unit_tests COMMAND kweb_host_unit_tests)
 
 set(KWEB_HOST_COMMON_SOURCES
+  src/bridge_protocol.cc
+  src/bridge_renderer_app.cc
   src/browser_app.cc
   src/browser_client.cc
   src/host_main.cc
@@ -298,6 +301,7 @@ if(APPLE)
   target_include_directories(${KWEB_HOST_TARGET} PRIVATE include src)
   target_link_libraries(${KWEB_HOST_TARGET} PRIVATE
     kweb_host_support
+    kweb_contract_support
     libcef_dll_wrapper
     ${CEF_STANDARD_LIBS}
   )
@@ -330,10 +334,18 @@ if(APPLE)
     string(REPLACE "\${VERSION_SHORT}" "${PROJECT_VERSION}" _plist_contents "${_plist_contents}")
     file(WRITE "${_helper_info_plist}" "${_plist_contents}")
 
-    add_executable(${_helper_target} MACOSX_BUNDLE src/process_helper_mac.cc)
+    add_executable(${_helper_target} MACOSX_BUNDLE
+      src/bridge_protocol.cc
+      src/bridge_renderer_app.cc
+      src/process_helper_mac.cc
+    )
     SET_EXECUTABLE_TARGET_PROPERTIES(${_helper_target})
-    target_include_directories(${_helper_target} PRIVATE "${CEF_ROOT}")
-    target_link_libraries(${_helper_target} PRIVATE libcef_dll_wrapper ${CEF_STANDARD_LIBS})
+    target_include_directories(${_helper_target} PRIVATE include src "${CEF_ROOT}")
+    target_link_libraries(${_helper_target} PRIVATE
+      kweb_contract_support
+      libcef_dll_wrapper
+      ${CEF_STANDARD_LIBS}
+    )
     set_target_properties(${_helper_target} PROPERTIES
       OUTPUT_NAME "${_helper_output_name}"
       RUNTIME_OUTPUT_DIRECTORY "${KWEB_TARGET_OUT_DIR}"
@@ -359,6 +371,7 @@ elseif(WIN32)
   target_include_directories(${KWEB_HOST_TARGET} PRIVATE include src)
   target_link_libraries(${KWEB_HOST_TARGET} PRIVATE
     kweb_host_support
+    kweb_contract_support
     libcef_lib
     libcef_dll_wrapper
     ${CEF_STANDARD_LIBS}
@@ -385,6 +398,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_include_directories(${KWEB_HOST_TARGET} PRIVATE include src)
   target_link_libraries(${KWEB_HOST_TARGET} PRIVATE
     kweb_host_support
+    kweb_contract_support
     libcef_lib
     libcef_dll_wrapper
     PkgConfig::GTK3

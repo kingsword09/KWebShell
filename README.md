@@ -22,11 +22,14 @@ The first Phase 4 slice adds an explicit CDP port to the internal engine configu
 
 The second Phase 4 slice adds the first native DevTools host. A browser can open and close the CEF DevTools front-end as a separate Chrome-style native window while the embedded page remains the required Alloy child. The lifecycle is typed, duplicate opens fail, CDP exposes the `devtools://` target while the window is open, and closing the page closes DevTools before the page terminal event.
 
-See [DESIGN_PLAN.md](DESIGN_PLAN.md) for architecture and delivery phases, [ADR 0003](docs/adr/0003-versioned-native-session-contract.md) for the native ownership contract, [ADR 0004](docs/adr/0004-persistent-chromium-profile-context.md) for the Profile path and persistence contract, [ADR 0005](docs/adr/0005-in-process-jvm-cef-engine.md) for the JVM/CEF engine lifecycle, [ADR 0006](docs/adr/0006-real-awt-chromium-browser-session.md) for the real Alloy browser surface, [ADR 0007](docs/adr/0007-explicit-loopback-cdp-endpoint.md) for the secured CDP endpoint, [ADR 0008](docs/adr/0008-native-devtools-window-host.md) for the native DevTools lifecycle, and [AGENTS.md](AGENTS.md) for the non-fallback implementation rules.
+The third Phase 4 slice adds the generated typed host bridge. A strict schema produces Kotlin models and dispatcher code, a TypeScript client, and browser-ready JavaScript. CEF installs the transport only for an explicitly enabled browser's main frame at one exact HTTP(S) origin; child frames, cross-origin pages, DevTools, and unconfigured browsers receive no bridge. Calls run in Kotlin coroutines off the CEF UI thread and have exact timeout, abort, navigation, and close cancellation. This is host RPC, not a `chrome.*` emulation layer, and the unfinished public Compose page API remains unexposed.
+
+See [DESIGN_PLAN.md](DESIGN_PLAN.md) for architecture and delivery phases, [ADR 0003](docs/adr/0003-versioned-native-session-contract.md) for the native ownership contract, [ADR 0004](docs/adr/0004-persistent-chromium-profile-context.md) for the Profile path and persistence contract, [ADR 0005](docs/adr/0005-in-process-jvm-cef-engine.md) for the JVM/CEF engine lifecycle, [ADR 0006](docs/adr/0006-real-awt-chromium-browser-session.md) for the real Alloy browser surface, [ADR 0007](docs/adr/0007-explicit-loopback-cdp-endpoint.md) for the secured CDP endpoint, [ADR 0008](docs/adr/0008-native-devtools-window-host.md) for the native DevTools lifecycle, [ADR 0009](docs/adr/0009-origin-scoped-generated-typed-bridge.md) for bridge isolation and cancellation, and [AGENTS.md](AGENTS.md) for the non-fallback implementation rules.
 
 ## Requirements
 
 - JDK 21
+- Node.js 24 LTS and `npm ci` for the pinned TypeScript bridge compiler
 - The checked-in Gradle wrapper
 
 Native CEF development additionally requires CMake, Ninja, and the platform C++ toolchain described by the design plan.
@@ -34,11 +37,12 @@ Native CEF development additionally requires CMake, Ninja, and the platform C++ 
 ## Verification
 
 ```shell
+npm ci
 ./gradlew check \
   -PcefRoot=/absolute/path/to/extracted/cef_binary_151.3.16+gbe1e15d+chromium-151.0.7922.109_macosarm64_minimal
 ```
 
-The root `check` task compiles every included module, runs Kotlin tests, native unit/GUI tests, and the isolated real JVM/CEF engine integration contract, and validates the pinned CEF runtime manifest. On Linux the engine contract is launched through explicit `xvfb-run`; absence of that launcher fails configuration. `cefRoot` must point to an extracted, checksum-verified CEF distribution for the current host; it is never inferred from another platform or replaced by a system WebView.
+The root `check` task compiles every included module, strictly compiles the generated TypeScript client, runs Kotlin tests, native unit/GUI tests, and the isolated real JVM/CEF engine integration contract, and validates the pinned CEF runtime manifest. On Linux the engine contract is launched through explicit `xvfb-run`; absence of that launcher fails configuration. `cefRoot` must point to an extracted, checksum-verified CEF distribution for the current host; it is never inferred from another platform or replaced by a system WebView.
 
 On a runner known to have no hardware GPU, use the explicit negative capability contract:
 

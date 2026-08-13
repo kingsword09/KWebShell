@@ -524,6 +524,12 @@ const char *KWEB_ABI_CALL kweb_status_name(kweb_status status) {
     return "devtools-open-failed";
   case KWEB_STATUS_DEVTOOLS_CLOSING:
     return "devtools-closing";
+  case KWEB_STATUS_BRIDGE_ORIGIN_INVALID:
+    return "bridge-origin-invalid";
+  case KWEB_STATUS_BRIDGE_REQUEST_NOT_FOUND:
+    return "bridge-request-not-found";
+  case KWEB_STATUS_BRIDGE_RESPONSE_INVALID:
+    return "bridge-response-invalid";
   default:
     return "unknown-status";
   }
@@ -584,6 +590,20 @@ kweb_browser_open_devtools(kweb_browser_handle browser) {
 kweb_status KWEB_ABI_CALL
 kweb_browser_close_devtools(kweb_browser_handle browser) {
   return kwebshell::CloseDevToolsSession(browser);
+}
+
+kweb_status KWEB_ABI_CALL kweb_browser_bridge_respond(
+    kweb_browser_handle browser, uint64_t request_id,
+    const char *response_utf8, size_t response_size) {
+  return kwebshell::RespondToBridgeSession(
+      browser, request_id, response_utf8, response_size, true);
+}
+
+kweb_status KWEB_ABI_CALL kweb_browser_bridge_fail(
+    kweb_browser_handle browser, uint64_t request_id,
+    const char *failure_utf8, size_t failure_size) {
+  return kwebshell::RespondToBridgeSession(
+      browser, request_id, failure_utf8, failure_size, false);
 }
 
 uint64_t KWEB_ABI_CALL kweb_live_browser_count(void) {

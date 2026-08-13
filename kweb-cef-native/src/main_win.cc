@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "host_main.h"
+#include "bridge_renderer_app.h"
 #include "include/cef_command_line.h"
 
 namespace {
@@ -44,8 +45,10 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE previous_instance,
   }
 
   CefMainArgs main_args(instance);
+  CefRefPtr<CefApp> process_app =
+      kwebshell::CreateBridgeRendererApplication();
   const int subprocess_exit_code =
-      CefExecuteProcess(main_args, nullptr, nullptr);
+      CefExecuteProcess(main_args, process_app, nullptr);
   if (subprocess_exit_code >= 0) {
     return subprocess_exit_code;
   }

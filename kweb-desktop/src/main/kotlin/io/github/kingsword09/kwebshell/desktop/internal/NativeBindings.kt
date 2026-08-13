@@ -128,6 +128,8 @@ internal object NativeBindings {
         y: Int,
         width: Int,
         height: Int,
+        bridgeOrigin: String,
+        bridgeSink: NativeBridgeEventSink?,
     ): Long
 
     @JvmName("browserNavigate")
@@ -144,6 +146,12 @@ internal object NativeBindings {
 
     @JvmName("browserCloseDevTools")
     internal external fun browserCloseDevTools(handle: Long): Int
+
+    @JvmName("browserBridgeRespond")
+    internal external fun browserBridgeRespond(handle: Long, requestId: Long, responseJson: String): Int
+
+    @JvmName("browserBridgeFail")
+    internal external fun browserBridgeFail(handle: Long, requestId: Long, failureJson: String): Int
 
     @JvmName("liveBrowserCount")
     internal external fun liveBrowserCount(): Long
@@ -178,5 +186,20 @@ internal class NativeBrowserEventSink(
         height: Int,
     ) {
         callback(engine, browser, sequence, type, flags, text, statusCode, width, height)
+    }
+}
+
+internal class NativeBridgeEventSink(
+    private val callback: (Long, Long, Long, Int, String) -> Unit,
+) {
+    @JvmName("onNativeBridgeEvent")
+    internal fun onNativeBridgeEvent(
+        engine: Long,
+        browser: Long,
+        requestId: Long,
+        type: Int,
+        payload: String,
+    ) {
+        callback(engine, browser, requestId, type, payload)
     }
 }

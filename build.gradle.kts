@@ -15,6 +15,8 @@ subprojects {
 
 tasks.named("check") {
     dependsOn(":kweb-core:check")
+    dependsOn(":kweb-bridge:check")
+    dependsOn(":kweb-bridge-codegen:check")
     dependsOn(":kweb-desktop:check")
     dependsOn(":kweb-cef-native:check")
     dependsOn(":kweb-runtime-pack:check")

@@ -4,6 +4,8 @@ _kweb_browser_navigate
 _kweb_browser_resize
 _kweb_browser_open_devtools
 _kweb_browser_close_devtools
+_kweb_browser_bridge_respond
+_kweb_browser_bridge_fail
 _kweb_engine_abi_version
 _kweb_engine_close
 _kweb_engine_create

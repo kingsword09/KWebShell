@@ -1,5 +1,6 @@
 #include "browser_session.h"
 
+#include <algorithm>
 #include <atomic>
 #include <filesystem>
 #include <limits>
@@ -12,6 +13,7 @@
 #include <utility>
 
 #include "browser_surface.h"
+#include "bridge_protocol.h"
 #include "engine_internal.h"
 #include "include/base/cef_bind.h"
 #include "include/base/cef_callback.h"
@@ -31,6 +33,8 @@ constexpr size_t kMaximumTextSize = 1024 * 1024;
 constexpr int32_t kMaximumViewportDimension = 32768;
 constexpr int64_t kCookieFlushTimeoutMs = 30000;
 constexpr int64_t kDevToolsOpenTimeoutMs = 30000;
+constexpr uint64_t kMaximumBridgeRequestId =
+    static_cast<uint64_t>((std::numeric_limits<int64_t>::max)());
 constexpr kweb_browser_handle kMaximumBrowserHandle =
     static_cast<kweb_browser_handle>(std::numeric_limits<int64_t>::max());
 
@@ -112,9 +116,12 @@ std::optional<std::string> ValidateUrl(const char *data, size_t size) {
   return url;
 }
 
+
 class BrowserSession;
 
 class DevToolsClient;
+
+class BridgeQueryHandler;
 
 class SessionRegistry final {
 public:
@@ -125,6 +132,8 @@ public:
   kweb_status Close(kweb_browser_handle handle);
   kweb_status OpenDevTools(kweb_browser_handle handle);
   kweb_status CloseDevTools(kweb_browser_handle handle);
+  kweb_status BridgeRespond(kweb_browser_handle handle, uint64_t request_id,
+                            std::string response, bool success);
   void Complete(kweb_browser_handle handle, BrowserSession *session);
   uint64_t LiveCount() const;
 
@@ -172,6 +181,10 @@ public:
   bool OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
                       CefRefPtr<CefRequest> request, bool user_gesture,
                       bool is_redirect) override;
+  bool OnProcessMessageReceived(
+      CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+      CefProcessId source_process,
+      CefRefPtr<CefProcessMessage> message) override;
   void OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser,
                                  TerminationStatus status, int error_code,
                                  const CefString &error_string) override;
@@ -194,6 +207,23 @@ public:
 private:
   const std::weak_ptr<BrowserSession> session_;
   IMPLEMENT_REFCOUNTING(DevToolsClient);
+};
+
+class BridgeQueryHandler final
+    : public CefMessageRouterBrowserSide::Handler {
+public:
+  explicit BridgeQueryHandler(std::weak_ptr<BrowserSession> session)
+      : session_(std::move(session)) {}
+
+  bool OnQuery(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+               int64_t query_id, const CefString &request, bool persistent,
+               CefRefPtr<Callback> callback) override;
+  void OnQueryCanceled(CefRefPtr<CefBrowser> browser,
+                       CefRefPtr<CefFrame> frame,
+                       int64_t query_id) override;
+
+private:
+  const std::weak_ptr<BrowserSession> session_;
 };
 
 class ProfileContextHandler final : public CefRequestContextHandler {
@@ -225,12 +255,15 @@ public:
                  uintptr_t native_parent, int32_t x, int32_t y, int32_t width,
                  int32_t height, std::filesystem::path profile_path,
                  std::string initial_url, kweb_browser_event_callback callback,
-                 void *user_data)
+                 void *user_data, std::string bridge_origin,
+                 kweb_bridge_event_callback bridge_callback,
+                 void *bridge_user_data)
       : engine_(engine), handle_(handle), native_parent_(native_parent), x_(x),
         y_(y), width_(width), height_(height),
         profile_path_(std::move(profile_path)),
         initial_url_(std::move(initial_url)), callback_(callback),
-        user_data_(user_data) {}
+        user_data_(user_data), bridge_origin_(std::move(bridge_origin)),
+        bridge_callback_(bridge_callback), bridge_user_data_(bridge_user_data) {}
 
   kweb_status Start() {
     auto self = shared_from_this();
@@ -359,6 +392,87 @@ public:
     return KWEB_STATUS_OK;
   }
 
+  kweb_status BridgeRespond(uint64_t request_id, std::string response,
+                            bool success) {
+    if (request_id == 0) {
+      return KWEB_STATUS_INVALID_ARGUMENT;
+    }
+    if (!IsValidBridgeJson(response)) {
+      return KWEB_STATUS_BRIDGE_RESPONSE_INVALID;
+    }
+    CefRefPtr<CefMessageRouterBrowserSide::Callback> callback;
+    {
+      std::lock_guard lock(bridge_mutex_);
+      const auto found = bridge_requests_.find(request_id);
+      if (found == bridge_requests_.end()) {
+        return KWEB_STATUS_BRIDGE_REQUEST_NOT_FOUND;
+      }
+      callback = found->second;
+      bridge_requests_.erase(found);
+      const auto query = std::find_if(
+          bridge_query_ids_.begin(), bridge_query_ids_.end(),
+          [request_id](const auto &entry) {
+            return entry.second == request_id;
+          });
+      if (query != bridge_query_ids_.end()) {
+        bridge_query_ids_.erase(query);
+      }
+    }
+    if (success) {
+      callback->Success(response);
+    } else {
+      callback->Failure(kBridgeFailureCode, response);
+    }
+    return KWEB_STATUS_OK;
+  }
+
+  bool BridgeQuery(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+                   int64_t query_id, const CefString &request, bool persistent,
+                   CefRefPtr<CefMessageRouterBrowserSide::Callback> callback) {
+    CEF_REQUIRE_UI_THREAD();
+    if (!bridge_callback_ || !browser_ || !browser->IsSame(browser_) ||
+        !frame || !frame->IsMain() || persistent || query_id <= 0 ||
+        !callback || BridgeOriginFromUrl(frame->GetURL()) != bridge_origin_) {
+      return false;
+    }
+    const std::string payload = request.ToString();
+    if (!IsValidBridgeJson(payload)) {
+      callback->Failure(
+          kBridgeFailureCode,
+          "{\"code\":\"bridge.request.invalid\",\"message\":"
+          "\"The bridge request is invalid.\"}");
+      return true;
+    }
+    if (next_bridge_request_id_ > kMaximumBridgeRequestId) {
+      Fatal(KWEB_STATUS_HANDLE_EXHAUSTED, "bridge-request-id-exhausted");
+      return false;
+    }
+    const uint64_t request_id = next_bridge_request_id_++;
+    {
+      std::lock_guard lock(bridge_mutex_);
+      bridge_requests_.emplace(request_id, callback);
+      bridge_query_ids_.emplace(query_id, request_id);
+    }
+    EmitBridge(KWEB_BRIDGE_EVENT_REQUEST, request_id, payload);
+    return true;
+  }
+
+  void BridgeQueryCanceled(int64_t query_id) {
+    CEF_REQUIRE_UI_THREAD();
+    uint64_t request_id = 0;
+    {
+      std::lock_guard lock(bridge_mutex_);
+      const auto found = bridge_query_ids_.find(query_id);
+      if (found == bridge_query_ids_.end()) {
+        return;
+      }
+      request_id = found->second;
+      bridge_query_ids_.erase(found);
+      bridge_requests_.erase(request_id);
+    }
+    EmitBridge(KWEB_BRIDGE_EVENT_CANCELLED, request_id, {});
+  }
+
   void ProfileInitialized(CefRefPtr<CefRequestContext> context) {
     CEF_REQUIRE_UI_THREAD();
     if (closing_.load(std::memory_order_acquire)) {
@@ -387,8 +501,21 @@ public:
     window_info.windowless_rendering_enabled = false;
     CefBrowserSettings settings;
     settings.background_color = CefColorSetARGB(255, 255, 255, 255);
+    CefRefPtr<CefDictionaryValue> extra_info;
+    if (bridge_callback_) {
+      bridge_handler_ = std::make_unique<BridgeQueryHandler>(weak_from_this());
+      bridge_router_ = CefMessageRouterBrowserSide::Create(BridgeRouterConfig());
+      if (!bridge_router_ ||
+          !bridge_router_->AddHandler(bridge_handler_.get(), true)) {
+        Fatal(KWEB_STATUS_BROWSER_CREATE_FAILED, "bridge-router-create-failed");
+        return;
+      }
+      extra_info = CefDictionaryValue::Create();
+      extra_info->SetBool(kBridgeEnabledKey, true);
+      extra_info->SetString(kBridgeOriginKey, bridge_origin_);
+    }
     if (!CefBrowserHost::CreateBrowser(window_info, client_, initial_url_,
-                                       settings, nullptr, request_context_)) {
+                                       settings, extra_info, request_context_)) {
       Fatal(KWEB_STATUS_BROWSER_CREATE_FAILED, "cef-create-rejected");
     }
   }
@@ -506,6 +633,9 @@ public:
 
   void RendererTerminated(int status, int error_code,
                           const std::string &error) {
+    if (bridge_router_ && browser_) {
+      bridge_router_->OnRenderProcessTerminated(browser_);
+    }
     Fatal(error_code == 0 ? status : error_code,
           error.empty() ? "renderer-terminated" : error);
   }
@@ -513,6 +643,12 @@ public:
   void BeforeClose() {
     CEF_REQUIRE_UI_THREAD();
     ready_.store(false, std::memory_order_release);
+    if (bridge_router_ && browser_) {
+      bridge_router_->OnBeforeClose(browser_);
+      bridge_router_->RemoveHandler(bridge_handler_.get());
+      bridge_handler_.reset();
+      bridge_router_ = nullptr;
+    }
     const bool wait_for_devtools =
         devtools_open_requested_.load(std::memory_order_acquire);
     if (wait_for_devtools) {
@@ -542,6 +678,22 @@ public:
     }
     flush_completed_ = true;
     CloseBrowser();
+  }
+
+  bool HandleProcessMessage(CefRefPtr<CefBrowser> browser,
+                            CefRefPtr<CefFrame> frame,
+                            CefProcessId source_process,
+                            CefRefPtr<CefProcessMessage> message) {
+    CEF_REQUIRE_UI_THREAD();
+    return bridge_router_ && bridge_router_->OnProcessMessageReceived(
+                                 browser, frame, source_process, message);
+  }
+
+  void BeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame) {
+    CEF_REQUIRE_UI_THREAD();
+    if (bridge_router_) {
+      bridge_router_->OnBeforeBrowse(browser, frame);
+    }
   }
 
 private:
@@ -742,6 +894,14 @@ private:
     callback_(user_data_, &event);
   }
 
+  void EmitBridge(kweb_bridge_event_type type, uint64_t request_id,
+                  const std::string &payload) {
+    const kweb_bridge_event event = {
+        sizeof(kweb_bridge_event), KWEB_ABI_VERSION, type, 0, engine_, handle_,
+        request_id, {payload.data(), payload.size()}};
+    bridge_callback_(bridge_user_data_, &event);
+  }
+
   const kweb_engine_handle engine_;
   const kweb_browser_handle handle_;
   const uintptr_t native_parent_;
@@ -753,12 +913,22 @@ private:
   const std::string initial_url_;
   const kweb_browser_event_callback callback_;
   void *const user_data_;
+  const std::string bridge_origin_;
+  const kweb_bridge_event_callback bridge_callback_;
+  void *const bridge_user_data_;
   std::unique_ptr<BrowserSurface> surface_;
   CefRefPtr<SessionClient> client_;
   CefRefPtr<CefRequestContext> request_context_;
   CefRefPtr<CefBrowser> browser_;
   CefRefPtr<DevToolsClient> devtools_client_;
   CefRefPtr<CefBrowser> devtools_browser_;
+  std::unique_ptr<BridgeQueryHandler> bridge_handler_;
+  CefRefPtr<CefMessageRouterBrowserSide> bridge_router_;
+  std::mutex bridge_mutex_;
+  std::map<uint64_t, CefRefPtr<CefMessageRouterBrowserSide::Callback>>
+      bridge_requests_;
+  std::map<int64_t, uint64_t> bridge_query_ids_;
+  uint64_t next_bridge_request_id_ = 1;
   uint64_t sequence_ = 0;
   std::atomic<bool> ready_ = false;
   std::atomic<bool> closing_ = false;
@@ -854,12 +1024,25 @@ bool SessionClient::OnBeforeBrowse(CefRefPtr<CefBrowser> browser,
                                    CefRefPtr<CefRequest> request,
                                    bool user_gesture, bool is_redirect) {
   CEF_REQUIRE_UI_THREAD();
-  (void)browser;
+  if (auto session = session_.lock()) {
+    session->BeforeBrowse(browser, frame);
+  }
   if (frame->IsMain()) {
     if (auto session = session_.lock()) {
       session->NavigationStarted(request->GetURL().ToString(), user_gesture,
                                  is_redirect);
     }
+  }
+  return false;
+}
+
+bool SessionClient::OnProcessMessageReceived(
+    CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+    CefProcessId source_process, CefRefPtr<CefProcessMessage> message) {
+  CEF_REQUIRE_UI_THREAD();
+  if (auto session = session_.lock()) {
+    return session->HandleProcessMessage(browser, frame, source_process,
+                                         message);
   }
   return false;
 }
@@ -900,6 +1083,29 @@ void DevToolsClient::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
   }
 }
 
+bool BridgeQueryHandler::OnQuery(CefRefPtr<CefBrowser> browser,
+                                 CefRefPtr<CefFrame> frame, int64_t query_id,
+                                 const CefString &request, bool persistent,
+                                 CefRefPtr<Callback> callback) {
+  CEF_REQUIRE_UI_THREAD();
+  if (auto session = session_.lock()) {
+    return session->BridgeQuery(browser, frame, query_id, request, persistent,
+                                callback);
+  }
+  return false;
+}
+
+void BridgeQueryHandler::OnQueryCanceled(CefRefPtr<CefBrowser> browser,
+                                         CefRefPtr<CefFrame> frame,
+                                         int64_t query_id) {
+  CEF_REQUIRE_UI_THREAD();
+  (void)browser;
+  (void)frame;
+  if (auto session = session_.lock()) {
+    session->BridgeQueryCanceled(query_id);
+  }
+}
+
 void ProfileContextHandler::OnRequestContextInitialized(
     CefRefPtr<CefRequestContext> request_context) {
   CEF_REQUIRE_UI_THREAD();
@@ -926,6 +1132,11 @@ kweb_status SessionRegistry::Create(const kweb_browser_config *config,
   if (config->callback == nullptr || config->native_parent == 0) {
     return KWEB_STATUS_INVALID_ARGUMENT;
   }
+  const bool bridge_enabled = config->bridge_callback != nullptr;
+  if (bridge_enabled != (config->bridge_origin.data != nullptr &&
+                         config->bridge_origin.size != 0)) {
+    return KWEB_STATUS_INVALID_ARGUMENT;
+  }
   if (config->width <= 0 || config->height <= 0 ||
       config->width > kMaximumViewportDimension ||
       config->height > kMaximumViewportDimension) {
@@ -946,6 +1157,14 @@ kweb_status SessionRegistry::Create(const kweb_browser_config *config,
   if (!url) {
     return KWEB_STATUS_NAVIGATION_INVALID;
   }
+  std::string bridge_origin;
+  if (bridge_enabled) {
+    const auto validated_origin = ValidateBridgeOrigin(config->bridge_origin);
+    if (!validated_origin) {
+      return KWEB_STATUS_BRIDGE_ORIGIN_INVALID;
+    }
+    bridge_origin = *validated_origin;
+  }
 
   std::shared_ptr<BrowserSession> session;
   kweb_browser_handle handle = KWEB_INVALID_BROWSER_HANDLE;
@@ -958,7 +1177,8 @@ kweb_status SessionRegistry::Create(const kweb_browser_config *config,
     session = std::make_shared<BrowserSession>(
         config->engine, handle, config->native_parent, config->x, config->y,
         config->width, config->height, *profile, *url, config->callback,
-        config->user_data);
+        config->user_data, std::move(bridge_origin), config->bridge_callback,
+        config->bridge_user_data);
     sessions_.emplace(handle, session);
   }
   const kweb_status start_status = session->Start();
@@ -1006,6 +1226,16 @@ kweb_status SessionRegistry::CloseDevTools(kweb_browser_handle handle) {
   return session ? session->CloseDevTools() : KWEB_STATUS_INVALID_HANDLE;
 }
 
+kweb_status SessionRegistry::BridgeRespond(kweb_browser_handle handle,
+                                           uint64_t request_id,
+                                           std::string response,
+                                           bool success) {
+  auto session = Lookup(handle);
+  return session ? session->BridgeRespond(request_id, std::move(response),
+                                          success)
+                 : KWEB_STATUS_INVALID_HANDLE;
+}
+
 void SessionRegistry::Complete(kweb_browser_handle handle,
                                BrowserSession *session) {
   std::lock_guard lock(mutex_);
@@ -1038,6 +1268,21 @@ kweb_status OpenDevToolsSession(kweb_browser_handle browser) {
 
 kweb_status CloseDevToolsSession(kweb_browser_handle browser) {
   return GuardStatus([&] { return Registry().CloseDevTools(browser); });
+}
+
+kweb_status RespondToBridgeSession(kweb_browser_handle browser,
+                                   uint64_t request_id,
+                                   const char *response_utf8,
+                                   size_t response_size, bool success) {
+  if (response_utf8 == nullptr || response_size == 0 ||
+      response_size > kMaximumTextSize ||
+      !IsValidUtf8(response_utf8, response_size)) {
+    return KWEB_STATUS_BRIDGE_RESPONSE_INVALID;
+  }
+  return GuardStatus([&] {
+    return Registry().BridgeRespond(
+        browser, request_id, std::string(response_utf8, response_size), success);
+  });
 }
 
 kweb_status CreateBrowserSession(const kweb_browser_config *config,

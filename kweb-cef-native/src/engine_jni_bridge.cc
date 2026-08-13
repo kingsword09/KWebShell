@@ -35,6 +35,8 @@ constexpr char kEngineSinkSignature[] = "(JJI)V";
 constexpr char kBrowserSinkMethod[] = "onNativeBrowserEvent";
 constexpr char kBrowserSinkSignature[] =
     "(JJJIILjava/lang/String;III)V";
+constexpr char kBridgeSinkMethod[] = "onNativeBridgeEvent";
+constexpr char kBridgeSinkSignature[] = "(JJJILjava/lang/String;)V";
 
 using EngineAbiVersionFunction = uint32_t(KWEB_ABI_CALL *)(void);
 using EnginePlatformStartupFunction = kweb_status(KWEB_ABI_CALL *)(const char *,
@@ -51,6 +53,8 @@ using BrowserResizeFunction = kweb_status(KWEB_ABI_CALL *)(kweb_browser_handle,
                                                            int32_t, int32_t);
 using BrowserCloseFunction = kweb_status(KWEB_ABI_CALL *)(kweb_browser_handle);
 using BrowserDevToolsFunction = kweb_status(KWEB_ABI_CALL *)(kweb_browser_handle);
+using BrowserBridgeFunction = kweb_status(KWEB_ABI_CALL *)(
+    kweb_browser_handle, uint64_t, const char *, size_t);
 using LiveBrowserCountFunction = uint64_t(KWEB_ABI_CALL *)(void);
 
 #if defined(_WIN32)
@@ -77,6 +81,8 @@ struct EngineApi final {
   BrowserCloseFunction browser_close = nullptr;
   BrowserDevToolsFunction browser_open_devtools = nullptr;
   BrowserDevToolsFunction browser_close_devtools = nullptr;
+  BrowserBridgeFunction browser_bridge_respond = nullptr;
+  BrowserBridgeFunction browser_bridge_fail = nullptr;
   LiveBrowserCountFunction live_browser_count = nullptr;
 
   bool IsLoaded() const {
@@ -87,6 +93,8 @@ struct EngineApi final {
            browser_resize != nullptr && browser_close != nullptr &&
            browser_open_devtools != nullptr &&
            browser_close_devtools != nullptr &&
+           browser_bridge_respond != nullptr &&
+           browser_bridge_fail != nullptr &&
            live_browser_count != nullptr;
   }
 };
@@ -107,12 +115,16 @@ struct EngineJniCallbackContext final {
 
 struct BrowserJniCallbackContext final {
   BrowserJniCallbackContext(JavaVM *vm_value, jobject sink_value,
-                            jmethodID on_event_value)
-      : vm(vm_value), sink(sink_value), on_event(on_event_value) {}
+                            jmethodID on_event_value, jobject bridge_sink_value,
+                            jmethodID on_bridge_event_value)
+      : vm(vm_value), sink(sink_value), on_event(on_event_value),
+        bridge_sink(bridge_sink_value), on_bridge_event(on_bridge_event_value) {}
 
   JavaVM *vm;
   jobject sink;
   jmethodID on_event;
+  jobject bridge_sink;
+  jmethodID on_bridge_event;
   std::atomic<kweb_browser_handle> handle = KWEB_INVALID_BROWSER_HANDLE;
   std::atomic<bool> failed = false;
   std::atomic<bool> terminal_event = false;
@@ -151,6 +163,9 @@ void ReleaseBrowserContext(
     return;
   }
   env->DeleteGlobalRef(context->sink);
+  if (context->bridge_sink != nullptr) {
+    env->DeleteGlobalRef(context->bridge_sink);
+  }
   std::lock_guard lock(browser_contexts_mutex);
   const auto found = browser_contexts.find(context.get());
   if (found != browser_contexts.end() && found->second == context) {
@@ -306,6 +321,10 @@ kweb_status LoadEngineApi(const std::string &engine_path_utf8,
       candidate.engine_library, "kweb_browser_open_devtools");
   candidate.browser_close_devtools = ResolveFunction<BrowserDevToolsFunction>(
       candidate.engine_library, "kweb_browser_close_devtools");
+  candidate.browser_bridge_respond = ResolveFunction<BrowserBridgeFunction>(
+      candidate.engine_library, "kweb_browser_bridge_respond");
+  candidate.browser_bridge_fail = ResolveFunction<BrowserBridgeFunction>(
+      candidate.engine_library, "kweb_browser_bridge_fail");
   candidate.live_browser_count = ResolveFunction<LiveBrowserCountFunction>(
       candidate.engine_library, "kweb_live_browser_count");
   if (candidate.abi_version == nullptr ||
@@ -317,6 +336,8 @@ kweb_status LoadEngineApi(const std::string &engine_path_utf8,
       candidate.browser_close == nullptr ||
       candidate.browser_open_devtools == nullptr ||
       candidate.browser_close_devtools == nullptr ||
+      candidate.browser_bridge_respond == nullptr ||
+      candidate.browser_bridge_fail == nullptr ||
       candidate.live_browser_count == nullptr) {
     ResetEngineApi(&candidate);
     return KWEB_STATUS_ENGINE_SYMBOL_MISSING;
@@ -505,6 +526,76 @@ void KWEB_ABI_CALL ForwardBrowserEvent(void *user_data,
   }
 }
 
+void KWEB_ABI_CALL ForwardBridgeEvent(void *user_data,
+                                      const kweb_bridge_event *event) {
+  auto *context = static_cast<BrowserJniCallbackContext *>(user_data);
+  if (context == nullptr || event == nullptr ||
+      event->struct_size < sizeof(kweb_bridge_event) ||
+      event->abi_version != KWEB_ABI_VERSION || event->engine == 0 ||
+      event->browser == 0 || event->request_id == 0 ||
+      context->bridge_sink == nullptr || context->on_bridge_event == nullptr ||
+      (event->payload.data == nullptr && event->payload.size != 0)) {
+    if (context != nullptr) {
+      context->failed.store(true, std::memory_order_release);
+    }
+    return;
+  }
+
+  JNIEnv *env = nullptr;
+  bool attached = false;
+  const jint environment_status =
+      context->vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_8);
+  if (environment_status == JNI_EDETACHED) {
+    JavaVMAttachArgs arguments = {
+        JNI_VERSION_1_8, const_cast<char *>("KWebShell-bridge-native"), nullptr};
+    if (context->vm->AttachCurrentThread(reinterpret_cast<void **>(&env),
+                                         &arguments) != JNI_OK) {
+      context->failed.store(true, std::memory_order_release);
+      return;
+    }
+    attached = true;
+  } else if (environment_status != JNI_OK || env == nullptr) {
+    context->failed.store(true, std::memory_order_release);
+    return;
+  }
+
+  try {
+    const auto characters = Utf8ToJavaCharacters(
+        std::string_view(event->payload.data, event->payload.size));
+    if (!characters ||
+        characters->size() >
+            static_cast<size_t>((std::numeric_limits<jsize>::max)())) {
+      MarkBrowserCallbackFailed(context, env);
+    } else {
+      static constexpr jchar kEmptyText = 0;
+      const jchar *data =
+          characters->empty() ? &kEmptyText : characters->data();
+      jstring payload =
+          env->NewString(data, static_cast<jsize>(characters->size()));
+      if (payload == nullptr) {
+        MarkBrowserCallbackFailed(context, env);
+      } else {
+        env->CallVoidMethod(
+            context->bridge_sink, context->on_bridge_event,
+            static_cast<jlong>(event->engine),
+            static_cast<jlong>(event->browser),
+            static_cast<jlong>(event->request_id),
+            static_cast<jint>(event->type), payload);
+        if (env->ExceptionCheck()) {
+          MarkBrowserCallbackFailed(context, env);
+        }
+        env->DeleteLocalRef(payload);
+      }
+    }
+  } catch (...) {
+    MarkBrowserCallbackFailed(context, env);
+  }
+
+  if (attached && context->vm->DetachCurrentThread() != JNI_OK) {
+    context->failed.store(true, std::memory_order_release);
+  }
+}
+
 jlong EncodeCreateFailure(kweb_status status) {
   return -static_cast<jlong>(status);
 }
@@ -670,7 +761,8 @@ jlong JNICALL NativeLiveEngineCount(JNIEnv *, jobject) {
 jlong JNICALL NativeBrowserCreate(JNIEnv *env, jobject, jlong engine,
                                   jobject sink, jobject component,
                                   jstring profile_path, jstring initial_url,
-                                  jint x, jint y, jint width, jint height) {
+                                  jint x, jint y, jint width, jint height,
+                                  jstring bridge_origin, jobject bridge_sink) {
   if (sink == nullptr || component == nullptr) {
     return EncodeCreateFailure(KWEB_STATUS_INVALID_ARGUMENT);
   }
@@ -681,8 +773,12 @@ jlong JNICALL NativeBrowserCreate(JNIEnv *env, jobject, jlong engine,
     }
     const auto profile = JavaStringToUtf8(env, profile_path);
     const auto url = JavaStringToUtf8(env, initial_url);
-    if (!profile || !url) {
+    const auto origin = JavaStringToUtf8(env, bridge_origin);
+    if (!profile || !url || !origin) {
       return EncodeCreateFailure(KWEB_STATUS_INVALID_TEXT_ENCODING);
+    }
+    if (origin->empty() != (bridge_sink == nullptr)) {
+      return EncodeCreateFailure(KWEB_STATUS_INVALID_ARGUMENT);
     }
     kweb_status parent_status = KWEB_STATUS_OK;
     const uintptr_t native_parent =
@@ -717,13 +813,41 @@ jlong JNICALL NativeBrowserCreate(JNIEnv *env, jobject, jlong engine,
       }
       return EncodeCreateFailure(KWEB_STATUS_ALLOCATION_FAILED);
     }
-    auto context =
-        std::make_shared<BrowserJniCallbackContext>(vm, global_sink, on_event);
+    jobject global_bridge_sink = nullptr;
+    jmethodID on_bridge_event = nullptr;
+    if (bridge_sink != nullptr) {
+      const jclass bridge_sink_class = env->GetObjectClass(bridge_sink);
+      if (bridge_sink_class != nullptr) {
+        on_bridge_event = env->GetMethodID(
+            bridge_sink_class, kBridgeSinkMethod, kBridgeSinkSignature);
+        env->DeleteLocalRef(bridge_sink_class);
+      }
+      if (on_bridge_event == nullptr) {
+        if (env->ExceptionCheck()) {
+          env->ExceptionClear();
+        }
+        env->DeleteGlobalRef(global_sink);
+        return EncodeCreateFailure(KWEB_STATUS_INVALID_ARGUMENT);
+      }
+      global_bridge_sink = env->NewGlobalRef(bridge_sink);
+      if (global_bridge_sink == nullptr) {
+        if (env->ExceptionCheck()) {
+          env->ExceptionClear();
+        }
+        env->DeleteGlobalRef(global_sink);
+        return EncodeCreateFailure(KWEB_STATUS_ALLOCATION_FAILED);
+      }
+    }
+    auto context = std::make_shared<BrowserJniCallbackContext>(
+        vm, global_sink, on_event, global_bridge_sink, on_bridge_event);
     try {
       std::lock_guard lock(browser_contexts_mutex);
       browser_contexts.emplace(context.get(), context);
     } catch (...) {
       env->DeleteGlobalRef(global_sink);
+      if (global_bridge_sink != nullptr) {
+        env->DeleteGlobalRef(global_bridge_sink);
+      }
       throw;
     }
     const kweb_browser_config configuration = {
@@ -740,6 +864,9 @@ jlong JNICALL NativeBrowserCreate(JNIEnv *env, jobject, jlong engine,
         {url->data(), url->size()},
         &ForwardBrowserEvent,
         context.get(),
+        {origin->empty() ? nullptr : origin->data(), origin->size()},
+        bridge_sink == nullptr ? nullptr : &ForwardBridgeEvent,
+        bridge_sink == nullptr ? nullptr : context.get(),
     };
     kweb_browser_handle handle = KWEB_INVALID_BROWSER_HANDLE;
     const kweb_status status = api.browser_create(&configuration, &handle);
@@ -809,6 +936,46 @@ jint JNICALL NativeBrowserCloseDevTools(JNIEnv *, jobject, jlong handle) {
              : static_cast<jint>(KWEB_STATUS_ENGINE_LIBRARY_LOAD_FAILED);
 }
 
+jint NativeBrowserBridgeComplete(JNIEnv *env, jlong handle, jlong request_id,
+                                 jstring payload,
+                                 BrowserBridgeFunction function) {
+  try {
+    const auto value = JavaStringToUtf8(env, payload);
+    if (!value) {
+      return static_cast<jint>(KWEB_STATUS_INVALID_TEXT_ENCODING);
+    }
+    const EngineApi api = SnapshotEngineApi();
+    return api.IsLoaded()
+               ? static_cast<jint>(function(
+                     static_cast<kweb_browser_handle>(handle),
+                     static_cast<uint64_t>(request_id), value->data(),
+                     value->size()))
+               : static_cast<jint>(KWEB_STATUS_ENGINE_LIBRARY_LOAD_FAILED);
+  } catch (const std::bad_alloc &) {
+    return static_cast<jint>(KWEB_STATUS_ALLOCATION_FAILED);
+  } catch (...) {
+    return static_cast<jint>(KWEB_STATUS_INTERNAL_ERROR);
+  }
+}
+
+jint JNICALL NativeBrowserBridgeRespond(JNIEnv *env, jobject, jlong handle,
+                                        jlong request_id, jstring response) {
+  const EngineApi api = SnapshotEngineApi();
+  return api.IsLoaded()
+             ? NativeBrowserBridgeComplete(env, handle, request_id, response,
+                                           api.browser_bridge_respond)
+             : static_cast<jint>(KWEB_STATUS_ENGINE_LIBRARY_LOAD_FAILED);
+}
+
+jint JNICALL NativeBrowserBridgeFail(JNIEnv *env, jobject, jlong handle,
+                                     jlong request_id, jstring failure) {
+  const EngineApi api = SnapshotEngineApi();
+  return api.IsLoaded()
+             ? NativeBrowserBridgeComplete(env, handle, request_id, failure,
+                                           api.browser_bridge_fail)
+             : static_cast<jint>(KWEB_STATUS_ENGINE_LIBRARY_LOAD_FAILED);
+}
+
 jlong JNICALL NativeLiveBrowserCount(JNIEnv *, jobject) {
   const EngineApi api = SnapshotEngineApi();
   if (!api.IsLoaded()) {
@@ -851,7 +1018,9 @@ jint RegisterEngineNatives(JNIEnv *env, jclass bindings) {
        const_cast<char *>(
            "(JLio/github/kingsword09/kwebshell/desktop/internal/"
            "NativeBrowserEventSink;Ljava/awt/Component;Ljava/lang/String;"
-           "Ljava/lang/String;IIII)J"),
+           "Ljava/lang/String;IIIILjava/lang/String;"
+           "Lio/github/kingsword09/kwebshell/desktop/internal/"
+           "NativeBridgeEventSink;)J"),
        JniFunctionAddress(&NativeBrowserCreate)},
       {const_cast<char *>("browserNavigate"),
        const_cast<char *>("(JLjava/lang/String;)I"),
@@ -864,6 +1033,12 @@ jint RegisterEngineNatives(JNIEnv *env, jclass bindings) {
        JniFunctionAddress(&NativeBrowserOpenDevTools)},
       {const_cast<char *>("browserCloseDevTools"), const_cast<char *>("(J)I"),
        JniFunctionAddress(&NativeBrowserCloseDevTools)},
+      {const_cast<char *>("browserBridgeRespond"),
+       const_cast<char *>("(JJLjava/lang/String;)I"),
+       JniFunctionAddress(&NativeBrowserBridgeRespond)},
+      {const_cast<char *>("browserBridgeFail"),
+       const_cast<char *>("(JJLjava/lang/String;)I"),
+       JniFunctionAddress(&NativeBrowserBridgeFail)},
       {const_cast<char *>("liveBrowserCount"), const_cast<char *>("()J"),
        JniFunctionAddress(&NativeLiveBrowserCount)},
   };

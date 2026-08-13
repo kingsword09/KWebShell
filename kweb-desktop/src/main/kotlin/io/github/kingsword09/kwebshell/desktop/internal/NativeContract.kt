@@ -2,7 +2,7 @@ package io.github.kingsword09.kwebshell.desktop.internal
 
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 
-internal const val NATIVE_ABI_VERSION: Int = 4
+internal const val NATIVE_ABI_VERSION: Int = 5
 
 internal enum class NativeStatus(
     val value: Int,
@@ -52,6 +52,9 @@ internal enum class NativeStatus(
     DEVTOOLS_NOT_OPEN(41, "devtools-not-open"),
     DEVTOOLS_OPEN_FAILED(42, "devtools-open-failed"),
     DEVTOOLS_CLOSING(43, "devtools-closing"),
+    BRIDGE_ORIGIN_INVALID(44, "bridge-origin-invalid"),
+    BRIDGE_REQUEST_NOT_FOUND(45, "bridge-request-not-found"),
+    BRIDGE_RESPONSE_INVALID(46, "bridge-response-invalid"),
     ;
 
     companion object {

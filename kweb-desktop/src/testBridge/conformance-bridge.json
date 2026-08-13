@@ -1,0 +1,59 @@
+{
+  "namespace": "ConformanceBridge",
+  "kotlinPackage": "io.github.kingsword09.kwebshell.desktop.generated",
+  "version": 1,
+  "types": [
+    {
+      "name": "ProbeMetadata",
+      "fields": [
+        { "name": "enabled", "type": "boolean" },
+        { "name": "ratio", "type": "double" }
+      ]
+    },
+    {
+      "name": "ProbeRequest",
+      "fields": [
+        { "name": "text", "type": "string" },
+        { "name": "count", "type": "int32" },
+        { "name": "tags", "type": "string", "list": true },
+        { "name": "note", "type": "string", "nullable": true },
+        { "name": "metadata", "type": "ProbeMetadata" }
+      ]
+    },
+    {
+      "name": "ProbeResponse",
+      "fields": [
+        { "name": "text", "type": "string" },
+        { "name": "count", "type": "int32" },
+        { "name": "tags", "type": "string", "list": true },
+        { "name": "note", "type": "string", "nullable": true },
+        { "name": "metadata", "type": "ProbeMetadata" },
+        { "name": "handlerThread", "type": "string" }
+      ]
+    },
+    {
+      "name": "FailureRequest",
+      "fields": [
+        { "name": "reason", "type": "string" }
+      ]
+    },
+    {
+      "name": "WaitRequest",
+      "fields": [
+        { "name": "delayMs", "type": "int32" }
+      ]
+    },
+    {
+      "name": "AckResponse",
+      "fields": [
+        { "name": "accepted", "type": "boolean" }
+      ]
+    }
+  ],
+  "methods": [
+    { "name": "probe", "request": "ProbeRequest", "response": "ProbeResponse" },
+    { "name": "fail", "request": "FailureRequest", "response": "AckResponse" },
+    { "name": "crash", "request": "FailureRequest", "response": "AckResponse" },
+    { "name": "wait", "request": "WaitRequest", "response": "AckResponse" }
+  ]
+}

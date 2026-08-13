@@ -512,6 +512,45 @@ Acceptance:
 - Native CTest, real macOS integration, Linux/Xvfb integration, and Windows
   compilation validate the same ABI and lifecycle contract.
 
+#### Objective 4.3: Origin-scoped generated typed bridge
+
+This objective adds the first complete typed Kotlin/JavaScript bridge without
+publishing the unfinished Compose page API. The transport uses CEF's browser- and
+renderer-side message routers over a dedicated ABI v5 event channel. Bridge
+activation requires an explicit Kotlin dispatcher and one exact normalized HTTP
+or HTTPS origin; it is never inferred from the initial URL and never falls back
+to arbitrary renderer evaluation.
+
+Acceptance:
+
+- `kweb-bridge` owns a closed version-1 JSON request and typed failure protocol
+  independent of CEF. `kweb-bridge-codegen` strictly validates its schema and
+  deterministically emits serializable Kotlin models, handler/dispatcher source,
+  a TypeScript client, and browser-ready JavaScript.
+- Generated Kotlin is compiled with the serialization plugin. Generated
+  TypeScript compiles with the pinned TypeScript 7 compiler under
+  `--strict --noEmit`; Kotlin keywords, built-in/generated type collisions,
+  duplicate names, unknown fields, and unknown types fail generation.
+- ABI v5, exported symbols, JNI bindings, native status mapping, and Kotlin
+  ownership agree on a separate bridge event sink and one-shot success/failure
+  operations. Incomplete configuration, malformed origins, invalid JSON,
+  duplicate responses, and late responses fail with exact typed statuses.
+- The renderer installs CEF query functions only for an explicitly enabled
+  browser's main frame at the exact configured origin. Child frames, DevTools,
+  standalone hosts, cross-origin main pages, and unconfigured browsers never
+  receive the bridge. Every routed V8 context is released exactly once.
+- Kotlin handlers run asynchronously in a browser-owned coroutine scope, never
+  on the CEF UI or JNI callback thread. Timeout, `AbortSignal`, navigation,
+  renderer-context destruction, and browser close cancel the exact request;
+  response versus cancellation is an atomic one-winner race.
+- Real macOS CEF integration proves structured Unicode round trip, typed business
+  error, sanitized unexpected error, unknown method, timeout, abort, navigation
+  cancellation, page-close cancellation, frame/origin isolation, and zero leaked
+  browser/handler ownership. The identical root `check` contract runs on
+  Linux/Xvfb and Windows through GitHub Actions.
+- The bridge remains host RPC and is not used to emulate Manifest V3 `chrome.*`.
+  No public Compose browser API is advertised by this internal attachment slice.
+
 ### Phase 5: MV3 core runtime
 
 Deliver:

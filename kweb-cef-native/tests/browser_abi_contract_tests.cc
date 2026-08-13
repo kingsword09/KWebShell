@@ -41,6 +41,15 @@ int main() {
   Check(std::strcmp(kweb_status_name(KWEB_STATUS_DEVTOOLS_CLOSING),
                     "devtools-closing") == 0,
         "DevTools closing status must have a stable name");
+  Check(std::strcmp(kweb_status_name(KWEB_STATUS_BRIDGE_ORIGIN_INVALID),
+                    "bridge-origin-invalid") == 0,
+        "bridge origin status must have a stable name");
+  Check(std::strcmp(kweb_status_name(KWEB_STATUS_BRIDGE_REQUEST_NOT_FOUND),
+                    "bridge-request-not-found") == 0,
+        "bridge request lookup status must have a stable name");
+  Check(std::strcmp(kweb_status_name(KWEB_STATUS_BRIDGE_RESPONSE_INVALID),
+                    "bridge-response-invalid") == 0,
+        "bridge response validation status must have a stable name");
   Check(kweb_browser_create(nullptr, nullptr) == KWEB_STATUS_INVALID_ARGUMENT,
         "null browser create arguments must fail immediately");
   Check(kweb_browser_navigate(KWEB_INVALID_BROWSER_HANDLE, nullptr, 0) ==
@@ -58,6 +67,12 @@ int main() {
   Check(kweb_browser_close_devtools(KWEB_INVALID_BROWSER_HANDLE) ==
             KWEB_STATUS_INVALID_HANDLE,
         "stale DevTools close must return invalid handle");
+  Check(kweb_browser_bridge_respond(KWEB_INVALID_BROWSER_HANDLE, 1, "{}", 2) ==
+            KWEB_STATUS_INVALID_HANDLE,
+        "stale bridge response must return invalid handle");
+  Check(kweb_browser_bridge_fail(KWEB_INVALID_BROWSER_HANDLE, 1, "not-json",
+                                 8) == KWEB_STATUS_INVALID_HANDLE,
+        "stale bridge failure must return invalid handle before CEF parsing");
   Check(kweb_live_browser_count() == 0,
         "browser ABI contract must not own a browser in its unit process");
   if (failures != 0) {

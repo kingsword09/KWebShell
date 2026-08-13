@@ -1,11 +1,25 @@
 package io.github.kingsword09.kwebshell.desktop.internal
 
+import io.github.kingsword09.kwebshell.bridge.KWebBridgeDispatcher
+import io.github.kingsword09.kwebshell.bridge.KWebBridgeProtocol
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebConfigurationException
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import java.awt.Component
 import java.awt.EventQueue
 import java.awt.Toolkit
@@ -19,6 +33,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.ConcurrentHashMap
 
 internal enum class NativeBrowserEventType(val value: Int) {
     CREATED(1),
@@ -53,10 +68,21 @@ internal data class NativeBrowserEvent(
     val height: Int,
 )
 
+internal enum class NativeBridgeEventType(val value: Int) {
+    REQUEST(1),
+    CANCELLED(2),
+    ;
+
+    companion object {
+        fun fromValue(value: Int): NativeBridgeEventType? = entries.singleOrNull { it.value == value }
+    }
+}
+
 internal class NativeBrowser private constructor(
     private val engine: NativeEngine,
     private val listener: (NativeBrowserEvent) -> Unit,
     private val component: Component,
+    private val bridgeDispatcher: KWebBridgeDispatcher?,
 ) : AutoCloseable {
     private val mutableLifecycle = MutableStateFlow(KWebLifecycleState.OPENING)
     private val nativeHandle = AtomicLong(0)
@@ -80,6 +106,11 @@ internal class NativeBrowser private constructor(
         }
     }
     private val sink = NativeBrowserEventSink(::receiveNativeEvent)
+    private val bridgeScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO + CoroutineName("KWebShell-bridge-${dispatcherIds.incrementAndGet()}"),
+    )
+    private val bridgeJobs = ConcurrentHashMap<Long, Job>()
+    private val bridgeSink = bridgeDispatcher?.let { NativeBridgeEventSink(::receiveNativeBridgeEvent) }
 
     internal val lifecycle: StateFlow<KWebLifecycleState> = mutableLifecycle.asStateFlow()
 
@@ -163,6 +194,7 @@ internal class NativeBrowser private constructor(
                 }
             }
             callbackExecutor.shutdown()
+            closeBridgeScope()
             if (!awaitExecutorTermination()) {
                 failure = failure ?: KWebNativeException(
                     code = "native.browser.callback-timeout",
@@ -232,6 +264,102 @@ internal class NativeBrowser private constructor(
                 "A native browser callback arrived after dispatcher shutdown.",
                 error,
             )
+        }
+    }
+
+    private fun receiveNativeBridgeEvent(
+        engineHandle: Long,
+        browserHandle: Long,
+        requestId: Long,
+        typeValue: Int,
+        payload: String,
+    ) {
+        try {
+            callbackExecutor.execute {
+                if (!engine.ownsHandle(engineHandle) || browserHandle != callbackHandle.get() ||
+                    requestId <= 0L
+                ) {
+                    recordCallbackFailure(
+                        "native.bridge.callback-handle-mismatch",
+                        mapOf(
+                            "engine" to engineHandle.toString(),
+                            "browser" to browserHandle.toString(),
+                            "requestId" to requestId.toString(),
+                        ),
+                        "A native bridge callback targeted the wrong owner.",
+                    )
+                    return@execute
+                }
+                when (NativeBridgeEventType.fromValue(typeValue)) {
+                    NativeBridgeEventType.REQUEST -> launchBridgeRequest(browserHandle, requestId, payload)
+                    NativeBridgeEventType.CANCELLED -> bridgeJobs.remove(requestId)?.cancel(
+                        CancellationException("The page cancelled bridge request $requestId."),
+                    )
+                    null -> recordCallbackFailure(
+                        "native.bridge.callback-type-unknown",
+                        mapOf("type" to typeValue.toString()),
+                        "Native bridge callback type is unknown.",
+                    )
+                }
+            }
+        } catch (error: RejectedExecutionException) {
+            recordCallbackFailure(
+                "native.bridge.callback-after-close",
+                mapOf("requestId" to requestId.toString()),
+                "A native bridge callback arrived after dispatcher shutdown.",
+                error,
+            )
+        }
+    }
+
+    private fun launchBridgeRequest(browserHandle: Long, requestId: Long, payload: String) {
+        val dispatcher = bridgeDispatcher ?: run {
+            recordCallbackFailure(
+                "native.bridge.dispatcher-missing",
+                mapOf("requestId" to requestId.toString()),
+                "Native delivered a bridge request without a configured dispatcher.",
+            )
+            return
+        }
+        val job = bridgeScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                val response = dispatcher.dispatch(payload)
+                requireBridgeNativeSuccess(
+                    "browser-bridge-respond",
+                    NativeBindings.browserBridgeRespond(browserHandle, requestId, response),
+                    requestId,
+                )
+            } catch (_: CancellationException) {
+                throw CancellationException("Bridge request $requestId was cancelled.")
+            } catch (error: Throwable) {
+                val status = NativeBindings.browserBridgeFail(
+                    browserHandle,
+                    requestId,
+                    KWebBridgeProtocol.encodeFailure(error),
+                )
+                if (status != NativeStatus.OK.value &&
+                    status != NativeStatus.BRIDGE_REQUEST_NOT_FOUND.value
+                ) {
+                    recordCallbackFailure(
+                        "native.bridge.failure-response-rejected",
+                        mapOf("requestId" to requestId.toString(), "status" to status.toString()),
+                        "The native bridge rejected a typed failure response.",
+                        error,
+                    )
+                }
+            } finally {
+                bridgeJobs.remove(requestId)
+            }
+        }
+        if (bridgeJobs.putIfAbsent(requestId, job) != null) {
+            job.cancel(CancellationException("Duplicate bridge request ID $requestId."))
+            recordCallbackFailure(
+                "native.bridge.request-duplicate",
+                mapOf("requestId" to requestId.toString()),
+                "Native reused a live bridge request ID.",
+            )
+        } else {
+            job.start()
         }
     }
 
@@ -409,6 +537,35 @@ internal class NativeBrowser private constructor(
         }
     }
 
+    private fun requireBridgeNativeSuccess(operation: String, status: Int, requestId: Long) {
+        if (status != NativeStatus.OK.value && status != NativeStatus.BRIDGE_REQUEST_NOT_FOUND.value) {
+            throw nativeStatusException(
+                operation,
+                status,
+                mapOf("requestId" to requestId.toString()),
+            )
+        }
+    }
+
+    private fun closeBridgeScope() {
+        val jobs = bridgeJobs.values.toList()
+        bridgeScope.cancel(CancellationException("The native browser is closing."))
+        val completed = runBlocking {
+            withTimeoutOrNull(CALLBACK_TIMEOUT.toMillis()) {
+                jobs.joinAll()
+                true
+            } ?: false
+        }
+        if (!completed) {
+            recordCallbackFailure(
+                "native.bridge.shutdown-timeout",
+                mapOf("timeoutMs" to CALLBACK_TIMEOUT.toMillis().toString()),
+                "Bridge handlers did not stop after browser close.",
+            )
+        }
+        bridgeJobs.clear()
+    }
+
     private fun awaitBrowserEvent(event: CountDownLatch, operation: String) {
         val deadline = System.nanoTime() + CALLBACK_TIMEOUT.toNanos()
         while (System.nanoTime() < deadline) {
@@ -444,8 +601,17 @@ internal class NativeBrowser private constructor(
             initialUrl: String,
             width: Int,
             height: Int,
+            bridgeOrigin: String = "",
+            bridgeDispatcher: KWebBridgeDispatcher? = null,
             listener: (NativeBrowserEvent) -> Unit = {},
         ): NativeBrowser {
+            if ((bridgeDispatcher == null) != bridgeOrigin.isEmpty()) {
+                throw KWebConfigurationException(
+                    code = "native.bridge.configuration-incomplete",
+                    details = emptyMap(),
+                    message = "Bridge origin and dispatcher must be configured together.",
+                )
+            }
             if (!component.isDisplayable || !component.isShowing) {
                 throw KWebConfigurationException(
                     code = "native.browser.awt-parent-not-displayable",
@@ -481,7 +647,7 @@ internal class NativeBrowser private constructor(
                     cause = error,
                 )
             }
-            val browser = NativeBrowser(engine, listener, component)
+            val browser = NativeBrowser(engine, listener, component, bridgeDispatcher)
             val result = NativeEngine.onAwtEventDispatchThread {
                 NativeBindings.browserCreate(
                     engine.requireLiveHandle("browser-create"),
@@ -493,10 +659,13 @@ internal class NativeBrowser private constructor(
                     0,
                     width,
                     height,
+                    bridgeOrigin,
+                    browser.bridgeSink,
                 )
             }
             if (result <= 0L) {
                 browser.callbackExecutor.shutdownNow()
+                browser.closeBridgeScope()
                 val status = if (result < 0) (-result).toInt() else NativeStatus.INTERNAL_ERROR.value
                 throw nativeStatusException("browser-create", status)
             }

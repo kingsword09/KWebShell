@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "host_main.h"
+#include "bridge_renderer_app.h"
 #include "include/base/cef_logging.h"
 
 namespace {
@@ -26,8 +27,10 @@ int HandleXIoError(Display *display) {
 
 int main(int argc, char *argv[]) {
   CefMainArgs main_args(argc, argv);
+  CefRefPtr<CefApp> process_app =
+      kwebshell::CreateBridgeRendererApplication();
   const int subprocess_exit_code =
-      CefExecuteProcess(main_args, nullptr, nullptr);
+      CefExecuteProcess(main_args, process_app, nullptr);
   if (subprocess_exit_code >= 0) {
     return subprocess_exit_code;
   }

@@ -9,6 +9,8 @@ set(expected
   kweb_browser_resize
   kweb_browser_open_devtools
   kweb_browser_close_devtools
+  kweb_browser_bridge_respond
+  kweb_browser_bridge_fail
   kweb_engine_abi_version
   kweb_engine_close
   kweb_engine_create

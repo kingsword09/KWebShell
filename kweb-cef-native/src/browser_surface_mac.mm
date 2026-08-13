@@ -93,6 +93,15 @@ private:
 
 } // namespace
 
+void ConfigureDevToolsWindow(CefWindowInfo &window_info,
+                             uintptr_t native_parent, int32_t width,
+                             int32_t height) {
+  (void)native_parent;
+  CefString(&window_info.window_name) = "KWebShell DevTools";
+  window_info.bounds = CefRect(120, 120, width, height);
+  window_info.hidden = false;
+}
+
 std::unique_ptr<BrowserSurface>
 CreateBrowserSurface(uintptr_t native_parent, int32_t x, int32_t y,
                      int32_t width, int32_t height, kweb_status *status_out) {

@@ -2,7 +2,7 @@ package io.github.kingsword09.kwebshell.desktop.internal
 
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 
-internal const val NATIVE_ABI_VERSION: Int = 3
+internal const val NATIVE_ABI_VERSION: Int = 4
 
 internal enum class NativeStatus(
     val value: Int,
@@ -48,6 +48,10 @@ internal enum class NativeStatus(
     NAVIGATION_INVALID(37, "navigation-invalid"),
     REMOTE_DEBUGGING_PORT_INVALID(38, "remote-debugging-port-invalid"),
     REMOTE_DEBUGGING_PORT_UNAVAILABLE(39, "remote-debugging-port-unavailable"),
+    DEVTOOLS_ALREADY_OPEN(40, "devtools-already-open"),
+    DEVTOOLS_NOT_OPEN(41, "devtools-not-open"),
+    DEVTOOLS_OPEN_FAILED(42, "devtools-open-failed"),
+    DEVTOOLS_CLOSING(43, "devtools-closing"),
     ;
 
     companion object {

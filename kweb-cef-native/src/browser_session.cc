@@ -30,6 +30,7 @@ namespace {
 constexpr size_t kMaximumTextSize = 1024 * 1024;
 constexpr int32_t kMaximumViewportDimension = 32768;
 constexpr int64_t kCookieFlushTimeoutMs = 30000;
+constexpr int64_t kDevToolsOpenTimeoutMs = 30000;
 constexpr kweb_browser_handle kMaximumBrowserHandle =
     static_cast<kweb_browser_handle>(std::numeric_limits<int64_t>::max());
 
@@ -113,6 +114,8 @@ std::optional<std::string> ValidateUrl(const char *data, size_t size) {
 
 class BrowserSession;
 
+class DevToolsClient;
+
 class SessionRegistry final {
 public:
   kweb_status Create(const kweb_browser_config *config,
@@ -120,6 +123,8 @@ public:
   kweb_status Navigate(kweb_browser_handle handle, std::string url);
   kweb_status Resize(kweb_browser_handle handle, int32_t width, int32_t height);
   kweb_status Close(kweb_browser_handle handle);
+  kweb_status OpenDevTools(kweb_browser_handle handle);
+  kweb_status CloseDevTools(kweb_browser_handle handle);
   void Complete(kweb_browser_handle handle, BrowserSession *session);
   uint64_t LiveCount() const;
 
@@ -174,6 +179,21 @@ public:
 private:
   const std::weak_ptr<BrowserSession> session_;
   IMPLEMENT_REFCOUNTING(SessionClient);
+};
+
+class DevToolsClient final : public CefClient, public CefLifeSpanHandler {
+public:
+  explicit DevToolsClient(std::weak_ptr<BrowserSession> session)
+      : session_(std::move(session)) {}
+
+  CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
+
+  void OnAfterCreated(CefRefPtr<CefBrowser> browser) override;
+  void OnBeforeClose(CefRefPtr<CefBrowser> browser) override;
+
+private:
+  const std::weak_ptr<BrowserSession> session_;
+  IMPLEMENT_REFCOUNTING(DevToolsClient);
 };
 
 class ProfileContextHandler final : public CefRequestContextHandler {
@@ -288,6 +308,57 @@ public:
     return KWEB_STATUS_OK;
   }
 
+  kweb_status OpenDevTools() {
+    if (closing_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_BROWSER_CLOSING;
+    }
+    if (!ready_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_BROWSER_NOT_READY;
+    }
+    bool expected = false;
+    if (!devtools_open_requested_.compare_exchange_strong(
+            expected, true, std::memory_order_acq_rel)) {
+      return KWEB_STATUS_DEVTOOLS_ALREADY_OPEN;
+    }
+    devtools_open_failed_.store(false, std::memory_order_release);
+    auto self = shared_from_this();
+    if (!CefPostTask(
+            TID_UI,
+            base::BindOnce(
+                [](std::shared_ptr<BrowserSession> session) {
+                  session->ShowDevToolsOnUiThread();
+                },
+                std::move(self)))) {
+      devtools_open_requested_.store(false, std::memory_order_release);
+      devtools_close_requested_.store(false, std::memory_order_release);
+      return KWEB_STATUS_CEF_UI_TASK_FAILED;
+    }
+    return KWEB_STATUS_OK;
+  }
+
+  kweb_status CloseDevTools() {
+    if (!devtools_opened_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_DEVTOOLS_NOT_OPEN;
+    }
+    bool expected = false;
+    if (!devtools_close_requested_.compare_exchange_strong(
+            expected, true, std::memory_order_acq_rel)) {
+      return KWEB_STATUS_DEVTOOLS_CLOSING;
+    }
+    auto self = shared_from_this();
+    if (!CefPostTask(
+            TID_UI,
+            base::BindOnce(
+                [](std::shared_ptr<BrowserSession> session) {
+                  session->CloseDevToolsOnUiThread();
+                },
+                std::move(self)))) {
+      devtools_close_requested_.store(false, std::memory_order_release);
+      return KWEB_STATUS_CEF_UI_TASK_FAILED;
+    }
+    return KWEB_STATUS_OK;
+  }
+
   void ProfileInitialized(CefRefPtr<CefRequestContext> context) {
     CEF_REQUIRE_UI_THREAD();
     if (closing_.load(std::memory_order_acquire)) {
@@ -346,6 +417,63 @@ public:
     Emit(KWEB_BROWSER_EVENT_CREATED, 0, {}, 0, width_, height_);
   }
 
+  void DevToolsCreated(CefRefPtr<DevToolsClient> client,
+                       CefRefPtr<CefBrowser> browser) {
+    CEF_REQUIRE_UI_THREAD();
+    if (devtools_client_.get() != client.get()) {
+      if (browser) {
+        browser->GetHost()->CloseBrowser(true);
+      }
+      return;
+    }
+    if (!browser || !browser->IsPopup() ||
+        browser->GetHost()->GetRuntimeStyle() != CEF_RUNTIME_STYLE_CHROME ||
+        browser->GetHost()->IsWindowRenderingDisabled() ||
+        browser->GetHost()->GetWindowHandle() == kNullWindowHandle) {
+      devtools_open_failed_.store(true, std::memory_order_release);
+      Emit(KWEB_BROWSER_EVENT_DEVTOOLS_FAILED, 0,
+           "devtools-browser-contract-invalid",
+           KWEB_STATUS_DEVTOOLS_OPEN_FAILED, 0, 0);
+      if (browser) {
+        devtools_browser_ = browser;
+        devtools_close_requested_.store(true, std::memory_order_release);
+        browser->GetHost()->CloseBrowser(true);
+      } else {
+        ResetDevToolsState();
+      }
+      return;
+    }
+    devtools_browser_ = browser;
+    if (devtools_open_failed_.load(std::memory_order_acquire)) {
+      devtools_close_requested_.store(true, std::memory_order_release);
+      browser->GetHost()->CloseBrowser(true);
+      return;
+    }
+    if (closing_.load(std::memory_order_acquire)) {
+      devtools_open_failed_.store(true, std::memory_order_release);
+      Emit(KWEB_BROWSER_EVENT_DEVTOOLS_FAILED, 0, "browser-closing",
+           KWEB_STATUS_BROWSER_CLOSING, 0, 0);
+      devtools_close_requested_.store(true, std::memory_order_release);
+      browser->GetHost()->CloseBrowser(true);
+      return;
+    }
+    devtools_opened_.store(true, std::memory_order_release);
+    Emit(KWEB_BROWSER_EVENT_DEVTOOLS_OPENED, 0, {}, 0, 0, 0);
+  }
+
+  void DevToolsClosed(CefRefPtr<DevToolsClient> client) {
+    CEF_REQUIRE_UI_THREAD();
+    if (devtools_client_.get() != client.get()) {
+      return;
+    }
+    const bool was_opened =
+        devtools_opened_.exchange(false, std::memory_order_acq_rel);
+    if (was_opened) {
+      Emit(KWEB_BROWSER_EVENT_DEVTOOLS_CLOSED, 0, {}, 0, 0, 0);
+    }
+    ResetDevToolsState();
+  }
+
   void AddressChanged(const std::string &url) {
     Emit(KWEB_BROWSER_EVENT_ADDRESS_CHANGED, 0, url, 0, 0, 0);
   }
@@ -385,6 +513,15 @@ public:
   void BeforeClose() {
     CEF_REQUIRE_UI_THREAD();
     ready_.store(false, std::memory_order_release);
+    const bool wait_for_devtools =
+        devtools_open_requested_.load(std::memory_order_acquire);
+    if (wait_for_devtools) {
+      source_close_waiting_for_devtools_ = true;
+      devtools_close_requested_.store(true, std::memory_order_release);
+      if (devtools_browser_) {
+        devtools_browser_->GetHost()->CloseBrowser(true);
+      }
+    }
     if (surface_) {
       surface_->BrowserDestroyed();
       surface_.reset();
@@ -392,7 +529,9 @@ public:
     browser_ = nullptr;
     client_ = nullptr;
     request_context_ = nullptr;
-    CompleteTerminal();
+    if (!wait_for_devtools) {
+      CompleteTerminal();
+    }
   }
 
   void FlushCompleted() {
@@ -406,6 +545,81 @@ public:
   }
 
 private:
+  void ShowDevToolsOnUiThread() {
+    CEF_REQUIRE_UI_THREAD();
+    if (closing_.load(std::memory_order_acquire) || !browser_) {
+      devtools_open_failed_.store(true, std::memory_order_release);
+      Emit(KWEB_BROWSER_EVENT_DEVTOOLS_FAILED, 0, "browser-closing",
+           KWEB_STATUS_BROWSER_CLOSING, 0, 0);
+      devtools_open_requested_.store(false, std::memory_order_release);
+      return;
+    }
+    CefRefPtr<DevToolsClient> client =
+        new DevToolsClient(weak_from_this());
+    devtools_client_ = client;
+    CefWindowInfo window_info;
+    ConfigureDevToolsWindow(window_info, native_parent_, 1200, 800);
+    CefBrowserSettings settings;
+    settings.background_color = CefColorSetARGB(255, 255, 255, 255);
+    browser_->GetHost()->ShowDevTools(window_info, client, settings,
+                                      CefPoint());
+    CefPostDelayedTask(
+        TID_UI,
+        base::BindOnce(
+            [](std::shared_ptr<BrowserSession> session,
+               CefRefPtr<DevToolsClient> requested_client) {
+              session->HandleDevToolsOpenTimeout(requested_client);
+            },
+            shared_from_this(), std::move(client)),
+        kDevToolsOpenTimeoutMs);
+  }
+
+  void HandleDevToolsOpenTimeout(CefRefPtr<DevToolsClient> client) {
+    CEF_REQUIRE_UI_THREAD();
+    if (devtools_client_.get() != client.get() ||
+        !devtools_open_requested_.load(std::memory_order_acquire) ||
+        devtools_opened_.load(std::memory_order_acquire)) {
+      return;
+    }
+    Emit(KWEB_BROWSER_EVENT_DEVTOOLS_FAILED, 0, "devtools-open-timeout",
+         KWEB_STATUS_DEVTOOLS_OPEN_FAILED, 0, 0);
+    devtools_open_failed_.store(true, std::memory_order_release);
+    if (browser_ && browser_->GetHost()->HasDevTools()) {
+      devtools_close_requested_.store(true, std::memory_order_release);
+      browser_->GetHost()->CloseDevTools();
+      return;
+    }
+    devtools_client_ = nullptr;
+    devtools_open_requested_.store(false, std::memory_order_release);
+    devtools_close_requested_.store(false, std::memory_order_release);
+    if (source_close_waiting_for_devtools_) {
+      source_close_waiting_for_devtools_ = false;
+      CompleteTerminal();
+    }
+  }
+
+  void CloseDevToolsOnUiThread() {
+    CEF_REQUIRE_UI_THREAD();
+    if (browser_ && devtools_opened_.load(std::memory_order_acquire)) {
+      browser_->GetHost()->CloseDevTools();
+      return;
+    }
+  }
+
+  void ResetDevToolsState() {
+    CEF_REQUIRE_UI_THREAD();
+    devtools_browser_ = nullptr;
+    devtools_client_ = nullptr;
+    devtools_opened_.store(false, std::memory_order_release);
+    devtools_open_requested_.store(false, std::memory_order_release);
+    devtools_close_requested_.store(false, std::memory_order_release);
+    devtools_open_failed_.store(false, std::memory_order_release);
+    if (source_close_waiting_for_devtools_) {
+      source_close_waiting_for_devtools_ = false;
+      CompleteTerminal();
+    }
+  }
+
   void CreateProfileContext() {
     CEF_REQUIRE_UI_THREAD();
     CefRequestContextSettings settings;
@@ -543,11 +757,18 @@ private:
   CefRefPtr<SessionClient> client_;
   CefRefPtr<CefRequestContext> request_context_;
   CefRefPtr<CefBrowser> browser_;
+  CefRefPtr<DevToolsClient> devtools_client_;
+  CefRefPtr<CefBrowser> devtools_browser_;
   uint64_t sequence_ = 0;
   std::atomic<bool> ready_ = false;
   std::atomic<bool> closing_ = false;
   std::atomic<bool> fatal_emitted_ = false;
   std::atomic<bool> terminal_emitted_ = false;
+  std::atomic<bool> devtools_open_requested_ = false;
+  std::atomic<bool> devtools_opened_ = false;
+  std::atomic<bool> devtools_close_requested_ = false;
+  std::atomic<bool> devtools_open_failed_ = false;
+  bool source_close_waiting_for_devtools_ = false;
   bool flush_started_ = false;
   bool flush_completed_ = false;
 };
@@ -653,6 +874,32 @@ void SessionClient::OnRenderProcessTerminated(
   }
 }
 
+void DevToolsClient::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
+  CEF_REQUIRE_UI_THREAD();
+  if (auto session = session_.lock()) {
+    CefRefPtr<DevToolsClient> client(this);
+    CefPostTask(
+        TID_UI,
+        base::BindOnce(
+            [](std::shared_ptr<BrowserSession> owner,
+               CefRefPtr<DevToolsClient> callback_client,
+               CefRefPtr<CefBrowser> created) {
+              owner->DevToolsCreated(callback_client, created);
+            },
+            std::move(session), std::move(client), std::move(browser)));
+  } else if (browser) {
+    browser->GetHost()->CloseBrowser(true);
+  }
+}
+
+void DevToolsClient::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
+  CEF_REQUIRE_UI_THREAD();
+  (void)browser;
+  if (auto session = session_.lock()) {
+    session->DevToolsClosed(CefRefPtr<DevToolsClient>(this));
+  }
+}
+
 void ProfileContextHandler::OnRequestContextInitialized(
     CefRefPtr<CefRequestContext> request_context) {
   CEF_REQUIRE_UI_THREAD();
@@ -749,6 +996,16 @@ kweb_status SessionRegistry::Close(kweb_browser_handle handle) {
   return session ? session->Close() : KWEB_STATUS_INVALID_HANDLE;
 }
 
+kweb_status SessionRegistry::OpenDevTools(kweb_browser_handle handle) {
+  auto session = Lookup(handle);
+  return session ? session->OpenDevTools() : KWEB_STATUS_INVALID_HANDLE;
+}
+
+kweb_status SessionRegistry::CloseDevTools(kweb_browser_handle handle) {
+  auto session = Lookup(handle);
+  return session ? session->CloseDevTools() : KWEB_STATUS_INVALID_HANDLE;
+}
+
 void SessionRegistry::Complete(kweb_browser_handle handle,
                                BrowserSession *session) {
   std::lock_guard lock(mutex_);
@@ -774,6 +1031,14 @@ template <typename Operation> kweb_status GuardStatus(Operation operation) {
 }
 
 } // namespace
+
+kweb_status OpenDevToolsSession(kweb_browser_handle browser) {
+  return GuardStatus([&] { return Registry().OpenDevTools(browser); });
+}
+
+kweb_status CloseDevToolsSession(kweb_browser_handle browser) {
+  return GuardStatus([&] { return Registry().CloseDevTools(browser); });
+}
 
 kweb_status CreateBrowserSession(const kweb_browser_config *config,
                                  kweb_browser_handle *browser_out) {

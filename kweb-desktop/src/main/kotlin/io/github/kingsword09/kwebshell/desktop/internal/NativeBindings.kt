@@ -139,6 +139,12 @@ internal object NativeBindings {
     @JvmName("browserClose")
     internal external fun browserClose(handle: Long): Int
 
+    @JvmName("browserOpenDevTools")
+    internal external fun browserOpenDevTools(handle: Long): Int
+
+    @JvmName("browserCloseDevTools")
+    internal external fun browserCloseDevTools(handle: Long): Int
+
     @JvmName("liveBrowserCount")
     internal external fun liveBrowserCount(): Long
 }

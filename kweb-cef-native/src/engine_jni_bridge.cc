@@ -50,6 +50,7 @@ using BrowserNavigateFunction = kweb_status(KWEB_ABI_CALL *)(
 using BrowserResizeFunction = kweb_status(KWEB_ABI_CALL *)(kweb_browser_handle,
                                                            int32_t, int32_t);
 using BrowserCloseFunction = kweb_status(KWEB_ABI_CALL *)(kweb_browser_handle);
+using BrowserDevToolsFunction = kweb_status(KWEB_ABI_CALL *)(kweb_browser_handle);
 using LiveBrowserCountFunction = uint64_t(KWEB_ABI_CALL *)(void);
 
 #if defined(_WIN32)
@@ -74,6 +75,8 @@ struct EngineApi final {
   BrowserNavigateFunction browser_navigate = nullptr;
   BrowserResizeFunction browser_resize = nullptr;
   BrowserCloseFunction browser_close = nullptr;
+  BrowserDevToolsFunction browser_open_devtools = nullptr;
+  BrowserDevToolsFunction browser_close_devtools = nullptr;
   LiveBrowserCountFunction live_browser_count = nullptr;
 
   bool IsLoaded() const {
@@ -82,6 +85,8 @@ struct EngineApi final {
            close != nullptr && live_count != nullptr &&
            browser_create != nullptr && browser_navigate != nullptr &&
            browser_resize != nullptr && browser_close != nullptr &&
+           browser_open_devtools != nullptr &&
+           browser_close_devtools != nullptr &&
            live_browser_count != nullptr;
   }
 };
@@ -297,6 +302,10 @@ kweb_status LoadEngineApi(const std::string &engine_path_utf8,
       candidate.engine_library, "kweb_browser_resize");
   candidate.browser_close = ResolveFunction<BrowserCloseFunction>(
       candidate.engine_library, "kweb_browser_close");
+  candidate.browser_open_devtools = ResolveFunction<BrowserDevToolsFunction>(
+      candidate.engine_library, "kweb_browser_open_devtools");
+  candidate.browser_close_devtools = ResolveFunction<BrowserDevToolsFunction>(
+      candidate.engine_library, "kweb_browser_close_devtools");
   candidate.live_browser_count = ResolveFunction<LiveBrowserCountFunction>(
       candidate.engine_library, "kweb_live_browser_count");
   if (candidate.abi_version == nullptr ||
@@ -306,6 +315,8 @@ kweb_status LoadEngineApi(const std::string &engine_path_utf8,
       candidate.browser_navigate == nullptr ||
       candidate.browser_resize == nullptr ||
       candidate.browser_close == nullptr ||
+      candidate.browser_open_devtools == nullptr ||
+      candidate.browser_close_devtools == nullptr ||
       candidate.live_browser_count == nullptr) {
     ResetEngineApi(&candidate);
     return KWEB_STATUS_ENGINE_SYMBOL_MISSING;
@@ -782,6 +793,22 @@ jint JNICALL NativeBrowserClose(JNIEnv *, jobject, jlong handle) {
              : static_cast<jint>(KWEB_STATUS_ENGINE_LIBRARY_LOAD_FAILED);
 }
 
+jint JNICALL NativeBrowserOpenDevTools(JNIEnv *, jobject, jlong handle) {
+  const EngineApi api = SnapshotEngineApi();
+  return api.IsLoaded()
+             ? static_cast<jint>(api.browser_open_devtools(
+                   static_cast<kweb_browser_handle>(handle)))
+             : static_cast<jint>(KWEB_STATUS_ENGINE_LIBRARY_LOAD_FAILED);
+}
+
+jint JNICALL NativeBrowserCloseDevTools(JNIEnv *, jobject, jlong handle) {
+  const EngineApi api = SnapshotEngineApi();
+  return api.IsLoaded()
+             ? static_cast<jint>(api.browser_close_devtools(
+                   static_cast<kweb_browser_handle>(handle)))
+             : static_cast<jint>(KWEB_STATUS_ENGINE_LIBRARY_LOAD_FAILED);
+}
+
 jlong JNICALL NativeLiveBrowserCount(JNIEnv *, jobject) {
   const EngineApi api = SnapshotEngineApi();
   if (!api.IsLoaded()) {
@@ -833,6 +860,10 @@ jint RegisterEngineNatives(JNIEnv *env, jclass bindings) {
        JniFunctionAddress(&NativeBrowserResize)},
       {const_cast<char *>("browserClose"), const_cast<char *>("(J)I"),
        JniFunctionAddress(&NativeBrowserClose)},
+      {const_cast<char *>("browserOpenDevTools"), const_cast<char *>("(J)I"),
+       JniFunctionAddress(&NativeBrowserOpenDevTools)},
+      {const_cast<char *>("browserCloseDevTools"), const_cast<char *>("(J)I"),
+       JniFunctionAddress(&NativeBrowserCloseDevTools)},
       {const_cast<char *>("liveBrowserCount"), const_cast<char *>("()J"),
        JniFunctionAddress(&NativeLiveBrowserCount)},
   };

@@ -7,6 +7,8 @@ set(expected
   kweb_browser_create
   kweb_browser_navigate
   kweb_browser_resize
+  kweb_browser_open_devtools
+  kweb_browser_close_devtools
   kweb_engine_abi_version
   kweb_engine_close
   kweb_engine_create

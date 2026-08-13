@@ -11,7 +11,7 @@
 #define KWEB_ABI_CALL
 #endif
 
-#define KWEB_ABI_VERSION ((uint32_t)3)
+#define KWEB_ABI_VERSION ((uint32_t)4)
 
 typedef uint32_t kweb_status;
 
@@ -55,5 +55,9 @@ typedef uint32_t kweb_status;
 #define KWEB_STATUS_NAVIGATION_INVALID ((kweb_status)37)
 #define KWEB_STATUS_REMOTE_DEBUGGING_PORT_INVALID ((kweb_status)38)
 #define KWEB_STATUS_REMOTE_DEBUGGING_PORT_UNAVAILABLE ((kweb_status)39)
+#define KWEB_STATUS_DEVTOOLS_ALREADY_OPEN ((kweb_status)40)
+#define KWEB_STATUS_DEVTOOLS_NOT_OPEN ((kweb_status)41)
+#define KWEB_STATUS_DEVTOOLS_OPEN_FAILED ((kweb_status)42)
+#define KWEB_STATUS_DEVTOOLS_CLOSING ((kweb_status)43)
 
 #endif // KWEBSHELL_NATIVE_BASE_ABI_H_

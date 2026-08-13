@@ -485,6 +485,33 @@ Acceptance:
   Xvfb. No public `KWebDevTools` or bridge API is exposed until the next
   objective implements its complete lifecycle.
 
+#### Objective 4.2: Native DevTools window host
+
+This objective adds the first real DevTools window lifecycle for an existing
+embedded browser. The page remains an Alloy, windowed native child. CEF 151's
+DevTools front-end is a separate Chrome-style native window; forcing it to
+Alloy is rejected by CEF and is therefore forbidden. The host keeps the
+DevTools browser private behind the browser handle and exposes only typed
+open/close operations and lifecycle events.
+
+Acceptance:
+
+- ABI v4, JNI, Kotlin status mapping, and exported symbols agree on explicit
+  `browserOpenDevTools` and `browserCloseDevTools` operations.
+- Opening a ready page creates a real CEF DevTools native window and emits one
+  `DEVTOOLS_OPENED` event. The front-end is a Chrome-style window because that
+  is the CEF-supported DevTools implementation; the primary page remains Alloy
+  and windowed.
+- A duplicate open fails with `devtools-already-open`; closing a missing target
+  fails with `devtools-not-open`; no operation silently falls back to an
+  embedded page, OS debugger, or second browser backend.
+- With CDP enabled, `/json/list` exposes a `devtools://` target while the
+  window is open and removes it after `browserCloseDevTools`.
+- Closing the page while DevTools is open closes the DevTools browser first,
+  emits `DEVTOOLS_CLOSED`, and only then emits the page `CLOSED` terminal event.
+- Native CTest, real macOS integration, Linux/Xvfb integration, and Windows
+  compilation validate the same ABI and lifecycle contract.
+
 ### Phase 5: MV3 core runtime
 
 Deliver:

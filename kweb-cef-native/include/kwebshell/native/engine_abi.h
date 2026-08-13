@@ -43,6 +43,9 @@ typedef uint32_t kweb_browser_event_type;
 #define KWEB_BROWSER_EVENT_FATAL_ERROR ((kweb_browser_event_type)8)
 #define KWEB_BROWSER_EVENT_TITLE_CHANGED ((kweb_browser_event_type)9)
 #define KWEB_BROWSER_EVENT_CLOSED ((kweb_browser_event_type)10)
+#define KWEB_BROWSER_EVENT_DEVTOOLS_OPENED ((kweb_browser_event_type)11)
+#define KWEB_BROWSER_EVENT_DEVTOOLS_CLOSED ((kweb_browser_event_type)12)
+#define KWEB_BROWSER_EVENT_DEVTOOLS_FAILED ((kweb_browser_event_type)13)
 
 #define KWEB_BROWSER_FLAG_LOADING ((uint32_t)1)
 #define KWEB_BROWSER_FLAG_CAN_GO_BACK ((uint32_t)2)
@@ -143,6 +146,12 @@ kweb_browser_resize(kweb_browser_handle browser, int32_t width, int32_t height);
 
 KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
 kweb_browser_close(kweb_browser_handle browser);
+
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
+kweb_browser_open_devtools(kweb_browser_handle browser);
+
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
+kweb_browser_close_devtools(kweb_browser_handle browser);
 
 KWEB_ENGINE_ABI_EXPORT uint64_t KWEB_ABI_CALL kweb_live_browser_count(void);
 

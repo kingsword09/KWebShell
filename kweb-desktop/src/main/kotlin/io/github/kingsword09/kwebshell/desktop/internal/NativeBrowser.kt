@@ -31,6 +31,9 @@ internal enum class NativeBrowserEventType(val value: Int) {
     FATAL_ERROR(8),
     TITLE_CHANGED(9),
     CLOSED(10),
+    DEVTOOLS_OPENED(11),
+    DEVTOOLS_CLOSED(12),
+    DEVTOOLS_FAILED(13),
     ;
 
     companion object {
@@ -66,6 +69,9 @@ internal class NativeBrowser private constructor(
     private val callbackFailure = AtomicReference<KWebNativeException?>()
     private val closeFailure = AtomicReference<KWebNativeException?>()
     private val fatalFailure = AtomicReference<KWebNativeException?>()
+    private val devtoolsFailure = AtomicReference<KWebNativeException?>()
+    private val devtoolsOpenedEvent = AtomicReference(CountDownLatch(0))
+    private val devtoolsClosedEvent = AtomicReference(CountDownLatch(0))
     private val callbackThread = AtomicReference<Thread?>()
     private val callbackExecutor = Executors.newSingleThreadExecutor { task ->
         Thread(task, "KWebShell-browser-callback-${dispatcherIds.incrementAndGet()}").also { thread ->
@@ -85,6 +91,33 @@ internal class NativeBrowser private constructor(
     internal fun resize(width: Int, height: Int) {
         val handle = requireOpenHandle("resize")
         requireNativeSuccess("browser-resize", NativeBindings.browserResize(handle, width, height), handle)
+    }
+
+    internal fun requireLiveHandle(operation: String): Long =
+        requireOpenHandle(operation)
+
+    internal fun openDevTools() {
+        val handle = requireOpenHandle("open-devtools")
+        devtoolsOpenedEvent.set(CountDownLatch(1))
+        devtoolsFailure.set(null)
+        requireNativeSuccess(
+            "browser-open-devtools",
+            NativeBindings.browserOpenDevTools(handle),
+            handle,
+        )
+        awaitBrowserEvent(devtoolsOpenedEvent.get(), "open-devtools")
+    }
+
+    internal fun closeDevTools() {
+        val handle = requireOpenHandle("close-devtools")
+        devtoolsClosedEvent.set(CountDownLatch(1))
+        devtoolsFailure.set(null)
+        requireNativeSuccess(
+            "browser-close-devtools",
+            NativeBindings.browserCloseDevTools(handle),
+            handle,
+        )
+        awaitBrowserEvent(devtoolsClosedEvent.get(), "close-devtools")
     }
 
     override fun close() {
@@ -222,6 +255,14 @@ internal class NativeBrowser private constructor(
             return
         }
         when (event.type) {
+            NativeBrowserEventType.DEVTOOLS_FAILED -> {
+                val failure = nativeStatusException(
+                    operation = "browser-devtools",
+                    value = event.statusCode,
+                    details = mapOf("reason" to event.text),
+                )
+                devtoolsFailure.compareAndSet(null, failure)
+            }
             NativeBrowserEventType.CREATED -> {
                 if (mutableLifecycle.value != KWebLifecycleState.OPENING) {
                     recordCallbackFailure(
@@ -248,6 +289,11 @@ internal class NativeBrowser private constructor(
                     mutableLifecycle.value = KWebLifecycleState.CLOSED
                 }
             }
+            else -> Unit
+        }
+        when (event.type) {
+            NativeBrowserEventType.DEVTOOLS_OPENED -> devtoolsOpenedEvent.get().countDown()
+            NativeBrowserEventType.DEVTOOLS_CLOSED -> devtoolsClosedEvent.get().countDown()
             else -> Unit
         }
         try {
@@ -361,6 +407,21 @@ internal class NativeBrowser private constructor(
         if (status != NativeStatus.OK.value) {
             throw nativeStatusException(operation, status, mapOf("handle" to handle.toString()))
         }
+    }
+
+    private fun awaitBrowserEvent(event: CountDownLatch, operation: String) {
+        val deadline = System.nanoTime() + CALLBACK_TIMEOUT.toNanos()
+        while (System.nanoTime() < deadline) {
+            if (event.count == 0L) return
+            devtoolsFailure.get()?.let { throw it }
+            fatalFailure.get()?.let { throw it }
+            Thread.sleep(10)
+        }
+        throw KWebNativeException(
+            code = "native.browser.$operation-timeout",
+            details = emptyMap(),
+            message = "The native browser did not publish the expected DevTools event.",
+        )
     }
 
     private fun abortOpen(error: KWebNativeException): Nothing {

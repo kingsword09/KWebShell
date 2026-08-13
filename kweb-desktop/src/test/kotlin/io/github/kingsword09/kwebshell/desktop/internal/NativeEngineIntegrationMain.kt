@@ -128,6 +128,7 @@ private fun runSuccessfulLifecycle() {
     val secondTitle = CountDownLatch(1)
     val secondLoad = CountDownLatch(1)
     val resized = CountDownLatch(1)
+    val firstDevToolsClosed = CountDownLatch(1)
     val profile = configuration.rootCache.resolve("integration-profile")
     BrowserOrigin().use { origin ->
         val surface = NativeEngine.onAwtEventDispatchThread { AwtBrowserSurface.create(800, 600) }
@@ -187,6 +188,9 @@ private fun runSuccessfulLifecycle() {
                     event.type == NativeBrowserEventType.RESIZED && event.width == 960 && event.height == 640 -> {
                         resized.countDown()
                     }
+                    event.type == NativeBrowserEventType.DEVTOOLS_CLOSED -> {
+                        firstDevToolsClosed.countDown()
+                    }
                 }
             }
             require(firstTitle.await(30, TimeUnit.SECONDS)) {
@@ -194,6 +198,43 @@ private fun runSuccessfulLifecycle() {
             }
             cdp.awaitPage(origin.firstUrl)
             require(cdp.evaluate("document.title") == FIRST_TITLE)
+            requireStatus(
+                NativeBindings.browserCloseDevTools(browser.requireLiveHandle("devtools-test")),
+                NativeStatus.DEVTOOLS_NOT_OPEN,
+                "close missing DevTools",
+            )
+            browser.openDevTools()
+            require(browserEvents.any { it.type == NativeBrowserEventType.DEVTOOLS_OPENED })
+            cdp.awaitDevToolsTarget()
+            val duplicateDevTools = try {
+                browser.openDevTools()
+                null
+            } catch (error: KWebNativeException) {
+                error
+            }
+            require(duplicateDevTools?.code == "native.abi.devtools-already-open") {
+                "Duplicate DevTools open returned $duplicateDevTools"
+            }
+            val browserHandle = browser.requireLiveHandle("devtools-test")
+            requireStatus(
+                NativeBindings.browserCloseDevTools(browserHandle),
+                NativeStatus.OK,
+                "close open DevTools",
+            )
+            requireStatus(
+                NativeBindings.browserCloseDevTools(browserHandle),
+                NativeStatus.DEVTOOLS_CLOSING,
+                "close closing DevTools",
+            )
+            require(firstDevToolsClosed.await(30, TimeUnit.SECONDS)) {
+                "The explicitly closed DevTools window did not publish its terminal event."
+            }
+            require(browserEvents.any { it.type == NativeBrowserEventType.DEVTOOLS_CLOSED })
+            cdp.awaitNoDevToolsTarget()
+            browser.openDevTools()
+            cdp.awaitDevToolsTarget()
+            browser.closeDevTools()
+            cdp.awaitNoDevToolsTarget()
             require(NativeBrowser.liveNativeBrowserCount() == 1L)
             val rejectedEngineClose = try {
                 NativeEngine.onAwtEventDispatchThread { engine.close() }
@@ -219,7 +260,14 @@ private fun runSuccessfulLifecycle() {
                 "The native Chromium child did not confirm the requested size: $browserEvents"
             }
 
+            browser.openDevTools()
+            cdp.awaitDevToolsTarget()
+
             browser.close()
+            require(browserEvents.any { it.type == NativeBrowserEventType.DEVTOOLS_CLOSED }) {
+                "Closing the page did not close its native DevTools window."
+            }
+            cdp.awaitNoDevToolsTarget()
             val staleBrowserHandle = browserEvents.first().browser
             val browserCallbackCountAfterClose = browserEvents.size
             Thread.sleep(100)
@@ -234,6 +282,15 @@ private fun runSuccessfulLifecycle() {
             )
             require(browserEvents.first().type == NativeBrowserEventType.CREATED)
             require(browserEvents.last().type == NativeBrowserEventType.CLOSED)
+            val devToolsClosedIndex = browserEvents.indexOfLast {
+                it.type == NativeBrowserEventType.DEVTOOLS_CLOSED
+            }
+            val browserClosedIndex = browserEvents.indexOfLast {
+                it.type == NativeBrowserEventType.CLOSED
+            }
+            require(devToolsClosedIndex in 0 until browserClosedIndex) {
+                "The page closed before its native DevTools window."
+            }
             require(browserEvents.map { it.sequence } == (1L..browserEvents.size.toLong()).toList())
             require(browserEvents.any { it.type == NativeBrowserEventType.NAVIGATION_STARTED && it.text == origin.secondUrl })
             require(browserEvents.any { it.type == NativeBrowserEventType.ADDRESS_CHANGED && it.text == origin.secondUrl })
@@ -543,6 +600,31 @@ private class CdpClient(private val port: Int) {
         webSocket(page["webSocketDebuggerUrl"]!!.jsonPrimitive.content).use { socket ->
             return socket.evaluate(expression)
         }
+    }
+
+    fun awaitDevToolsTarget() {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+        while (System.nanoTime() < deadline) {
+            if (getArray("/json/list").any {
+                    it["url"]?.jsonPrimitive?.content?.startsWith("devtools://") == true
+            }) return
+            Thread.sleep(100)
+        }
+        error("The DevTools target did not appear in CDP target discovery.")
+    }
+
+    fun awaitNoDevToolsTarget() {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+        while (System.nanoTime() < deadline) {
+            val hasDevTools = try {
+                getArray("/json/list").any { it["url"]?.jsonPrimitive?.content?.startsWith("devtools://") == true }
+            } catch (_: Throwable) {
+                false
+            }
+            if (!hasDevTools) return
+            Thread.sleep(100)
+        }
+        error("The DevTools target remained after close.")
     }
 
     fun assertUnavailable() {

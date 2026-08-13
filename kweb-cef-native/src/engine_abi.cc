@@ -516,6 +516,14 @@ const char *KWEB_ABI_CALL kweb_status_name(kweb_status status) {
     return "remote-debugging-port-invalid";
   case KWEB_STATUS_REMOTE_DEBUGGING_PORT_UNAVAILABLE:
     return "remote-debugging-port-unavailable";
+  case KWEB_STATUS_DEVTOOLS_ALREADY_OPEN:
+    return "devtools-already-open";
+  case KWEB_STATUS_DEVTOOLS_NOT_OPEN:
+    return "devtools-not-open";
+  case KWEB_STATUS_DEVTOOLS_OPEN_FAILED:
+    return "devtools-open-failed";
+  case KWEB_STATUS_DEVTOOLS_CLOSING:
+    return "devtools-closing";
   default:
     return "unknown-status";
   }
@@ -566,6 +574,16 @@ kweb_status KWEB_ABI_CALL kweb_browser_resize(kweb_browser_handle browser,
 
 kweb_status KWEB_ABI_CALL kweb_browser_close(kweb_browser_handle browser) {
   return kwebshell::CloseBrowserSession(browser);
+}
+
+kweb_status KWEB_ABI_CALL
+kweb_browser_open_devtools(kweb_browser_handle browser) {
+  return kwebshell::OpenDevToolsSession(browser);
+}
+
+kweb_status KWEB_ABI_CALL
+kweb_browser_close_devtools(kweb_browser_handle browser) {
+  return kwebshell::CloseDevToolsSession(browser);
 }
 
 uint64_t KWEB_ABI_CALL kweb_live_browser_count(void) {

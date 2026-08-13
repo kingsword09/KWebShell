@@ -29,6 +29,18 @@ int main() {
   Check(std::strcmp(kweb_status_name(KWEB_STATUS_REMOTE_DEBUGGING_PORT_UNAVAILABLE),
                     "remote-debugging-port-unavailable") == 0,
         "remote debugging port collision status must have a stable name");
+  Check(std::strcmp(kweb_status_name(KWEB_STATUS_DEVTOOLS_ALREADY_OPEN),
+                    "devtools-already-open") == 0,
+        "DevTools duplicate-open status must have a stable name");
+  Check(std::strcmp(kweb_status_name(KWEB_STATUS_DEVTOOLS_NOT_OPEN),
+                    "devtools-not-open") == 0,
+        "DevTools missing-close status must have a stable name");
+  Check(std::strcmp(kweb_status_name(KWEB_STATUS_DEVTOOLS_OPEN_FAILED),
+                    "devtools-open-failed") == 0,
+        "DevTools open failure status must have a stable name");
+  Check(std::strcmp(kweb_status_name(KWEB_STATUS_DEVTOOLS_CLOSING),
+                    "devtools-closing") == 0,
+        "DevTools closing status must have a stable name");
   Check(kweb_browser_create(nullptr, nullptr) == KWEB_STATUS_INVALID_ARGUMENT,
         "null browser create arguments must fail immediately");
   Check(kweb_browser_navigate(KWEB_INVALID_BROWSER_HANDLE, nullptr, 0) ==
@@ -40,6 +52,12 @@ int main() {
   Check(kweb_browser_close(KWEB_INVALID_BROWSER_HANDLE) ==
             KWEB_STATUS_INVALID_HANDLE,
         "stale browser close must return invalid handle");
+  Check(kweb_browser_open_devtools(KWEB_INVALID_BROWSER_HANDLE) ==
+            KWEB_STATUS_INVALID_HANDLE,
+        "stale DevTools open must return invalid handle");
+  Check(kweb_browser_close_devtools(KWEB_INVALID_BROWSER_HANDLE) ==
+            KWEB_STATUS_INVALID_HANDLE,
+        "stale DevTools close must return invalid handle");
   Check(kweb_live_browser_count() == 0,
         "browser ABI contract must not own a browser in its unit process");
   if (failures != 0) {

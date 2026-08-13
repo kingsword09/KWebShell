@@ -11,6 +11,20 @@ _Static_assert(KWEB_INVALID_BROWSER_HANDLE == 0,
                "the invalid browser handle must remain zero");
 _Static_assert(KWEB_STATUS_REMOTE_DEBUGGING_PORT_UNAVAILABLE == 39,
                "the remote debugging port unavailable status is ABI-stable");
+_Static_assert(KWEB_STATUS_DEVTOOLS_ALREADY_OPEN == 40,
+               "the DevTools duplicate-open status is ABI-stable");
+_Static_assert(KWEB_STATUS_DEVTOOLS_NOT_OPEN == 41,
+               "the DevTools missing-close status is ABI-stable");
+_Static_assert(KWEB_STATUS_DEVTOOLS_OPEN_FAILED == 42,
+               "the DevTools open failure status is ABI-stable");
+_Static_assert(KWEB_STATUS_DEVTOOLS_CLOSING == 43,
+               "the DevTools closing status is ABI-stable");
+_Static_assert(KWEB_BROWSER_EVENT_DEVTOOLS_OPENED == 11,
+               "the DevTools opened event is ABI-stable");
+_Static_assert(KWEB_BROWSER_EVENT_DEVTOOLS_CLOSED == 12,
+               "the DevTools closed event is ABI-stable");
+_Static_assert(KWEB_BROWSER_EVENT_DEVTOOLS_FAILED == 13,
+               "the DevTools failed event is ABI-stable");
 _Static_assert(KWEB_BROWSER_EVENT_CREATED != KWEB_BROWSER_EVENT_CLOSED,
                "browser lifecycle events must remain distinct");
 

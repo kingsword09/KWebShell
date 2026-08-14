@@ -184,6 +184,7 @@ add_dependencies(kweb_jni kweb_engine_abi)
 add_library(kweb_host_support STATIC
   src/event_recorder.cc
   src/host_configuration.cc
+  src/mv3_core_test_fixture.cc
   src/shutdown_watchdog.cc
 )
 target_include_directories(kweb_host_support PUBLIC include)
@@ -263,6 +264,7 @@ set_tests_properties(kweb_engine_configuration_tests PROPERTIES
 
 add_executable(kweb_host_unit_tests tests/host_unit_tests.cc)
 target_link_libraries(kweb_host_unit_tests PRIVATE kweb_host_support)
+target_include_directories(kweb_host_unit_tests PRIVATE src)
 if(MSVC)
   SET_EXECUTABLE_TARGET_PROPERTIES(kweb_host_unit_tests)
   target_compile_options(kweb_host_unit_tests PRIVATE /EHsc)
@@ -275,6 +277,7 @@ set(KWEB_HOST_COMMON_SOURCES
   src/browser_app.cc
   src/browser_client.cc
   src/host_main.cc
+  src/mv3_core_test_page.cc
   src/profile_test_page.cc
   src/self_test_page.cc
 )
@@ -468,6 +471,13 @@ KWEB_ADD_NATIVE_SCRIPT_TEST(
   run_profile_persistence_test.cmake
   240
   "cef;integration;native;profile;storage"
+)
+KWEB_ADD_NATIVE_SCRIPT_TEST(
+  kweb_mv3_core_conformance_test
+  run_mv3_core_conformance_test.cmake
+  660
+  "cef;extensions;integration;mv3;native;profile;service-worker;storage"
+  "-DEXTENSION_PATH=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/mv3-core"
 )
 KWEB_ADD_NATIVE_SCRIPT_TEST(
   kweb_renderer_failure_test

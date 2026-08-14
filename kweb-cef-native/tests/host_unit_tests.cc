@@ -1,6 +1,7 @@
 #include "kwebshell/native/event_recorder.h"
 #include "kwebshell/native/host_configuration.h"
 #include "kwebshell/native/shutdown_watchdog.h"
+#include "mv3_core_test_fixture.h"
 
 #include <atomic>
 #include <chrono>
@@ -90,6 +91,20 @@ void TestStrictConfigurationFailures() {
        "--kweb-profile-self-test=write"},
       {RootCacheArgument(), ProfileArgument(),
        "--kweb-profile-test-value=value", "--kweb-url=https://example.com"},
+      {RootCacheArgument(), ProfileArgument(),
+       "--kweb-mv3-core-self-test=unknown",
+       "--kweb-mv3-extension-path=" + AbsoluteTestPath("extension")},
+      {RootCacheArgument(), ProfileArgument(),
+       "--kweb-mv3-core-self-test=initial"},
+      {RootCacheArgument(), ProfileArgument(),
+       "--kweb-mv3-core-self-test=initial",
+       "--kweb-mv3-extension-path=relative"},
+      {RootCacheArgument(), ProfileArgument(),
+       "--kweb-mv3-extension-path=" + AbsoluteTestPath("extension"),
+       "--kweb-url=https://example.com"},
+      {RootCacheArgument(), ProfileArgument(), "--kweb-self-test",
+       "--kweb-mv3-core-self-test=initial",
+       "--kweb-mv3-extension-path=" + AbsoluteTestPath("extension")},
   };
 
   for (const auto &arguments : invalid_arguments) {
@@ -172,6 +187,78 @@ void TestProfileSelfTestConfigurationIsStrict() {
             std::filesystem::path(AbsoluteTestPath("root")),
             std::filesystem::path(AbsoluteTestPath("root/dEfAuLt"))),
         "the Default profile reservation must be case-insensitive");
+}
+
+void TestMv3CoreSelfTestConfigurationIsStrict() {
+  const std::string extension_path = AbsoluteTestPath("mv3-extension");
+  std::string error;
+  const auto configuration = kwebshell::HostConfiguration::Parse(
+      {RootCacheArgument(), ProfileArgument(),
+       "--kweb-mv3-core-self-test=restart",
+       "--kweb-mv3-extension-path=" + extension_path},
+      &error);
+  Check(configuration.has_value(),
+        "MV3 core self-test configuration should parse: " + error);
+  if (configuration) {
+    Check(configuration->IsMv3CoreSelfTest(),
+          "MV3 core self-test mode should be retained");
+    Check(configuration->IsAnySelfTest(),
+          "MV3 core self-test should suppress the external URL requirement");
+    Check(configuration->mv3_core_self_test_mode ==
+              kwebshell::Mv3CoreSelfTestMode::kRestart,
+          "MV3 restart mode should be explicit");
+    Check(configuration->mv3_extension_path ==
+              std::filesystem::path(extension_path),
+          "MV3 extension path should be retained exactly");
+  }
+}
+
+void WriteMv3CoreFixtureFiles(const std::filesystem::path &root) {
+  std::filesystem::create_directories(root);
+  for (const char *name : {"manifest.json", "worker.js", "content.js"}) {
+    std::ofstream stream(root / name);
+    stream << "fixture";
+  }
+}
+
+void TestMv3CoreFixtureValidationIsStrict() {
+  const std::filesystem::path test_root =
+      std::filesystem::temp_directory_path() /
+      "kweb-mv3-core-fixture-validation";
+  std::error_code filesystem_error;
+  std::filesystem::remove_all(test_root, filesystem_error);
+  Check(!filesystem_error, "stale MV3 fixture test root should be removable");
+
+  const std::filesystem::path valid_fixture = test_root / "valid";
+  WriteMv3CoreFixtureFiles(valid_fixture);
+  std::string error;
+  const auto validated =
+      kwebshell::ValidateMv3CoreTestFixture(valid_fixture, error);
+  Check(validated.has_value(),
+        "complete MV3 core fixture should validate: " + error);
+  Check(validated && *validated == std::filesystem::canonical(valid_fixture),
+        "MV3 core fixture should return its canonical path");
+
+  std::filesystem::remove(valid_fixture / "content.js", filesystem_error);
+  Check(!filesystem_error, "MV3 fixture content script should be removable");
+  Check(!kwebshell::ValidateMv3CoreTestFixture(valid_fixture, error),
+        "MV3 core fixture missing content.js should fail");
+  Check(error.find("content.js") != std::string::npos,
+        "missing MV3 fixture file should be identified");
+
+  const std::filesystem::path comma_fixture = test_root / "invalid,fixture";
+  WriteMv3CoreFixtureFiles(comma_fixture);
+  Check(!kwebshell::ValidateMv3CoreTestFixture(comma_fixture, error),
+        "MV3 fixture path containing a switch separator should fail");
+  Check(error.find("cannot contain ','") != std::string::npos,
+        "MV3 fixture separator failure should be actionable");
+
+  Check(!kwebshell::ValidateMv3CoreTestFixture(test_root / "absent", error),
+        "missing MV3 fixture directory should fail");
+  Check(!error.empty(), "missing MV3 fixture directory should explain failure");
+
+  std::filesystem::remove_all(test_root, filesystem_error);
+  Check(!filesystem_error, "MV3 fixture test root should be removed");
 }
 
 void TestEventRecorderEscapesJsonAndTracksState() {
@@ -274,6 +361,8 @@ int main() {
   TestSelfTestConfigurationDoesNotRequireExternalUrl();
   TestConfigurationPreservesUtf8Paths();
   TestProfileSelfTestConfigurationIsStrict();
+  TestMv3CoreSelfTestConfigurationIsStrict();
+  TestMv3CoreFixtureValidationIsStrict();
   TestEventRecorderEscapesJsonAndTracksState();
   TestShutdownWatchdogRejectsInvalidConfiguration();
   TestShutdownWatchdogCompletionSuppressesTimeout();

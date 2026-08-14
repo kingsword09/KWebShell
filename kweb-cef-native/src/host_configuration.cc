@@ -18,6 +18,10 @@ constexpr std::string_view kSelfTest = "--kweb-self-test";
 constexpr std::string_view kProfileSelfTestPrefix = "--kweb-profile-self-test=";
 constexpr std::string_view kProfileTestValuePrefix =
     "--kweb-profile-test-value=";
+constexpr std::string_view kMv3CoreSelfTestPrefix =
+    "--kweb-mv3-core-self-test=";
+constexpr std::string_view kMv3ExtensionPathPrefix =
+    "--kweb-mv3-extension-path=";
 constexpr size_t kMaximumProfileTestValueSize = 128;
 
 bool ParseDimension(std::string_view value, const char *name, int *output,
@@ -98,14 +102,32 @@ ParseProfileSelfTestMode(std::string_view value) {
   return std::nullopt;
 }
 
+std::optional<Mv3CoreSelfTestMode>
+ParseMv3CoreSelfTestMode(std::string_view value) {
+  if (value == "initial") {
+    return Mv3CoreSelfTestMode::kInitial;
+  }
+  if (value == "restart") {
+    return Mv3CoreSelfTestMode::kRestart;
+  }
+  if (value == "isolated") {
+    return Mv3CoreSelfTestMode::kIsolated;
+  }
+  return std::nullopt;
+}
+
 } // namespace
 
 bool HostConfiguration::IsProfileSelfTest() const {
   return profile_self_test_mode != ProfileSelfTestMode::kNone;
 }
 
+bool HostConfiguration::IsMv3CoreSelfTest() const {
+  return mv3_core_self_test_mode != Mv3CoreSelfTestMode::kNone;
+}
+
 bool HostConfiguration::IsAnySelfTest() const {
-  return self_test || IsProfileSelfTest();
+  return self_test || IsProfileSelfTest() || IsMv3CoreSelfTest();
 }
 
 bool IsDirectProfileChild(const std::filesystem::path &root_cache_path,
@@ -178,6 +200,18 @@ HostConfiguration::Parse(const std::vector<std::string> &arguments,
     } else if (argument.starts_with(kProfileTestValuePrefix)) {
       configuration.profile_test_value =
           std::string(ValueAfter(argument, kProfileTestValuePrefix));
+    } else if (argument.starts_with(kMv3CoreSelfTestPrefix)) {
+      const auto mode = ParseMv3CoreSelfTestMode(
+          ValueAfter(argument, kMv3CoreSelfTestPrefix));
+      if (!mode) {
+        *error = "--kweb-mv3-core-self-test must be 'initial', 'restart', or "
+                 "'isolated'.";
+        return std::nullopt;
+      }
+      configuration.mv3_core_self_test_mode = *mode;
+    } else if (argument.starts_with(kMv3ExtensionPathPrefix)) {
+      configuration.mv3_extension_path =
+          PathFromUtf8(ValueAfter(argument, kMv3ExtensionPathPrefix));
     } else if (argument.starts_with("--kweb-")) {
       *error = "Unknown KWebShell argument: " + argument_string;
       return std::nullopt;
@@ -212,9 +246,12 @@ HostConfiguration::Parse(const std::vector<std::string> &arguments,
     *error = "--kweb-event-log-path must be absolute.";
     return std::nullopt;
   }
-  if (configuration.self_test && configuration.IsProfileSelfTest()) {
-    *error = "--kweb-self-test and --kweb-profile-self-test are mutually "
-             "exclusive.";
+  const int self_test_mode_count =
+      (configuration.self_test ? 1 : 0) +
+      (configuration.IsProfileSelfTest() ? 1 : 0) +
+      (configuration.IsMv3CoreSelfTest() ? 1 : 0);
+  if (self_test_mode_count > 1) {
+    *error = "KWebShell self-test modes are mutually exclusive.";
     return std::nullopt;
   }
   if (configuration.IsProfileSelfTest()) {
@@ -225,6 +262,19 @@ HostConfiguration::Parse(const std::vector<std::string> &arguments,
     }
   } else if (!configuration.profile_test_value.empty()) {
     *error = "--kweb-profile-test-value requires --kweb-profile-self-test.";
+    return std::nullopt;
+  }
+  if (configuration.IsMv3CoreSelfTest()) {
+    if (configuration.mv3_extension_path.empty()) {
+      *error = "--kweb-mv3-extension-path is required by the MV3 core self-test.";
+      return std::nullopt;
+    }
+    if (!configuration.mv3_extension_path.is_absolute()) {
+      *error = "--kweb-mv3-extension-path must be absolute.";
+      return std::nullopt;
+    }
+  } else if (!configuration.mv3_extension_path.empty()) {
+    *error = "--kweb-mv3-extension-path requires --kweb-mv3-core-self-test.";
     return std::nullopt;
   }
   if (!configuration.IsAnySelfTest() && configuration.url.empty()) {

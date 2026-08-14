@@ -13,6 +13,7 @@
 #include "kwebshell/native/event_recorder.h"
 #include "kwebshell/native/host_configuration.h"
 #include "kwebshell/native/shutdown_watchdog.h"
+#include "mv3_core_test_fixture.h"
 
 namespace kwebshell {
 namespace {
@@ -139,6 +140,21 @@ int RunBrowserProcess(const CefMainArgs &main_args,
         {{"root_cache_path", PathForLog(configuration.root_cache_path)},
          {"profile_path", PathForLog(configuration.profile_path)}});
     return static_cast<int>(HostExitCode::kConfigurationError);
+  }
+  if (configuration.IsMv3CoreSelfTest()) {
+    const std::filesystem::path requested_extension_path =
+        configuration.mv3_extension_path;
+    std::string fixture_error;
+    const auto validated_extension_path = ValidateMv3CoreTestFixture(
+        requested_extension_path, fixture_error);
+    if (!validated_extension_path) {
+      recorder->Fail(
+          "native.mv3.test-extension-path-invalid",
+          {{"path", PathForLog(requested_extension_path)},
+           {"message", fixture_error}});
+      return static_cast<int>(HostExitCode::kConfigurationError);
+    }
+    configuration.mv3_extension_path = *validated_extension_path;
   }
 
   CefSettings settings;

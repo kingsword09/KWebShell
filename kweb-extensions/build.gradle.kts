@@ -32,6 +32,11 @@ kotlin {
     }
 }
 
+val mv3CoreFixtureDirectory =
+    rootProject.layout.projectDirectory.dir("kweb-cef-native/tests/fixtures/mv3-core")
+
 tasks.named<Test>("jvmTest") {
     useJUnitPlatform()
+    inputs.dir(mv3CoreFixtureDirectory)
+    systemProperty("kweb.mv3.core.fixture", mv3CoreFixtureDirectory.asFile.absolutePath)
 }

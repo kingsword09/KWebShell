@@ -565,6 +565,53 @@ Acceptance:
 - Real extensions exercise every published core capability.
 - Restart, update, uninstall, Profile isolation, and denied-permission tests pass.
 
+#### Objective 5.1: Manifest V3 package verification and permission review
+
+This objective creates the trusted input boundary for the extension runtime. It
+does not install an extension into Chromium, start a Service Worker, or emulate
+`chrome.*`. An unpacked directory or CRX3 file is accepted only after its
+manifest, resources, public key, package identity, archive structure, and
+requested permissions have passed the complete validator. Every unsupported or
+denied capability fails with a typed error; no path-based ID, unsigned package,
+partial manifest, or policy downgrade is accepted.
+
+Acceptance:
+
+- A new `kweb-extensions` KMP/JVM module exposes the closed package model,
+  strict Manifest V3 parser, published permission review, and typed verification
+  errors without exposing CEF or filesystem implementation types to common code.
+- Manifest validation rejects non-v3 versions, malformed Chrome versions,
+  invalid resource paths, invalid host patterns, incomplete Service Worker and
+  content-script declarations, malformed action/options/DNR metadata, duplicate
+  or invalid extension IDs, unknown JSON fields, and all unsupported MV2
+  background fields.
+- Unpacked packages require a regular directory, a regular `manifest.json`, a
+  non-empty base64 SubjectPublicKeyInfo `key` containing an RSA key of at least
+  2048 bits or a P-256 key, and an extension ID derived from the first 16 bytes
+  of SHA-256(public-key-DER) using Chromium's `a`-through-`p` alphabet. Any
+  symlink, traversal path, non-regular resource, duplicate entry, or manifest
+  outside the package root fails before acceptance.
+- CRX3 verification parses the bounded little-endian container and protobuf
+  header, rejects Chromium-forbidden EOCD/Zip64 header tokens, validates the
+  signed-data CRX ID, verifies every RSA PKCS#1 v1.5 SHA-256 or
+  ECDSA-P256-SHA256 proof over Chromium's exact `CRX3 SignedData` context and
+  archive bytes, rejects malformed/duplicate/unknown critical fields, and
+  validates every contained ZIP entry without extracting untrusted files.
+- Permission review distinguishes package-admissible API permission names from
+  host access; it rejects the policy-controlled `debugger`, `management`,
+  `nativeMessaging`, `proxy`, and `webRequestBlocking` permissions, and universal
+  host wildcards, `<all_urls>`, or `file://` unless the caller opts into those
+  policies. Unknown permissions never disappear from the result.
+  `API_PERMISSION` means only that the package is admissible for the Objective
+  5.1 boundary; it does not report a running `chrome.*` implementation. Runtime
+  capability is published only by the Objective 5.2 conformance matrix.
+- Unit tests cover valid and invalid manifests, ID derivation vectors, traversal
+  and symlink attacks, CRX3 RSA/ECDSA signatures, tampered headers/archive,
+  malformed protobuf/ZIP/keys, permission denial, and bounded package limits.
+  The same JVM test contract runs on macOS, Linux, and Windows CI; no Chromium
+  install or runtime capability is advertised until Objective 5.2 adds its real
+  integration conformance.
+
 ### Phase 6: Extension browser UI
 
 Deliver:

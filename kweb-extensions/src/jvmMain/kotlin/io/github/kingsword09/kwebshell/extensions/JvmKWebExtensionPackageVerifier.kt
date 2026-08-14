@@ -33,6 +33,11 @@ public data class KWebVerifiedExtension(
     public val source: Path,
 )
 
+internal data class JvmKWebVerifiedCrx3Material(
+    val verifiedExtension: KWebVerifiedExtension,
+    val archive: ByteArray,
+)
+
 public object JvmKWebExtensionPackageVerifier {
     public fun verifyUnpacked(
         root: Path,
@@ -79,7 +84,12 @@ public object JvmKWebExtensionPackageVerifier {
     public fun verifyCrx3(
         path: Path,
         policy: KWebExtensionPermissionPolicy = KWebExtensionPermissionPolicy(),
-    ): KWebVerifiedExtension = ioBoundary(
+    ): KWebVerifiedExtension = verifyCrx3Material(path, policy).verifiedExtension
+
+    internal fun verifyCrx3Material(
+        path: Path,
+        policy: KWebExtensionPermissionPolicy = KWebExtensionPermissionPolicy(),
+    ): JvmKWebVerifiedCrx3Material = ioBoundary(
         code = "extensions.crx3.io-failed",
         path = path,
         message = "The CRX3 package could not be inspected.",
@@ -106,15 +116,18 @@ public object JvmKWebExtensionPackageVerifier {
         }
         val extensionId = extensionId(crx.publicKeyDer)
         validateZipReferencedResources(verifiedArchive.entryNames, manifest)
-        KWebVerifiedExtension(
-            packageInfo = KWebExtensionPackage(
-                manifest = manifest,
-                extensionId = extensionId,
-                publicKeyBase64 = Base64.getEncoder().encodeToString(crx.publicKeyDer),
-                permissionReview = policy.review(manifest),
-                format = KWebExtensionPackageFormat.CRX3,
+        JvmKWebVerifiedCrx3Material(
+            verifiedExtension = KWebVerifiedExtension(
+                packageInfo = KWebExtensionPackage(
+                    manifest = manifest,
+                    extensionId = extensionId,
+                    publicKeyBase64 = Base64.getEncoder().encodeToString(crx.publicKeyDer),
+                    permissionReview = policy.review(manifest),
+                    format = KWebExtensionPackageFormat.CRX3,
+                ),
+                source = path.toAbsolutePath().normalize(),
             ),
-            source = path.toAbsolutePath().normalize(),
+            archive = archive,
         )
     }
 

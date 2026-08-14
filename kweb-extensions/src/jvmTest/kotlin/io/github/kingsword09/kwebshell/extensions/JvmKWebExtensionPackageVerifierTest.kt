@@ -1,6 +1,18 @@
 package io.github.kingsword09.kwebshell.extensions
 
-import java.io.ByteArrayOutputStream
+import io.github.kingsword09.kwebshell.extensions.JvmKWebCrx3TestFixture.buildCrx3
+import io.github.kingsword09.kwebshell.extensions.JvmKWebCrx3TestFixture.crxContainer
+import io.github.kingsword09.kwebshell.extensions.JvmKWebCrx3TestFixture.ecKeyPair
+import io.github.kingsword09.kwebshell.extensions.JvmKWebCrx3TestFixture.extensionId
+import io.github.kingsword09.kwebshell.extensions.JvmKWebCrx3TestFixture.extensionIdBytes
+import io.github.kingsword09.kwebshell.extensions.JvmKWebCrx3TestFixture.field
+import io.github.kingsword09.kwebshell.extensions.JvmKWebCrx3TestFixture.fieldKey
+import io.github.kingsword09.kwebshell.extensions.JvmKWebCrx3TestFixture.leInt
+import io.github.kingsword09.kwebshell.extensions.JvmKWebCrx3TestFixture.proof
+import io.github.kingsword09.kwebshell.extensions.JvmKWebCrx3TestFixture.rsaKeyPair
+import io.github.kingsword09.kwebshell.extensions.JvmKWebCrx3TestFixture.signedData
+import io.github.kingsword09.kwebshell.extensions.JvmKWebCrx3TestFixture.varint
+import io.github.kingsword09.kwebshell.extensions.JvmKWebCrx3TestFixture.zipArchive
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.charset.StandardCharsets
@@ -8,14 +20,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.security.KeyPair
-import java.security.KeyPairGenerator
-import java.security.MessageDigest
-import java.security.Signature
-import java.security.spec.ECGenParameterSpec
 import java.util.Base64
-import java.util.zip.CRC32
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -339,62 +344,6 @@ class JvmKWebExtensionPackageVerifierTest {
         return unsigned
     }
 
-    private fun zipArchive(entries: Map<String, String>, useDataDescriptor: Boolean = false): ByteArray {
-        val output = ByteArrayOutputStream()
-        ZipOutputStream(output).use { zip ->
-            entries.forEach { (name, value) ->
-                val bytes = value.toByteArray(StandardCharsets.UTF_8)
-                val entry = ZipEntry(name)
-                if (!useDataDescriptor) {
-                    entry.method = ZipEntry.STORED
-                    entry.size = bytes.size.toLong()
-                    entry.compressedSize = bytes.size.toLong()
-                    entry.crc = CRC32().apply { update(bytes) }.value
-                }
-                zip.putNextEntry(entry)
-                zip.write(bytes)
-                zip.closeEntry()
-            }
-        }
-        return output.toByteArray()
-    }
-
-    private fun buildCrx3(
-        keyPair: KeyPair,
-        archive: ByteArray,
-        corruptSignature: Boolean = false,
-    ): ByteArray {
-        val signedHeader = signedData(extensionIdBytes(keyPair))
-        val proof = proof(keyPair, signedHeader, archive, corruptSignature)
-        val proofField = if (keyPair.public.algorithm == "RSA") 2 else 3
-        return crxContainer(field(proofField, proof) + field(10000, signedHeader), archive)
-    }
-
-    private fun proof(
-        keyPair: KeyPair,
-        signedHeader: ByteArray,
-        archive: ByteArray,
-        corruptSignature: Boolean = false,
-    ): ByteArray {
-        val context = SIGNATURE_CONTEXT + leInt(signedHeader.size) + signedHeader + archive
-        val algorithm = if (keyPair.public.algorithm == "RSA") "SHA256withRSA" else "SHA256withECDSA"
-        val signature = Signature.getInstance(algorithm).apply {
-            initSign(keyPair.private)
-            update(context)
-        }.sign()
-        if (corruptSignature) signature[0] = (signature[0].toInt() xor 1).toByte()
-        return field(1, keyPair.public.encoded) + field(2, signature)
-    }
-
-    private fun signedData(id: ByteArray): ByteArray = field(1, id)
-
-    private fun field(number: Int, value: ByteArray): ByteArray = fieldKey(number) + varint(value.size.toLong()) + value
-
-    private fun fieldKey(number: Int): ByteArray = varint((number.toLong() shl 3) or 2)
-
-    private fun crxContainer(header: ByteArray, archive: ByteArray): ByteArray =
-        "Cr24".toByteArray(StandardCharsets.US_ASCII) + leInt(3) + leInt(header.size) + header + archive
-
     private fun assertSignedArchiveCode(code: String, keyPair: KeyPair, archive: ByteArray) {
         assertCrxCode(code, buildCrx3(keyPair, archive))
     }
@@ -406,30 +355,6 @@ class JvmKWebExtensionPackageVerifierTest {
     private fun assertCode(code: String, operation: () -> Unit) {
         val error = assertFailsWith<KWebExtensionVerificationException>(message = code, block = operation)
         assertEquals(code, error.code)
-    }
-
-    private fun rsaKeyPair(bits: Int = 2048): KeyPair =
-        KeyPairGenerator.getInstance("RSA").apply { initialize(bits) }.generateKeyPair()
-
-    private fun ecKeyPair(curve: String = "secp256r1"): KeyPair = KeyPairGenerator.getInstance("EC").apply {
-        initialize(ECGenParameterSpec(curve))
-    }.generateKeyPair()
-
-    private fun extensionId(keyPair: KeyPair): String =
-        KWebExtensionId.fromSha256Hash(MessageDigest.getInstance("SHA-256").digest(keyPair.public.encoded))
-
-    private fun extensionIdBytes(keyPair: KeyPair): ByteArray =
-        MessageDigest.getInstance("SHA-256").digest(keyPair.public.encoded).copyOf(16)
-
-    private fun varint(value: Long): ByteArray {
-        var current = value
-        val output = ByteArrayOutputStream()
-        while (current >= 0x80L) {
-            output.write(((current and 0x7fL) or 0x80L).toInt())
-            current = current ushr 7
-        }
-        output.write(current.toInt())
-        return output.toByteArray()
     }
 
     private fun encodedVarintLength(bytes: ByteArray, offset: Int): Int {
@@ -464,8 +389,6 @@ class JvmKWebExtensionPackageVerifierTest {
     private fun writeLeShort(bytes: ByteArray, offset: Int, value: Int) {
         ByteBuffer.wrap(bytes, offset, 2).order(ByteOrder.LITTLE_ENDIAN).putShort(value.toShort())
     }
-
-    private fun leInt(value: Int): ByteArray = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(value).array()
 
     private inline fun <T> withTempDirectory(operation: (Path) -> T): T {
         val root = Files.createTempDirectory("kweb-extension-test-")
@@ -506,7 +429,6 @@ class JvmKWebExtensionPackageVerifierTest {
     }
 
     private companion object {
-        val SIGNATURE_CONTEXT: ByteArray = "CRX3 SignedData\u0000".toByteArray(StandardCharsets.UTF_8)
         const val CENTRAL_DIRECTORY_SIGNATURE: Int = 0x02014b50
         const val END_OF_CENTRAL_DIRECTORY_SIGNATURE: Int = 0x06054b50
         const val DATA_DESCRIPTOR_SIGNATURE: Int = 0x08074b50

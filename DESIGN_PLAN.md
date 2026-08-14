@@ -663,6 +663,54 @@ Acceptance:
   The versioned `docs/mv3-capability-matrix.md` advertises only the exact API
   surface demonstrated by that test.
 
+#### Objective 5.3: Profile-scoped immutable extension package store
+
+This objective creates the crash-safe filesystem transaction boundary required
+by the Chromium lifecycle adapter. It does not load an extension, mutate
+Chromium preferences, or expose a public install API. A verified source becomes
+an immutable, content-addressed object inside one explicit Profile store. A
+journal records the intended install, update, reload, or uninstall; the active
+pointer changes only after a later runtime adapter reports real Chromium
+success.
+
+Acceptance:
+
+- The JVM store accepts only an absolute dedicated Profile store root and uses
+  a cross-process file lock for every read or mutation. Symlink roots, malformed
+  layouts, concurrent writers, unknown metadata, and unavailable atomic moves
+  fail with exact typed errors; there is no non-atomic move fallback.
+- Unpacked input is copied without following links into a same-filesystem
+  staging directory, then re-verified through Objective 5.1. Source mutation
+  after provisioning cannot change the managed object.
+- CRX3 input is signature-verified before extraction. The exact verified ZIP
+  payload is extracted with bounded paths into staging, and its signing public
+  key is written into the managed manifest so Chromium derives the verified ID
+  when loading the managed directory. The extracted snapshot passes the same
+  unpacked verifier before it can be committed.
+- Managed objects use a deterministic SHA-256 tree digest and the path
+  `objects/<extension-id>/<version>/<digest>`. An existing object is reused only
+  after its package identity and complete tree digest match; object contents
+  are never edited in place.
+- Preparing a package creates one atomic transaction record per extension.
+  `INSTALL`, `UPDATE`, and `RELOAD` are derived from the current active object.
+  Downgrades and same-version/different-content replacements fail. Preparing
+  uninstall leaves the active pointer intact until Chromium confirms removal.
+- Commit atomically writes or deletes the active record and then closes the
+  journal. Abort preserves the previous active record. Reopening the store
+  removes incomplete staging artifacts, finalizes journals whose active state
+  already proves commit, and retains ambiguous journals for explicit runtime
+  reconciliation instead of guessing success or rollback.
+- Garbage collection refuses to run while any transaction is pending and
+  deletes only verified objects not referenced by an active record. It never
+  follows links or removes data outside the dedicated store root.
+- JVM tests cover unpacked and CRX3 provisioning, deterministic reuse, install,
+  update, reload, uninstall, abort, downgrade/version conflict, corruption,
+  symlink escape, stale staging recovery, journal recovery, lock contention,
+  garbage collection, and two-Profile isolation on macOS, Linux, and Windows.
+- The store types remain internal until Objective 5.4 connects their transaction
+  state to the real Profile `ExtensionService`; the capability matrix continues
+  to mark package lifecycle as `UNPUBLISHED`.
+
 ### Phase 6: Extension browser UI
 
 Deliver:

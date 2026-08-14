@@ -56,6 +56,29 @@ name to runtime support. Each area moves out of `UNPUBLISHED` only with a real
 Chromium conformance fixture, typed failure behavior, and green tests on all
 three desktop targets.
 
+## Internal package-store boundary
+
+Objective 5.3 adds no published runtime capability and does not change matrix
+version 0.1. It verifies the internal filesystem boundary that Objective 5.4
+will connect to the pinned Chromium Profile `ExtensionService`:
+
+- unpacked input is copied without following links and re-verified after the
+  snapshot is complete;
+- the exact signature-verified CRX3 ZIP payload is extracted and receives its
+  verified public key in the managed manifest;
+- immutable objects use a portable SHA-256 tree digest under one explicit
+  Profile store;
+- install, update, reload, and uninstall intent is journaled under a real
+  cross-process lock, while active state changes only after runtime success;
+- crash recovery retains ambiguous journals, and garbage collection refuses to
+  run while any transaction is pending.
+
+These properties are exercised by `JvmKWebExtensionProfileStoreTest` on every
+desktop Actions runner. They prove deterministic package provisioning and
+transaction recovery only. They do not prove that Chromium loaded, updated,
+reloaded, or uninstalled an extension, so package lifecycle remains
+`UNPUBLISHED`.
+
 ## Test-only bootstrap boundary
 
 Objective 5.2 uses `--load-extension` and `--disable-extensions-except` only

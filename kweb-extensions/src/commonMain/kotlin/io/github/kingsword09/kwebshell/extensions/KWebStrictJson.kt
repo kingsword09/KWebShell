@@ -2,15 +2,18 @@ package io.github.kingsword09.kwebshell.extensions
 
 internal object KWebStrictJsonObjectKeyValidator {
     fun validate(text: String) {
-        val reader = Reader(text)
-        if (!reader.readDocument()) return
-        reader.duplicateKey?.let { duplicate ->
+        duplicateKey(text)?.let { duplicate ->
             extensionFailure(
                 code = "extensions.manifest.duplicate-json-key",
                 details = mapOf("key" to duplicate),
                 message = "The extension manifest contains duplicate JSON object key '$duplicate'.",
             )
         }
+    }
+
+    fun duplicateKey(text: String): String? {
+        val reader = Reader(text)
+        return if (reader.readDocument()) reader.duplicateKey else null
     }
 
     private class Reader(private val text: String) {

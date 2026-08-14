@@ -15,18 +15,28 @@ enum class ProfileSelfTestMode {
   kExpectAbsent,
 };
 
+enum class Mv3CoreSelfTestMode {
+  kNone,
+  kInitial,
+  kRestart,
+  kIsolated,
+};
+
 struct HostConfiguration final {
   std::filesystem::path root_cache_path;
   std::filesystem::path profile_path;
   std::optional<std::filesystem::path> event_log_path;
   std::string url;
   std::string profile_test_value;
+  std::filesystem::path mv3_extension_path;
   int width = 800;
   int height = 600;
   bool self_test = false;
   ProfileSelfTestMode profile_self_test_mode = ProfileSelfTestMode::kNone;
+  Mv3CoreSelfTestMode mv3_core_self_test_mode = Mv3CoreSelfTestMode::kNone;
 
   bool IsProfileSelfTest() const;
+  bool IsMv3CoreSelfTest() const;
   bool IsAnySelfTest() const;
 
   static std::optional<HostConfiguration>

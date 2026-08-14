@@ -12,6 +12,7 @@
 #include "include/cef_request_context_handler.h"
 #include "include/wrapper/cef_closure_task.h"
 #include "include/wrapper/cef_helpers.h"
+#include "mv3_core_test_page.h"
 #include "profile_test_page.h"
 #include "self_test_page.h"
 
@@ -19,6 +20,8 @@ namespace kwebshell {
 namespace {
 
 constexpr int64_t kProfileCookieFlushTimeoutMs = 30000;
+constexpr int64_t kDefaultSelfTestTimeoutMs = 30000;
+constexpr int64_t kMv3CoreSelfTestTimeoutMs = 150000;
 
 void AssignCefPath(cef_string_t *output, const std::filesystem::path &path) {
   CefString cef_path(output);
@@ -76,6 +79,38 @@ BrowserApp::~BrowserApp() = default;
 
 CefRefPtr<CefBrowserProcessHandler> BrowserApp::GetBrowserProcessHandler() {
   return this;
+}
+
+void BrowserApp::OnBeforeCommandLineProcessing(
+    const CefString &process_type,
+    CefRefPtr<CefCommandLine> command_line) {
+  if (!process_type.empty() || !configuration_.IsMv3CoreSelfTest()) {
+    return;
+  }
+  command_line->RemoveSwitch("disable-extensions");
+  command_line->RemoveSwitch("disable-extensions-except");
+  command_line->RemoveSwitch("load-extension");
+  command_line->AppendSwitch("disable-background-networking");
+  command_line->AppendSwitch("disable-component-update");
+  command_line->AppendSwitch("no-first-run");
+  command_line->AppendSwitch("no-proxy-server");
+  CefString extension_path;
+#if defined(OS_WIN)
+  extension_path = configuration_.mv3_extension_path.wstring();
+#else
+  extension_path = configuration_.mv3_extension_path.string();
+#endif
+  command_line->AppendSwitchWithValue("disable-extensions-except",
+                                     extension_path);
+  command_line->AppendSwitchWithValue("load-extension", extension_path);
+  recorder_->Record(
+      "mv3_extension_load_configured",
+      {{"mode", Mv3CoreSelfTestModeName(
+                    configuration_.mv3_core_self_test_mode)},
+       {"path", extension_path.ToString()},
+       {"background_networking", "disabled"},
+       {"component_updates", "disabled"},
+       {"proxy", "disabled"}});
 }
 
 void BrowserApp::OnContextInitialized() {
@@ -138,6 +173,14 @@ void BrowserApp::OnProfileRequestContextInitialized(
     OnFatalBrowserError("native.profile.test-scheme-registration-failed", {});
     return;
   }
+  if (configuration_.IsMv3CoreSelfTest() &&
+      !request_context_->RegisterSchemeHandlerFactory(
+          "https", "kwebshell.test",
+          CreateMv3CoreSelfTestSchemeHandlerFactory(
+              configuration_.mv3_core_self_test_mode, recorder_))) {
+    OnFatalBrowserError("native.mv3.test-scheme-registration-failed", {});
+    return;
+  }
   CreateBrowserForProfile();
 }
 
@@ -146,13 +189,16 @@ void BrowserApp::CreateBrowserForProfile() {
   native_window_ = CreateNativeWindow(this, recorder_);
   client_ = new BrowserClient(this, native_window_.get(), recorder_,
                               configuration_.self_test,
-                              configuration_.IsProfileSelfTest());
+                              configuration_.IsProfileSelfTest(),
+                              configuration_.IsMv3CoreSelfTest());
 
   std::string url = configuration_.url;
   if (configuration_.self_test) {
     url = BuildSelfTestUrl();
   } else if (configuration_.IsProfileSelfTest()) {
     url = ProfileSelfTestUrl();
+  } else if (configuration_.IsMv3CoreSelfTest()) {
+    url = Mv3CoreSelfTestUrl();
   }
   std::string error;
   if (!native_window_->CreateBrowser(configuration_, client_, request_context_,
@@ -167,7 +213,8 @@ void BrowserApp::CreateBrowserForProfile() {
         base::BindOnce(
             [](CefRefPtr<BrowserApp> app) { app->OnSelfTestTimeout(); },
             CefRefPtr<BrowserApp>(this)),
-        30000);
+        configuration_.IsMv3CoreSelfTest() ? kMv3CoreSelfTestTimeoutMs
+                                           : kDefaultSelfTestTimeoutMs);
   }
 }
 
@@ -293,9 +340,50 @@ void BrowserApp::OnProfileSelfTestPageLoaded() {
   MaybeCompleteProfileSelfTest();
 }
 
+void BrowserApp::OnMv3CoreSelfTestPagePassed(const std::string &result) {
+  CEF_REQUIRE_UI_THREAD();
+  if (!configuration_.IsMv3CoreSelfTest() ||
+      mv3_core_self_test_page_passed_) {
+    return;
+  }
+  const std::string expected = ExpectedMv3CoreSelfTestResult(
+      configuration_.mv3_core_self_test_mode);
+  if (result != expected) {
+    OnFatalBrowserError("native.mv3.core-self-test-result-invalid",
+                        {{"expected", expected}, {"actual", result}});
+    return;
+  }
+  mv3_core_self_test_page_passed_ = true;
+  recorder_->Record(
+      "mv3_core_self_test_passed",
+      {{"mode", Mv3CoreSelfTestModeName(
+                    configuration_.mv3_core_self_test_mode)},
+       {"result", result}});
+  MaybeCompleteMv3CoreSelfTest();
+}
+
+void BrowserApp::OnMv3CoreSelfTestPageLoaded() {
+  CEF_REQUIRE_UI_THREAD();
+  if (!configuration_.IsMv3CoreSelfTest() ||
+      mv3_core_self_test_page_loaded_) {
+    return;
+  }
+  mv3_core_self_test_page_loaded_ = true;
+  MaybeCompleteMv3CoreSelfTest();
+}
+
 void BrowserApp::MaybeCompleteProfileSelfTest() {
   CEF_REQUIRE_UI_THREAD();
   if (!profile_self_test_page_passed_ || !profile_self_test_page_loaded_) {
+    return;
+  }
+  RequestProfileFlushAndClose();
+}
+
+void BrowserApp::MaybeCompleteMv3CoreSelfTest() {
+  CEF_REQUIRE_UI_THREAD();
+  if (!mv3_core_self_test_page_passed_ ||
+      !mv3_core_self_test_page_loaded_) {
     return;
   }
   RequestProfileFlushAndClose();
@@ -411,6 +499,10 @@ void BrowserApp::OnSelfTestTimeout() {
        {"profile_page", profile_self_test_page_passed_ ? "passed" : "pending"},
        {"profile_load",
         profile_self_test_page_loaded_ ? "completed" : "pending"},
+       {"mv3_core_page",
+        mv3_core_self_test_page_passed_ ? "passed" : "pending"},
+       {"mv3_core_load",
+        mv3_core_self_test_page_loaded_ ? "completed" : "pending"},
        {"profile_cookie_flush",
         profile_cookie_flush_completed_ ? "completed" : "pending"},
        {"renderer_process",

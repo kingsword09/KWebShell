@@ -20,10 +20,12 @@ std::string DisplayUrl(const CefString &url) {
 
 BrowserClient::BrowserClient(BrowserApp *app, NativeWindow *native_window,
                              std::shared_ptr<EventRecorder> recorder,
-                             bool native_self_test, bool profile_self_test)
+                             bool native_self_test, bool profile_self_test,
+                             bool mv3_core_self_test)
     : app_(app), native_window_(native_window), recorder_(std::move(recorder)),
       native_self_test_(native_self_test),
-      profile_self_test_(profile_self_test) {}
+      profile_self_test_(profile_self_test),
+      mv3_core_self_test_(mv3_core_self_test) {}
 
 CefRefPtr<CefDisplayHandler> BrowserClient::GetDisplayHandler() { return this; }
 
@@ -47,6 +49,15 @@ void BrowserClient::OnTitleChange(CefRefPtr<CefBrowser> browser,
       app_->OnProfileSelfTestPagePassed(title_string);
     } else if (title_string.starts_with("KWEB_PROFILE_SELF_TEST_FAIL|")) {
       app_->OnFatalBrowserError("native.profile.self-test-failed",
+                                {{"result", title_string}});
+    }
+    return;
+  }
+  if (mv3_core_self_test_) {
+    if (title_string.starts_with("KWEB_MV3_CORE_PASS|")) {
+      app_->OnMv3CoreSelfTestPagePassed(title_string);
+    } else if (title_string.starts_with("KWEB_MV3_CORE_FAIL|")) {
+      app_->OnFatalBrowserError("native.mv3.core-self-test-failed",
                                 {{"result", title_string}});
     }
     return;
@@ -166,6 +177,8 @@ void BrowserClient::OnLoadEnd(CefRefPtr<CefBrowser> browser,
                        {"url", DisplayUrl(frame->GetURL())}});
     if (profile_self_test_) {
       app_->OnProfileSelfTestPageLoaded();
+    } else if (mv3_core_self_test_) {
+      app_->OnMv3CoreSelfTestPageLoaded();
     }
   }
 }

@@ -1,0 +1,91 @@
+# Manifest V3 capability matrix
+
+- Matrix version: 0.1
+- Runtime baseline: CEF `151.3.16+gbe1e15d`, Chromium `151.0.7922.109`
+- Architecture: Chrome bootstrap with an Alloy native child
+- Conformance objective: 5.2
+
+This matrix is a product contract, not a list of manifest fields that happen to
+parse. `RUNTIME_VERIFIED` means the pinned Chromium runtime performed the exact
+operation in `kweb_mv3_core_conformance_test` on macOS, Linux, and Windows.
+`PACKAGE_VERIFIED` means Objective 5.1 admits and authenticates the package but
+makes no runtime claim. `UNPUBLISHED` means KWebShell exposes no public contract
+for the capability in this matrix version.
+
+## Published baseline
+
+| Capability | Status | Conformance evidence |
+| --- | --- | --- |
+| Strict Manifest V3 parsing and resource validation | `PACKAGE_VERIFIED` | The shared fixture passes `JvmKWebExtensionPackageVerifier.verifyUnpacked`. |
+| Public-key extension ID derivation | `PACKAGE_VERIFIED` | The fixture derives `dhhnhmffjehhodphofnkingncijnaona` from its checked-in SPKI public key. |
+| Static `document_start` content script | `RUNTIME_VERIFIED` | Chromium injects `content.js` into the controlled HTTPS origin. |
+| Content-script isolated world | `RUNTIME_VERIFIED` | The content script reads the shared DOM but cannot observe a page-world JavaScript marker; the page world has no `chrome.runtime`. |
+| `chrome.runtime.id` | `RUNTIME_VERIFIED` | Both Service Worker responses contain the fixed extension ID. |
+| `chrome.runtime.getManifest()` | `RUNTIME_VERIFIED` | Both responses contain the exact manifest name. |
+| `chrome.runtime.sendMessage()` from a content script | `RUNTIME_VERIFIED` | Chromium dispatches two request/response messages to the MV3 Service Worker. |
+| MV3 Service Worker wake and event handling | `RUNTIME_VERIFIED` | The worker starts on the first message and returns an asynchronous response. |
+| MV3 Service Worker idle suspension and wake-up | `RUNTIME_VERIFIED` | After 40 seconds idle, the next message is handled by a different worker instance ID. |
+| `chrome.storage.local.get()` and `.set()` | `RUNTIME_VERIFIED` | Message counts advance exactly once per worker response. |
+| Extension state across complete CEF restart | `RUNTIME_VERIFIED` | Profile `alpha` advances from counts `1/2` to `3/4` after shutdown and restart. |
+| Extension state isolation between Profiles | `RUNTIME_VERIFIED` | Profile `beta` starts independently at counts `1/2`. |
+| Chromium extension and Service Worker disk state | `RUNTIME_VERIFIED` | Non-empty Profile databases are required after every run. |
+
+`RUNTIME_VERIFIED` applies only to the exact methods and event path above. It is
+not a blanket claim for every member of `chrome.runtime`, `chrome.storage`, or
+the content-script platform.
+
+## Unpublished surface
+
+The following capabilities have no public KWebShell runtime contract in matrix
+version 0.1:
+
+| Area | Capabilities held back from the public API |
+| --- | --- |
+| Package lifecycle | Profile installation, CRX3 installation, atomic update, reload, disable/enable, uninstall |
+| Worker events | Installation/update events, alarms, notifications, browser lifecycle events |
+| Script APIs | `chrome.scripting`, dynamic content scripts, user scripts |
+| Browser model | `chrome.tabs`, `chrome.windows`, tab groups, sessions |
+| Extension UI | action icon/badge, popup, options, context menus, commands |
+| Network | `declarativeNetRequest` rule evaluation and feedback |
+| Extension surfaces | DevTools pages, offscreen documents, side panels |
+| Elevated integration | native messaging, debugger, management, proxy, private/incognito access |
+
+Some names in this table are package-admissible under Objective 5.1 so their
+manifests can be reviewed deterministically. Package admission never upgrades a
+name to runtime support. Each area moves out of `UNPUBLISHED` only with a real
+Chromium conformance fixture, typed failure behavior, and green tests on all
+three desktop targets.
+
+## Test-only bootstrap boundary
+
+Objective 5.2 uses `--load-extension` and `--disable-extensions-except` only
+inside the native conformance host. The host accepts an absolute fixture path,
+canonicalizes and validates it, removes inherited extension switches, and loads
+only that fixture with background networking, component updates, and proxy use
+disabled. This proves Chromium capability without external network dependence
+but deliberately does not define product installation semantics.
+
+The production JNI engine sets `command_line_args_disabled` and does not expose
+these self-test arguments. KWebShell does not fall back to command-line loading,
+a system WebView, an emulated `chrome.*` object, or another Profile when a
+published extension capability is unavailable.
+
+## Platform gate
+
+The same `kweb_mv3_core_conformance_test` is mandatory for:
+
+| Target | Runtime path | Acceptance gate |
+| --- | --- | --- |
+| macOS arm64 | Native Cocoa child, hardware GPU contract | Local verification and GitHub Actions |
+| Linux x64 | Native GTK/X11 child under Xvfb | GitHub Actions |
+| Windows x64 | Native Win32 child | GitHub Actions |
+
+A CEF/Chromium upgrade invalidates runtime evidence until this suite passes on
+all three targets again. The matrix version must change when any published
+capability or its semantics change.
+
+## Upstream basis
+
+- [CEF issue 3859: extension support with Alloy-style browsers](https://github.com/chromiumembedded/cef/issues/3859)
+- [CEF commit `be1e15d8892c064f0299ba18350236a9b272ce7f`](https://github.com/chromiumembedded/cef/commit/be1e15d8892c064f0299ba18350236a9b272ce7f)
+- [Chrome Manifest V3 documentation](https://developer.chrome.com/docs/extensions/develop/migrate/what-is-mv3)

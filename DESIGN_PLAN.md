@@ -612,6 +612,57 @@ Acceptance:
   install or runtime capability is advertised until Objective 5.2 adds its real
   integration conformance.
 
+#### Objective 5.2: Alloy Manifest V3 core runtime conformance
+
+This objective proves the minimum real Chromium extension-runtime path before a
+product installation API is designed. A checked-in Manifest V3 fixture runs in
+the pinned CEF 151 Chrome bootstrap and the same Alloy-style native child used by
+the embedded browser. Chromium owns content-script injection, the isolated
+world, runtime messaging, the Service Worker lifecycle, and `storage.local`.
+Kotlin and the host page do not emulate any `chrome.*` API.
+
+The native host's `--kweb-mv3-core-self-test` and
+`--kweb-mv3-extension-path` arguments are private conformance controls. Their
+use of Chromium's `--load-extension` switch is limited to the test fixture and
+is not an install, update, reload, persistence, or product fallback contract.
+Those lifecycle operations remain absent from the public API until the Profile
+extension-service adapter is complete.
+
+Acceptance:
+
+- The shared unpacked fixture passes the Objective 5.1 package verifier and
+  derives the fixed Chromium extension ID
+  `dhhnhmffjehhodphofnkingncijnaona`; no private signing key is stored in the
+  repository.
+- MV3 self-test modes are mutually exclusive with all other host self-tests.
+  They require an absolute, canonical fixture directory containing regular
+  `manifest.json`, `worker.js`, and `content.js` files, reject Chromium's comma
+  path separator, and fail with an observable typed startup error.
+- The browser process removes inherited extension-loading switches and supplies
+  only the validated conformance fixture. Background networking and component
+  updates are disabled and machine proxy settings are bypassed so the test is
+  hermetic. The production JNI engine continues to disable inherited Chromium
+  command-line arguments and exposes no 5.2 extension installation API.
+- A static `document_start` content script runs in Chromium's isolated world on
+  `https://kwebshell.test/`, observes no page-world JavaScript marker, and uses
+  the real `chrome.runtime.id`, `chrome.runtime.getManifest()`, and
+  `chrome.runtime.sendMessage()` APIs.
+- A real MV3 Service Worker handles the message, reads and writes
+  `chrome.storage.local`, becomes idle, and is restarted with a different
+  in-memory instance ID before handling the next message. No synthetic worker
+  lifecycle or Kotlin bridge participates.
+- Profile `alpha` records message counts `1/2`, then restores the same extension
+  state after a complete CEF restart and records `3/4`. Profile `beta` begins at
+  `1/2`, proving that extension state is isolated by Profile.
+- After each run, Chromium has persisted non-empty Preferences, Extension State,
+  Extension Scripts, Local Extension Settings, and Service Worker database
+  files. Browser, native window, Profile flush, CEF loop, and shutdown events
+  remain ordered and complete.
+- `kweb_mv3_core_conformance_test` runs against a real renderer and native Alloy
+  child on macOS locally and on macOS, Linux/Xvfb, and Windows in GitHub Actions.
+  The versioned `docs/mv3-capability-matrix.md` advertises only the exact API
+  surface demonstrated by that test.
+
 ### Phase 6: Extension browser UI
 
 Deliver:

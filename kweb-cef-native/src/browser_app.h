@@ -24,6 +24,9 @@ public:
   ~BrowserApp() override;
 
   CefRefPtr<CefBrowserProcessHandler> GetBrowserProcessHandler() override;
+  void OnBeforeCommandLineProcessing(
+      const CefString &process_type,
+      CefRefPtr<CefCommandLine> command_line) override;
   void OnContextInitialized() override;
   void
   OnBeforeChildProcessLaunch(CefRefPtr<CefCommandLine> command_line) override;
@@ -40,6 +43,8 @@ public:
       CefRefPtr<CefRequestContext> request_context);
   void OnProfileSelfTestPagePassed(const std::string &result);
   void OnProfileSelfTestPageLoaded();
+  void OnMv3CoreSelfTestPagePassed(const std::string &result);
+  void OnMv3CoreSelfTestPageLoaded();
   void OnProfileCookieFlushCompleted();
   void OnFatalBrowserError(const std::string &code,
                            const std::map<std::string, std::string> &details);
@@ -53,6 +58,7 @@ private:
   void RequestProfileFlushAndClose();
   void OnProfileCookieFlushTimeout();
   void MaybeCompleteProfileSelfTest();
+  void MaybeCompleteMv3CoreSelfTest();
   void MaybeCompleteSelfTest();
   void OnSelfTestInputSettled();
   void OnSelfTestTimeout();
@@ -70,6 +76,8 @@ private:
   bool self_test_page_passed_ = false;
   bool profile_self_test_page_passed_ = false;
   bool profile_self_test_page_loaded_ = false;
+  bool mv3_core_self_test_page_passed_ = false;
+  bool mv3_core_self_test_page_loaded_ = false;
   bool profile_cookie_flush_started_ = false;
   bool profile_cookie_flush_completed_ = false;
   bool close_requested_ = false;

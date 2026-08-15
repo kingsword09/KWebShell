@@ -5,6 +5,12 @@ import io.github.kingsword09.kwebshell.bridge.KWebBridgeProtocol
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebConfigurationException
 import io.github.kingsword09.kwebshell.core.KWebNativeException
+import io.github.kingsword09.kwebshell.extensions.JvmKWebExtensionLifecycleCoordinator
+import io.github.kingsword09.kwebshell.extensions.KWebExtensionLifecycleResolution
+import io.github.kingsword09.kwebshell.extensions.KWebExtensionLifecycleResult
+import io.github.kingsword09.kwebshell.extensions.KWebExtensionRuntimeOperation
+import io.github.kingsword09.kwebshell.extensions.KWebExtensionRuntimeRequest
+import io.github.kingsword09.kwebshell.extensions.KWebExtensionRuntimeResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -82,6 +88,7 @@ internal class NativeBrowser private constructor(
     private val engine: NativeEngine,
     private val listener: (NativeBrowserEvent) -> Unit,
     private val component: Component,
+    private val profilePath: Path,
     private val bridgeDispatcher: KWebBridgeDispatcher?,
 ) : AutoCloseable {
     private val mutableLifecycle = MutableStateFlow(KWebLifecycleState.OPENING)
@@ -111,6 +118,13 @@ internal class NativeBrowser private constructor(
     )
     private val bridgeJobs = ConcurrentHashMap<Long, Job>()
     private val bridgeSink = bridgeDispatcher?.let { NativeBridgeEventSink(::receiveNativeBridgeEvent) }
+    private val extensionRuntime = NativeExtensionRuntime(engine, this)
+    private val extensionCoordinator: JvmKWebExtensionLifecycleCoordinator by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        JvmKWebExtensionLifecycleCoordinator.open(
+            storeRoot = profilePath.resolve(EXTENSION_STORE_DIRECTORY),
+            runtime = extensionRuntime,
+        )
+    }
 
     internal val lifecycle: StateFlow<KWebLifecycleState> = mutableLifecycle.asStateFlow()
 
@@ -126,6 +140,34 @@ internal class NativeBrowser private constructor(
 
     internal fun requireLiveHandle(operation: String): Long =
         requireOpenHandle(operation)
+
+    internal fun ownsHandle(handle: Long): Boolean =
+        handle != 0L && callbackHandle.get() == handle
+
+    internal suspend fun installUnpackedExtension(source: Path): KWebExtensionLifecycleResult =
+        extensionCoordinator.installUnpacked(source)
+
+    internal suspend fun installCrx3Extension(source: Path): KWebExtensionLifecycleResult =
+        extensionCoordinator.installCrx3(source)
+
+    internal suspend fun reloadExtension(extensionId: String): KWebExtensionLifecycleResult =
+        extensionCoordinator.reload(extensionId)
+
+    internal suspend fun uninstallExtension(extensionId: String): KWebExtensionLifecycleResult =
+        extensionCoordinator.uninstall(extensionId)
+
+    internal suspend fun reconcileExtensions(): List<KWebExtensionLifecycleResult> =
+        extensionCoordinator.reconcile()
+
+    internal suspend fun queryExtension(extensionId: String): KWebExtensionRuntimeResult =
+        extensionRuntime.execute(
+            KWebExtensionRuntimeRequest(
+                operation = KWebExtensionRuntimeOperation.QUERY,
+                extensionId = extensionId,
+                expectedVersion = null,
+                extensionPath = null,
+            ),
+        )
 
     internal fun openDevTools() {
         val handle = requireOpenHandle("open-devtools")
@@ -469,6 +511,18 @@ internal class NativeBrowser private constructor(
         opened.countDown()
     }
 
+    internal fun recordExtensionCancellationFailure(operationHandle: Long, status: Int) {
+        recordCallbackFailure(
+            code = "native.extension.cancel-failed",
+            details = mapOf(
+                "operationHandle" to operationHandle.toString(),
+                "status" to status.toString(),
+            ),
+            message = "The native extension operation could not be cancelled.",
+            cause = nativeStatusException("extension-cancel", status),
+        )
+    }
+
     private fun awaitTerminalEvent(): Boolean {
         if (!EventQueue.isDispatchThread()) {
             return try {
@@ -593,6 +647,7 @@ internal class NativeBrowser private constructor(
     internal companion object {
         private val dispatcherIds = AtomicLong(0)
         private val CALLBACK_TIMEOUT: Duration = Duration.ofSeconds(30)
+        internal const val EXTENSION_STORE_DIRECTORY: String = "KWebShell Extension Store"
 
         internal fun open(
             engine: NativeEngine,
@@ -647,7 +702,7 @@ internal class NativeBrowser private constructor(
                     cause = error,
                 )
             }
-            val browser = NativeBrowser(engine, listener, component, bridgeDispatcher)
+            val browser = NativeBrowser(engine, listener, component, normalizedProfile, bridgeDispatcher)
             val result = NativeEngine.onAwtEventDispatchThread {
                 NativeBindings.browserCreate(
                     engine.requireLiveHandle("browser-create"),
@@ -688,6 +743,35 @@ internal class NativeBrowser private constructor(
                         code = "native.browser.open-state-invalid",
                         details = mapOf("state" to browser.mutableLifecycle.value.name),
                         message = "The real Chromium browser did not reach the open state.",
+                    ),
+                )
+            }
+            val reconciliation = try {
+                runBlocking { browser.reconcileExtensions() }
+            } catch (error: Throwable) {
+                browser.abortOpen(
+                    KWebNativeException(
+                        code = "native.extension.reconcile-failed",
+                        details = mapOf("profile" to normalizedProfile.toString()),
+                        message = "Pending extension lifecycle state could not be reconciled with Chromium.",
+                        cause = error,
+                    ),
+                )
+            }
+            reconciliation.firstOrNull {
+                it.resolution == KWebExtensionLifecycleResolution.RETAINED
+            }?.let { retained ->
+                val failure = retained.failure
+                browser.abortOpen(
+                    KWebNativeException(
+                        code = failure?.code ?: "native.extension.reconcile-ambiguous",
+                        details = (failure?.details ?: emptyMap()) + mapOf(
+                            "profile" to normalizedProfile.toString(),
+                            "extensionId" to retained.extensionId,
+                            "transactionToken" to retained.transactionToken,
+                        ),
+                        message = failure?.message
+                            ?: "Pending extension lifecycle state remains ambiguous after reconciliation.",
                     ),
                 )
             }

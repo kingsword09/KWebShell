@@ -74,6 +74,10 @@ local.properties
 hs_err_pid*
 replay_pid*
 
+# Python tooling caches used by the pinned CEF source builder
+__pycache__/
+*.py[cod]
+
 # Maven outputs when a compatibility or tooling module uses Maven
 **/target/
 

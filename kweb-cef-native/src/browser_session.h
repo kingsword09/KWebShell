@@ -1,6 +1,8 @@
 #ifndef KWEBSHELL_NATIVE_BROWSER_SESSION_H_
 #define KWEBSHELL_NATIVE_BROWSER_SESSION_H_
 
+#include <filesystem>
+
 #include "kwebshell/native/engine_abi.h"
 
 namespace kwebshell {
@@ -19,6 +21,9 @@ kweb_status RespondToBridgeSession(kweb_browser_handle browser,
                                    const char *response_utf8,
                                    size_t response_size, bool success);
 uint64_t LiveBrowserSessionCount();
+kweb_status GetBrowserExtensionContext(kweb_browser_handle browser,
+                                       kweb_engine_handle *engine_out,
+                                       std::filesystem::path *profile_path_out);
 
 } // namespace kwebshell
 

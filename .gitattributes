@@ -5,6 +5,7 @@
 *.ps1 text eol=crlf
 *.sh text eol=lf
 gradlew text eol=lf
+runtime/cef/patches/*.patch text eol=lf
 
 *.jar binary
 *.zip binary

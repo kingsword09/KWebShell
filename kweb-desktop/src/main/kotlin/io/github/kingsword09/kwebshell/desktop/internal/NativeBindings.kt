@@ -155,6 +155,22 @@ internal object NativeBindings {
 
     @JvmName("liveBrowserCount")
     internal external fun liveBrowserCount(): Long
+
+    @JvmName("extensionStart")
+    internal external fun extensionStart(
+        browser: Long,
+        sink: NativeExtensionResultSink,
+        operation: Int,
+        extensionId: String,
+        expectedVersion: String,
+        extensionPath: String,
+    ): Long
+
+    @JvmName("extensionCancel")
+    internal external fun extensionCancel(operation: Long): Int
+
+    @JvmName("liveExtensionOperationCount")
+    internal external fun liveExtensionOperationCount(): Long
 }
 
 internal class NativeEngineEventSink(
@@ -201,5 +217,38 @@ internal class NativeBridgeEventSink(
         payload: String,
     ) {
         callback(engine, browser, requestId, type, payload)
+    }
+}
+
+internal class NativeExtensionResultSink(
+    private val callback: (Long, Long, Long, Int, Int, Int, String, String, String, String, String) -> Unit,
+) {
+    @JvmName("onNativeExtensionResult")
+    internal fun onNativeExtensionResult(
+        operationHandle: Long,
+        engine: Long,
+        browser: Long,
+        operation: Int,
+        outcome: Int,
+        state: Int,
+        extensionId: String,
+        version: String,
+        path: String,
+        errorCode: String,
+        errorMessage: String,
+    ) {
+        callback(
+            operationHandle,
+            engine,
+            browser,
+            operation,
+            outcome,
+            state,
+            extensionId,
+            version,
+            path,
+            errorCode,
+            errorMessage,
+        )
     }
 }

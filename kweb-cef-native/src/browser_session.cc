@@ -134,6 +134,9 @@ public:
   kweb_status CloseDevTools(kweb_browser_handle handle);
   kweb_status BridgeRespond(kweb_browser_handle handle, uint64_t request_id,
                             std::string response, bool success);
+  kweb_status ExtensionContext(kweb_browser_handle handle,
+                               kweb_engine_handle *engine_out,
+                               std::filesystem::path *profile_path_out) const;
   void Complete(kweb_browser_handle handle, BrowserSession *session);
   uint64_t LiveCount() const;
 
@@ -423,6 +426,23 @@ public:
     } else {
       callback->Failure(kBridgeFailureCode, response);
     }
+    return KWEB_STATUS_OK;
+  }
+
+  kweb_status ExtensionContext(
+      kweb_engine_handle *engine_out,
+      std::filesystem::path *profile_path_out) const {
+    if (engine_out == nullptr || profile_path_out == nullptr) {
+      return KWEB_STATUS_INVALID_ARGUMENT;
+    }
+    if (closing_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_BROWSER_CLOSING;
+    }
+    if (!ready_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_BROWSER_NOT_READY;
+    }
+    *engine_out = engine_;
+    *profile_path_out = profile_path_;
     return KWEB_STATUS_OK;
   }
 
@@ -1236,6 +1256,14 @@ kweb_status SessionRegistry::BridgeRespond(kweb_browser_handle handle,
                  : KWEB_STATUS_INVALID_HANDLE;
 }
 
+kweb_status SessionRegistry::ExtensionContext(
+    kweb_browser_handle handle, kweb_engine_handle *engine_out,
+    std::filesystem::path *profile_path_out) const {
+  auto session = Lookup(handle);
+  return session ? session->ExtensionContext(engine_out, profile_path_out)
+                 : KWEB_STATUS_INVALID_HANDLE;
+}
+
 void SessionRegistry::Complete(kweb_browser_handle handle,
                                BrowserSession *session) {
   std::lock_guard lock(mutex_);
@@ -1318,6 +1346,14 @@ uint64_t LiveBrowserSessionCount() {
   } catch (...) {
     return std::numeric_limits<uint64_t>::max();
   }
+}
+
+kweb_status GetBrowserExtensionContext(
+    kweb_browser_handle browser, kweb_engine_handle *engine_out,
+    std::filesystem::path *profile_path_out) {
+  return GuardStatus([&] {
+    return Registry().ExtensionContext(browser, engine_out, profile_path_out);
+  });
 }
 
 } // namespace kwebshell

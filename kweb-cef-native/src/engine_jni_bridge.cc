@@ -1,6 +1,7 @@
 #include "engine_jni_bridge.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <cstring>
@@ -37,6 +38,10 @@ constexpr char kBrowserSinkSignature[] =
     "(JJJIILjava/lang/String;III)V";
 constexpr char kBridgeSinkMethod[] = "onNativeBridgeEvent";
 constexpr char kBridgeSinkSignature[] = "(JJJILjava/lang/String;)V";
+constexpr char kExtensionSinkMethod[] = "onNativeExtensionResult";
+constexpr char kExtensionSinkSignature[] =
+    "(JJJIIILjava/lang/String;Ljava/lang/String;Ljava/lang/String;"
+    "Ljava/lang/String;Ljava/lang/String;)V";
 
 using EngineAbiVersionFunction = uint32_t(KWEB_ABI_CALL *)(void);
 using EnginePlatformStartupFunction = kweb_status(KWEB_ABI_CALL *)(const char *,
@@ -56,6 +61,12 @@ using BrowserDevToolsFunction = kweb_status(KWEB_ABI_CALL *)(kweb_browser_handle
 using BrowserBridgeFunction = kweb_status(KWEB_ABI_CALL *)(
     kweb_browser_handle, uint64_t, const char *, size_t);
 using LiveBrowserCountFunction = uint64_t(KWEB_ABI_CALL *)(void);
+using ExtensionStartFunction = kweb_status(KWEB_ABI_CALL *)(
+    kweb_browser_handle, const kweb_extension_config *,
+    kweb_extension_operation_handle *);
+using ExtensionCancelFunction = kweb_status(KWEB_ABI_CALL *)(
+    kweb_extension_operation_handle);
+using LiveExtensionOperationCountFunction = uint64_t(KWEB_ABI_CALL *)(void);
 
 #if defined(_WIN32)
 using LibraryHandle = HMODULE;
@@ -84,6 +95,9 @@ struct EngineApi final {
   BrowserBridgeFunction browser_bridge_respond = nullptr;
   BrowserBridgeFunction browser_bridge_fail = nullptr;
   LiveBrowserCountFunction live_browser_count = nullptr;
+  ExtensionStartFunction extension_start = nullptr;
+  ExtensionCancelFunction extension_cancel = nullptr;
+  LiveExtensionOperationCountFunction live_extension_operation_count = nullptr;
 
   bool IsLoaded() const {
     return engine_library != kInvalidLibraryHandle && abi_version != nullptr &&
@@ -95,7 +109,9 @@ struct EngineApi final {
            browser_close_devtools != nullptr &&
            browser_bridge_respond != nullptr &&
            browser_bridge_fail != nullptr &&
-           live_browser_count != nullptr;
+           live_browser_count != nullptr && extension_start != nullptr &&
+           extension_cancel != nullptr &&
+           live_extension_operation_count != nullptr;
   }
 };
 
@@ -131,6 +147,21 @@ struct BrowserJniCallbackContext final {
   std::atomic<bool> sink_released = false;
 };
 
+struct ExtensionJniCallbackContext final {
+  ExtensionJniCallbackContext(JavaVM *vm_value, jobject sink_value,
+                              jmethodID on_result_value)
+      : vm(vm_value), sink(sink_value), on_result(on_result_value) {}
+
+  JavaVM *vm;
+  jobject sink;
+  jmethodID on_result;
+  std::atomic<kweb_extension_operation_handle> handle =
+      KWEB_INVALID_EXTENSION_OPERATION_HANDLE;
+  std::atomic<bool> failed = false;
+  std::atomic<bool> completed = false;
+  std::atomic<bool> sink_released = false;
+};
+
 std::mutex api_mutex;
 EngineApi engine_api;
 std::mutex engine_contexts_mutex;
@@ -139,6 +170,10 @@ std::map<EngineJniCallbackContext *, std::shared_ptr<EngineJniCallbackContext>>
 std::mutex browser_contexts_mutex;
 std::map<BrowserJniCallbackContext *, std::shared_ptr<BrowserJniCallbackContext>>
     browser_contexts;
+std::mutex extension_contexts_mutex;
+std::map<ExtensionJniCallbackContext *,
+         std::shared_ptr<ExtensionJniCallbackContext>>
+    extension_contexts;
 
 void ReleaseEngineContext(
     JNIEnv *env, const std::shared_ptr<EngineJniCallbackContext> &context) {
@@ -170,6 +205,21 @@ void ReleaseBrowserContext(
   const auto found = browser_contexts.find(context.get());
   if (found != browser_contexts.end() && found->second == context) {
     browser_contexts.erase(found);
+  }
+}
+
+void ReleaseExtensionContext(
+    JNIEnv *env, const std::shared_ptr<ExtensionJniCallbackContext> &context) {
+  bool expected = false;
+  if (!context->sink_released.compare_exchange_strong(
+          expected, true, std::memory_order_acq_rel)) {
+    return;
+  }
+  env->DeleteGlobalRef(context->sink);
+  std::lock_guard lock(extension_contexts_mutex);
+  const auto found = extension_contexts.find(context.get());
+  if (found != extension_contexts.end() && found->second == context) {
+    extension_contexts.erase(found);
   }
 }
 
@@ -327,6 +377,13 @@ kweb_status LoadEngineApi(const std::string &engine_path_utf8,
       candidate.engine_library, "kweb_browser_bridge_fail");
   candidate.live_browser_count = ResolveFunction<LiveBrowserCountFunction>(
       candidate.engine_library, "kweb_live_browser_count");
+  candidate.extension_start = ResolveFunction<ExtensionStartFunction>(
+      candidate.engine_library, "kweb_extension_start");
+  candidate.extension_cancel = ResolveFunction<ExtensionCancelFunction>(
+      candidate.engine_library, "kweb_extension_cancel");
+  candidate.live_extension_operation_count =
+      ResolveFunction<LiveExtensionOperationCountFunction>(
+          candidate.engine_library, "kweb_live_extension_operation_count");
   if (candidate.abi_version == nullptr ||
       candidate.platform_startup == nullptr || candidate.create == nullptr ||
       candidate.close == nullptr || candidate.live_count == nullptr ||
@@ -338,7 +395,10 @@ kweb_status LoadEngineApi(const std::string &engine_path_utf8,
       candidate.browser_close_devtools == nullptr ||
       candidate.browser_bridge_respond == nullptr ||
       candidate.browser_bridge_fail == nullptr ||
-      candidate.live_browser_count == nullptr) {
+      candidate.live_browser_count == nullptr ||
+      candidate.extension_start == nullptr ||
+      candidate.extension_cancel == nullptr ||
+      candidate.live_extension_operation_count == nullptr) {
     ResetEngineApi(&candidate);
     return KWEB_STATUS_ENGINE_SYMBOL_MISSING;
   }
@@ -373,6 +433,15 @@ void MarkEngineCallbackFailed(EngineJniCallbackContext *context, JNIEnv *env) {
 
 void MarkBrowserCallbackFailed(BrowserJniCallbackContext *context,
                                JNIEnv *env) {
+  context->failed.store(true, std::memory_order_release);
+  if (env != nullptr && env->ExceptionCheck()) {
+    env->ExceptionDescribe();
+    env->ExceptionClear();
+  }
+}
+
+void MarkExtensionCallbackFailed(ExtensionJniCallbackContext *context,
+                                 JNIEnv *env) {
   context->failed.store(true, std::memory_order_release);
   if (env != nullptr && env->ExceptionCheck()) {
     env->ExceptionDescribe();
@@ -591,6 +660,131 @@ void KWEB_ABI_CALL ForwardBridgeEvent(void *user_data,
     MarkBrowserCallbackFailed(context, env);
   }
 
+  if (attached && context->vm->DetachCurrentThread() != JNI_OK) {
+    context->failed.store(true, std::memory_order_release);
+  }
+}
+
+void KWEB_ABI_CALL ForwardExtensionResult(
+    void *user_data, const kweb_extension_result *result) {
+  auto *raw_context = static_cast<ExtensionJniCallbackContext *>(user_data);
+  if (raw_context == nullptr) {
+    return;
+  }
+  std::shared_ptr<ExtensionJniCallbackContext> context;
+  {
+    std::lock_guard lock(extension_contexts_mutex);
+    const auto found = extension_contexts.find(raw_context);
+    if (found == extension_contexts.end()) {
+      return;
+    }
+    context = found->second;
+  }
+
+  JNIEnv *env = nullptr;
+  bool attached = false;
+  const jint environment_status =
+      context->vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_8);
+  if (environment_status == JNI_EDETACHED) {
+    JavaVMAttachArgs arguments = {
+        JNI_VERSION_1_8, const_cast<char *>("KWebShell-extension-native"),
+        nullptr};
+    if (context->vm->AttachCurrentThread(reinterpret_cast<void **>(&env),
+                                         &arguments) != JNI_OK) {
+      context->failed.store(true, std::memory_order_release);
+      return;
+    }
+    attached = true;
+  } else if (environment_status != JNI_OK || env == nullptr) {
+    context->failed.store(true, std::memory_order_release);
+    return;
+  }
+
+  const auto valid_string = [](kweb_string_view value) {
+    return value.data != nullptr || value.size == 0;
+  };
+  const bool valid_result =
+      result != nullptr && result->struct_size >= sizeof(*result) &&
+      result->abi_version == KWEB_ABI_VERSION &&
+      result->operation_handle != KWEB_INVALID_EXTENSION_OPERATION_HANDLE &&
+      result->engine != KWEB_INVALID_ENGINE_HANDLE &&
+      result->browser != KWEB_INVALID_BROWSER_HANDLE &&
+      result->operation >= KWEB_EXTENSION_OPERATION_INSTALL &&
+      result->operation <= KWEB_EXTENSION_OPERATION_QUERY &&
+      result->outcome >= KWEB_EXTENSION_OUTCOME_SUCCESS &&
+      result->outcome <= KWEB_EXTENSION_OUTCOME_AMBIGUOUS &&
+      result->state <= KWEB_EXTENSION_STATE_BLOCKED &&
+      valid_string(result->extension_id) && valid_string(result->version) &&
+      valid_string(result->path) && valid_string(result->error_code) &&
+      valid_string(result->error_message);
+  if (!valid_result) {
+    MarkExtensionCallbackFailed(context.get(), env);
+  } else {
+    kweb_extension_operation_handle expected =
+        KWEB_INVALID_EXTENSION_OPERATION_HANDLE;
+    context->handle.compare_exchange_strong(expected, result->operation_handle,
+                                            std::memory_order_acq_rel);
+    if (context->handle.load(std::memory_order_acquire) !=
+            result->operation_handle ||
+        context->completed.exchange(true, std::memory_order_acq_rel)) {
+      MarkExtensionCallbackFailed(context.get(), env);
+    } else {
+      try {
+        const std::array<kweb_string_view, 5> values = {
+            result->extension_id, result->version, result->path,
+            result->error_code, result->error_message};
+        std::array<jstring, 5> strings = {nullptr, nullptr, nullptr, nullptr,
+                                          nullptr};
+        bool converted = true;
+        for (size_t index = 0; index < values.size(); ++index) {
+          const std::string_view utf8 = values[index].size == 0
+                                            ? std::string_view()
+                                            : std::string_view(
+                                                  values[index].data,
+                                                  values[index].size);
+          const auto characters = Utf8ToJavaCharacters(utf8);
+          if (!characters ||
+              characters->size() >
+                  static_cast<size_t>((std::numeric_limits<jsize>::max)())) {
+            converted = false;
+            break;
+          }
+          static constexpr jchar kEmptyText = 0;
+          const jchar *data =
+              characters->empty() ? &kEmptyText : characters->data();
+          strings[index] =
+              env->NewString(data, static_cast<jsize>(characters->size()));
+          if (strings[index] == nullptr) {
+            converted = false;
+            break;
+          }
+        }
+        if (converted) {
+          env->CallVoidMethod(
+              context->sink, context->on_result,
+              static_cast<jlong>(result->operation_handle),
+              static_cast<jlong>(result->engine),
+              static_cast<jlong>(result->browser),
+              static_cast<jint>(result->operation),
+              static_cast<jint>(result->outcome),
+              static_cast<jint>(result->state), strings[0], strings[1],
+              strings[2], strings[3], strings[4]);
+        }
+        if (!converted || env->ExceptionCheck()) {
+          MarkExtensionCallbackFailed(context.get(), env);
+        }
+        for (jstring string : strings) {
+          if (string != nullptr) {
+            env->DeleteLocalRef(string);
+          }
+        }
+      } catch (...) {
+        MarkExtensionCallbackFailed(context.get(), env);
+      }
+    }
+  }
+
+  ReleaseExtensionContext(env, context);
   if (attached && context->vm->DetachCurrentThread() != JNI_OK) {
     context->failed.store(true, std::memory_order_release);
   }
@@ -987,6 +1181,115 @@ jlong JNICALL NativeLiveBrowserCount(JNIEnv *, jobject) {
              : -1;
 }
 
+jlong JNICALL NativeExtensionStart(JNIEnv *env, jobject, jlong browser,
+                                   jobject sink, jint operation,
+                                   jstring extension_id,
+                                   jstring expected_version,
+                                   jstring extension_path) {
+  if (sink == nullptr) {
+    return EncodeCreateFailure(KWEB_STATUS_INVALID_ARGUMENT);
+  }
+  try {
+    const EngineApi api = SnapshotEngineApi();
+    if (!api.IsLoaded()) {
+      return EncodeCreateFailure(KWEB_STATUS_ENGINE_LIBRARY_LOAD_FAILED);
+    }
+    const auto id = JavaStringToUtf8(env, extension_id);
+    const auto version = JavaStringToUtf8(env, expected_version);
+    const auto path = JavaStringToUtf8(env, extension_path);
+    if (!id || !version || !path) {
+      return EncodeCreateFailure(KWEB_STATUS_INVALID_TEXT_ENCODING);
+    }
+    JavaVM *vm = nullptr;
+    if (env->GetJavaVM(&vm) != JNI_OK || vm == nullptr) {
+      return EncodeCreateFailure(KWEB_STATUS_INTERNAL_ERROR);
+    }
+    const jclass sink_class = env->GetObjectClass(sink);
+    if (sink_class == nullptr) {
+      if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+      }
+      return EncodeCreateFailure(KWEB_STATUS_INVALID_ARGUMENT);
+    }
+    const jmethodID on_result = env->GetMethodID(
+        sink_class, kExtensionSinkMethod, kExtensionSinkSignature);
+    env->DeleteLocalRef(sink_class);
+    if (on_result == nullptr) {
+      if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+      }
+      return EncodeCreateFailure(KWEB_STATUS_INVALID_ARGUMENT);
+    }
+    const jobject global_sink = env->NewGlobalRef(sink);
+    if (global_sink == nullptr) {
+      if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+      }
+      return EncodeCreateFailure(KWEB_STATUS_ALLOCATION_FAILED);
+    }
+
+    auto context = std::make_shared<ExtensionJniCallbackContext>(
+        vm, global_sink, on_result);
+    try {
+      std::lock_guard lock(extension_contexts_mutex);
+      extension_contexts.emplace(context.get(), context);
+    } catch (...) {
+      env->DeleteGlobalRef(global_sink);
+      throw;
+    }
+    const kweb_extension_config configuration = {
+        sizeof(kweb_extension_config),
+        KWEB_ABI_VERSION,
+        static_cast<kweb_extension_operation_type>(operation),
+        0,
+        {id->empty() ? nullptr : id->data(), id->size()},
+        {version->empty() ? nullptr : version->data(), version->size()},
+        {path->empty() ? nullptr : path->data(), path->size()},
+        &ForwardExtensionResult,
+        context.get(),
+    };
+    kweb_extension_operation_handle handle =
+        KWEB_INVALID_EXTENSION_OPERATION_HANDLE;
+    const kweb_status status = api.extension_start(
+        static_cast<kweb_browser_handle>(browser), &configuration, &handle);
+    if (status != KWEB_STATUS_OK) {
+      ReleaseExtensionContext(env, context);
+      return EncodeCreateFailure(status);
+    }
+    kweb_extension_operation_handle expected =
+        KWEB_INVALID_EXTENSION_OPERATION_HANDLE;
+    context->handle.compare_exchange_strong(expected, handle,
+                                            std::memory_order_acq_rel);
+    if (context->handle.load(std::memory_order_acquire) != handle) {
+      return EncodeCreateFailure(KWEB_STATUS_EXTENSION_RESULT_INVALID);
+    }
+    return static_cast<jlong>(handle);
+  } catch (const std::bad_alloc &) {
+    return EncodeCreateFailure(KWEB_STATUS_ALLOCATION_FAILED);
+  } catch (...) {
+    return EncodeCreateFailure(KWEB_STATUS_INTERNAL_ERROR);
+  }
+}
+
+jint JNICALL NativeExtensionCancel(JNIEnv *, jobject, jlong operation) {
+  const EngineApi api = SnapshotEngineApi();
+  return api.IsLoaded()
+             ? static_cast<jint>(api.extension_cancel(
+                   static_cast<kweb_extension_operation_handle>(operation)))
+             : static_cast<jint>(KWEB_STATUS_ENGINE_LIBRARY_LOAD_FAILED);
+}
+
+jlong JNICALL NativeLiveExtensionOperationCount(JNIEnv *, jobject) {
+  const EngineApi api = SnapshotEngineApi();
+  if (!api.IsLoaded()) {
+    return -1;
+  }
+  const uint64_t count = api.live_extension_operation_count();
+  return count <= static_cast<uint64_t>((std::numeric_limits<jlong>::max)())
+             ? static_cast<jlong>(count)
+             : -1;
+}
+
 template <typename Function> void *JniFunctionAddress(Function function) {
   static_assert(sizeof(Function) == sizeof(void *));
   void *address = nullptr;
@@ -1041,6 +1344,17 @@ jint RegisterEngineNatives(JNIEnv *env, jclass bindings) {
        JniFunctionAddress(&NativeBrowserBridgeFail)},
       {const_cast<char *>("liveBrowserCount"), const_cast<char *>("()J"),
        JniFunctionAddress(&NativeLiveBrowserCount)},
+      {const_cast<char *>("extensionStart"),
+       const_cast<char *>(
+           "(JLio/github/kingsword09/kwebshell/desktop/internal/"
+           "NativeExtensionResultSink;ILjava/lang/String;Ljava/lang/String;"
+           "Ljava/lang/String;)J"),
+       JniFunctionAddress(&NativeExtensionStart)},
+      {const_cast<char *>("extensionCancel"), const_cast<char *>("(J)I"),
+       JniFunctionAddress(&NativeExtensionCancel)},
+      {const_cast<char *>("liveExtensionOperationCount"),
+       const_cast<char *>("()J"),
+       JniFunctionAddress(&NativeLiveExtensionOperationCount)},
   };
   return env->RegisterNatives(
       bindings, methods,
@@ -1048,8 +1362,10 @@ jint RegisterEngineNatives(JNIEnv *env, jclass bindings) {
 }
 
 bool EngineJniCanUnload() {
-  std::scoped_lock lock(engine_contexts_mutex, browser_contexts_mutex);
-  return engine_contexts.empty() && browser_contexts.empty();
+  std::scoped_lock lock(engine_contexts_mutex, browser_contexts_mutex,
+                        extension_contexts_mutex);
+  return engine_contexts.empty() && browser_contexts.empty() &&
+         extension_contexts.empty();
 }
 
 } // namespace kwebshell::jni

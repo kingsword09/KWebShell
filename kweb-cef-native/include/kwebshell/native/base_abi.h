@@ -11,7 +11,7 @@
 #define KWEB_ABI_CALL
 #endif
 
-#define KWEB_ABI_VERSION ((uint32_t)5)
+#define KWEB_ABI_VERSION ((uint32_t)6)
 
 typedef uint32_t kweb_status;
 
@@ -62,5 +62,11 @@ typedef uint32_t kweb_status;
 #define KWEB_STATUS_BRIDGE_ORIGIN_INVALID ((kweb_status)44)
 #define KWEB_STATUS_BRIDGE_REQUEST_NOT_FOUND ((kweb_status)45)
 #define KWEB_STATUS_BRIDGE_RESPONSE_INVALID ((kweb_status)46)
+#define KWEB_STATUS_EXTENSION_RUNTIME_ABI_MISSING ((kweb_status)47)
+#define KWEB_STATUS_EXTENSION_RUNTIME_ABI_MISMATCH ((kweb_status)48)
+#define KWEB_STATUS_EXTENSION_OPERATION_INVALID ((kweb_status)49)
+#define KWEB_STATUS_EXTENSION_OPERATION_ACTIVE ((kweb_status)50)
+#define KWEB_STATUS_EXTENSION_OPERATION_NOT_FOUND ((kweb_status)51)
+#define KWEB_STATUS_EXTENSION_RESULT_INVALID ((kweb_status)52)
 
 #endif // KWEBSHELL_NATIVE_BASE_ABI_H_

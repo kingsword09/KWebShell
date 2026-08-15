@@ -135,6 +135,7 @@ add_library(kweb_engine_abi SHARED
   ${KWEB_BROWSER_SURFACE_SOURCE}
   src/engine_abi.cc
   ${KWEB_ENGINE_PLATFORM_SOURCE}
+  src/extension_session.cc
 )
 SET_LIBRARY_TARGET_PROPERTIES(kweb_engine_abi)
 target_include_directories(kweb_engine_abi PRIVATE include src)

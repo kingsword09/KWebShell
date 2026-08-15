@@ -711,6 +711,107 @@ Acceptance:
   state to the real Profile `ExtensionService`; the capability matrix continues
   to mark package lifecycle as `UNPUBLISHED`.
 
+#### Objective 5.4: Profile-scoped Chromium extension lifecycle adapter
+
+This objective connects the immutable package store to the real Chromium 151
+extension lifecycle. It uses a maintained source patch against the pinned CEF
+commit, not the removed CEF extension API, CDP's default-Profile-only extension
+commands, preference-file mutation, or a JavaScript emulation. The patched
+`libcef` resolves the exact initialized `CefBrowserContext` by its canonical
+Profile cache path and invokes Chromium's `UnpackedInstaller`,
+`ExtensionRegistrar`, `ExtensionRegistry`, and unload cleanup on the CEF UI
+thread. The engine consumes only a narrow versioned C ABI discovered at runtime.
+
+Acceptance:
+
+- A checked-in patch manifest pins CEF commit
+  `be1e15d8892c064f0299ba18350236a9b272ce7f`, Chromium
+  `151.0.7922.109`, every source preimage, the patch digest, the adapter ABI
+  fingerprint, and the exact custom runtime artifacts. Patch verification
+  rejects a dirty source tree, an upstream mismatch, an offset/fuzzy apply, an
+  unexpected generated diff, or an artifact without the adapter exports.
+- The patched `libcef` exports only a C-compatible `cef_kweb_*` lifecycle ABI.
+  It exports no Chromium, CEF C++, STL, allocator, Profile pointer, or callback
+  object. Struct sizes, integer values, UTF-8 spans, calling convention,
+  operation ownership, callback lifetime, cancellation, and the ABI fingerprint
+  are contract-tested from both C and C++.
+- `INSTALL` and `UPDATE` call `UnpackedInstaller::Load()` for the exact managed
+  object directory and complete only after Chromium reports the resulting ID,
+  version, path, and enabled registry state. `RELOAD` calls
+  `ExtensionRegistrar::ReloadExtension()` and observes the matching registry
+  load or load-error event, then waits for the matching
+  `ExtensionUserScriptLoader` to report its complete content-script set and for
+  the registry ready signal before declaring success. For extensions with a
+  lazy background context, it also queues a no-op task through Chromium's
+  activation-token-scoped `LazyContextTaskQueue`; its service-worker callback
+  fires only after the current worker global script has executed and registered
+  its listeners. Before queueing that task after an update or reload, the
+  adapter observes the Profile's `ProcessManager` until every prior worker for
+  the extension has stopped, then validates the callback's worker identity
+  against the currently tracked instance. This closes both the Chromium
+  activation-versus-script-loading race and the late prior-worker teardown
+  race without a fixed delay. `UNINSTALL` calls
+  `ExtensionRegistrar::UninstallExtension()` and waits for its asynchronous
+  cleanup callback. No operation writes Chromium Preferences directly.
+- Every accepted asynchronous operation completes exactly once at the native
+  boundary, including after caller cancellation; a cancelled coroutine ignores
+  that terminal callback while native ownership remains alive until Chromium
+  settles. Results distinguish `SUCCESS`, `REJECTED`, and
+  `AMBIGUOUS`: only proven Chromium success may commit the store; only a proven
+  unchanged Chromium state may abort it; timeout, cancellation after dispatch,
+  context shutdown, callback loss, and a failed reload after the old extension
+  was disabled retain the journal for reconciliation.
+- Profile lookup accepts only the canonical cache path of an initialized,
+  persistent, non-OffTheRecord `CefBrowserContext`. The adapter retains an
+  associated request context for the operation lifetime, waits for the
+  extension system readiness signal, rejects duplicate operations for one
+  extension, and never substitutes the default or last-used Profile.
+- `QUERY` reports the exact installed state, ID, manifest version, canonical
+  path, and enabled/disabled/terminated/blocklisted/blocked state for one
+  Profile. Startup reconciliation commits a matching install/update or absent
+  uninstall, aborts only a state proven identical to the previous active
+  object, retries reload because static state cannot prove it ran, and fails
+  closed on every conflicting state.
+- The native engine and JNI bridge validate the adapter fingerprint before the
+  first lifecycle operation, preserve callback and handle ownership across CEF
+  threads, expose typed status/result values to Kotlin, reject late or duplicate
+  callbacks, and cancel live operations before browser or engine teardown. A
+  stock CEF runtime fails immediately with
+  `extension-runtime-abi-missing`; there is no command-line, CDP, system-WebView,
+  or preference-edit fallback.
+- The JVM lifecycle coordinator serializes one operation per extension and
+  performs `prepare -> runtime -> commit/abort/retain` without holding the
+  filesystem lock across Chromium work. It validates runtime identity against
+  the prepared managed object and keeps ambiguous journals observable for an
+  explicit later reconcile call.
+- Native unit tests cover ABI validation, UTF-8 and path bounds, wrong thread,
+  duplicate/cancel/late completion, outcome mapping, Profile mismatch, and
+  teardown. JVM tests cover install, update, reload, uninstall, rejection,
+  ambiguity, timeout, cancellation, restart reconciliation, corruption, and
+  two-Profile isolation without treating a mock as runtime evidence.
+- A real lifecycle conformance extension is installed, wakes its MV3 Service
+  Worker, updates without losing `storage.local`, reloads with a new worker
+  instance, survives a complete process restart, and is fully uninstalled.
+  The test also proves Profile isolation and crash recovery against custom CEF
+  runtime artifacts on macOS arm64, Windows x64, and Linux x64 in mandatory
+  GitHub Actions jobs. Package lifecycle remains `UNPUBLISHED` until all three
+  jobs pass against artifacts whose checksums appear in the runtime manifest.
+
+Implementation evidence as of 2026-08-15:
+
+- The pinned patch, ABI v1 adapter, native dynamic loader, JNI ownership,
+  package-store coordinator, source-tree verifier, custom-artifact verifier,
+  and cross-platform source builder are implemented without a stock-CEF or CDP
+  fallback.
+- A source-built macOS arm64 `libcef` passes exact export and fingerprint
+  inspection plus the complete real lifecycle test: install, update, reload,
+  restart, `storage.local`, two Profiles, forced process loss, duplicate and
+  cancelled operations, reconciliation, and uninstall.
+- `customRuntimeArtifacts` remains empty and package lifecycle remains
+  `UNPUBLISHED`. The dedicated source-build and published-artifact Actions
+  workflows must produce and accept Windows x64 and Linux x64 evidence before
+  all three artifact records may be added and the publication gate enabled.
+
 ### Phase 6: Extension browser UI
 
 Deliver:

@@ -3,7 +3,7 @@
 - Matrix version: 0.1
 - Runtime baseline: CEF `151.3.16+gbe1e15d`, Chromium `151.0.7922.109`
 - Architecture: Chrome bootstrap with an Alloy native child
-- Conformance objective: 5.2
+- Published conformance objective: 5.2
 
 This matrix is a product contract, not a list of manifest fields that happen to
 parse. `RUNTIME_VERIFIED` means the pinned Chromium runtime performed the exact
@@ -79,6 +79,25 @@ transaction recovery only. They do not prove that Chromium loaded, updated,
 reloaded, or uninstalled an extension, so package lifecycle remains
 `UNPUBLISHED`.
 
+## Internal lifecycle-adapter boundary
+
+Objective 5.4 connects the store journal to Chromium's real Profile-scoped
+extension service through a version-pinned custom CEF C ABI. The production
+coordinator supports `INSTALL`, `UPDATE`, `RELOAD`, `QUERY`, and `UNINSTALL`,
+including explicit ambiguous outcomes, cancellation, duplicate-operation
+rejection, and startup reconciliation. Stock CEF fails before dispatch with
+`native.abi.extension-runtime-abi-missing`; it is never substituted for the
+custom runtime.
+
+The macOS arm64 custom runtime has passed the complete lifecycle fixture. The
+test observed a new Service Worker after update and reload, retained
+`storage.local`, isolated two Profiles, recovered a journal after the parent
+forcibly terminated a child process, rejected a duplicate live mutation,
+reconciled five consecutive cancelled reloads, and proved uninstall across restart. This local
+evidence does not publish the feature. `customRuntimeArtifacts` remains empty,
+and package lifecycle stays `UNPUBLISHED` until checksum-pinned Windows x64 and
+Linux x64 artifacts pass the same source-build and hosted acceptance workflows.
+
 ## Test-only bootstrap boundary
 
 Objective 5.2 uses `--load-extension` and `--disable-extensions-except` only
@@ -95,13 +114,16 @@ published extension capability is unavailable.
 
 ## Platform gate
 
-The same `kweb_mv3_core_conformance_test` is mandatory for:
+The published Objective 5.2 baseline continues to require
+`kweb_mv3_core_conformance_test` on all three targets. Objective 5.4 publication
+additionally requires `extensionLifecycleIntegrationTest` against the matching
+custom runtime:
 
-| Target | Runtime path | Acceptance gate |
+| Target | Custom lifecycle evidence | Publication state |
 | --- | --- | --- |
-| macOS arm64 | Native Cocoa child, hardware GPU contract | Local verification and GitHub Actions |
-| Linux x64 | Native GTK/X11 child under Xvfb | GitHub Actions |
-| Windows x64 | Native Win32 child | GitHub Actions |
+| macOS arm64 | Local source build and complete lifecycle pass | `UNPUBLISHED` pending three-target artifact set |
+| Linux x64 | Self-hosted source build, then hosted Xvfb acceptance required | `UNPUBLISHED` |
+| Windows x64 | Self-hosted source build, then hosted Win32 acceptance required | `UNPUBLISHED` |
 
 A CEF/Chromium upgrade invalidates runtime evidence until this suite passes on
 all three targets again. The matrix version must change when any published

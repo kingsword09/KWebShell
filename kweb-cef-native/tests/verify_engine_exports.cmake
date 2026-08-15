@@ -15,8 +15,11 @@ set(expected
   kweb_engine_close
   kweb_engine_create
   kweb_engine_platform_startup
+  kweb_extension_cancel
+  kweb_extension_start
   kweb_live_browser_count
   kweb_live_engine_count
+  kweb_live_extension_operation_count
   kweb_status_name
 )
 list(SORT expected)

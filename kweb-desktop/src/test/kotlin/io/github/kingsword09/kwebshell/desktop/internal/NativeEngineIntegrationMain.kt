@@ -3,6 +3,14 @@ package io.github.kingsword09.kwebshell.desktop.internal
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeException
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebNativeException
+import io.github.kingsword09.kwebshell.extensions.KWebExtensionLifecycleResolution
+import io.github.kingsword09.kwebshell.extensions.JvmKWebExtensionLifecycleCoordinator
+import io.github.kingsword09.kwebshell.extensions.KWebExtensionRuntime
+import io.github.kingsword09.kwebshell.extensions.KWebExtensionRuntimeDispatchState
+import io.github.kingsword09.kwebshell.extensions.KWebExtensionRuntimeException
+import io.github.kingsword09.kwebshell.extensions.KWebExtensionRuntimeOperation
+import io.github.kingsword09.kwebshell.extensions.KWebExtensionRuntimeOutcome
+import io.github.kingsword09.kwebshell.extensions.KWebExtensionRuntimeState
 import io.github.kingsword09.kwebshell.desktop.generated.AckResponse
 import io.github.kingsword09.kwebshell.desktop.generated.ConformanceBridgeDispatcher
 import io.github.kingsword09.kwebshell.desktop.generated.ConformanceBridgeHandler
@@ -15,7 +23,14 @@ import com.sun.net.httpserver.HttpServer
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.put
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import java.io.BufferedWriter
 import java.net.InetSocketAddress
@@ -45,6 +60,14 @@ private const val RESOURCES_PROPERTY = "kweb.engine.resources.path"
 private const val LOCALES_PROPERTY = "kweb.engine.locales.path"
 private const val CDP_PORT_PROPERTY = "kweb.engine.integration.cdp.port"
 private const val BRIDGE_JAVASCRIPT_PROPERTY = "kweb.engine.integration.bridge.javascript"
+private const val EXTENSION_PATH_PROPERTY = "kweb.engine.integration.extension.path"
+private const val LIFECYCLE_V1_PROPERTY = "kweb.engine.integration.lifecycle.v1"
+private const val LIFECYCLE_V2_PROPERTY = "kweb.engine.integration.lifecycle.v2"
+private const val EXPECT_CUSTOM_EXTENSION_RUNTIME_PROPERTY =
+    "kweb.engine.integration.expect.custom.extension.runtime"
+private const val LIFECYCLE_EXTENSION_ID = "dhhnhmffjehhodphofnkingncijnaona"
+private const val LIFECYCLE_CANCEL_RECONCILIATION_CYCLES = 5
+private const val LIFECYCLE_CRASH_DURABLE_MARKER = "KWEBSHELL_EXTENSION_CRASH_STATE_DURABLE"
 private const val HOLDER_OPENED_MARKER = "KWEBSHELL_ENGINE_HOLDER_OPENED"
 private const val STAGE_PREFIX = "KWEBSHELL_ENGINE_STAGE:"
 private const val MACOS_BROWSER_POLICY_MARKER =
@@ -63,6 +86,11 @@ private enum class IntegrationMode(val argument: String) {
     INITIALIZATION_FAILURE("initialization-failure"),
     PORT_COLLISION("port-collision"),
     CDP_DISABLED("cdp-disabled"),
+    EXTENSION_LIFECYCLE_COORDINATOR("extension-lifecycle-coordinator"),
+    EXTENSION_LIFECYCLE_STAGE1("extension-lifecycle-stage1"),
+    EXTENSION_LIFECYCLE_CRASH("extension-lifecycle-crash"),
+    EXTENSION_LIFECYCLE_STAGE2("extension-lifecycle-stage2"),
+    EXTENSION_LIFECYCLE_STAGE3("extension-lifecycle-stage3"),
     ;
 
     companion object {
@@ -83,6 +111,11 @@ fun main(arguments: Array<String>) {
             IntegrationMode.INITIALIZATION_FAILURE -> runInitializationFailureLifecycle()
             IntegrationMode.PORT_COLLISION -> runPortCollisionLifecycle()
             IntegrationMode.CDP_DISABLED -> runCdpDisabledLifecycle()
+            IntegrationMode.EXTENSION_LIFECYCLE_COORDINATOR -> runExtensionLifecycleCoordinator()
+            IntegrationMode.EXTENSION_LIFECYCLE_STAGE1 -> runExtensionLifecycleStage1()
+            IntegrationMode.EXTENSION_LIFECYCLE_CRASH -> runExtensionLifecycleCrash()
+            IntegrationMode.EXTENSION_LIFECYCLE_STAGE2 -> runExtensionLifecycleStage2()
+            IntegrationMode.EXTENSION_LIFECYCLE_STAGE3 -> runExtensionLifecycleStage3()
         }
     } catch (error: Throwable) {
         error.printStackTrace(System.err)
@@ -122,6 +155,26 @@ private fun runCoordinator() {
         }
     }
     println("KWebShell real CEF engine integration passed in isolated JVM processes.")
+}
+
+private fun runExtensionLifecycleCoordinator() {
+    val root = requiredPathProperty(INTEGRATION_ROOT_PROPERTY)
+    Files.createDirectories(root)
+    val sharedRoot = root.resolve("extension-lifecycle")
+    runChildAndRequireSuccess(IntegrationMode.EXTENSION_LIFECYCLE_STAGE1, sharedRoot)
+    runChildAndRequireCrash(IntegrationMode.EXTENSION_LIFECYCLE_CRASH, sharedRoot)
+    val pendingAfterCrash = JvmKWebExtensionLifecycleCoordinator.open(
+        storeRoot = sharedRoot.resolve("crash").resolve(NativeBrowser.EXTENSION_STORE_DIRECTORY),
+        runtime = KWebExtensionRuntime { request ->
+            error("Crash-journal inspection unexpectedly dispatched ${request.operation}.")
+        },
+    ).pendingExtensionIds()
+    require(pendingAfterCrash == setOf(LIFECYCLE_EXTENSION_ID)) {
+        "The hard crash did not leave the exact install journal pending: $pendingAfterCrash"
+    }
+    runChildAndRequireSuccess(IntegrationMode.EXTENSION_LIFECYCLE_STAGE2, sharedRoot)
+    runChildAndRequireSuccess(IntegrationMode.EXTENSION_LIFECYCLE_STAGE3, sharedRoot)
+    println("KWebShell patched CEF MV3 lifecycle conformance passed across restart and Profiles.")
 }
 
 private fun runSuccessfulLifecycle() {
@@ -218,6 +271,35 @@ private fun runSuccessfulLifecycle() {
             }
             require(firstTitle.await(30, TimeUnit.SECONDS)) {
                 "The first real Chromium page did not publish its Unicode title: $browserEvents"
+            }
+            if (requiredBooleanProperty(EXPECT_CUSTOM_EXTENSION_RUNTIME_PROPERTY)) {
+                val customQuery = kotlinx.coroutines.runBlocking {
+                    browser.queryExtension(LIFECYCLE_EXTENSION_ID)
+                }
+                require(
+                    customQuery.operation == KWebExtensionRuntimeOperation.QUERY &&
+                        customQuery.outcome == KWebExtensionRuntimeOutcome.SUCCESS &&
+                        customQuery.state == KWebExtensionRuntimeState.ABSENT &&
+                        customQuery.version == null && customQuery.path == null,
+                ) {
+                    "Custom CEF did not expose an initially absent Profile extension state: $customQuery"
+                }
+            } else {
+                val stockExtensionResult = kotlinx.coroutines.runBlocking {
+                    browser.installUnpackedExtension(requiredPathProperty(EXTENSION_PATH_PROPERTY))
+                }
+                require(stockExtensionResult.resolution == KWebExtensionLifecycleResolution.ABORTED) {
+                    "Stock CEF did not abort the undispatched extension transaction: $stockExtensionResult"
+                }
+                require(stockExtensionResult.failure?.code == "native.abi.extension-runtime-abi-missing") {
+                    "Stock CEF did not report the missing pinned extension adapter: $stockExtensionResult"
+                }
+                require(kotlinx.coroutines.runBlocking { browser.reconcileExtensions() }.isEmpty()) {
+                    "An undispatched stock CEF extension attempt left a pending journal."
+                }
+            }
+            require(NativeExtensionRuntime.liveNativeOperationCount() == 0L) {
+                "The engine integration extension contract leaked a native operation."
             }
             cdp.awaitPage(origin.firstUrl)
             cdp.awaitBridge()
@@ -377,6 +459,458 @@ private fun runSuccessfulLifecycle() {
     requireCreateFailure(restart, NativeStatus.ENGINE_RESTART_FORBIDDEN)
     reportStage("main_complete")
     println("KWebShell engine success lifecycle passed.")
+}
+
+private fun runExtensionLifecycleStage1() = withExtensionLifecycleBrowsers { engine, alpha, beta, _, origin, cdp, root ->
+    val v1 = requiredPathProperty(LIFECYCLE_V1_PROPERTY)
+    val v2 = requiredPathProperty(LIFECYCLE_V2_PROPERTY)
+    requireCommitted(
+        kotlinx.coroutines.runBlocking { alpha.installUnpackedExtension(v1) },
+        "install alpha v1",
+    )
+    requireCommitted(
+        kotlinx.coroutines.runBlocking { beta.installUnpackedExtension(v1) },
+        "install beta v1",
+    )
+
+    alpha.navigate("${origin.firstUrl}?lifecycle=alpha-v1")
+    beta.navigate("${origin.secondUrl}?lifecycle=beta-v1")
+    val alphaV1 = awaitLifecycleProbe(cdp, "${origin.firstUrl}?lifecycle=alpha-v1")
+    val betaV1 = awaitLifecycleProbe(cdp, "${origin.secondUrl}?lifecycle=beta-v1")
+    alphaV1.requireIdentity("1.0.0", 1)
+    betaV1.requireIdentity("1.0.0", 1)
+
+    requireCommitted(
+        kotlinx.coroutines.runBlocking { alpha.installUnpackedExtension(v2) },
+        "update alpha to v2",
+    )
+    alpha.navigate("${origin.firstUrl}?lifecycle=alpha-v2")
+    val alphaV2 = awaitLifecycleProbe(cdp, "${origin.firstUrl}?lifecycle=alpha-v2")
+    alphaV2.requireIdentity("2.0.0", 2)
+
+    requireCommitted(
+        kotlinx.coroutines.runBlocking { alpha.reloadExtension(LIFECYCLE_EXTENSION_ID) },
+        "reload alpha v2",
+    )
+    alpha.navigate("${origin.firstUrl}?lifecycle=alpha-reload")
+    val alphaReloaded = awaitLifecycleProbe(cdp, "${origin.firstUrl}?lifecycle=alpha-reload")
+    alphaReloaded.requireIdentity("2.0.0", 3)
+    require(alphaReloaded.workerInstance != alphaV2.workerInstance) {
+        "Reload did not replace the alpha Service Worker instance."
+    }
+
+    val cancellationCoordinator = JvmKWebExtensionLifecycleCoordinator.open(
+        storeRoot = root.resolve("alpha").resolve(NativeBrowser.EXTENSION_STORE_DIRECTORY),
+        runtime = KWebExtensionRuntime { request ->
+            coroutineScope {
+                val operation = async(start = CoroutineStart.UNDISPATCHED) {
+                    NativeExtensionRuntime(engine, alpha).execute(request)
+                }
+                require(NativeExtensionRuntime.liveNativeOperationCount() == 1L) {
+                    "The reload cancellation fixture did not dispatch exactly one native operation."
+                }
+                try {
+                    awaitCancellation()
+                } finally {
+                    operation.cancelAndJoin()
+                }
+            }
+        },
+    )
+    var alphaRecovered = alphaReloaded
+    repeat(LIFECYCLE_CANCEL_RECONCILIATION_CYCLES) { cycle ->
+        val cancellation = kotlinx.coroutines.runBlocking {
+            val operation = async(start = CoroutineStart.UNDISPATCHED) {
+                cancellationCoordinator.reload(LIFECYCLE_EXTENSION_ID)
+            }
+            operation.cancel(CancellationException("MV3 reload cancellation conformance"))
+            try {
+                operation.await()
+                null
+            } catch (error: CancellationException) {
+                error
+            }
+        }
+        require(cancellation != null) { "The dispatched reload did not propagate cancellation." }
+        awaitNativeExtensionOperationCount(0L)
+        val reconciledReload = kotlinx.coroutines.runBlocking { alpha.reconcileExtensions() }
+        require(reconciledReload.size == 1) {
+            "The cancelled reload did not retain exactly one journal: $reconciledReload"
+        }
+        requireCommitted(reconciledReload.single(), "reconcile cancelled alpha reload")
+        val reconciliationUrl = "${origin.firstUrl}?lifecycle=alpha-cancel-reconciled-$cycle"
+        alpha.navigate(reconciliationUrl)
+        val recovered = awaitLifecycleProbe(cdp, reconciliationUrl)
+        recovered.requireIdentity("2.0.0", 4 + cycle)
+        require(recovered.workerInstance != alphaRecovered.workerInstance) {
+            "Reconciliation cycle $cycle did not replace the worker after a cancelled reload."
+        }
+        alphaRecovered = recovered
+    }
+
+    beta.navigate("${origin.secondUrl}?lifecycle=beta-isolation")
+    val betaIsolated = awaitLifecycleProbe(cdp, "${origin.secondUrl}?lifecycle=beta-isolation")
+    betaIsolated.requireIdentity("1.0.0", 2)
+    require(betaIsolated.workerInstance == betaV1.workerInstance) {
+        "Alpha update/reload unexpectedly replaced beta's Service Worker."
+    }
+    require(alphaRecovered.workerInstance != betaIsolated.workerInstance) {
+        "Separate Profiles unexpectedly shared one Service Worker instance."
+    }
+
+    val evidence = kotlinx.serialization.json.buildJsonObject {
+        put("alphaWorkerInstance", alphaRecovered.workerInstance)
+        put("betaWorkerInstance", betaIsolated.workerInstance)
+        put("alphaProbeCount", alphaRecovered.probeCount)
+        put("betaProbeCount", betaIsolated.probeCount)
+    }
+    Files.writeString(root.resolve("lifecycle-stage1.json"), evidence.toString(), StandardCharsets.UTF_8)
+    require(NativeExtensionRuntime.liveNativeOperationCount() == 0L)
+}
+
+private fun runExtensionLifecycleCrash() = withExtensionLifecycleBrowsers {
+        engine, _, _, crash, origin, cdp, root ->
+    val profile = root.resolve("crash")
+    val runtime = NativeExtensionRuntime(engine, crash)
+    val crashUrl = "${origin.firstUrl}?lifecycle=crash-durable"
+    val crashingRuntime = KWebExtensionRuntime { request ->
+        require(request.operation == KWebExtensionRuntimeOperation.INSTALL) {
+            "The crash fixture prepared ${request.operation} instead of INSTALL."
+        }
+        val result = coroutineScope {
+            val first = async(start = CoroutineStart.UNDISPATCHED) { runtime.execute(request) }
+            require(NativeExtensionRuntime.liveNativeOperationCount() == 1L) {
+                "The duplicate install fixture did not dispatch exactly one native operation."
+            }
+            val duplicateFailure = try {
+                runtime.execute(request)
+                null
+            } catch (error: KWebExtensionRuntimeException) {
+                error
+            }
+            require(
+                duplicateFailure?.dispatchState == KWebExtensionRuntimeDispatchState.NOT_DISPATCHED &&
+                    duplicateFailure.code == "native.abi.extension-operation-active",
+            ) { "The duplicate native install was not rejected before dispatch: $duplicateFailure" }
+            first.await()
+        }
+        require(
+            result.outcome == KWebExtensionRuntimeOutcome.SUCCESS &&
+                result.state == KWebExtensionRuntimeState.ENABLED &&
+                result.extensionId == LIFECYCLE_EXTENSION_ID &&
+                result.version == "2.0.0" &&
+                result.path == request.extensionPath,
+        ) { "Chromium did not complete the crash fixture install: $result" }
+
+        crash.navigate(crashUrl)
+        val probe = awaitLifecycleProbe(cdp, crashUrl)
+        probe.requireIdentity("2.0.0", 1)
+        awaitPersistedExtensionPreference(profile, LIFECYCLE_EXTENSION_ID)
+        val evidence = kotlinx.serialization.json.buildJsonObject {
+            put("workerInstance", probe.workerInstance)
+            put("probeCount", probe.probeCount)
+        }
+        Files.writeString(root.resolve("lifecycle-crash.json"), evidence.toString(), StandardCharsets.UTF_8)
+        println(LIFECYCLE_CRASH_DURABLE_MARKER)
+        System.out.flush()
+        CountDownLatch(1).await()
+        error("The crash-conformance process resumed without parent termination.")
+    }
+    val coordinator = JvmKWebExtensionLifecycleCoordinator.open(
+        storeRoot = profile.resolve(NativeBrowser.EXTENSION_STORE_DIRECTORY),
+        runtime = crashingRuntime,
+    )
+    kotlinx.coroutines.runBlocking {
+        coordinator.installUnpacked(requiredPathProperty(LIFECYCLE_V2_PROPERTY))
+    }
+    error("The crash-conformance install returned without terminating the process.")
+}
+
+private fun runExtensionLifecycleStage2() = withExtensionLifecycleBrowsers {
+        _, alpha, beta, crash, origin, cdp, root ->
+    val evidence = kotlinx.serialization.json.Json.parseToJsonElement(
+        Files.readString(root.resolve("lifecycle-stage1.json"), StandardCharsets.UTF_8),
+    ).jsonObject
+    val previousAlphaWorker = evidence.getValue("alphaWorkerInstance").jsonPrimitive.content
+    val previousBetaWorker = evidence.getValue("betaWorkerInstance").jsonPrimitive.content
+    val previousAlphaCount = evidence.getValue("alphaProbeCount").jsonPrimitive.content.toInt()
+    val previousBetaCount = evidence.getValue("betaProbeCount").jsonPrimitive.content.toInt()
+    val crashEvidence = kotlinx.serialization.json.Json.parseToJsonElement(
+        Files.readString(root.resolve("lifecycle-crash.json"), StandardCharsets.UTF_8),
+    ).jsonObject
+    val previousCrashWorker = crashEvidence.getValue("workerInstance").jsonPrimitive.content
+    val previousCrashCount = crashEvidence.getValue("probeCount").jsonPrimitive.content.toInt()
+
+    val alphaQuery = kotlinx.coroutines.runBlocking { alpha.queryExtension(LIFECYCLE_EXTENSION_ID) }
+    val betaQuery = kotlinx.coroutines.runBlocking { beta.queryExtension(LIFECYCLE_EXTENSION_ID) }
+    val crashQuery = kotlinx.coroutines.runBlocking { crash.queryExtension(LIFECYCLE_EXTENSION_ID) }
+    require(alphaQuery.state == KWebExtensionRuntimeState.ENABLED && alphaQuery.version == "2.0.0") {
+        "Alpha extension did not survive restart: $alphaQuery"
+    }
+    require(betaQuery.state == KWebExtensionRuntimeState.ENABLED && betaQuery.version == "1.0.0") {
+        "Beta extension did not survive restart independently: $betaQuery"
+    }
+    require(crashQuery.state == KWebExtensionRuntimeState.ENABLED && crashQuery.version == "2.0.0") {
+        "Crash Profile reconciliation did not recover the installed extension: $crashQuery"
+    }
+    require(kotlinx.coroutines.runBlocking { crash.reconcileExtensions() }.isEmpty()) {
+        "Crash Profile retained a journal after startup reconciliation."
+    }
+
+    alpha.navigate("${origin.firstUrl}?lifecycle=alpha-restart")
+    beta.navigate("${origin.secondUrl}?lifecycle=beta-restart")
+    crash.navigate("${origin.firstUrl}?lifecycle=crash-restart")
+    val alphaRestarted = awaitLifecycleProbe(cdp, "${origin.firstUrl}?lifecycle=alpha-restart")
+    val betaRestarted = awaitLifecycleProbe(cdp, "${origin.secondUrl}?lifecycle=beta-restart")
+    val crashRestarted = awaitLifecycleProbe(cdp, "${origin.firstUrl}?lifecycle=crash-restart")
+    alphaRestarted.requireIdentity("2.0.0", previousAlphaCount + 1)
+    betaRestarted.requireIdentity("1.0.0", previousBetaCount + 1)
+    crashRestarted.requireIdentity("2.0.0", previousCrashCount + 1)
+    require(alphaRestarted.workerInstance != previousAlphaWorker) {
+        "Complete process restart reused alpha's Service Worker instance."
+    }
+    require(betaRestarted.workerInstance != previousBetaWorker) {
+        "Complete process restart reused beta's Service Worker instance."
+    }
+    require(crashRestarted.workerInstance != previousCrashWorker) {
+        "Hard-crash recovery reused the previous Service Worker instance."
+    }
+
+    requireCommitted(
+        kotlinx.coroutines.runBlocking { alpha.uninstallExtension(LIFECYCLE_EXTENSION_ID) },
+        "uninstall alpha",
+    )
+    requireCommitted(
+        kotlinx.coroutines.runBlocking { beta.uninstallExtension(LIFECYCLE_EXTENSION_ID) },
+        "uninstall beta",
+    )
+    requireCommitted(
+        kotlinx.coroutines.runBlocking { crash.uninstallExtension(LIFECYCLE_EXTENSION_ID) },
+        "uninstall crash Profile",
+    )
+    require(
+        kotlinx.coroutines.runBlocking { alpha.queryExtension(LIFECYCLE_EXTENSION_ID) }.state ==
+            KWebExtensionRuntimeState.ABSENT,
+    ) { "Alpha registry did not become absent after uninstall." }
+    require(
+        kotlinx.coroutines.runBlocking { beta.queryExtension(LIFECYCLE_EXTENSION_ID) }.state ==
+            KWebExtensionRuntimeState.ABSENT,
+    ) { "Beta registry did not become absent after uninstall." }
+    require(
+        kotlinx.coroutines.runBlocking { crash.queryExtension(LIFECYCLE_EXTENSION_ID) }.state ==
+            KWebExtensionRuntimeState.ABSENT,
+    ) { "Crash Profile registry did not become absent after uninstall." }
+    require(NativeExtensionRuntime.liveNativeOperationCount() == 0L)
+}
+
+private fun runExtensionLifecycleStage3() = withExtensionLifecycleBrowsers {
+        _, alpha, beta, crash, origin, cdp, _ ->
+    require(
+        kotlinx.coroutines.runBlocking { alpha.queryExtension(LIFECYCLE_EXTENSION_ID) }.state ==
+            KWebExtensionRuntimeState.ABSENT,
+    ) { "Alpha extension reappeared after uninstall and restart." }
+    require(
+        kotlinx.coroutines.runBlocking { beta.queryExtension(LIFECYCLE_EXTENSION_ID) }.state ==
+            KWebExtensionRuntimeState.ABSENT,
+    ) { "Beta extension reappeared after uninstall and restart." }
+    require(
+        kotlinx.coroutines.runBlocking { crash.queryExtension(LIFECYCLE_EXTENSION_ID) }.state ==
+            KWebExtensionRuntimeState.ABSENT,
+    ) { "Crash Profile extension reappeared after uninstall and restart." }
+
+    alpha.navigate("${origin.firstUrl}?lifecycle=alpha-absent")
+    beta.navigate("${origin.secondUrl}?lifecycle=beta-absent")
+    crash.navigate("${origin.firstUrl}?lifecycle=crash-absent")
+    requireNoLifecycleInjection(cdp, "${origin.firstUrl}?lifecycle=alpha-absent")
+    requireNoLifecycleInjection(cdp, "${origin.secondUrl}?lifecycle=beta-absent")
+    requireNoLifecycleInjection(cdp, "${origin.firstUrl}?lifecycle=crash-absent")
+    require(NativeExtensionRuntime.liveNativeOperationCount() == 0L)
+}
+
+private fun withExtensionLifecycleBrowsers(
+    operation: (
+        engine: NativeEngine,
+        alpha: NativeBrowser,
+        beta: NativeBrowser,
+        crash: NativeBrowser,
+        origin: BrowserOrigin,
+        cdp: CdpClient,
+        root: Path,
+    ) -> Unit,
+) {
+    val configuration = runtimeConfiguration()
+    require(configuration.remoteDebuggingPort in 1024..65535)
+    val engine = NativeEngine.open(configuration)
+    try {
+        BrowserOrigin().use { origin ->
+            val alphaSurface = NativeEngine.onAwtEventDispatchThread { AwtBrowserSurface.create(800, 600) }
+            val betaSurface = NativeEngine.onAwtEventDispatchThread { AwtBrowserSurface.create(800, 600) }
+            val crashSurface = NativeEngine.onAwtEventDispatchThread { AwtBrowserSurface.create(800, 600) }
+            var alpha: NativeBrowser? = null
+            var beta: NativeBrowser? = null
+            var crash: NativeBrowser? = null
+            try {
+                val alphaBrowser = NativeBrowser.open(
+                    engine = engine,
+                    component = alphaSurface.component,
+                    profilePath = configuration.rootCache.resolve("alpha"),
+                    initialUrl = "about:blank",
+                    width = 800,
+                    height = 600,
+                )
+                alpha = alphaBrowser
+                val betaBrowser = NativeBrowser.open(
+                    engine = engine,
+                    component = betaSurface.component,
+                    profilePath = configuration.rootCache.resolve("beta"),
+                    initialUrl = "about:blank",
+                    width = 800,
+                    height = 600,
+                )
+                beta = betaBrowser
+                val crashBrowser = NativeBrowser.open(
+                    engine = engine,
+                    component = crashSurface.component,
+                    profilePath = configuration.rootCache.resolve("crash"),
+                    initialUrl = "about:blank",
+                    width = 800,
+                    height = 600,
+                )
+                crash = crashBrowser
+                operation(
+                    engine,
+                    alphaBrowser,
+                    betaBrowser,
+                    crashBrowser,
+                    origin,
+                    CdpClient(engine.remoteDebuggingPort),
+                    configuration.rootCache,
+                )
+            } finally {
+                crash?.close()
+                beta?.close()
+                alpha?.close()
+                NativeEngine.onAwtEventDispatchThread(crashSurface::close)
+                NativeEngine.onAwtEventDispatchThread(betaSurface::close)
+                NativeEngine.onAwtEventDispatchThread(alphaSurface::close)
+            }
+        }
+    } finally {
+        NativeEngine.onAwtEventDispatchThread(engine::close)
+    }
+    require(NativeBrowser.liveNativeBrowserCount() == 0L)
+    require(NativeEngine.liveNativeEngineCount() == 0L)
+}
+
+private fun awaitPersistedExtensionPreference(profile: Path, extensionId: String) {
+    val preferences = profile.resolve("Secure Preferences")
+    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+    var lastFailure: Throwable? = null
+    while (System.nanoTime() < deadline) {
+        try {
+            val root = kotlinx.serialization.json.Json.parseToJsonElement(
+                Files.readString(preferences, StandardCharsets.UTF_8),
+            ).jsonObject
+            val settings = root["extensions"]?.jsonObject
+                ?.get("settings")?.jsonObject
+            if (settings?.containsKey(extensionId) == true) return
+        } catch (error: Throwable) {
+            lastFailure = error
+        }
+        Thread.sleep(100)
+    }
+    error(
+        "Chromium did not persist extension '$extensionId' in '$preferences' before the hard crash; " +
+            "last failure=$lastFailure",
+    )
+}
+
+private fun awaitNativeExtensionOperationCount(expected: Long) {
+    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+    var actual = NativeExtensionRuntime.liveNativeOperationCount()
+    while (actual != expected && System.nanoTime() < deadline) {
+        Thread.sleep(25)
+        actual = NativeExtensionRuntime.liveNativeOperationCount()
+    }
+    require(actual == expected) {
+        "Native extension operation count remained $actual instead of $expected."
+    }
+}
+
+private data class LifecycleProbe(
+    val extensionId: String,
+    val version: String,
+    val workerInstance: String,
+    val probeCount: Int,
+    val senderUrl: String,
+) {
+    fun requireIdentity(expectedVersion: String, expectedCount: Int) {
+        require(extensionId == LIFECYCLE_EXTENSION_ID)
+        require(version == expectedVersion) {
+            "Lifecycle probe version was '$version' instead of '$expectedVersion'."
+        }
+        require(probeCount == expectedCount) {
+            "Lifecycle probe count was $probeCount instead of $expectedCount."
+        }
+        require(workerInstance.isNotBlank())
+        require(senderUrl.startsWith("http://127.0.0.1:"))
+    }
+}
+
+private fun awaitLifecycleProbe(cdp: CdpClient, url: String): LifecycleProbe {
+    cdp.awaitPage(url)
+    val evidenceExpression =
+        "JSON.stringify({" +
+            "injected: document.documentElement.dataset.kwebLifecycleInjected ?? null," +
+            "result: document.documentElement.dataset.kwebLifecycle ?? null," +
+            "error: document.documentElement.dataset.kwebLifecycleError ?? null" +
+            "})"
+    try {
+        cdp.awaitExpression(
+            "typeof document.documentElement.dataset.kwebLifecycle === 'string' || " +
+                "typeof document.documentElement.dataset.kwebLifecycleError === 'string'",
+        )
+    } catch (error: Throwable) {
+        throw IllegalStateException(
+            "Lifecycle probe did not reach a terminal page state for '$url': " +
+                "${cdp.evaluate(evidenceExpression)}; targets=${cdp.targetSnapshot()}",
+            error,
+        )
+    }
+    val evidence = kotlinx.serialization.json.Json.parseToJsonElement(
+        cdp.evaluate(evidenceExpression),
+    ).jsonObject
+    require(evidence["error"]?.jsonPrimitive?.contentOrNull == null) {
+        "Lifecycle content script failed for '$url': $evidence; targets=${cdp.targetSnapshot()}"
+    }
+    val result = kotlinx.serialization.json.Json.parseToJsonElement(
+        evidence.getValue("result").jsonPrimitive.content,
+    ).jsonObject
+    require(result["error"] == null) { "Lifecycle Service Worker returned an error: $result" }
+    return LifecycleProbe(
+        extensionId = result.getValue("extensionId").jsonPrimitive.content,
+        version = result.getValue("version").jsonPrimitive.content,
+        workerInstance = result.getValue("workerInstance").jsonPrimitive.content,
+        probeCount = result.getValue("probeCount").jsonPrimitive.content.toInt(),
+        senderUrl = result.getValue("senderUrl").jsonPrimitive.content,
+    )
+}
+
+private fun requireNoLifecycleInjection(cdp: CdpClient, url: String) {
+    cdp.awaitPage(url)
+    Thread.sleep(1_000)
+    require(cdp.evaluate("typeof document.documentElement.dataset.kwebLifecycle") == "undefined") {
+        "An uninstalled extension injected a lifecycle probe into '$url'."
+    }
+    require(cdp.evaluate("typeof document.documentElement.dataset.kwebLifecycleError") == "undefined") {
+        "An uninstalled extension injected a lifecycle error into '$url'."
+    }
+}
+
+private fun requireCommitted(result: io.github.kingsword09.kwebshell.extensions.KWebExtensionLifecycleResult, operation: String) {
+    require(result.resolution == KWebExtensionLifecycleResolution.COMMITTED && result.failure == null) {
+        "$operation did not commit: $result"
+    }
 }
 
 private data class RawBridgeEvent(
@@ -1053,6 +1587,17 @@ private class CdpClient(private val port: Int) {
         }
     }
 
+    fun targetSnapshot(): String = try {
+        getArray("/json/list").joinToString(prefix = "[", postfix = "]") { target ->
+            "{id=${target["id"]?.jsonPrimitive?.contentOrNull}," +
+                "type=${target["type"]?.jsonPrimitive?.contentOrNull}," +
+                "url=${target["url"]?.jsonPrimitive?.contentOrNull}," +
+                "title=${target["title"]?.jsonPrimitive?.contentOrNull}}"
+        }
+    } catch (error: Throwable) {
+        "<unavailable: ${error.message}>"
+    }
+
     private fun get(path: String): kotlinx.serialization.json.JsonObject =
         kotlinx.serialization.json.Json.parseToJsonElement(
             http.send(
@@ -1137,6 +1682,11 @@ private fun requiredPathProperty(name: String): Path {
     return Path.of(value)
 }
 
+private fun requiredBooleanProperty(name: String): Boolean {
+    val value = System.getProperty(name) ?: error("Missing required system property '$name'.")
+    return value.toBooleanStrictOrNull() ?: error("System property '$name' must be exactly 'true' or 'false'.")
+}
+
 private fun requireStatus(actual: Int, expected: NativeStatus, operation: String) {
     require(actual == expected.value) {
         "$operation returned $actual instead of ${expected.value} (${expected.id})."
@@ -1163,6 +1713,7 @@ private data class ChildProcess(
     val input: BufferedWriter,
     val lines: CopyOnWriteArrayList<String>,
     val opened: CountDownLatch,
+    val crashStateDurable: CountDownLatch,
     val reader: Thread,
 ) {
     fun output(): String = lines.joinToString(System.lineSeparator())
@@ -1187,6 +1738,29 @@ private fun runChildAndRequireSuccess(mode: IntegrationMode, root: Path) {
         require(policyIndexes.size == 1 && openedIndex > policyIndexes.single()) {
             "The macOS browser policy was not applied exactly once before OnContextInitialized.\n${child.output()}"
         }
+    }
+}
+
+private fun runChildAndRequireCrash(mode: IntegrationMode, root: Path) {
+    require(mode == IntegrationMode.EXTENSION_LIFECYCLE_CRASH)
+    val child = startChild(mode, root)
+    require(child.crashStateDurable.await(120, TimeUnit.SECONDS)) {
+        val diagnostics = collectTimeoutDiagnostics(child.process)
+        child.process.destroyForcibly()
+        "Native engine crash child did not publish durable state.\n${child.output()}\n$diagnostics"
+    }
+    child.process.destroyForcibly()
+    require(child.process.waitFor(60, TimeUnit.SECONDS)) {
+        val diagnostics = collectTimeoutDiagnostics(child.process)
+        child.process.destroyForcibly()
+        "Native engine crash child resisted forced termination.\n${child.output()}\n$diagnostics"
+    }
+    child.reader.join(5000)
+    require(child.process.exitValue() != 0) {
+        "Native engine crash child reported successful exit after forced termination.\n${child.output()}"
+    }
+    require(child.lines.count { it == LIFECYCLE_CRASH_DURABLE_MARKER } == 1) {
+        "Native engine crash child did not prove durable Chromium state exactly once.\n${child.output()}"
     }
 }
 
@@ -1245,6 +1819,10 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
         RESOURCES_PROPERTY,
         LOCALES_PROPERTY,
         BRIDGE_JAVASCRIPT_PROPERTY,
+        EXTENSION_PATH_PROPERTY,
+        LIFECYCLE_V1_PROPERTY,
+        LIFECYCLE_V2_PROPERTY,
+        EXPECT_CUSTOM_EXTENSION_RUNTIME_PROPERTY,
     )
     val command = buildList {
         add(javaExecutable.toString())
@@ -1253,7 +1831,10 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
             add("-D$name=${System.getProperty(name) ?: error("Missing '$name'.")}")
         }
         add("-D$INTEGRATION_ROOT_PROPERTY=$root")
-        if (mode == IntegrationMode.SUCCESS) {
+        if (mode == IntegrationMode.SUCCESS ||
+            mode == IntegrationMode.EXTENSION_LIFECYCLE_CRASH ||
+            mode.name.startsWith("EXTENSION_LIFECYCLE_STAGE")
+        ) {
             add("-D$CDP_PORT_PROPERTY=${findFreePort()}")
         }
         add("-cp")
@@ -1264,6 +1845,7 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
     val process = ProcessBuilder(command).redirectErrorStream(true).start()
     val lines = CopyOnWriteArrayList<String>()
     val opened = CountDownLatch(1)
+    val crashStateDurable = CountDownLatch(1)
     val reader = thread(name = "KWebShell-engine-child-${mode.argument}", isDaemon = true) {
         process.inputStream.bufferedReader().useLines { outputLines ->
             outputLines.forEach { line ->
@@ -1271,10 +1853,20 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
                 if (line == HOLDER_OPENED_MARKER) {
                     opened.countDown()
                 }
+                if (line == LIFECYCLE_CRASH_DURABLE_MARKER) {
+                    crashStateDurable.countDown()
+                }
             }
         }
     }
-    return ChildProcess(process, process.outputStream.bufferedWriter(), lines, opened, reader)
+    return ChildProcess(
+        process,
+        process.outputStream.bufferedWriter(),
+        lines,
+        opened,
+        crashStateDurable,
+        reader,
+    )
 }
 
 private fun findFreePort(): Int = ServerSocket().use { socket ->

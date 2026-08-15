@@ -14,6 +14,8 @@
 #include <system_error>
 #include <thread>
 
+#include <dlfcn.h>
+
 #include "include/cef_api_hash.h"
 #include "include/cef_application_mac.h"
 #include "include/cef_version.h"
@@ -428,6 +430,25 @@ bool EnginePlatformRuntimeMatches(
   std::lock_guard lock(platform_mutex);
   return runtime_loaded.load(std::memory_order_acquire) && !canonical.empty() &&
          canonical == configured_runtime_path;
+}
+
+void *ResolveCefRuntimeSymbol(const char *name) {
+  if (name == nullptr || *name == '\0') {
+    return nullptr;
+  }
+  std::lock_guard lock(platform_mutex);
+  if (!runtime_loaded.load(std::memory_order_acquire) ||
+      configured_runtime_path.empty()) {
+    return nullptr;
+  }
+  void *library =
+      ::dlopen(configured_runtime_path.c_str(), RTLD_NOW | RTLD_NOLOAD);
+  if (library == nullptr) {
+    return nullptr;
+  }
+  void *symbol = ::dlsym(library, name);
+  ::dlclose(library);
+  return symbol;
 }
 
 bool InitializeCefOnPlatform(const CefMainArgs &main_args,

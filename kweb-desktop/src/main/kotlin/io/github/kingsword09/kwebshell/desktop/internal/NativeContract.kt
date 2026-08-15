@@ -2,7 +2,7 @@ package io.github.kingsword09.kwebshell.desktop.internal
 
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 
-internal const val NATIVE_ABI_VERSION: Int = 5
+internal const val NATIVE_ABI_VERSION: Int = 6
 
 internal enum class NativeStatus(
     val value: Int,
@@ -55,6 +55,12 @@ internal enum class NativeStatus(
     BRIDGE_ORIGIN_INVALID(44, "bridge-origin-invalid"),
     BRIDGE_REQUEST_NOT_FOUND(45, "bridge-request-not-found"),
     BRIDGE_RESPONSE_INVALID(46, "bridge-response-invalid"),
+    EXTENSION_RUNTIME_ABI_MISSING(47, "extension-runtime-abi-missing"),
+    EXTENSION_RUNTIME_ABI_MISMATCH(48, "extension-runtime-abi-mismatch"),
+    EXTENSION_OPERATION_INVALID(49, "extension-operation-invalid"),
+    EXTENSION_OPERATION_ACTIVE(50, "extension-operation-active"),
+    EXTENSION_OPERATION_NOT_FOUND(51, "extension-operation-not-found"),
+    EXTENSION_RESULT_INVALID(52, "extension-result-invalid"),
     ;
 
     companion object {

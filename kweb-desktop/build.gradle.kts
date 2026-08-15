@@ -19,6 +19,7 @@ kotlin {
 dependencies {
     api(project(":kweb-core"))
     implementation(project(":kweb-bridge"))
+    implementation(project(":kweb-extensions"))
     implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.kotlinx.serialization.json)
 
@@ -32,6 +33,10 @@ dependencies {
 }
 
 val conformanceBridgeSchema = layout.projectDirectory.file("src/testBridge/conformance-bridge.json")
+val extensionLifecycleFixture =
+    rootProject.layout.projectDirectory.dir("kweb-cef-native/tests/fixtures/mv3-core")
+val mv3LifecycleFixture =
+    rootProject.layout.projectDirectory.dir("kweb-cef-native/tests/fixtures/mv3-lifecycle")
 val generatedBridgeDirectory = layout.buildDirectory.dir("generated/kwebBridge/conformance")
 val generateConformanceBridge = tasks.register<JavaExec>("generateConformanceBridge") {
     group = "build"
@@ -140,6 +145,13 @@ val engineIntegrationRoot = layout.buildDirectory.dir("engine-integration")
 val integrationJava = javaToolchains.launcherFor {
     languageVersion.set(JavaLanguageVersion.of(21))
 }
+val expectCustomExtensionRuntime = providers.gradleProperty("kwebExpectCustomExtensionRuntime")
+    .map { value ->
+        value.toBooleanStrictOrNull() ?: throw GradleException(
+            "-PkwebExpectCustomExtensionRuntime must be exactly 'true' or 'false'.",
+        )
+    }
+    .orElse(false)
 val cleanEngineIntegration = tasks.register<Delete>("cleanEngineIntegration") {
     delete(engineIntegrationRoot)
 }
@@ -156,11 +168,17 @@ val engineIntegrationJavaCommand = buildList {
         "-Dkweb.engine.integration.bridge.javascript=" +
             generatedBridgeDirectory.get().file("ConformanceBridgeBridge.js").asFile.absolutePath,
     )
+    add("-Dkweb.engine.integration.extension.path=${extensionLifecycleFixture.asFile.absolutePath}")
+    add("-Dkweb.engine.integration.lifecycle.v1=${mv3LifecycleFixture.dir("v1").asFile.absolutePath}")
+    add("-Dkweb.engine.integration.lifecycle.v2=${mv3LifecycleFixture.dir("v2").asFile.absolutePath}")
+    add("-Dkweb.engine.integration.expect.custom.extension.runtime=${expectCustomExtensionRuntime.get()}")
     add("-cp")
     add(sourceSets.test.get().runtimeClasspath.asPath)
     add("io.github.kingsword09.kwebshell.desktop.internal.NativeEngineIntegrationMainKt")
     add("coordinator")
 }
+val extensionLifecycleIntegrationJavaCommand =
+    engineIntegrationJavaCommand.dropLast(1) + "extension-lifecycle-coordinator"
 
 val engineIntegrationTest = tasks.register<Exec>("engineIntegrationTest") {
     group = "verification"
@@ -185,6 +203,7 @@ val engineIntegrationTest = tasks.register<Exec>("engineIntegrationTest") {
         }
     })
     inputs.file(generatedBridgeDirectory.map { it.file("ConformanceBridgeBridge.js") })
+    inputs.dir(extensionLifecycleFixture)
 
     if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("linux")) {
         commandLine(
@@ -196,6 +215,43 @@ val engineIntegrationTest = tasks.register<Exec>("engineIntegrationTest") {
         )
     } else {
         commandLine(engineIntegrationJavaCommand)
+    }
+}
+
+val extensionLifecycleIntegrationTest = tasks.register<Exec>("extensionLifecycleIntegrationTest") {
+    group = "verification"
+    description = "Runs install, update, reload, restart, isolation, and uninstall against patched CEF."
+    dependsOn(
+        cleanEngineIntegration,
+        generateConformanceBridge,
+        tasks.testClasses,
+        ":kweb-cef-native:buildNative",
+    )
+    mustRunAfter(tasks.test, ":kweb-cef-native:nativeTest", engineIntegrationTest)
+
+    inputs.file(nativeJniLibrary)
+    inputs.file(nativeCefRuntime)
+    inputs.file(nativeBrowserSubprocess)
+    inputs.file(nativeResources.map { it.resolve("resources.pak") })
+    inputs.file(nativeLocales.map { directory ->
+        if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("mac")) {
+            directory.resolve("en.lproj/locale.pak")
+        } else {
+            directory.resolve("en-US.pak")
+        }
+    })
+    inputs.dir(mv3LifecycleFixture)
+
+    if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("linux")) {
+        commandLine(
+            listOf(
+                "xvfb-run",
+                "--auto-servernum",
+                "--server-args=-screen 0 1280x1024x24",
+            ) + extensionLifecycleIntegrationJavaCommand,
+        )
+    } else {
+        commandLine(extensionLifecycleIntegrationJavaCommand)
     }
 }
 

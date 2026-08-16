@@ -342,26 +342,24 @@ void BrowserApp::OnProfileSelfTestPageLoaded() {
 
 void BrowserApp::OnMv3CoreSelfTestPagePassed(const std::string &result) {
   CEF_REQUIRE_UI_THREAD();
-  if (!configuration_.IsMv3CoreSelfTest() ||
-      mv3_core_self_test_page_passed_) {
+  if (!configuration_.IsMv3CoreSelfTest() || mv3_core_self_test_page_passed_) {
     return;
   }
-  const std::string expected = ExpectedMv3CoreSelfTestResult(
-      configuration_.mv3_core_self_test_mode);
+  const std::string expected =
+      ExpectedMv3CoreSelfTestResult(configuration_.mv3_core_self_test_mode);
   if (result != expected) {
     OnFatalBrowserError("native.mv3.core-self-test-result-invalid",
                         {{"expected", expected}, {"actual", result}});
     return;
   }
   mv3_core_self_test_page_passed_ = true;
-  recorder_->Record(
-      "mv3_core_self_test_passed",
-      {{"mode", Mv3CoreSelfTestModeName(
-                    configuration_.mv3_core_self_test_mode)},
-       {"result", result}});
-  if (configuration_.mv3_core_self_test_mode ==
-      Mv3CoreSelfTestMode::kOptions) {
-    BeginMv3OptionsPageNavigation();
+  recorder_->Record("mv3_core_self_test_passed",
+                    {{"mode", Mv3CoreSelfTestModeName(
+                                  configuration_.mv3_core_self_test_mode)},
+                     {"result", result}});
+  if (Mv3CoreExtensionPageSelfTestForMode(
+          configuration_.mv3_core_self_test_mode) != nullptr) {
+    BeginMv3ExtensionPageNavigation();
     return;
   }
   MaybeCompleteMv3CoreSelfTest();
@@ -372,21 +370,25 @@ void BrowserApp::OnMv3CoreSelfTestPageLoaded(const std::string &url) {
   if (!configuration_.IsMv3CoreSelfTest()) {
     return;
   }
-  if (configuration_.mv3_core_self_test_mode ==
-          Mv3CoreSelfTestMode::kOptions &&
-      mv3_options_page_navigation_requested_) {
-    if (url != Mv3CoreOptionsPageUrl()) {
-      OnFatalBrowserError("native.mv3.options-page-url-mismatch",
-                          {{"expected", Mv3CoreOptionsPageUrl()},
+  const Mv3CoreExtensionPageSelfTest *extension_page =
+      Mv3CoreExtensionPageSelfTestForMode(
+          configuration_.mv3_core_self_test_mode);
+  if (extension_page && mv3_extension_page_navigation_requested_) {
+    if (url != extension_page->url) {
+      OnFatalBrowserError("native.mv3.extension-page-url-mismatch",
+                          {{"surface", extension_page->surface},
+                           {"expected", extension_page->url},
                            {"actual", url}});
       return;
     }
-    if (mv3_options_page_loaded_) {
-      OnFatalBrowserError("native.mv3.options-page-duplicate-load", {});
+    if (mv3_extension_page_loaded_) {
+      OnFatalBrowserError("native.mv3.extension-page-duplicate-load",
+                          {{"surface", extension_page->surface}});
       return;
     }
-    mv3_options_page_loaded_ = true;
-    recorder_->Record("mv3_options_page_loaded", {{"url", url}});
+    mv3_extension_page_loaded_ = true;
+    recorder_->Record("mv3_extension_page_loaded",
+                      {{"surface", extension_page->surface}, {"url", url}});
     MaybeCompleteMv3CoreSelfTest();
     return;
   }
@@ -402,29 +404,35 @@ void BrowserApp::OnMv3CoreSelfTestPageLoaded(const std::string &url) {
   MaybeCompleteMv3CoreSelfTest();
 }
 
-void BrowserApp::OnMv3OptionsPagePassed(const std::string &result) {
+void BrowserApp::OnMv3ExtensionPagePassed(const std::string &result) {
   CEF_REQUIRE_UI_THREAD();
-  if (!configuration_.IsMv3CoreSelfTest() ||
-      configuration_.mv3_core_self_test_mode !=
-          Mv3CoreSelfTestMode::kOptions ||
-      !mv3_options_page_navigation_requested_) {
-    OnFatalBrowserError("native.mv3.options-page-unexpected-terminal-event",
+  const Mv3CoreExtensionPageSelfTest *extension_page =
+      Mv3CoreExtensionPageSelfTestForMode(
+          configuration_.mv3_core_self_test_mode);
+  if (!configuration_.IsMv3CoreSelfTest() || !extension_page ||
+      !mv3_extension_page_navigation_requested_) {
+    OnFatalBrowserError("native.mv3.extension-page-unexpected-terminal-event",
                         {{"result", result}});
     return;
   }
-  if (mv3_options_page_passed_) {
-    OnFatalBrowserError("native.mv3.options-page-duplicate-terminal-event",
-                        {{"result", result}});
+  if (mv3_extension_page_passed_) {
+    OnFatalBrowserError(
+        "native.mv3.extension-page-duplicate-terminal-event",
+        {{"surface", extension_page->surface}, {"result", result}});
     return;
   }
-  const std::string expected = ExpectedMv3OptionsPageResult();
+  const std::string expected = ExpectedMv3CoreExtensionPageResult(
+      configuration_.mv3_core_self_test_mode);
   if (result != expected) {
-    OnFatalBrowserError("native.mv3.options-page-result-invalid",
-                        {{"expected", expected}, {"actual", result}});
+    OnFatalBrowserError("native.mv3.extension-page-result-invalid",
+                        {{"surface", extension_page->surface},
+                         {"expected", expected},
+                         {"actual", result}});
     return;
   }
-  mv3_options_page_passed_ = true;
-  recorder_->Record("mv3_options_page_passed", {{"result", result}});
+  mv3_extension_page_passed_ = true;
+  recorder_->Record("mv3_extension_page_passed",
+                    {{"surface", extension_page->surface}, {"result", result}});
   MaybeCompleteMv3CoreSelfTest();
 }
 
@@ -438,29 +446,38 @@ void BrowserApp::MaybeCompleteProfileSelfTest() {
 
 void BrowserApp::MaybeCompleteMv3CoreSelfTest() {
   CEF_REQUIRE_UI_THREAD();
-  if (!mv3_core_self_test_page_passed_ ||
-      !mv3_core_self_test_page_loaded_) {
+  if (!mv3_core_self_test_page_passed_ || !mv3_core_self_test_page_loaded_) {
     return;
   }
-  if (configuration_.mv3_core_self_test_mode ==
-          Mv3CoreSelfTestMode::kOptions &&
-      (!mv3_options_page_passed_ || !mv3_options_page_loaded_)) {
+  if (Mv3CoreExtensionPageSelfTestForMode(
+          configuration_.mv3_core_self_test_mode) != nullptr &&
+      (!mv3_extension_page_passed_ || !mv3_extension_page_loaded_)) {
     return;
   }
   RequestProfileFlushAndClose();
 }
 
-void BrowserApp::BeginMv3OptionsPageNavigation() {
+void BrowserApp::BeginMv3ExtensionPageNavigation() {
   CEF_REQUIRE_UI_THREAD();
-  if (mv3_options_page_navigation_requested_) {
-    OnFatalBrowserError("native.mv3.options-page-duplicate-navigation", {});
+  const Mv3CoreExtensionPageSelfTest *extension_page =
+      Mv3CoreExtensionPageSelfTestForMode(
+          configuration_.mv3_core_self_test_mode);
+  if (!extension_page) {
+    OnFatalBrowserError("native.mv3.extension-page-mode-invalid", {});
     return;
   }
-  mv3_options_page_navigation_requested_ = true;
-  recorder_->Record("mv3_options_page_navigation_requested",
-                    {{"url", Mv3CoreOptionsPageUrl()}});
-  if (!client_ || !client_->NavigateSelfTestMainFrame(Mv3CoreOptionsPageUrl())) {
-    OnFatalBrowserError("native.mv3.options-page-navigation-rejected", {});
+  if (mv3_extension_page_navigation_requested_) {
+    OnFatalBrowserError("native.mv3.extension-page-duplicate-navigation",
+                        {{"surface", extension_page->surface}});
+    return;
+  }
+  mv3_extension_page_navigation_requested_ = true;
+  recorder_->Record(
+      "mv3_extension_page_navigation_requested",
+      {{"surface", extension_page->surface}, {"url", extension_page->url}});
+  if (!client_ || !client_->NavigateSelfTestMainFrame(extension_page->url)) {
+    OnFatalBrowserError("native.mv3.extension-page-navigation-rejected",
+                        {{"surface", extension_page->surface}});
   }
 }
 
@@ -568,6 +585,9 @@ void BrowserApp::OnSelfTestTimeout() {
       browser_destroyed_) {
     return;
   }
+  const Mv3CoreExtensionPageSelfTest *extension_page =
+      Mv3CoreExtensionPageSelfTestForMode(
+          configuration_.mv3_core_self_test_mode);
   OnFatalBrowserError(
       "native.self-test.timeout",
       {{"page", self_test_page_passed_ ? "passed" : "pending"},
@@ -578,12 +598,14 @@ void BrowserApp::OnSelfTestTimeout() {
         mv3_core_self_test_page_passed_ ? "passed" : "pending"},
        {"mv3_core_load",
         mv3_core_self_test_page_loaded_ ? "completed" : "pending"},
-       {"mv3_options_navigation",
-        mv3_options_page_navigation_requested_ ? "requested" : "pending"},
-       {"mv3_options_page",
-        mv3_options_page_passed_ ? "passed" : "pending"},
-       {"mv3_options_load",
-        mv3_options_page_loaded_ ? "completed" : "pending"},
+       {"mv3_extension_page_surface",
+        extension_page ? extension_page->surface : "none"},
+       {"mv3_extension_page_navigation",
+        mv3_extension_page_navigation_requested_ ? "requested" : "pending"},
+       {"mv3_extension_page",
+        mv3_extension_page_passed_ ? "passed" : "pending"},
+       {"mv3_extension_page_load",
+        mv3_extension_page_loaded_ ? "completed" : "pending"},
        {"profile_cookie_flush",
         profile_cookie_flush_completed_ ? "completed" : "pending"},
        {"renderer_process",

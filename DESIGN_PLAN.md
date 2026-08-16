@@ -867,6 +867,60 @@ Implementation evidence as of 2026-08-16:
   objective is complete; its narrow runtime evidence does not publish a
   product options-page API.
 
+#### Objective 6.2: Action popup document and action-state native-child conformance
+
+This objective proves the narrow Chromium operation that a future action-popup
+host will require: an MV3 extension's declared `action.default_popup` document
+loads in the existing Alloy native child after the same Profile's Service
+Worker has written global `chrome.action` state. It does not claim that
+KWebShell renders a Chrome toolbar button, processes a user gesture, or exposes
+a product action-popup API before the profile-scoped custom runtime artifact
+gate is complete on every advertised target.
+
+Acceptance:
+
+- The checked-in MV3 conformance extension declares one strict
+  `action.default_popup` and default title. Its Service Worker updates the
+  global action badge text and title only after the corresponding
+  `storage.local` write completes; its popup proves extension origin,
+  `chrome.runtime.id`, manifest action metadata, persisted storage value, and
+  the exact global `chrome.action.getBadgeText()` and `getTitle()` values.
+- A test-only `action-popup` host mode completes the existing content-script
+  and Service Worker idle/restart sequence, then navigates the *same* Alloy
+  native child directly to the exact fixed popup URL. It verifies fixed
+  extension identity, manifest identity, action state, path, successful
+  main-frame load, ordered terminal events, and clean shutdown.
+- The internal native state machine has one explicit extension-page lifecycle
+  for the options and action-popup modes, with no caller-supplied extension
+  URL. Wrong URLs, wrong page results, wrong surface identity, duplicate
+  navigation or terminal events, failed loads, and timeouts are typed test
+  failures. It creates no toolbar window, overlay, separate browser, OSR
+  surface, synthetic `chrome.action`, CDP tab, or fallback implementation.
+- Package-boundary and native unit tests validate the action fixture metadata,
+  required regular assets, and strict mode parsing. The real native-child
+  conformance test runs on macOS arm64, Windows x64, and Linux x64 with the
+  pinned stock CEF runtime.
+- The capability matrix may record only the fixed direct popup document and
+  global action-state sequence as runtime evidence after all three targets
+  pass. Action icons, user-gesture popup behavior, toolbar placement, tab-
+  scoped action state, and public action APIs remain `UNPUBLISHED` pending
+  their own complete custom-runtime objectives.
+
+Implementation evidence as of 2026-08-16:
+
+- The fixture declares `action.default_popup=popup.html` and a default title.
+  Its Service Worker persists each message count, writes and reads the matching
+  global action badge and title, and its popup independently verifies the
+  manifest declaration, action state, extension identity, and storage state.
+- The native `action-popup` self-test completes the Service Worker
+  idle/restart sequence, loads the exact popup URL in the same Alloy native
+  child, and verifies ordered navigation, load, terminal result, flush, and
+  shutdown events through one extension-page lifecycle state machine.
+- Full `check` passed against the pinned real CEF runtime locally on macOS
+  arm64 and in GitHub Actions on macOS arm64, Windows x64, and Linux x64. This
+  objective is complete; its narrow runtime evidence does not publish an action
+  toolbar or popup-host API.
+
 Acceptance:
 
 - Each surface has a real native host and complete lifecycle tests.

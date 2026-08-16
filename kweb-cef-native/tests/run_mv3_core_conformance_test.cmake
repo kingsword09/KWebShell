@@ -12,6 +12,8 @@ set(mv3_test_url https://kwebshell.test/mv3-core-self-test)
 set(mv3_extension_id dhhnhmffjehhodphofnkingncijnaona)
 set(mv3_options_page_url
   chrome-extension://dhhnhmffjehhodphofnkingncijnaona/options.html)
+set(mv3_action_popup_url
+  chrome-extension://dhhnhmffjehhodphofnkingncijnaona/popup.html)
 
 function(expected_mv3_result output mode)
   if(mode STREQUAL "restart")
@@ -25,10 +27,24 @@ function(expected_mv3_result output mode)
     PARENT_SCOPE)
 endfunction()
 
-function(expected_mv3_options_result output)
-  set(${output}
-    "KWEB_MV3_OPTIONS_PASS|id=${mv3_extension_id}|manifest=KWebShell%20MV3%20core%20conformance|messageCount=2|path=/options.html"
-    PARENT_SCOPE)
+function(expected_mv3_extension_page surface_output url_output result_output mode)
+  set(surface)
+  set(url)
+  set(result)
+  if(mode STREQUAL "options")
+    set(surface "options")
+    set(url "${mv3_options_page_url}")
+    set(result
+      "KWEB_MV3_OPTIONS_PASS|id=${mv3_extension_id}|manifest=KWebShell%20MV3%20core%20conformance|messageCount=2|path=/options.html")
+  elseif(mode STREQUAL "action-popup")
+    set(surface "action-popup")
+    set(url "${mv3_action_popup_url}")
+    set(result
+      "KWEB_MV3_ACTION_POPUP_PASS|id=${mv3_extension_id}|manifest=KWebShell%20MV3%20core%20conformance|popup=popup.html|defaultTitle=KWebShell%20MV3%20action|badge=2|title=KWebShell%20MV3%20action%20count%3A%202|messageCount=2|path=/popup.html")
+  endif()
+  set(${surface_output} "${surface}" PARENT_SCOPE)
+  set(${url_output} "${url}" PARENT_SCOPE)
+  set(${result_output} "${result}" PARENT_SCOPE)
 endfunction()
 
 function(require_host_success mode result stdout stderr)
@@ -119,16 +135,16 @@ endfunction()
 
 function(validate_mv3_run event_log expected_mode)
   expected_mv3_result(expected_result "${expected_mode}")
-  if(expected_mode STREQUAL "options")
-    expected_mv3_options_result(expected_options_result)
-  endif()
+  expected_mv3_extension_page(expected_extension_page_surface
+    expected_extension_page_url expected_extension_page_result
+    "${expected_mode}")
   kweb_read_event_lines(event_lines "${event_log}")
   set(previous_sequence 0)
   set(renderer_process_seen FALSE)
   set(core_navigation_seen FALSE)
   set(core_load_seen FALSE)
-  set(options_navigation_seen FALSE)
-  set(options_load_seen FALSE)
+  set(extension_page_navigation_seen FALSE)
+  set(extension_page_load_seen FALSE)
   set(required_events
     browser_process_start
     mv3_extension_load_configured
@@ -154,11 +170,11 @@ function(validate_mv3_run event_log expected_mode)
     cef_shutdown_started
     cef_shutdown
   )
-  if(expected_mode STREQUAL "options")
+  if(NOT expected_extension_page_surface STREQUAL "")
     list(APPEND required_events
-      mv3_options_page_navigation_requested
-      mv3_options_page_loaded
-      mv3_options_page_passed
+      mv3_extension_page_navigation_requested
+      mv3_extension_page_loaded
+      mv3_extension_page_passed
     )
   endif()
 
@@ -233,9 +249,9 @@ function(validate_mv3_run event_log expected_mode)
       kweb_read_json_member(navigated_url "${event_line}" url)
       if(navigated_url STREQUAL "${mv3_test_url}")
         set(core_navigation_seen TRUE)
-      elseif(expected_mode STREQUAL "options" AND
-             navigated_url STREQUAL "${mv3_options_page_url}")
-        set(options_navigation_seen TRUE)
+      elseif(NOT expected_extension_page_surface STREQUAL "" AND
+             navigated_url STREQUAL "${expected_extension_page_url}")
+        set(extension_page_navigation_seen TRUE)
       else()
         message(FATAL_ERROR
           "MV3 ${expected_mode} navigated to an unexpected URL: ${event_line}")
@@ -249,13 +265,14 @@ function(validate_mv3_run event_log expected_mode)
             "MV3 core test page did not report HTTP 200: ${event_line}")
         endif()
         set(core_load_seen TRUE)
-      elseif(expected_mode STREQUAL "options" AND
-             loaded_url STREQUAL "${mv3_options_page_url}")
+      elseif(NOT expected_extension_page_surface STREQUAL "" AND
+             loaded_url STREQUAL "${expected_extension_page_url}")
         if(NOT http_status STREQUAL "200")
           message(FATAL_ERROR
-            "MV3 options page did not report HTTP 200: ${event_line}")
+            "MV3 ${expected_extension_page_surface} page did not report "
+            "HTTP 200: ${event_line}")
         endif()
-        set(options_load_seen TRUE)
+        set(extension_page_load_seen TRUE)
       else()
         message(FATAL_ERROR
           "MV3 ${expected_mode} loaded an unexpected page: ${event_line}")
@@ -268,26 +285,35 @@ function(validate_mv3_run event_log expected_mode)
         message(FATAL_ERROR
           "MV3 core result was not exact: ${event_line}")
       endif()
-    elseif(event_name STREQUAL "mv3_options_page_navigation_requested")
-      kweb_read_json_member(options_url "${event_line}" url)
-      if(NOT expected_mode STREQUAL "options" OR
-         NOT options_url STREQUAL "${mv3_options_page_url}")
+    elseif(event_name STREQUAL "mv3_extension_page_navigation_requested")
+      kweb_read_json_member(extension_page_surface "${event_line}" surface)
+      kweb_read_json_member(extension_page_url "${event_line}" url)
+      if(expected_extension_page_surface STREQUAL "" OR
+         NOT extension_page_surface STREQUAL
+             "${expected_extension_page_surface}" OR
+         NOT extension_page_url STREQUAL "${expected_extension_page_url}")
         message(FATAL_ERROR
-          "MV3 options navigation request was not exact: ${event_line}")
+          "MV3 extension-page navigation request was not exact: ${event_line}")
       endif()
-    elseif(event_name STREQUAL "mv3_options_page_loaded")
-      kweb_read_json_member(options_url "${event_line}" url)
-      if(NOT expected_mode STREQUAL "options" OR
-         NOT options_url STREQUAL "${mv3_options_page_url}")
+    elseif(event_name STREQUAL "mv3_extension_page_loaded")
+      kweb_read_json_member(extension_page_surface "${event_line}" surface)
+      kweb_read_json_member(extension_page_url "${event_line}" url)
+      if(expected_extension_page_surface STREQUAL "" OR
+         NOT extension_page_surface STREQUAL
+             "${expected_extension_page_surface}" OR
+         NOT extension_page_url STREQUAL "${expected_extension_page_url}")
         message(FATAL_ERROR
-          "MV3 options load was not exact: ${event_line}")
+          "MV3 extension-page load was not exact: ${event_line}")
       endif()
-    elseif(event_name STREQUAL "mv3_options_page_passed")
-      kweb_read_json_member(options_result "${event_line}" result)
-      if(NOT expected_mode STREQUAL "options" OR
-         NOT options_result STREQUAL "${expected_options_result}")
+    elseif(event_name STREQUAL "mv3_extension_page_passed")
+      kweb_read_json_member(extension_page_surface "${event_line}" surface)
+      kweb_read_json_member(extension_page_result "${event_line}" result)
+      if(expected_extension_page_surface STREQUAL "" OR
+         NOT extension_page_surface STREQUAL
+             "${expected_extension_page_surface}" OR
+         NOT extension_page_result STREQUAL "${expected_extension_page_result}")
         message(FATAL_ERROR
-          "MV3 options result was not exact: ${event_line}")
+          "MV3 extension-page result was not exact: ${event_line}")
       endif()
     elseif(event_name STREQUAL "cef_shutdown")
       kweb_read_json_member(exit_code "${event_line}" exit_code)
@@ -317,10 +343,11 @@ function(validate_mv3_run event_log expected_mode)
     message(FATAL_ERROR
       "MV3 ${expected_mode} did not navigate and load the controlled core page.")
   endif()
-  if(expected_mode STREQUAL "options" AND
-     (NOT options_navigation_seen OR NOT options_load_seen))
+  if(NOT expected_extension_page_surface STREQUAL "" AND
+     (NOT extension_page_navigation_seen OR NOT extension_page_load_seen))
     message(FATAL_ERROR
-      "MV3 options mode did not navigate and load the exact extension page.")
+      "MV3 ${expected_extension_page_surface} mode did not navigate and "
+      "load the exact extension page.")
   endif()
 
   macro(assert_event_before first_event second_event)
@@ -336,15 +363,15 @@ function(validate_mv3_run event_log expected_mode)
   assert_event_before(browser_created native_child_attached)
   assert_event_before(mv3_test_request_intercepted load_end)
   assert_event_before(load_end mv3_core_self_test_passed)
-  if(expected_mode STREQUAL "options")
+  if(NOT expected_extension_page_surface STREQUAL "")
     assert_event_before(mv3_core_self_test_passed
-      mv3_options_page_navigation_requested)
-    assert_event_before(mv3_options_page_navigation_requested
-      mv3_options_page_loaded)
-    assert_event_before(mv3_options_page_navigation_requested
-      mv3_options_page_passed)
-    assert_event_before(mv3_options_page_loaded profile_cookie_flush_started)
-    assert_event_before(mv3_options_page_passed profile_cookie_flush_started)
+      mv3_extension_page_navigation_requested)
+    assert_event_before(mv3_extension_page_navigation_requested
+      mv3_extension_page_loaded)
+    assert_event_before(mv3_extension_page_navigation_requested
+      mv3_extension_page_passed)
+    assert_event_before(mv3_extension_page_loaded profile_cookie_flush_started)
+    assert_event_before(mv3_extension_page_passed profile_cookie_flush_started)
   endif()
   assert_event_before(mv3_core_self_test_passed profile_cookie_flush_started)
   assert_event_before(profile_cookie_flush_completed browser_close_accepted)
@@ -381,6 +408,7 @@ run_mv3(initial alpha mv3-initial.jsonl FALSE)
 run_mv3(restart alpha mv3-restart.jsonl TRUE)
 run_mv3(isolated beta mv3-isolated.jsonl TRUE)
 run_mv3(options options mv3-options.jsonl FALSE)
+run_mv3(action-popup action-popup mv3-action-popup.jsonl FALSE)
 
 message(STATUS
-  "Alloy MV3 core conformance passed on ${PLATFORM}: content script, runtime messaging, Service Worker idle restart, storage persistence, Profile isolation, and options-page native-child navigation.")
+  "Alloy MV3 core conformance passed on ${PLATFORM}: content script, runtime messaging, Service Worker idle restart, storage persistence, Profile isolation, options-page navigation, and action-popup navigation.")

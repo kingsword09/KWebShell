@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include "include/cef_scheme.h"
 #include "kwebshell/native/host_configuration.h"
@@ -11,11 +12,19 @@ namespace kwebshell {
 
 class EventRecorder;
 
+struct Mv3CoreExtensionPageSelfTest final {
+  const char *surface;
+  const char *url;
+};
+
 const char *Mv3CoreSelfTestModeName(Mv3CoreSelfTestMode mode);
 const char *Mv3CoreSelfTestUrl();
-const char *Mv3CoreOptionsPageUrl();
+const Mv3CoreExtensionPageSelfTest *
+Mv3CoreExtensionPageSelfTestForMode(Mv3CoreSelfTestMode mode);
+bool IsMv3CoreExtensionPagePassResult(std::string_view result);
+bool IsMv3CoreExtensionPageFailureResult(std::string_view result);
 std::string ExpectedMv3CoreSelfTestResult(Mv3CoreSelfTestMode mode);
-std::string ExpectedMv3OptionsPageResult();
+std::string ExpectedMv3CoreExtensionPageResult(Mv3CoreSelfTestMode mode);
 
 CefRefPtr<CefSchemeHandlerFactory> CreateMv3CoreSelfTestSchemeHandlerFactory(
     Mv3CoreSelfTestMode mode, std::shared_ptr<EventRecorder> recorder);

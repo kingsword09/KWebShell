@@ -1,9 +1,9 @@
 # Manifest V3 capability matrix
 
-- Matrix version: 0.2
+- Matrix version: 0.3
 - Runtime baseline: CEF `151.3.16+gbe1e15d`, Chromium `151.0.7922.109`
 - Architecture: Chrome bootstrap with an Alloy native child
-- Published conformance objectives: 5.2, 6.1
+- Published conformance objectives: 5.2, 6.1, 6.2
 
 This matrix is a product contract, not a list of manifest fields that happen to
 parse. `RUNTIME_VERIFIED` means the pinned Chromium runtime performed the exact
@@ -30,6 +30,7 @@ for the capability in this matrix version.
 | Extension state isolation between Profiles | `RUNTIME_VERIFIED` | Profile `beta` starts independently at counts `1/2`. |
 | Chromium extension and Service Worker disk state | `RUNTIME_VERIFIED` | Non-empty Profile databases are required after every run. |
 | Direct `options_ui` page navigation in the existing Alloy native child | `RUNTIME_VERIFIED` | After the core Service Worker sequence completes, the same native child loads the exact `chrome-extension://dhhnhmffjehhodphofnkingncijnaona/options.html` URL. The page proves its origin, `chrome.runtime.id`, manifest identity, and the persisted `storage.local` count on macOS arm64, Linux x64, and Windows x64. |
+| Direct `action.default_popup` page navigation and global `chrome.action` state in the existing Alloy native child | `RUNTIME_VERIFIED` | After the core Service Worker sequence completes, the same native child loads the exact `chrome-extension://dhhnhmffjehhodphofnkingncijnaona/popup.html` URL and reads the exact persisted global badge and title state on macOS arm64, Linux x64, and Windows x64. |
 
 `RUNTIME_VERIFIED` applies only to the exact methods and event path above. It is
 not a blanket claim for every member of `chrome.runtime`, `chrome.storage`, or
@@ -38,7 +39,7 @@ the content-script platform.
 ## Unpublished surface
 
 The following capabilities have no public KWebShell runtime contract in matrix
-version 0.2:
+version 0.3:
 
 | Area | Capabilities held back from the public API |
 | --- | --- |
@@ -46,7 +47,7 @@ version 0.2:
 | Worker events | Installation/update events, alarms, notifications, browser lifecycle events |
 | Script APIs | `chrome.scripting`, dynamic content scripts, user scripts |
 | Browser model | `chrome.tabs`, `chrome.windows`, tab groups, sessions |
-| Extension UI | action icon/badge, popup, Chrome-driven `openOptionsPage()`, product lifecycle-based options hosting, context menus, commands |
+| Extension UI | action icon host, user-gesture popup behavior, toolbar placement, tab-scoped action state, Chrome-driven `openOptionsPage()`, product lifecycle-based options hosting, context menus, commands |
 | Network | `declarativeNetRequest` rule evaluation and feedback |
 | Extension surfaces | DevTools pages, offscreen documents, side panels |
 | Elevated integration | native messaging, debugger, management, proxy, private/incognito access |
@@ -75,6 +76,27 @@ pass on macOS, Windows, and Linux.
 The direct-navigation fixture passed the same pinned stock-CEF conformance test
 on macOS arm64, Linux x64, and Windows x64. This narrowly scoped evidence does
 not publish a product options-page API or expand the unrelated extension UI
+capabilities listed above.
+
+## Action popup boundary
+
+Objective 6.2 proves only one exact action path: after its Service Worker has
+persisted the second core message count, it writes and reads the global
+`chrome.action` badge and title, then the native conformance host loads the
+installed test extension's declared `action.default_popup` into the same
+existing Alloy native child. The host accepts no caller-provided extension URL
+and fails with a typed error for an unexpected surface, URL, page result,
+duplicate terminal event, failed load, or timeout.
+
+This is not a claim that KWebShell renders an action icon, places it in an OS
+toolbar, opens a popup from a user gesture, supports tab-scoped action state,
+or exposes a public action API. Those surfaces remain `UNPUBLISHED` until the
+profile-scoped custom runtime artifact gate and their own lifecycle objectives
+pass on macOS, Windows, and Linux.
+
+The direct popup fixture passed the same pinned stock-CEF conformance test on
+macOS arm64, Linux x64, and Windows x64. This narrowly scoped evidence does
+not publish a product action host or expand the unrelated extension UI
 capabilities listed above.
 
 ## Internal package-store boundary
@@ -135,9 +157,10 @@ published extension capability is unavailable.
 
 ## Platform gate
 
-The published baselines for Objectives 5.2 and 6.1 require
+The published baselines for Objectives 5.2, 6.1, and 6.2 require
 `kweb_mv3_core_conformance_test` on all three targets, including the direct
-options-page native-child sequence. Objective 5.4 publication
+options-page, action-popup, and global action-state sequences. Objective 5.4
+publication
 additionally requires `extensionLifecycleIntegrationTest` against the matching
 custom runtime:
 

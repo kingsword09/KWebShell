@@ -19,7 +19,14 @@ constexpr char kMv3CoreExtensionId[] =
     "dhhnhmffjehhodphofnkingncijnaona";
 constexpr char kMv3CoreOptionsPageUrl[] =
     "chrome-extension://dhhnhmffjehhodphofnkingncijnaona/options.html";
+constexpr char kMv3CoreActionPopupUrl[] =
+    "chrome-extension://dhhnhmffjehhodphofnkingncijnaona/popup.html";
 constexpr int kServiceWorkerIdleDelayMs = 40000;
+
+constexpr Mv3CoreExtensionPageSelfTest kOptionsPageSelfTest = {
+    "options", kMv3CoreOptionsPageUrl};
+constexpr Mv3CoreExtensionPageSelfTest kActionPopupSelfTest = {
+    "action-popup", kMv3CoreActionPopupUrl};
 
 int FirstExpectedStorageCount(Mv3CoreSelfTestMode mode) {
   return mode == Mv3CoreSelfTestMode::kRestart ? 3 : 1;
@@ -91,27 +98,62 @@ const char *Mv3CoreSelfTestModeName(Mv3CoreSelfTestMode mode) {
     return "isolated";
   case Mv3CoreSelfTestMode::kOptions:
     return "options";
+  case Mv3CoreSelfTestMode::kActionPopup:
+    return "action-popup";
   }
   return "invalid";
 }
 
 const char *Mv3CoreSelfTestUrl() { return kMv3CoreSelfTestUrl; }
 
-const char *Mv3CoreOptionsPageUrl() { return kMv3CoreOptionsPageUrl; }
+const Mv3CoreExtensionPageSelfTest *
+Mv3CoreExtensionPageSelfTestForMode(Mv3CoreSelfTestMode mode) {
+  switch (mode) {
+  case Mv3CoreSelfTestMode::kOptions:
+    return &kOptionsPageSelfTest;
+  case Mv3CoreSelfTestMode::kActionPopup:
+    return &kActionPopupSelfTest;
+  case Mv3CoreSelfTestMode::kNone:
+  case Mv3CoreSelfTestMode::kInitial:
+  case Mv3CoreSelfTestMode::kRestart:
+  case Mv3CoreSelfTestMode::kIsolated:
+    return nullptr;
+  }
+  return nullptr;
+}
+
+bool IsMv3CoreExtensionPagePassResult(std::string_view result) {
+  return result.starts_with("KWEB_MV3_OPTIONS_PASS|") ||
+         result.starts_with("KWEB_MV3_ACTION_POPUP_PASS|");
+}
+
+bool IsMv3CoreExtensionPageFailureResult(std::string_view result) {
+  return result.starts_with("KWEB_MV3_OPTIONS_FAIL|") ||
+         result.starts_with("KWEB_MV3_ACTION_POPUP_FAIL|");
+}
 
 std::string ExpectedMv3CoreSelfTestResult(Mv3CoreSelfTestMode mode) {
   const int first_count = FirstExpectedStorageCount(mode);
-  return "KWEB_MV3_CORE_PASS|" +
-         std::string(Mv3CoreSelfTestModeName(mode)) + "|first=" +
-         std::to_string(first_count) + "|second=" +
-         std::to_string(first_count + 1) +
+  return "KWEB_MV3_CORE_PASS|" + std::string(Mv3CoreSelfTestModeName(mode)) +
+         "|first=" + std::to_string(first_count) +
+         "|second=" + std::to_string(first_count + 1) +
          "|suspended=true|isolated=true|id=" + kMv3CoreExtensionId;
 }
 
-std::string ExpectedMv3OptionsPageResult() {
-  return "KWEB_MV3_OPTIONS_PASS|id=" + std::string(kMv3CoreExtensionId) +
-         "|manifest=KWebShell%20MV3%20core%20conformance"
-         "|messageCount=2|path=/options.html";
+std::string ExpectedMv3CoreExtensionPageResult(Mv3CoreSelfTestMode mode) {
+  if (mode == Mv3CoreSelfTestMode::kOptions) {
+    return "KWEB_MV3_OPTIONS_PASS|id=" + std::string(kMv3CoreExtensionId) +
+           "|manifest=KWebShell%20MV3%20core%20conformance"
+           "|messageCount=2|path=/options.html";
+  }
+  if (mode == Mv3CoreSelfTestMode::kActionPopup) {
+    return "KWEB_MV3_ACTION_POPUP_PASS|id=" + std::string(kMv3CoreExtensionId) +
+           "|manifest=KWebShell%20MV3%20core%20conformance"
+           "|popup=popup.html|defaultTitle=KWebShell%20MV3%20action"
+           "|badge=2|title=KWebShell%20MV3%20action%20count%3A%202"
+           "|messageCount=2|path=/popup.html";
+  }
+  return {};
 }
 
 CefRefPtr<CefSchemeHandlerFactory> CreateMv3CoreSelfTestSchemeHandlerFactory(

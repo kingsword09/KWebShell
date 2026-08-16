@@ -223,12 +223,28 @@ void TestMv3CoreSelfTestConfigurationIsStrict() {
             options_configuration->mv3_core_self_test_mode ==
                 kwebshell::Mv3CoreSelfTestMode::kOptions,
         "MV3 options self-test mode should be explicit");
+
+  const auto action_popup_configuration = kwebshell::HostConfiguration::Parse(
+      {RootCacheArgument(), ProfileArgument(),
+       "--kweb-mv3-core-self-test=action-popup",
+       "--kweb-mv3-extension-path=" + extension_path},
+      &error);
+  Check(action_popup_configuration.has_value(),
+        "MV3 action popup self-test configuration should parse: " + error);
+  Check(action_popup_configuration &&
+            action_popup_configuration->mv3_core_self_test_mode ==
+                kwebshell::Mv3CoreSelfTestMode::kActionPopup,
+        "MV3 action popup self-test mode should be explicit");
 }
 
 void WriteMv3CoreFixtureFiles(const std::filesystem::path &root) {
   std::filesystem::create_directories(root);
   for (const char *name : {"manifest.json", "worker.js", "content.js",
                            "options.html", "options.js"}) {
+    std::ofstream stream(root / name);
+    stream << "fixture";
+  }
+  for (const char *name : {"popup.html", "popup.js"}) {
     std::ofstream stream(root / name);
     stream << "fixture";
   }
@@ -258,6 +274,16 @@ void TestMv3CoreFixtureValidationIsStrict() {
         "MV3 core fixture missing options.html should fail");
   Check(error.find("options.html") != std::string::npos,
         "missing MV3 fixture file should be identified");
+
+  const std::filesystem::path popup_missing_fixture = test_root / "popup";
+  WriteMv3CoreFixtureFiles(popup_missing_fixture);
+  std::filesystem::remove(popup_missing_fixture / "popup.html",
+                          filesystem_error);
+  Check(!filesystem_error, "MV3 fixture popup page should be removable");
+  Check(!kwebshell::ValidateMv3CoreTestFixture(popup_missing_fixture, error),
+        "MV3 core fixture missing popup.html should fail");
+  Check(error.find("popup.html") != std::string::npos,
+        "missing MV3 popup fixture file should be identified");
 
   const std::filesystem::path comma_fixture = test_root / "invalid,fixture";
   WriteMv3CoreFixtureFiles(comma_fixture);

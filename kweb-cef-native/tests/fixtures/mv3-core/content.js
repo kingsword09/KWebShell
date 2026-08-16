@@ -6,6 +6,9 @@ const fail = (message) => {
   document.title = `KWEB_MV3_CORE_FAIL|${message}`;
 };
 
+const actionTitleFor = (messageCount) =>
+  `KWebShell MV3 action count: ${messageCount}`;
+
 const sendProbe = async () => {
   const response = await chrome.runtime.sendMessage({
     kind: "kwebshell-mv3-core"
@@ -33,6 +36,8 @@ const run = async () => {
     first.messageCount !== firstExpected ||
     first.extensionId !== expectedExtensionId ||
     first.manifestName !== "KWebShell MV3 core conformance" ||
+    first.actionBadgeText !== String(firstExpected) ||
+    first.actionTitle !== actionTitleFor(firstExpected) ||
     first.senderUrl !== location.href
   ) {
     throw new Error(`first-response:${JSON.stringify(first)}`);
@@ -45,6 +50,8 @@ const run = async () => {
     second.messageCount !== secondExpected ||
     second.extensionId !== expectedExtensionId ||
     second.manifestName !== "KWebShell MV3 core conformance" ||
+    second.actionBadgeText !== String(secondExpected) ||
+    second.actionTitle !== actionTitleFor(secondExpected) ||
     second.senderUrl !== location.href
   ) {
     throw new Error(`second-response:${JSON.stringify(second)}`);

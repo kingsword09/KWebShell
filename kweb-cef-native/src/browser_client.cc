@@ -4,6 +4,7 @@
 
 #include "include/cef_parser.h"
 #include "include/wrapper/cef_helpers.h"
+#include "mv3_core_test_page.h"
 
 namespace kwebshell {
 namespace {
@@ -54,10 +55,10 @@ void BrowserClient::OnTitleChange(CefRefPtr<CefBrowser> browser,
     return;
   }
   if (mv3_core_self_test_) {
-    if (title_string.starts_with("KWEB_MV3_OPTIONS_PASS|")) {
-      app_->OnMv3OptionsPagePassed(title_string);
-    } else if (title_string.starts_with("KWEB_MV3_OPTIONS_FAIL|")) {
-      app_->OnFatalBrowserError("native.mv3.options-page-self-test-failed",
+    if (IsMv3CoreExtensionPagePassResult(title_string)) {
+      app_->OnMv3ExtensionPagePassed(title_string);
+    } else if (IsMv3CoreExtensionPageFailureResult(title_string)) {
+      app_->OnFatalBrowserError("native.mv3.extension-page-self-test-failed",
                                 {{"result", title_string}});
     } else if (title_string.starts_with("KWEB_MV3_CORE_PASS|")) {
       app_->OnMv3CoreSelfTestPagePassed(title_string);

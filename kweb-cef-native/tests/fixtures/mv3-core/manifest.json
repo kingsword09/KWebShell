@@ -13,6 +13,10 @@
     "page": "options.html",
     "open_in_tab": true
   },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "KWebShell MV3 action"
+  },
   "content_scripts": [
     {
       "matches": [

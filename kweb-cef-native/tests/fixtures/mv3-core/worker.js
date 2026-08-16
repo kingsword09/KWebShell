@@ -1,4 +1,23 @@
 const instanceId = crypto.randomUUID();
+const actionTitleFor = (messageCount) =>
+  `KWebShell MV3 action count: ${messageCount}`;
+
+const updateActionState = async (messageCount) => {
+  const expectedBadgeText = String(messageCount);
+  const expectedTitle = actionTitleFor(messageCount);
+  await Promise.all([
+    chrome.action.setBadgeText({ text: expectedBadgeText }),
+    chrome.action.setTitle({ title: expectedTitle })
+  ]);
+  const [badgeText, title] = await Promise.all([
+    chrome.action.getBadgeText({}),
+    chrome.action.getTitle({})
+  ]);
+  if (badgeText !== expectedBadgeText || title !== expectedTitle) {
+    throw new Error(`action-state:${badgeText}:${title}`);
+  }
+  return { badgeText, title };
+};
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.kind !== "kwebshell-mv3-core") {
@@ -13,12 +32,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         .set({ messageCount: nextMessageCount })
         .then(() => nextMessageCount);
     })
-    .then((messageCount) => {
+    .then(async (messageCount) => ({
+      messageCount,
+      ...(await updateActionState(messageCount))
+    }))
+    .then((state) => {
       sendResponse({
         extensionId: chrome.runtime.id,
         instanceId,
         manifestName: chrome.runtime.getManifest().name,
-        messageCount,
+        messageCount: state.messageCount,
+        actionBadgeText: state.badgeText,
+        actionTitle: state.title,
         senderUrl: sender.url
       });
     })

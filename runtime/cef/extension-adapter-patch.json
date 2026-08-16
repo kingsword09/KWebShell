@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "cefVersion": "151.3.16+gbe1e15d+chromium-151.0.7922.109",
+  "cefCommit": "be1e15d8892c064f0299ba18350236a9b272ce7f",
+  "chromiumVersion": "151.0.7922.109",
+  "chromiumCommit": "28a7a6c409e03c701d3474ef9e3b1f0be6249039",
+  "depotToolsCommit": "94e89b10b92cc9d6e58fc8d1b6474b7d29e8a114",
+  "adapterAbiVersion": 1,
+  "adapterAbiFingerprint": "8561856986d1c16cbb95294d7ad3f1e27bed9e102abc0f669a073161614a9c44",
+  "sisoVersion": "git_revision:7ea15ed68d4aa12fc4aaa50f5446e8549e8f1ce0",
+  "gnDefines": [
+    "is_official_build=true",
+    "symbol_level=0"
+  ],
+  "exports": [
+    "cef_kweb_extension_abi_fingerprint",
+    "cef_kweb_extension_cancel",
+    "cef_kweb_extension_live_operation_count",
+    "cef_kweb_extension_start"
+  ],
+  "patches": [
+    {
+      "file": "patches/0001-profile-scoped-extension-lifecycle.patch",
+      "sha256": "3e1c1c14b9b947fcec2635bcee25a42cff16028792177ea84ae93aa37334cbbd",
+      "modifiedPreimages": [
+        {
+          "path": "BUILD.gn",
+          "sha256": "3e90c172ad3ff67375ca7dca783eacefdb0fa8486b163da3dabbd61f434911cd"
+        },
+        {
+          "path": "cef_paths2.gypi",
+          "sha256": "cac164e603a0247a5cae1bde804e6b885b9fb8d576b10b66d6e1c0d696c07a47"
+        }
+      ],
+      "createdPostimages": [
+        {
+          "path": "include/internal/cef_kweb_extension_abi.h",
+          "sha256": "98b0b527ea511f992cc089477914ebe8c43e17ab7bceb7ffbc5c69dd9f89d646"
+        },
+        {
+          "path": "libcef/browser/extensions/kweb_extension_adapter.cc",
+          "sha256": "c09f65fb465027723d16ba1e1b97c1f88159d5f5155488e61df8a72d08d9a73a"
+        }
+      ]
+    }
+  ],
+  "customRuntimeArtifacts": []
+}

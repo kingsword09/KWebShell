@@ -1,0 +1,126 @@
+name: Published Custom CEF Acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify published runtime (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos-arm64
+            os: macos-15
+            expect-hardware-gpu-unavailable: false
+          - target: windows-x64
+            os: windows-2022
+            expect-hardware-gpu-unavailable: true
+          - target: linux-x64
+            os: ubuntu-24.04
+            expect-hardware-gpu-unavailable: true
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js 24 LTS
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Set up MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Linux native dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libasound2-dev libgtk-3-dev xvfb
+
+      - name: Install pinned TypeScript compiler
+        shell: bash
+        run: npm ci
+
+      - name: Require a complete published runtime set
+        shell: bash
+        run: ./gradlew --no-daemon :kweb-runtime-pack:verifyCefCustomRuntimePublication
+
+      - name: Resolve checksum-pinned custom CEF artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact="$(jq -er --arg target '${{ matrix.target }}' \
+            '.customRuntimeArtifacts[] | select(.target == $target)' \
+            runtime/cef/extension-adapter-patch.json)"
+          {
+            echo "KWEB_CUSTOM_CEF_ARCHIVE=$(jq -er '.fileName' <<<"$artifact")"
+            echo "KWEB_CUSTOM_CEF_URL=$(jq -er '.downloadUrl' <<<"$artifact")"
+          } >> "$GITHUB_ENV"
+
+      - name: Cache checksum-pinned custom CEF archive
+        uses: actions/cache@v6
+        with:
+          path: .cef-ci/custom-archives
+          key: custom-cef-${{ matrix.target }}-${{ hashFiles('runtime/cef/extension-adapter-patch.json') }}
+
+      - name: Download custom CEF archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .cef-ci/custom-archives
+          archive="$PWD/.cef-ci/custom-archives/$KWEB_CUSTOM_CEF_ARCHIVE"
+          if [[ ! -f "$archive" ]]; then
+            curl --fail --location --retry 3 --retry-all-errors \
+              --output "$archive" "$KWEB_CUSTOM_CEF_URL"
+          fi
+
+      - name: Verify and extract custom CEF archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$PWD/.cef-ci/custom-archives/$KWEB_CUSTOM_CEF_ARCHIVE"
+          ./gradlew --no-daemon :kweb-runtime-pack:verifyCefCustomRuntimeArtifact \
+            -PkwebTarget=${{ matrix.target }} \
+            -PkwebCustomCefArchive="$archive"
+          extraction="$PWD/.cef-ci/custom-source"
+          mkdir -p "$extraction"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            python -m zipfile -e "$archive" "$extraction"
+          else
+            unzip -q "$archive" -d "$extraction"
+          fi
+          root_count="$(find "$extraction" -mindepth 1 -maxdepth 1 -type d -name 'cef_binary_*_minimal' -print | wc -l | tr -d ' ')"
+          [[ "$root_count" -eq 1 ]]
+          root="$(find "$extraction" -mindepth 1 -maxdepth 1 -type d -name 'cef_binary_*_minimal' -print -quit)"
+          echo "KWEB_CUSTOM_CEF_ROOT=$root" >> "$GITHUB_ENV"
+
+      - name: Run complete custom-runtime verification
+        shell: bash
+        run: |
+          ./gradlew --no-daemon check :kweb-desktop:extensionLifecycleIntegrationTest \
+            -PcefRoot="$KWEB_CUSTOM_CEF_ROOT" \
+            -PkwebExpectCustomExtensionRuntime=true \
+            -PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}

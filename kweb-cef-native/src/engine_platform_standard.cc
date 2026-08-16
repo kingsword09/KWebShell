@@ -1,6 +1,7 @@
 #include "engine_platform.h"
 
 #include <filesystem>
+#include <cstring>
 #include <mutex>
 #include <string>
 #include <system_error>
@@ -135,6 +136,36 @@ bool EnginePlatformRuntimeMatches(
   std::lock_guard lock(platform_mutex);
   return platform_started && !requested.empty() &&
          requested == configured_runtime_path;
+}
+
+void *ResolveCefRuntimeSymbol(const char *name) {
+  if (name == nullptr || *name == '\0') {
+    return nullptr;
+  }
+  std::lock_guard lock(platform_mutex);
+  if (!platform_started || configured_runtime_path.empty()) {
+    return nullptr;
+  }
+#if defined(_WIN32)
+  const HMODULE library = ::GetModuleHandleW(L"libcef.dll");
+  if (library == nullptr) {
+    return nullptr;
+  }
+  const FARPROC symbol = ::GetProcAddress(library, name);
+  static_assert(sizeof(symbol) == sizeof(void *));
+  void *address = nullptr;
+  std::memcpy(&address, &symbol, sizeof(address));
+  return address;
+#elif defined(__linux__)
+  void *library =
+      ::dlopen(configured_runtime_path.c_str(), RTLD_NOW | RTLD_NOLOAD);
+  if (library == nullptr) {
+    return nullptr;
+  }
+  void *symbol = ::dlsym(library, name);
+  ::dlclose(library);
+  return symbol;
+#endif
 }
 
 bool InitializeCefOnPlatform(const CefMainArgs &main_args,

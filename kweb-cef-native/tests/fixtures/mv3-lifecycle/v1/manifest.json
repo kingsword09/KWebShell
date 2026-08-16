@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "KWebShell MV3 lifecycle conformance",
+  "version": "1.0.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAr+mDvdaYVjd80wva3IRXOVrDbqyRHeKqLY7DA0SWpj/ZlQyJym/D/F6tt3xVt6hSLA//HO1WY4bdWzpJO74LfRae/m3PnbRZin5EDBIDLTjSKK0NYlkgxO2I/PlfPYpwRGH8CplCwUBq5ThS+t14+yp7AG5LgDwc1w24EkxQGo2Sk78GbhqPVCxk7z4a7cNMf7pQsgGJSIXECNDddJw1IhkVN29fumjS1X+7ZjJphx9xIuZ6YSK33wyHl+j/d2yMSbkzjHSpJFpxmBsHRbouQv/AN7iTWDY0KF0ZJwLXdf7zFFrULq2vZaU0nXm9GOYjveIHaOH62AerzOnDXuXiTwIDAQAB",
+  "background": {
+    "service_worker": "worker.js"
+  },
+  "permissions": [
+    "storage"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "http://127.0.0.1/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
+}

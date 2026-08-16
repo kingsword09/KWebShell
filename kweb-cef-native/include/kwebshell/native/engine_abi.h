@@ -24,12 +24,17 @@ extern "C" {
 
 #define KWEB_INVALID_ENGINE_HANDLE ((uint64_t)0)
 #define KWEB_INVALID_BROWSER_HANDLE ((uint64_t)0)
+#define KWEB_INVALID_EXTENSION_OPERATION_HANDLE ((uint64_t)0)
 
 typedef uint64_t kweb_engine_handle;
 typedef uint64_t kweb_browser_handle;
+typedef uint64_t kweb_extension_operation_handle;
 typedef uint32_t kweb_engine_event_type;
 typedef uint32_t kweb_browser_event_type;
 typedef uint32_t kweb_bridge_event_type;
+typedef uint32_t kweb_extension_operation_type;
+typedef uint32_t kweb_extension_outcome_type;
+typedef uint32_t kweb_extension_state_type;
 
 #define KWEB_ENGINE_EVENT_OPENED ((kweb_engine_event_type)1)
 #define KWEB_ENGINE_EVENT_CLOSED ((kweb_engine_event_type)2)
@@ -50,6 +55,24 @@ typedef uint32_t kweb_bridge_event_type;
 
 #define KWEB_BRIDGE_EVENT_REQUEST ((kweb_bridge_event_type)1)
 #define KWEB_BRIDGE_EVENT_CANCELLED ((kweb_bridge_event_type)2)
+
+#define KWEB_EXTENSION_OPERATION_INSTALL ((kweb_extension_operation_type)1)
+#define KWEB_EXTENSION_OPERATION_UPDATE ((kweb_extension_operation_type)2)
+#define KWEB_EXTENSION_OPERATION_RELOAD ((kweb_extension_operation_type)3)
+#define KWEB_EXTENSION_OPERATION_UNINSTALL ((kweb_extension_operation_type)4)
+#define KWEB_EXTENSION_OPERATION_QUERY ((kweb_extension_operation_type)5)
+
+#define KWEB_EXTENSION_OUTCOME_SUCCESS ((kweb_extension_outcome_type)1)
+#define KWEB_EXTENSION_OUTCOME_REJECTED ((kweb_extension_outcome_type)2)
+#define KWEB_EXTENSION_OUTCOME_AMBIGUOUS ((kweb_extension_outcome_type)3)
+
+#define KWEB_EXTENSION_STATE_UNKNOWN ((kweb_extension_state_type)0)
+#define KWEB_EXTENSION_STATE_ABSENT ((kweb_extension_state_type)1)
+#define KWEB_EXTENSION_STATE_ENABLED ((kweb_extension_state_type)2)
+#define KWEB_EXTENSION_STATE_DISABLED ((kweb_extension_state_type)3)
+#define KWEB_EXTENSION_STATE_TERMINATED ((kweb_extension_state_type)4)
+#define KWEB_EXTENSION_STATE_BLOCKLISTED ((kweb_extension_state_type)5)
+#define KWEB_EXTENSION_STATE_BLOCKED ((kweb_extension_state_type)6)
 
 #define KWEB_BROWSER_FLAG_LOADING ((uint32_t)1)
 #define KWEB_BROWSER_FLAG_CAN_GO_BACK ((uint32_t)2)
@@ -121,6 +144,38 @@ typedef struct kweb_bridge_event {
 typedef void(KWEB_ABI_CALL *kweb_bridge_event_callback)(
     void *user_data, const kweb_bridge_event *event);
 
+typedef struct kweb_extension_result {
+  uint32_t struct_size;
+  uint32_t abi_version;
+  kweb_extension_operation_handle operation_handle;
+  kweb_extension_operation_type operation;
+  kweb_extension_outcome_type outcome;
+  kweb_extension_state_type state;
+  uint32_t reserved;
+  kweb_engine_handle engine;
+  kweb_browser_handle browser;
+  kweb_string_view extension_id;
+  kweb_string_view version;
+  kweb_string_view path;
+  kweb_string_view error_code;
+  kweb_string_view error_message;
+} kweb_extension_result;
+
+typedef void(KWEB_ABI_CALL *kweb_extension_result_callback)(
+    void *user_data, const kweb_extension_result *result);
+
+typedef struct kweb_extension_config {
+  uint32_t struct_size;
+  uint32_t abi_version;
+  kweb_extension_operation_type operation;
+  uint32_t reserved;
+  kweb_string_view extension_id;
+  kweb_string_view expected_version;
+  kweb_string_view extension_path;
+  kweb_extension_result_callback callback;
+  void *user_data;
+} kweb_extension_config;
+
 typedef struct kweb_browser_config {
   uint32_t struct_size;
   uint32_t abi_version;
@@ -183,6 +238,16 @@ kweb_browser_bridge_fail(kweb_browser_handle browser, uint64_t request_id,
                          const char *failure_utf8, size_t failure_size);
 
 KWEB_ENGINE_ABI_EXPORT uint64_t KWEB_ABI_CALL kweb_live_browser_count(void);
+
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL kweb_extension_start(
+    kweb_browser_handle browser, const kweb_extension_config *config,
+    kweb_extension_operation_handle *operation_out);
+
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
+kweb_extension_cancel(kweb_extension_operation_handle operation);
+
+KWEB_ENGINE_ABI_EXPORT uint64_t KWEB_ABI_CALL
+kweb_live_extension_operation_count(void);
 
 #ifdef __cplusplus
 }

@@ -25,6 +25,10 @@ kotlin {
             implementation(kotlin("test"))
         }
 
+        jvmMain.dependencies {
+            implementation(libs.kotlinx.coroutines.core)
+        }
+
         jvmTest.dependencies {
             implementation(kotlin("test-junit5"))
             runtimeOnly(libs.junit.platform.launcher)
@@ -34,9 +38,13 @@ kotlin {
 
 val mv3CoreFixtureDirectory =
     rootProject.layout.projectDirectory.dir("kweb-cef-native/tests/fixtures/mv3-core")
+val mv3LifecycleFixtureDirectory =
+    rootProject.layout.projectDirectory.dir("kweb-cef-native/tests/fixtures/mv3-lifecycle")
 
 tasks.named<Test>("jvmTest") {
     useJUnitPlatform()
     inputs.dir(mv3CoreFixtureDirectory)
+    inputs.dir(mv3LifecycleFixtureDirectory)
     systemProperty("kweb.mv3.core.fixture", mv3CoreFixtureDirectory.asFile.absolutePath)
+    systemProperty("kweb.mv3.lifecycle.fixture", mv3LifecycleFixtureDirectory.asFile.absolutePath)
 }

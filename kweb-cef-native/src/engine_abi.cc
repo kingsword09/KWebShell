@@ -18,6 +18,7 @@
 #include "browser_session.h"
 #include "engine_internal.h"
 #include "engine_platform.h"
+#include "extension_session.h"
 #include "include/cef_app.h"
 #include "include/cef_browser_process_handler.h"
 
@@ -343,6 +344,9 @@ public:
       if (LiveBrowserSessionCount() != 0) {
         return KWEB_STATUS_ENGINE_HAS_LIVE_BROWSERS;
       }
+      if (LiveExtensionOperationCount() != 0) {
+        return KWEB_STATUS_EXTENSION_OPERATION_ACTIVE;
+      }
       state_ = RegistryState::kClosing;
       engine = engine_;
     }
@@ -530,6 +534,18 @@ const char *KWEB_ABI_CALL kweb_status_name(kweb_status status) {
     return "bridge-request-not-found";
   case KWEB_STATUS_BRIDGE_RESPONSE_INVALID:
     return "bridge-response-invalid";
+  case KWEB_STATUS_EXTENSION_RUNTIME_ABI_MISSING:
+    return "extension-runtime-abi-missing";
+  case KWEB_STATUS_EXTENSION_RUNTIME_ABI_MISMATCH:
+    return "extension-runtime-abi-mismatch";
+  case KWEB_STATUS_EXTENSION_OPERATION_INVALID:
+    return "extension-operation-invalid";
+  case KWEB_STATUS_EXTENSION_OPERATION_ACTIVE:
+    return "extension-operation-active";
+  case KWEB_STATUS_EXTENSION_OPERATION_NOT_FOUND:
+    return "extension-operation-not-found";
+  case KWEB_STATUS_EXTENSION_RESULT_INVALID:
+    return "extension-result-invalid";
   default:
     return "unknown-status";
   }
@@ -579,6 +595,11 @@ kweb_status KWEB_ABI_CALL kweb_browser_resize(kweb_browser_handle browser,
 }
 
 kweb_status KWEB_ABI_CALL kweb_browser_close(kweb_browser_handle browser) {
+  const kweb_status cancel_status =
+      kwebshell::CancelExtensionOperationsForBrowser(browser);
+  if (cancel_status != KWEB_STATUS_OK) {
+    return cancel_status;
+  }
   return kwebshell::CloseBrowserSession(browser);
 }
 
@@ -608,6 +629,21 @@ kweb_status KWEB_ABI_CALL kweb_browser_bridge_fail(
 
 uint64_t KWEB_ABI_CALL kweb_live_browser_count(void) {
   return kwebshell::LiveBrowserSessionCount();
+}
+
+kweb_status KWEB_ABI_CALL kweb_extension_start(
+    kweb_browser_handle browser, const kweb_extension_config *config,
+    kweb_extension_operation_handle *operation_out) {
+  return kwebshell::StartExtensionOperation(browser, config, operation_out);
+}
+
+kweb_status KWEB_ABI_CALL
+kweb_extension_cancel(kweb_extension_operation_handle operation) {
+  return kwebshell::CancelExtensionOperation(operation);
+}
+
+uint64_t KWEB_ABI_CALL kweb_live_extension_operation_count(void) {
+  return kwebshell::LiveExtensionOperationCount();
 }
 
 } // extern "C"

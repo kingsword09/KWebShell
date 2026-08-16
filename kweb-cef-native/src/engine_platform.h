@@ -18,6 +18,8 @@ kweb_status EnginePlatformStartup(const char *cef_runtime_path_utf8,
 bool EnginePlatformRuntimeMatches(
     const std::filesystem::path &cef_runtime_path);
 
+void *ResolveCefRuntimeSymbol(const char *name);
+
 bool InitializeCefOnPlatform(const CefMainArgs &main_args,
                              const CefSettings &settings,
                              CefRefPtr<CefApp> application);

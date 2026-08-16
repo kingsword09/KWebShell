@@ -1,0 +1,1115 @@
+diff --git a/BUILD.gn b/BUILD.gn
+index 3e7b547f..55a09aa9 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -615,6 +615,7 @@ source_set("libcef_static") {
+     "libcef/browser/download_manager_delegate.h",
+     "libcef/browser/download_manager_delegate_impl.cc",
+     "libcef/browser/download_manager_delegate_impl.h",
++    "libcef/browser/extensions/kweb_extension_adapter.cc",
+     "libcef/browser/file_dialog_manager.cc",
+     "libcef/browser/file_dialog_manager.h",
+     "libcef/browser/file_dialog_runner.cc",
+diff --git a/cef_paths2.gypi b/cef_paths2.gypi
+index 299c1cea..a2891bad 100644
+--- a/cef_paths2.gypi
++++ b/cef_paths2.gypi
+@@ -41,6 +41,7 @@
+       'include/internal/cef_string_wrappers.h',
+       'include/internal/cef_time_wrappers.h',
+       'include/internal/cef_types_wrappers.h',
++      'include/internal/cef_kweb_extension_abi.h',
+     ],
+     'includes_common_capi': [
+       'include/cef_id_mappers.h',
+diff --git a/include/internal/cef_kweb_extension_abi.h b/include/internal/cef_kweb_extension_abi.h
+new file mode 100644
+index 00000000..447af11c
+--- /dev/null
++++ b/include/internal/cef_kweb_extension_abi.h
+@@ -0,0 +1,112 @@
++// Copyright (c) 2026 KWebShell Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CEF_INCLUDE_INTERNAL_CEF_KWEB_EXTENSION_ABI_H_
++#define CEF_INCLUDE_INTERNAL_CEF_KWEB_EXTENSION_ABI_H_
++#pragma once
++
++#include <stddef.h>
++#include <stdint.h>
++
++#include "include/internal/cef_export.h"
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++#define CEF_KWEB_EXTENSION_ABI_VERSION ((uint32_t)1)
++#define CEF_KWEB_EXTENSION_ABI_FINGERPRINT \
++  "8561856986d1c16cbb95294d7ad3f1e27bed9e102abc0f669a073161614a9c44"
++
++typedef uint32_t cef_kweb_extension_status_t;
++typedef uint32_t cef_kweb_extension_operation_t;
++typedef uint32_t cef_kweb_extension_outcome_t;
++typedef uint32_t cef_kweb_extension_state_t;
++
++#define CEF_KWEB_EXTENSION_STATUS_OK ((cef_kweb_extension_status_t)0)
++#define CEF_KWEB_EXTENSION_STATUS_INVALID_ARGUMENT \
++  ((cef_kweb_extension_status_t)1)
++#define CEF_KWEB_EXTENSION_STATUS_ABI_MISMATCH ((cef_kweb_extension_status_t)2)
++#define CEF_KWEB_EXTENSION_STATUS_WRONG_THREAD ((cef_kweb_extension_status_t)3)
++#define CEF_KWEB_EXTENSION_STATUS_DUPLICATE_OPERATION \
++  ((cef_kweb_extension_status_t)4)
++#define CEF_KWEB_EXTENSION_STATUS_OPERATION_NOT_FOUND \
++  ((cef_kweb_extension_status_t)5)
++#define CEF_KWEB_EXTENSION_STATUS_INTERNAL_ERROR \
++  ((cef_kweb_extension_status_t)6)
++
++#define CEF_KWEB_EXTENSION_OPERATION_INSTALL ((cef_kweb_extension_operation_t)1)
++#define CEF_KWEB_EXTENSION_OPERATION_UPDATE ((cef_kweb_extension_operation_t)2)
++#define CEF_KWEB_EXTENSION_OPERATION_RELOAD ((cef_kweb_extension_operation_t)3)
++#define CEF_KWEB_EXTENSION_OPERATION_UNINSTALL \
++  ((cef_kweb_extension_operation_t)4)
++#define CEF_KWEB_EXTENSION_OPERATION_QUERY ((cef_kweb_extension_operation_t)5)
++
++#define CEF_KWEB_EXTENSION_OUTCOME_SUCCESS ((cef_kweb_extension_outcome_t)1)
++#define CEF_KWEB_EXTENSION_OUTCOME_REJECTED ((cef_kweb_extension_outcome_t)2)
++#define CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS ((cef_kweb_extension_outcome_t)3)
++
++#define CEF_KWEB_EXTENSION_STATE_UNKNOWN ((cef_kweb_extension_state_t)0)
++#define CEF_KWEB_EXTENSION_STATE_ABSENT ((cef_kweb_extension_state_t)1)
++#define CEF_KWEB_EXTENSION_STATE_ENABLED ((cef_kweb_extension_state_t)2)
++#define CEF_KWEB_EXTENSION_STATE_DISABLED ((cef_kweb_extension_state_t)3)
++#define CEF_KWEB_EXTENSION_STATE_TERMINATED ((cef_kweb_extension_state_t)4)
++#define CEF_KWEB_EXTENSION_STATE_BLOCKLISTED ((cef_kweb_extension_state_t)5)
++#define CEF_KWEB_EXTENSION_STATE_BLOCKED ((cef_kweb_extension_state_t)6)
++
++typedef struct _cef_kweb_extension_string_view_t {
++  const char* data;
++  size_t size;
++} cef_kweb_extension_string_view_t;
++
++typedef struct _cef_kweb_extension_result_t {
++  uint32_t struct_size;
++  uint32_t abi_version;
++  uint64_t operation_id;
++  cef_kweb_extension_operation_t operation;
++  cef_kweb_extension_outcome_t outcome;
++  cef_kweb_extension_state_t state;
++  uint32_t reserved;
++  cef_kweb_extension_string_view_t extension_id;
++  cef_kweb_extension_string_view_t version;
++  cef_kweb_extension_string_view_t path;
++  cef_kweb_extension_string_view_t error_code;
++  cef_kweb_extension_string_view_t error_message;
++} cef_kweb_extension_result_t;
++
++typedef void(CEF_CALLBACK* cef_kweb_extension_result_callback_t)(
++    void* user_data,
++    const cef_kweb_extension_result_t* result);
++
++typedef struct _cef_kweb_extension_request_t {
++  uint32_t struct_size;
++  uint32_t abi_version;
++  uint64_t operation_id;
++  cef_kweb_extension_operation_t operation;
++  uint32_t reserved;
++  cef_kweb_extension_string_view_t profile_path;
++  cef_kweb_extension_string_view_t extension_id;
++  cef_kweb_extension_string_view_t expected_version;
++  cef_kweb_extension_string_view_t extension_path;
++  cef_kweb_extension_result_callback_t callback;
++  void* user_data;
++} cef_kweb_extension_request_t;
++
++CEF_EXPORT const char* cef_kweb_extension_abi_fingerprint(void);
++
++CEF_EXPORT cef_kweb_extension_status_t
++cef_kweb_extension_start(const cef_kweb_extension_request_t* request);
++
++// A successful cancellation keeps the operation alive until exactly one
++// terminal callback reports that any dispatched Chromium work has settled.
++CEF_EXPORT cef_kweb_extension_status_t
++cef_kweb_extension_cancel(uint64_t operation_id);
++
++CEF_EXPORT uint64_t cef_kweb_extension_live_operation_count(void);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif  // CEF_INCLUDE_INTERNAL_CEF_KWEB_EXTENSION_ABI_H_
+diff --git a/libcef/browser/extensions/kweb_extension_adapter.cc b/libcef/browser/extensions/kweb_extension_adapter.cc
+new file mode 100644
+index 00000000..aa1d9328
+--- /dev/null
++++ b/libcef/browser/extensions/kweb_extension_adapter.cc
+@@ -0,0 +1,967 @@
++// Copyright (c) 2026 KWebShell Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include <algorithm>
++#include <map>
++#include <memory>
++#include <optional>
++#include <string>
++#include <string_view>
++#include <utility>
++#include <vector>
++
++#include "base/files/file_path.h"
++#include "base/functional/bind.h"
++#include "base/memory/raw_ptr.h"
++#include "base/memory/scoped_refptr.h"
++#include "base/memory/weak_ptr.h"
++#include "base/no_destructor.h"
++#include "base/one_shot_event.h"
++#include "base/scoped_observation.h"
++#include "base/strings/string_util.h"
++#include "base/strings/utf_string_conversions.h"
++#include "base/version.h"
++#include "cef/include/internal/cef_kweb_extension_abi.h"
++#include "cef/libcef/browser/browser_context.h"
++#include "cef/libcef/browser/request_context_impl.h"
++#include "cef/libcef/browser/thread_util.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/common/pref_names.h"
++#include "components/prefs/pref_service.h"
++#include "content/public/browser/browser_context.h"
++#include "content/public/browser/render_process_host.h"
++#include "extensions/browser/extension_registrar.h"
++#include "extensions/browser/extension_registry.h"
++#include "extensions/browser/extension_registry_observer.h"
++#include "extensions/browser/extension_system.h"
++#include "extensions/browser/lazy_context_id.h"
++#include "extensions/browser/lazy_context_task_queue.h"
++#include "extensions/browser/load_error_reporter.h"
++#include "extensions/browser/process_manager.h"
++#include "extensions/browser/process_manager_observer.h"
++#include "extensions/browser/service_worker/worker_id.h"
++#include "extensions/browser/uninstall_reason.h"
++#include "extensions/browser/unpacked_installer.h"
++#include "extensions/browser/user_script_loader.h"
++#include "extensions/browser/user_script_manager.h"
++#include "extensions/common/extension.h"
++#include "extensions/common/manifest_handlers/background_info.h"
++#include "extensions/common/manifest_handlers/content_scripts_handler.h"
++
++namespace {
++
++constexpr size_t kMaximumPathSize = 32768;
++constexpr size_t kMaximumVersionSize = 128;
++
++struct Request final {
++  uint64_t operation_id = 0;
++  cef_kweb_extension_operation_t operation = 0;
++  std::string profile_path;
++  std::string extension_id;
++  std::string expected_version;
++  std::string extension_path;
++  cef_kweb_extension_result_callback_t callback = nullptr;
++  raw_ptr<void> user_data = nullptr;
++};
++
++struct Snapshot final {
++  cef_kweb_extension_state_t state = CEF_KWEB_EXTENSION_STATE_UNKNOWN;
++  std::string extension_id;
++  std::string version;
++  std::string path;
++
++  bool operator==(const Snapshot&) const = default;
++};
++
++class Operation;
++
++class OperationRegistry final {
++ public:
++  cef_kweb_extension_status_t Start(Request request);
++  cef_kweb_extension_status_t Cancel(uint64_t operation_id);
++  uint64_t LiveCount() const { return operations_.size(); }
++
++  void Finish(uint64_t operation_id,
++              cef_kweb_extension_outcome_t outcome,
++              Snapshot snapshot,
++              std::string error_code,
++              std::string error_message);
++
++ private:
++  using MutationKey = std::pair<std::string, std::string>;
++
++  std::map<uint64_t, std::unique_ptr<Operation>> operations_;
++  std::map<MutationKey, uint64_t> mutations_;
++};
++
++OperationRegistry& GetOperationRegistry() {
++  static base::NoDestructor<OperationRegistry> registry;
++  return *registry;
++}
++
++bool IsMutation(cef_kweb_extension_operation_t operation) {
++  return operation != CEF_KWEB_EXTENSION_OPERATION_QUERY;
++}
++
++bool IsExtensionId(std::string_view value) {
++  if (value.size() != 32) {
++    return false;
++  }
++  for (const char byte : value) {
++    if (byte < 'a' || byte > 'p') {
++      return false;
++    }
++  }
++  return true;
++}
++
++std::optional<std::string> CopyString(cef_kweb_extension_string_view_t value,
++                                      size_t maximum_size,
++                                      bool required) {
++  if (value.size > maximum_size || (value.size > 0 && value.data == nullptr)) {
++    return std::nullopt;
++  }
++  if (required && value.size == 0) {
++    return std::nullopt;
++  }
++  std::string result(value.data == nullptr ? "" : value.data, value.size);
++  if (result.find('\0') != std::string::npos || !base::IsStringUTF8(result)) {
++    return std::nullopt;
++  }
++  return result;
++}
++
++std::optional<Request> CopyRequest(
++    const cef_kweb_extension_request_t* request) {
++  if (!request || request->struct_size != sizeof(*request) ||
++      request->abi_version != CEF_KWEB_EXTENSION_ABI_VERSION ||
++      request->operation_id == 0 || request->reserved != 0 ||
++      !request->callback) {
++    return std::nullopt;
++  }
++  if (request->operation < CEF_KWEB_EXTENSION_OPERATION_INSTALL ||
++      request->operation > CEF_KWEB_EXTENSION_OPERATION_QUERY) {
++    return std::nullopt;
++  }
++
++  const bool package_path_required =
++      request->operation != CEF_KWEB_EXTENSION_OPERATION_QUERY;
++  const bool version_required =
++      request->operation != CEF_KWEB_EXTENSION_OPERATION_QUERY;
++  auto profile_path = CopyString(request->profile_path, kMaximumPathSize, true);
++  auto extension_id = CopyString(request->extension_id, 32, true);
++  auto expected_version = CopyString(request->expected_version,
++                                     kMaximumVersionSize, version_required);
++  auto extension_path = CopyString(request->extension_path, kMaximumPathSize,
++                                   package_path_required);
++  if (!profile_path || !extension_id || !expected_version || !extension_path ||
++      !IsExtensionId(*extension_id)) {
++    return std::nullopt;
++  }
++  if (!package_path_required &&
++      (!expected_version->empty() || !extension_path->empty())) {
++    return std::nullopt;
++  }
++
++  const base::FilePath profile = base::FilePath::FromUTF8Unsafe(*profile_path);
++  if (!profile.IsAbsolute() || profile.ReferencesParent()) {
++    return std::nullopt;
++  }
++  if (package_path_required) {
++    const base::FilePath package =
++        base::FilePath::FromUTF8Unsafe(*extension_path);
++    if (!package.IsAbsolute() || package.ReferencesParent()) {
++      return std::nullopt;
++    }
++    const base::Version version(*expected_version);
++    if (!version.IsValid()) {
++      return std::nullopt;
++    }
++  }
++
++  return Request{request->operation_id,
++                 request->operation,
++                 std::move(*profile_path),
++                 std::move(*extension_id),
++                 std::move(*expected_version),
++                 std::move(*extension_path),
++                 request->callback,
++                 request->user_data};
++}
++
++cef_kweb_extension_string_view_t StringView(const std::string& value) {
++  return {value.empty() ? nullptr : value.data(), value.size()};
++}
++
++Snapshot ReadSnapshot(extensions::ExtensionRegistry* registry,
++                      const std::string& extension_id) {
++  Snapshot result;
++  result.extension_id = extension_id;
++  if (!registry) {
++    return result;
++  }
++
++  const extensions::Extension* extension = nullptr;
++  size_t matches = 0;
++  const auto inspect = [&](const extensions::ExtensionSet& set,
++                           cef_kweb_extension_state_t state) {
++    if (const auto* candidate = set.GetByID(extension_id)) {
++      extension = candidate;
++      result.state = state;
++      ++matches;
++    }
++  };
++  inspect(registry->enabled_extensions(), CEF_KWEB_EXTENSION_STATE_ENABLED);
++  inspect(registry->disabled_extensions(), CEF_KWEB_EXTENSION_STATE_DISABLED);
++  inspect(registry->terminated_extensions(),
++          CEF_KWEB_EXTENSION_STATE_TERMINATED);
++  inspect(registry->blocklisted_extensions(),
++          CEF_KWEB_EXTENSION_STATE_BLOCKLISTED);
++  inspect(registry->blocked_extensions(), CEF_KWEB_EXTENSION_STATE_BLOCKED);
++
++  if (matches == 0) {
++    result.state = CEF_KWEB_EXTENSION_STATE_ABSENT;
++    return result;
++  }
++  if (matches != 1 || !extension) {
++    result.state = CEF_KWEB_EXTENSION_STATE_UNKNOWN;
++    return result;
++  }
++  result.version = extension->VersionString();
++  result.path = extension->path().AsUTF8Unsafe();
++  return result;
++}
++
++bool MatchesExpected(const Snapshot& snapshot, const Request& request) {
++  return snapshot.state == CEF_KWEB_EXTENSION_STATE_ENABLED &&
++         snapshot.extension_id == request.extension_id &&
++         snapshot.version == request.expected_version &&
++         snapshot.path == request.extension_path;
++}
++
++bool HasKnownState(const Snapshot& snapshot) {
++  return snapshot.state >= CEF_KWEB_EXTENSION_STATE_ABSENT &&
++         snapshot.state <= CEF_KWEB_EXTENSION_STATE_BLOCKED;
++}
++
++enum class CancelDisposition {
++  kCompleteNow,
++  kAwaitTerminal,
++  kAlreadyRequested,
++};
++
++class Operation final : public extensions::ExtensionRegistryObserver,
++                        public extensions::LoadErrorReporter::Observer,
++                        public extensions::UserScriptLoader::Observer,
++                        public extensions::ProcessManagerObserver {
++ public:
++  explicit Operation(Request request)
++      : request_(std::move(request)), weak_factory_(this) {}
++
++  Operation(const Operation&) = delete;
++  Operation& operator=(const Operation&) = delete;
++  ~Operation() override = default;
++
++  const Request& request() const { return request_; }
++  bool cancel_requested() const { return cancel_requested_; }
++
++  CancelDisposition RequestCancel() {
++    CEF_REQUIRE_UIT();
++    if (cancel_requested_) {
++      return CancelDisposition::kAlreadyRequested;
++    }
++    cancel_requested_ = true;
++    return mutation_dispatched_ ? CancelDisposition::kAwaitTerminal
++                                : CancelDisposition::kCompleteNow;
++  }
++
++  void Begin() {
++    CEF_REQUIRE_UIT();
++    const base::FilePath profile_path =
++        base::FilePath::FromUTF8Unsafe(request_.profile_path);
++    browser_context_ = CefBrowserContext::FromCachePath(profile_path);
++    if (!browser_context_ || !browser_context_->IsInitialized() ||
++        browser_context_->cache_path() != profile_path) {
++      Reject("profile-context-not-found",
++             "No initialized CEF browser context owns the requested Profile.");
++      return;
++    }
++    Profile* profile = browser_context_->AsProfile();
++    if (!profile || profile->IsOffTheRecord() ||
++        profile->GetPath() != profile_path) {
++      Reject(
++          "profile-context-not-persistent",
++          "The requested CEF browser context is not the persistent Profile.");
++      return;
++    }
++    request_context_ = browser_context_->GetAnyRequestContext(false);
++    if (!request_context_) {
++      Reject("profile-request-context-missing",
++             "The requested Profile has no live CEF request context.");
++      return;
++    }
++    content::BrowserContext* context = browser_context_->AsBrowserContext();
++    extension_system_ = extensions::ExtensionSystem::Get(context);
++    if (!extension_system_) {
++      Reject("extension-system-missing",
++             "Chromium did not create an extension system for the Profile.");
++      return;
++    }
++    if (!extension_system_->is_ready()) {
++      extension_system_->ready().Post(
++          FROM_HERE, base::BindOnce(&Operation::BeginWhenReady,
++                                    weak_factory_.GetWeakPtr()));
++      return;
++    }
++    BeginWhenReady();
++  }
++
++  void Dispatch(cef_kweb_extension_outcome_t outcome,
++                Snapshot snapshot,
++                std::string error_code,
++                std::string error_message) {
++    CEF_REQUIRE_UIT();
++    registry_observation_.Reset();
++    load_error_observation_.Reset();
++    process_manager_observation_.Reset();
++    const cef_kweb_extension_result_t result = {
++        sizeof(cef_kweb_extension_result_t),
++        CEF_KWEB_EXTENSION_ABI_VERSION,
++        request_.operation_id,
++        request_.operation,
++        outcome,
++        snapshot.state,
++        0,
++        StringView(snapshot.extension_id),
++        StringView(snapshot.version),
++        StringView(snapshot.path),
++        StringView(error_code),
++        StringView(error_message),
++    };
++    request_.callback(request_.user_data, &result);
++  }
++
++  void OnExtensionLoaded(content::BrowserContext* browser_context,
++                         const extensions::Extension* extension) override {
++    if (request_.operation != CEF_KWEB_EXTENSION_OPERATION_RELOAD ||
++        browser_context != browser_context_->AsBrowserContext() || !extension ||
++        extension->id() != request_.extension_id) {
++      return;
++    }
++    BeginSuccessfulMutationWait(extension, ReadCurrentSnapshot());
++  }
++
++  void OnExtensionReady(content::BrowserContext* browser_context,
++                        const extensions::Extension* extension) override {
++    if (!waiting_for_mutation_readiness_ ||
++        browser_context != browser_context_->AsBrowserContext() || !extension ||
++        extension->id() != request_.extension_id) {
++      return;
++    }
++    extension_ready_ = true;
++    MaybeFinishSuccessfulMutation();
++  }
++
++  void OnScriptsLoaded(extensions::UserScriptLoader* loader,
++                       content::BrowserContext* browser_context) override {
++    if (!waiting_for_mutation_readiness_ ||
++        browser_context != browser_context_->AsBrowserContext() ||
++        !user_script_observation_.IsObservingSource(loader)) {
++      return;
++    }
++    if (!loader->HasLoadedScripts()) {
++      Finish(CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS, ReadCurrentSnapshot(),
++             "content-script-load-incomplete",
++             "Chromium reported content-script loading without a complete "
++             "script set.");
++      return;
++    }
++    content_scripts_ready_ = true;
++    user_script_observation_.Reset();
++    MaybeFinishSuccessfulMutation();
++  }
++
++  void OnUserScriptLoaderDestroyed(
++      extensions::UserScriptLoader* loader) override {
++    if (!user_script_observation_.IsObservingSource(loader)) {
++      return;
++    }
++    user_script_observation_.Reset();
++    if (waiting_for_mutation_readiness_) {
++      Finish(CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS, ReadCurrentSnapshot(),
++             "content-script-loader-destroyed",
++             "Chromium destroyed the content-script loader before the "
++             "extension reached a stable lifecycle state.");
++    }
++  }
++
++  void OnLazyContextReady(
++      std::unique_ptr<extensions::LazyContextTaskQueue::ContextInfo>
++          context_info) {
++    CEF_REQUIRE_UIT();
++    if (!waiting_for_mutation_readiness_) {
++      return;
++    }
++    if (!context_info || !context_info->render_process_host ||
++        context_info->extension_id != request_.extension_id ||
++        context_info->browser_context != browser_context_->AsBrowserContext() ||
++        !IsTrackedServiceWorker(*context_info)) {
++      Finish(CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS, ReadCurrentSnapshot(),
++             "lazy-context-start-failed",
++             "Chromium failed to start the extension lazy context before the "
++             "lifecycle operation became ready.");
++      return;
++    }
++    lazy_context_ready_ = true;
++    MaybeFinishSuccessfulMutation();
++  }
++
++  void OnStoppedTrackingServiceWorkerInstance(
++      const extensions::WorkerId& worker_id) override {
++    CEF_REQUIRE_UIT();
++    if (!waiting_for_prior_service_workers_ ||
++        worker_id.extension_id != request_.extension_id || !process_manager_) {
++      return;
++    }
++    if (!process_manager_->GetServiceWorkersForExtension(request_.extension_id)
++             .empty()) {
++      return;
++    }
++    waiting_for_prior_service_workers_ = false;
++    const extensions::Extension* extension =
++        registry_->enabled_extensions().GetByID(request_.extension_id);
++    if (!extension || !MatchesExpected(ReadCurrentSnapshot(), request_)) {
++      Finish(CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS, ReadCurrentSnapshot(),
++             "extension-state-changed-during-worker-teardown",
++             "Chromium changed the extension state while its previous "
++             "Service Worker was stopping.");
++      return;
++    }
++    QueueCurrentLazyContextTask(extension);
++  }
++
++  void OnProcessManagerShutdown(extensions::ProcessManager* manager) override {
++    if (!process_manager_observation_.IsObservingSource(manager)) {
++      return;
++    }
++    process_manager_observation_.Reset();
++    if (waiting_for_mutation_readiness_) {
++      Finish(CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS, SnapshotForUnknownState(),
++             "process-manager-shutdown",
++             "The Profile's extension process manager shut down before the "
++             "extension lifecycle operation completed.");
++    }
++  }
++
++  void OnShutdown(extensions::ExtensionRegistry* registry) override {
++    if (registry_observation_.IsObservingSource(registry)) {
++      registry_observation_.Reset();
++    }
++    user_script_observation_.Reset();
++    process_manager_observation_.Reset();
++    Finish(CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS, SnapshotForUnknownState(),
++           "profile-shutdown",
++           "The Profile shut down before the extension operation completed.");
++  }
++
++  void OnLoadFailure(content::BrowserContext* browser_context,
++                     const base::FilePath& extension_path,
++                     const std::u16string& error) override {
++    if (request_.operation != CEF_KWEB_EXTENSION_OPERATION_RELOAD ||
++        browser_context != browser_context_->AsBrowserContext() ||
++        extension_path.AsUTF8Unsafe() != request_.extension_path) {
++      return;
++    }
++    Finish(CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS, ReadCurrentSnapshot(),
++           "reload-failed", base::UTF16ToUTF8(error));
++  }
++
++ private:
++  void BeginSuccessfulMutationWait(const extensions::Extension* extension,
++                                   Snapshot snapshot) {
++    CEF_REQUIRE_UIT();
++    if (waiting_for_mutation_readiness_) {
++      return;
++    }
++    if (!extension || !MatchesExpected(snapshot, request_)) {
++      Finish(CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS, std::move(snapshot),
++             request_.operation == CEF_KWEB_EXTENSION_OPERATION_RELOAD
++                 ? "reload-result-mismatch"
++                 : "install-result-mismatch",
++             "Chromium completed the extension mutation with a state that "
++             "differs from the managed object.");
++      return;
++    }
++
++    waiting_for_mutation_readiness_ = true;
++    extension_ready_ =
++        registry_->ready_extensions().Contains(request_.extension_id);
++    content_scripts_ready_ =
++        extensions::ContentScriptsInfo::GetContentScripts(extension).empty();
++
++    if (!content_scripts_ready_) {
++      extensions::UserScriptManager* user_script_manager =
++          extension_system_->user_script_manager();
++      if (!user_script_manager) {
++        Finish(CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS, ReadCurrentSnapshot(),
++               "content-script-manager-missing",
++               "Chromium did not create a UserScriptManager for the Profile.");
++        return;
++      }
++      extensions::ExtensionUserScriptLoader* loader =
++          user_script_manager->GetUserScriptLoaderForExtension(
++              request_.extension_id);
++      if (!loader) {
++        Finish(CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS, ReadCurrentSnapshot(),
++               "content-script-loader-missing",
++               "Chromium did not create the extension content-script loader.");
++        return;
++      }
++      user_script_observation_.Observe(loader);
++      content_scripts_ready_ = loader->HasLoadedScripts();
++    }
++
++    if (!extensions::BackgroundInfo::HasLazyContext(extension)) {
++      lazy_context_ready_ = true;
++      MaybeFinishSuccessfulMutation();
++      return;
++    }
++
++    process_manager_ =
++        extensions::ProcessManager::Get(browser_context_->AsBrowserContext());
++    if (!process_manager_) {
++      Finish(CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS, ReadCurrentSnapshot(),
++             "process-manager-missing",
++             "Chromium did not create an extension process manager for the "
++             "Profile.");
++      return;
++    }
++    process_manager_observation_.Observe(process_manager_);
++    if (!process_manager_->GetServiceWorkersForExtension(request_.extension_id)
++             .empty()) {
++      waiting_for_prior_service_workers_ = true;
++      return;
++    }
++    QueueCurrentLazyContextTask(extension);
++  }
++
++  bool IsTrackedServiceWorker(
++      const extensions::LazyContextTaskQueue::ContextInfo& context_info) const {
++    if (!process_manager_) {
++      return false;
++    }
++    const std::vector<extensions::WorkerId> workers =
++        process_manager_->GetServiceWorkersForExtension(request_.extension_id);
++    return std::any_of(
++        workers.begin(), workers.end(),
++        [&context_info](const extensions::WorkerId& worker) {
++          return worker.render_process_id ==
++                     context_info.render_process_host->GetID() &&
++                 worker.version_id == context_info.service_worker_version_id &&
++                 worker.thread_id == context_info.worker_thread_id;
++        });
++  }
++
++  void QueueCurrentLazyContextTask(const extensions::Extension* extension) {
++    CEF_REQUIRE_UIT();
++    if (!extension || !MatchesExpected(ReadCurrentSnapshot(), request_)) {
++      Finish(CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS, ReadCurrentSnapshot(),
++             "extension-state-changed-before-worker-ready",
++             "Chromium changed the extension state before the current "
++             "Service Worker became ready.");
++      return;
++    }
++    const extensions::LazyContextId context_id =
++        extensions::LazyContextId::ForExtension(
++            browser_context_->AsBrowserContext(), extension);
++    extensions::LazyContextTaskQueue* task_queue = context_id.GetTaskQueue();
++    if (!task_queue) {
++      Finish(CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS, ReadCurrentSnapshot(),
++             "lazy-context-manager-missing",
++             "Chromium did not create a lazy-context task queue for the "
++             "Profile.");
++      return;
++    }
++    if (task_queue->IsReadyToRunTasks(browser_context_->AsBrowserContext(),
++                                      extension)) {
++      lazy_context_ready_ = true;
++      MaybeFinishSuccessfulMutation();
++      return;
++    }
++    task_queue->AddPendingTask(context_id,
++                               base::BindOnce(&Operation::OnLazyContextReady,
++                                              weak_factory_.GetWeakPtr()));
++  }
++
++  void MaybeFinishSuccessfulMutation() {
++    CEF_REQUIRE_UIT();
++    if (!waiting_for_mutation_readiness_ || !extension_ready_ ||
++        !content_scripts_ready_ || !lazy_context_ready_) {
++      return;
++    }
++    Snapshot after = ReadCurrentSnapshot();
++    if (MatchesExpected(after, request_)) {
++      Finish(CEF_KWEB_EXTENSION_OUTCOME_SUCCESS, std::move(after), {}, {});
++    } else {
++      Finish(CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS, std::move(after),
++             request_.operation == CEF_KWEB_EXTENSION_OPERATION_RELOAD
++                 ? "reload-result-mismatch"
++                 : "install-result-mismatch",
++             "Chromium reached readiness with an extension state that differs "
++             "from the managed object.");
++    }
++  }
++
++  void BeginWhenReady() {
++    CEF_REQUIRE_UIT();
++    if (!browser_context_ || !request_context_ || !extension_system_ ||
++        !extension_system_->is_ready()) {
++      Reject("extension-system-not-ready",
++             "Chromium's extension system did not become ready.");
++      return;
++    }
++    registry_ = extensions::ExtensionRegistry::Get(
++        browser_context_->AsBrowserContext());
++    registrar_ = extensions::ExtensionRegistrar::Get(
++        browser_context_->AsBrowserContext());
++    if (!registry_ || !registrar_ || !registrar_->IsInitialized()) {
++      Reject("extension-lifecycle-missing",
++             "Chromium's extension registry or registrar is unavailable.");
++      return;
++    }
++    registry_observation_.Observe(registry_);
++    before_ = ReadCurrentSnapshot();
++
++    switch (request_.operation) {
++      case CEF_KWEB_EXTENSION_OPERATION_INSTALL:
++      case CEF_KWEB_EXTENSION_OPERATION_UPDATE:
++        BeginInstallOrUpdate();
++        return;
++      case CEF_KWEB_EXTENSION_OPERATION_RELOAD:
++        BeginReload();
++        return;
++      case CEF_KWEB_EXTENSION_OPERATION_UNINSTALL:
++        BeginUninstall();
++        return;
++      case CEF_KWEB_EXTENSION_OPERATION_QUERY:
++        if (HasKnownState(before_)) {
++          Finish(CEF_KWEB_EXTENSION_OUTCOME_SUCCESS, before_, {}, {});
++        } else {
++          Finish(CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS, before_,
++                 "query-state-ambiguous",
++                 "Chromium's extension registry contains an ambiguous state.");
++        }
++        return;
++      default:
++        Reject("operation-invalid", "The extension operation is invalid.");
++    }
++  }
++
++  void BeginInstallOrUpdate() {
++    if (!HasKnownState(before_)) {
++      Finish(CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS, before_,
++             "install-precondition-ambiguous",
++             "Chromium's installed state cannot be determined safely.");
++      return;
++    }
++    const bool absent = before_.state == CEF_KWEB_EXTENSION_STATE_ABSENT;
++    if ((request_.operation == CEF_KWEB_EXTENSION_OPERATION_INSTALL &&
++         !absent) ||
++        (request_.operation == CEF_KWEB_EXTENSION_OPERATION_UPDATE && absent)) {
++      Reject("install-precondition-failed",
++             "Chromium's installed state does not match the requested "
++             "install operation.");
++      return;
++    }
++    if (request_.operation == CEF_KWEB_EXTENSION_OPERATION_UPDATE) {
++      const base::Version current(before_.version);
++      const base::Version requested(request_.expected_version);
++      if (before_.state == CEF_KWEB_EXTENSION_STATE_UNKNOWN ||
++          !current.IsValid() || current.CompareTo(requested) >= 0) {
++        Reject("update-precondition-failed",
++               "Chromium does not contain an older unambiguous extension "
++               "version to update.");
++        return;
++      }
++    }
++
++    PrefService* profile_preferences =
++        browser_context_->AsProfile()->GetPrefs();
++    if (!profile_preferences) {
++      Reject("profile-preferences-missing",
++             "The requested Profile has no initialized preference service.");
++      return;
++    }
++    if (profile_preferences->IsManagedPreference(
++            prefs::kExtensionsUIDeveloperMode) &&
++        !profile_preferences->GetBoolean(prefs::kExtensionsUIDeveloperMode)) {
++      Reject("developer-mode-policy-disabled",
++             "Enterprise policy forbids unpacked extensions in this Profile.");
++      return;
++    }
++    profile_preferences->SetBoolean(prefs::kExtensionsUIDeveloperMode, true);
++    if (!profile_preferences->GetBoolean(prefs::kExtensionsUIDeveloperMode)) {
++      Reject("developer-mode-enable-failed",
++             "Chromium did not enable unpacked extensions in this Profile.");
++      return;
++    }
++
++    installer_ = extensions::UnpackedInstaller::Create(
++        browser_context_->AsBrowserContext());
++    installer_->set_be_noisy_on_failure(false);
++    installer_->set_completion_callback(
++        base::BindOnce(&Operation::OnInstalled, weak_factory_.GetWeakPtr()));
++    mutation_dispatched_ = true;
++    installer_->Load(base::FilePath::FromUTF8Unsafe(request_.extension_path));
++  }
++
++  void BeginReload() {
++    if (!HasKnownState(before_)) {
++      Finish(CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS, before_,
++             "reload-precondition-ambiguous",
++             "Chromium's installed state cannot be determined safely.");
++      return;
++    }
++    if (!MatchesExpected(before_, request_)) {
++      Reject("reload-precondition-failed",
++             "Only the enabled managed extension can be reloaded.");
++      return;
++    }
++    load_error_observation_.Observe(
++        extensions::LoadErrorReporter::GetInstance());
++    mutation_dispatched_ = true;
++    registrar_->ReloadExtension(request_.extension_id);
++  }
++
++  void BeginUninstall() {
++    if (!HasKnownState(before_)) {
++      Finish(CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS, before_,
++             "uninstall-precondition-ambiguous",
++             "Chromium's installed state cannot be determined safely.");
++      return;
++    }
++    if (before_.state == CEF_KWEB_EXTENSION_STATE_ABSENT ||
++        before_.version != request_.expected_version ||
++        before_.path != request_.extension_path) {
++      Reject("uninstall-precondition-failed",
++             "Chromium does not contain the exact managed extension to "
++             "uninstall.");
++      return;
++    }
++    std::u16string error;
++    mutation_dispatched_ = true;
++    const bool initiated = registrar_->UninstallExtension(
++        request_.extension_id, extensions::UNINSTALL_REASON_USER_INITIATED,
++        &error,
++        base::BindOnce(&Operation::OnUninstalled, weak_factory_.GetWeakPtr()));
++    if (!initiated) {
++      const Snapshot after = ReadCurrentSnapshot();
++      Finish(after == before_ ? CEF_KWEB_EXTENSION_OUTCOME_REJECTED
++                              : CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS,
++             after, "uninstall-rejected", base::UTF16ToUTF8(error));
++    }
++  }
++
++  void OnInstalled(const extensions::Extension* extension,
++                   const base::FilePath& path,
++                   const std::u16string& error) {
++    Snapshot after = ReadCurrentSnapshot();
++    if (error.empty() && extension &&
++        extension->id() == request_.extension_id &&
++        extension->VersionString() == request_.expected_version &&
++        path.AsUTF8Unsafe() == request_.extension_path &&
++        MatchesExpected(after, request_)) {
++      BeginSuccessfulMutationWait(extension, std::move(after));
++      return;
++    }
++    Finish(after == before_ ? CEF_KWEB_EXTENSION_OUTCOME_REJECTED
++                            : CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS,
++           std::move(after), "install-rejected", base::UTF16ToUTF8(error));
++  }
++
++  void OnUninstalled() {
++    Snapshot after = ReadCurrentSnapshot();
++    if (after.state == CEF_KWEB_EXTENSION_STATE_ABSENT) {
++      Finish(CEF_KWEB_EXTENSION_OUTCOME_SUCCESS, std::move(after), {}, {});
++    } else {
++      Finish(CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS, std::move(after),
++             "uninstall-result-mismatch",
++             "Chromium cleanup completed without an absent registry state.");
++    }
++  }
++
++  Snapshot ReadCurrentSnapshot() const {
++    return ReadSnapshot(registry_, request_.extension_id);
++  }
++
++  Snapshot SnapshotForUnknownState() const {
++    Snapshot result;
++    result.extension_id = request_.extension_id;
++    return result;
++  }
++
++  void Reject(std::string error_code, std::string error_message) {
++    Snapshot snapshot =
++        registry_ ? ReadCurrentSnapshot() : SnapshotForUnknownState();
++    Finish(CEF_KWEB_EXTENSION_OUTCOME_REJECTED, std::move(snapshot),
++           std::move(error_code), std::move(error_message));
++  }
++
++  void Finish(cef_kweb_extension_outcome_t outcome,
++              Snapshot snapshot,
++              std::string error_code,
++              std::string error_message) {
++    GetOperationRegistry().Finish(request_.operation_id, outcome,
++                                  std::move(snapshot), std::move(error_code),
++                                  std::move(error_message));
++  }
++
++  const Request request_;
++  Snapshot before_;
++  bool mutation_dispatched_ = false;
++  bool cancel_requested_ = false;
++  bool waiting_for_mutation_readiness_ = false;
++  bool extension_ready_ = false;
++  bool content_scripts_ready_ = false;
++  bool lazy_context_ready_ = false;
++  bool waiting_for_prior_service_workers_ = false;
++  raw_ptr<CefBrowserContext> browser_context_ = nullptr;
++  CefRefPtr<CefRequestContextImpl> request_context_;
++  raw_ptr<extensions::ExtensionSystem> extension_system_ = nullptr;
++  raw_ptr<extensions::ExtensionRegistry> registry_ = nullptr;
++  raw_ptr<extensions::ExtensionRegistrar> registrar_ = nullptr;
++  raw_ptr<extensions::ProcessManager> process_manager_ = nullptr;
++  scoped_refptr<extensions::UnpackedInstaller> installer_;
++  base::ScopedObservation<extensions::ExtensionRegistry,
++                          extensions::ExtensionRegistryObserver>
++      registry_observation_{this};
++  base::ScopedObservation<extensions::LoadErrorReporter,
++                          extensions::LoadErrorReporter::Observer>
++      load_error_observation_{this};
++  base::ScopedObservation<extensions::UserScriptLoader,
++                          extensions::UserScriptLoader::Observer>
++      user_script_observation_{this};
++  base::ScopedObservation<extensions::ProcessManager,
++                          extensions::ProcessManagerObserver>
++      process_manager_observation_{this};
++  base::WeakPtrFactory<Operation> weak_factory_;
++};
++
++cef_kweb_extension_status_t OperationRegistry::Start(Request request) {
++  CEF_REQUIRE_UIT();
++  if (operations_.contains(request.operation_id)) {
++    return CEF_KWEB_EXTENSION_STATUS_DUPLICATE_OPERATION;
++  }
++  const MutationKey mutation_key{request.profile_path, request.extension_id};
++  if (IsMutation(request.operation) && mutations_.contains(mutation_key)) {
++    return CEF_KWEB_EXTENSION_STATUS_DUPLICATE_OPERATION;
++  }
++  const uint64_t operation_id = request.operation_id;
++  auto operation = std::make_unique<Operation>(std::move(request));
++  Operation* operation_pointer = operation.get();
++  operations_.emplace(operation_id, std::move(operation));
++  if (IsMutation(operation_pointer->request().operation)) {
++    mutations_.emplace(mutation_key, operation_id);
++  }
++  operation_pointer->Begin();
++  return CEF_KWEB_EXTENSION_STATUS_OK;
++}
++
++cef_kweb_extension_status_t OperationRegistry::Cancel(uint64_t operation_id) {
++  CEF_REQUIRE_UIT();
++  const auto found = operations_.find(operation_id);
++  if (found == operations_.end()) {
++    return CEF_KWEB_EXTENSION_STATUS_OPERATION_NOT_FOUND;
++  }
++  const CancelDisposition disposition = found->second->RequestCancel();
++  if (disposition == CancelDisposition::kAlreadyRequested) {
++    return CEF_KWEB_EXTENSION_STATUS_DUPLICATE_OPERATION;
++  }
++  if (disposition == CancelDisposition::kCompleteNow) {
++    Snapshot snapshot;
++    snapshot.extension_id = found->second->request().extension_id;
++    Finish(operation_id, CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS,
++           std::move(snapshot), "operation-cancelled",
++           "The extension operation was cancelled before Chromium work was "
++           "dispatched.");
++  }
++  return CEF_KWEB_EXTENSION_STATUS_OK;
++}
++
++void OperationRegistry::Finish(uint64_t operation_id,
++                               cef_kweb_extension_outcome_t outcome,
++                               Snapshot snapshot,
++                               std::string error_code,
++                               std::string error_message) {
++  CEF_REQUIRE_UIT();
++  const auto found = operations_.find(operation_id);
++  if (found == operations_.end()) {
++    return;
++  }
++  std::unique_ptr<Operation> operation = std::move(found->second);
++  operations_.erase(found);
++  const Request& request = operation->request();
++  if (IsMutation(request.operation)) {
++    mutations_.erase({request.profile_path, request.extension_id});
++  }
++  if (operation->cancel_requested()) {
++    outcome = CEF_KWEB_EXTENSION_OUTCOME_AMBIGUOUS;
++    error_code = "operation-cancelled";
++    error_message =
++        "The extension operation was cancelled after Chromium work was "
++        "dispatched; its terminal state is reported for reconciliation.";
++  } else if (outcome == CEF_KWEB_EXTENSION_OUTCOME_SUCCESS) {
++    error_code.clear();
++    error_message.clear();
++  } else {
++    if (error_code.empty()) {
++      error_code = "extension-operation-failed";
++    }
++    if (error_message.empty()) {
++      error_message =
++          "Chromium did not provide diagnostic text for the failed extension "
++          "operation.";
++    }
++  }
++  operation->Dispatch(outcome, std::move(snapshot), std::move(error_code),
++                      std::move(error_message));
++}
++
++}  // namespace
++
++const char* cef_kweb_extension_abi_fingerprint(void) {
++  return CEF_KWEB_EXTENSION_ABI_FINGERPRINT;
++}
++
++cef_kweb_extension_status_t cef_kweb_extension_start(
++    const cef_kweb_extension_request_t* request) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    return CEF_KWEB_EXTENSION_STATUS_WRONG_THREAD;
++  }
++  auto copied = CopyRequest(request);
++  if (!copied) {
++    if (request && request->abi_version != CEF_KWEB_EXTENSION_ABI_VERSION) {
++      return CEF_KWEB_EXTENSION_STATUS_ABI_MISMATCH;
++    }
++    return CEF_KWEB_EXTENSION_STATUS_INVALID_ARGUMENT;
++  }
++  return GetOperationRegistry().Start(std::move(*copied));
++}
++
++cef_kweb_extension_status_t cef_kweb_extension_cancel(uint64_t operation_id) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    return CEF_KWEB_EXTENSION_STATUS_WRONG_THREAD;
++  }
++  if (operation_id == 0) {
++    return CEF_KWEB_EXTENSION_STATUS_INVALID_ARGUMENT;
++  }
++  return GetOperationRegistry().Cancel(operation_id);
++}
++
++uint64_t cef_kweb_extension_live_operation_count(void) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    return UINT64_MAX;
++  }
++  return GetOperationRegistry().LiveCount();
++}

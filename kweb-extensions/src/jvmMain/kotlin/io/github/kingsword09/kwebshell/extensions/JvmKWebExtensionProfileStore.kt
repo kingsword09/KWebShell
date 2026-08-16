@@ -122,6 +122,17 @@ internal class JvmKWebExtensionProfileStore private constructor(
     }
 
     fun prepareUninstall(extensionId: String): JvmKWebExtensionStoreTransaction = withStoreLock {
+        prepareActiveTransactionLocked(extensionId, StoreOperationRecord.UNINSTALL)
+    }
+
+    fun prepareReload(extensionId: String): JvmKWebExtensionStoreTransaction = withStoreLock {
+        prepareActiveTransactionLocked(extensionId, StoreOperationRecord.RELOAD)
+    }
+
+    private fun prepareActiveTransactionLocked(
+        extensionId: String,
+        operation: StoreOperationRecord,
+    ): JvmKWebExtensionStoreTransaction {
         requireExtensionId(extensionId)
         requireNoPendingTransaction(extensionId)
         val active = readActiveLocked(extensionId) ?: storeFailure(
@@ -132,12 +143,12 @@ internal class JvmKWebExtensionProfileStore private constructor(
         val record = StoreTransactionRecord(
             schemaVersion = STORE_SCHEMA_VERSION,
             token = UUID.randomUUID().toString(),
-            operation = StoreOperationRecord.UNINSTALL,
+            operation = operation,
             extension = active.toRecord(),
             previousContentDigest = active.contentDigest,
         )
         writeTransactionRecord(record)
-        transactionToModel(record)
+        return transactionToModel(record)
     }
 
     fun commit(token: String): JvmKWebManagedExtension? = withStoreLock {
@@ -174,6 +185,13 @@ internal class JvmKWebExtensionProfileStore private constructor(
         val active = readActiveLocked(transaction.extension.extensionId)
         requireExpectedActive(transaction, active)
         deleteTransactionRecord(transaction.token)
+    }
+
+    fun retain(token: String): JvmKWebExtensionStoreTransaction = withStoreLock {
+        val transaction = readTransactionLocked(token)
+        val active = readActiveLocked(transaction.extension.extensionId)
+        requireExpectedActive(transaction, active)
+        transactionToModel(transaction)
     }
 
     fun active(extensionId: String): JvmKWebManagedExtension? = withStoreLock {

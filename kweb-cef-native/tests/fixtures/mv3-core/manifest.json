@@ -14,6 +14,7 @@
     "page": "options.html",
     "open_in_tab": true
   },
+  "devtools_page": "devtools.html",
   "action": {
     "default_popup": "popup.html",
     "default_title": "KWebShell MV3 action"

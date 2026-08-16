@@ -984,6 +984,72 @@ Acceptance:
   items, checked/radio state, editable/link/media contexts, dynamic updates,
   and public host APIs remain `UNPUBLISHED` until their own objectives pass.
 
+#### Objective 6.4: DevTools extension page and panel lifecycle conformance
+
+This objective proves that a declared MV3 `devtools_page` runs inside the real
+Chrome-style DevTools window that CEF opens for the inspected Alloy page. It
+must use Chromium's Profile-scoped ExtensionRegistry and DevTools frontend
+plumbing; navigating an extension URL directly, injecting a normal extension
+page, or emulating `chrome.devtools.*` is not an admissible substitute.
+
+Acceptance:
+
+- The checked-in MV3 conformance extension declares one fixed
+  `devtools_page`. Its page must execute in the hidden DevTools extension
+  frame, verify its extension origin and `chrome.runtime.id`, call the real
+  `chrome.devtools.inspectedWindow.eval` against a marker in the inspected
+  Alloy page, and create one fixed panel through the real
+  `chrome.devtools.panels.create` callback. The callback result, inspected
+  value, and panel metadata are written atomically to `storage.local`; the
+  existing content script verifies the exact record and publishes one fixed
+  terminal result.
+- A strict test-only `devtools` host mode completes the existing MV3 core
+  Service Worker idle/restart sequence, opens a real CEF DevTools top-level
+  window for the same browser, waits for the content-script result produced by
+  the DevTools extension page, closes that DevTools window, and only then
+  flushes the Profile and closes the inspected Alloy browser. The DevTools
+  browser must be a CEF popup with Chrome runtime style, a native window, and
+  windowed rendering; the inspected browser remains Alloy and is never
+  replaced.
+- The native state machine rejects missing or duplicate DevTools creation,
+  wrong Profile/origin, wrong inspected value, invalid panel callback data,
+  duplicate storage terminal events, DevTools close before the result, late
+  DevTools callbacks, renderer failures, and timeout with typed terminal
+  errors. It creates no second Alloy browser, direct extension-page
+  navigation, CDP/JavaScript listener invocation, synthetic success, or
+  fallback surface.
+- Package-boundary and native unit tests validate the `devtools_page` fixture
+  metadata and strict mode parsing. The real native-child conformance test
+  runs against stock CEF as a positive DevTools-extension gate and against the
+  checksum-pinned custom CEF artifact when enabled. The capability remains
+  `UNPUBLISHED` until macOS arm64, Windows x64, and Linux x64 complete the
+  exact positive lifecycle.
+- The capability matrix may record only the fixed `devtools_page` execution,
+  `inspectedWindow.eval`, and `panels.create` callback sequence. Arbitrary
+  panel UI, panel selection/visibility, sidebars, recorder integrations,
+  DevTools protocol domains, and public DevTools-extension APIs remain
+  `UNPUBLISHED` pending their own complete objectives.
+
+Implementation evidence as of 2026-08-16:
+
+- The fixture declares `devtools_page=devtools.html`. Its real hidden DevTools
+  extension frame verifies its origin and ID, evaluates the inspected Alloy
+  page's fixed marker through `chrome.devtools.inspectedWindow.eval`, and
+  receives a non-null `chrome.devtools.panels.create` callback with the exact
+  panel event surface before one atomic `storage.local` publication.
+- The strict native `devtools` mode opens the CEF Chrome-style popup, defers
+  contract validation until the native handle is attached, verifies the same
+  Profile, records the real `devtools://` frontend load, waits for the
+  extension result, closes DevTools, then flushes the Profile and closes the
+  inspected Alloy child. It creates no direct extension-page navigation or
+  synthetic DevTools API.
+- The full native CEF suite passed on macOS arm64 with the pinned stock
+  runtime and the checksum-pinned custom runtime. Windows x64 and Linux x64
+  hosted runs remain required before the capability can leave `UNPUBLISHED`.
+- The repository-level Gradle `check` passed on macOS arm64 against the pinned
+  stock runtime: all 41 actionable tasks completed, the native suite passed
+  10/10, and the final real MV3 conformance run completed in 303.11 seconds.
+
 Acceptance:
 
 - Each surface has a real native host and complete lifecycle tests.

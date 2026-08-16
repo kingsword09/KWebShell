@@ -129,6 +129,36 @@ checked/radio state, editable/link/media contexts, dynamic updates, OS-native
 menu rendering, and arbitrary host item composition. Those behaviors require
 separate objectives and cannot be inferred from this fixed-item result.
 
+## DevTools extension boundary
+
+Objective 6.4 proves one exact DevTools extension lifecycle, but does not add a
+public DevTools-extension API. After the core MV3 Service Worker sequence, the
+native conformance host opens the real CEF Chrome-style DevTools window for the
+same Alloy page and Profile. Chromium's own `DevToolsUIBindings` discovers the
+installed `devtools_page` through the Profile `ExtensionRegistry`, creates its
+hidden extension frame, and exposes the real `chrome.devtools` bindings. The
+fixture then verifies all of the following from the extension context:
+
+- the fixed extension origin, ID, and `devtools_page` path;
+- `chrome.devtools.inspectedWindow.eval` returns the marker from the inspected
+  Alloy page; and
+- `chrome.devtools.panels.create` invokes a non-null panel callback with the
+  exact requested panel metadata, after which one atomic `storage.local`
+  record is published to the inspected page's content script.
+
+The host validates the DevTools popup's Chrome runtime style, native window,
+windowed rendering, and Profile identity, records the real `devtools://`
+frontend load, and requires DevTools close before Profile flush and inspected
+browser shutdown. Direct navigation to `chrome-extension://.../devtools.html`,
+normal extension-page substitution, CDP/JavaScript listener invocation, and
+emulated `chrome.devtools` objects are forbidden.
+
+The exact sequence passed the full native suite on macOS arm64 with both the
+pinned stock CEF runtime and the checksum-pinned custom runtime. The capability
+remains `UNPUBLISHED` until the same positive sequence passes on hosted Windows
+x64 and Linux x64; panel visibility/selection, sidebars, recorder integrations,
+and public DevTools-extension APIs require separate objectives.
+
 ## Internal package-store boundary
 
 Objective 5.3 adds no published runtime capability. It verifies the internal

@@ -1,6 +1,7 @@
 #ifndef KWEBSHELL_NATIVE_NATIVE_WINDOW_H_
 #define KWEBSHELL_NATIVE_NATIVE_WINDOW_H_
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
@@ -35,6 +36,7 @@ public:
   virtual void OnBrowserCloseAccepted() = 0;
   virtual void OnBrowserDestroyed() = 0;
   virtual void SetTitle(const std::string &title) = 0;
+  virtual uintptr_t GetRootWindowHandle() const = 0;
   virtual void RunNativeInputSelfTest() = 0;
   virtual void OnInputSelfTestPassed() = 0;
 #if defined(OS_WIN) || defined(OS_LINUX)

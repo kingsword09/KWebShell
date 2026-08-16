@@ -24,6 +24,7 @@ class Mv3CoreConformanceFixtureTest {
             KWebExtensionOptionsUi(page = "options.html", openInTab = true),
             verified.packageInfo.manifest.optionsUi,
         )
+        assertEquals("devtools.html", verified.packageInfo.manifest.devtoolsPage)
         assertEquals(
             KWebExtensionAction(
                 defaultPopup = "popup.html",

@@ -51,6 +51,11 @@ public:
   void OnMv3ContextMenuCommandObserved(int command_id);
   void OnMv3ContextMenuDismissed();
   void OnMv3ContextMenuPagePassed(const std::string &result);
+  void OnMv3DevToolsOpened();
+  void OnMv3DevToolsFrontendLoaded(const std::string &url,
+                                   int http_status_code);
+  void OnMv3DevToolsPagePassed(const std::string &result);
+  void OnMv3DevToolsClosed();
   void OnMv3ExtensionPagePassed(const std::string &result);
   void OnProfileCookieFlushCompleted();
   void OnFatalBrowserError(const std::string &code,
@@ -67,6 +72,7 @@ private:
   void MaybeCompleteProfileSelfTest();
   void MaybeCompleteMv3CoreSelfTest();
   void MaybeBeginMv3ContextMenuSelfTest();
+  void MaybeBeginMv3DevToolsSelfTest();
   void BeginMv3ExtensionPageNavigation();
   void MaybeCompleteSelfTest();
   void OnSelfTestInputSettled();
@@ -94,6 +100,12 @@ private:
   bool mv3_context_menu_dismissed_ = false;
   bool mv3_context_menu_page_passed_ = false;
   int mv3_context_menu_command_id_ = -1;
+  bool mv3_devtools_open_requested_ = false;
+  bool mv3_devtools_opened_ = false;
+  bool mv3_devtools_frontend_loaded_ = false;
+  bool mv3_devtools_page_passed_ = false;
+  bool mv3_devtools_close_requested_ = false;
+  bool mv3_devtools_closed_ = false;
   bool mv3_extension_page_navigation_requested_ = false;
   bool mv3_extension_page_passed_ = false;
   bool mv3_extension_page_loaded_ = false;

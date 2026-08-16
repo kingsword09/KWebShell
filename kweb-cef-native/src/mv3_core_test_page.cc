@@ -24,6 +24,8 @@ constexpr char kMv3CoreActionPopupUrl[] =
 constexpr char kMv3CoreContextMenuItemId[] = "kwebshell-mv3-context-menu";
 constexpr char kMv3CoreContextMenuItemLabel[] =
     "KWebShell MV3 context item";
+constexpr char kMv3CoreDevToolsInspectedValue[] =
+    "kwebshell-devtools-inspected";
 constexpr int kMv3CoreContextMenuX = 120;
 constexpr int kMv3CoreContextMenuY = 120;
 constexpr int kServiceWorkerIdleDelayMs = 40000;
@@ -49,6 +51,9 @@ std::string BuildMv3CoreSelfTestHtml(Mv3CoreSelfTestMode mode) {
          "\" data-extension-id=\"" + kMv3CoreExtensionId +
          "\"><head><meta charset=\"utf-8\"><script>"
          "globalThis.KWEB_PAGE_WORLD_MARKER='page-world';"
+         "globalThis.KWEB_DEVTOOLS_INSPECTED_VALUE='" +
+         kMv3CoreDevToolsInspectedValue +
+         "';"
          "document.documentElement.dataset.pageWorldRuntime="
          "typeof globalThis.chrome?.runtime;"
          "</script><title>"
@@ -107,6 +112,8 @@ const char *Mv3CoreSelfTestModeName(Mv3CoreSelfTestMode mode) {
     return "action-popup";
   case Mv3CoreSelfTestMode::kContextMenu:
     return "context-menu";
+  case Mv3CoreSelfTestMode::kDevTools:
+    return "devtools";
   }
   return "invalid";
 }
@@ -125,6 +132,7 @@ Mv3CoreExtensionPageSelfTestForMode(Mv3CoreSelfTestMode mode) {
   case Mv3CoreSelfTestMode::kRestart:
   case Mv3CoreSelfTestMode::kIsolated:
   case Mv3CoreSelfTestMode::kContextMenu:
+  case Mv3CoreSelfTestMode::kDevTools:
     return nullptr;
   }
   return nullptr;
@@ -179,6 +187,16 @@ std::string ExpectedMv3CoreContextMenuResult() {
          "|menu=" + std::string(kMv3CoreContextMenuItemId) +
          "|clickCount=1"
          "|page=https%3A%2F%2Fkwebshell.test%2Fmv3-core-self-test";
+}
+
+std::string ExpectedMv3CoreDevToolsResult() {
+  return "KWEB_MV3_DEVTOOLS_PASS|id=" + std::string(kMv3CoreExtensionId) +
+         "|origin=chrome-extension%3A%2F%2F" + kMv3CoreExtensionId +
+         "|page=%2Fdevtools.html"
+         "|panel=KWebShell%20MV3%20panel"
+         "|panelPage=devtools-panel.html"
+         "|inspected=kwebshell-devtools-inspected"
+         "|eval=true|created=true";
 }
 
 CefRefPtr<CefSchemeHandlerFactory> CreateMv3CoreSelfTestSchemeHandlerFactory(

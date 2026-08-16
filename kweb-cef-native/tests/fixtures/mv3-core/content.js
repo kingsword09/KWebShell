@@ -8,10 +8,39 @@ const fail = (message) => {
 
 const actionTitleFor = (messageCount) =>
   `KWebShell MV3 action count: ${messageCount}`;
+const expectedContextMenuId = "kwebshell-mv3-context-menu";
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local") {
+    return;
+  }
+  if (changes.contextMenuFailure?.newValue) {
+    fail(`context-menu-worker:${changes.contextMenuFailure.newValue}`);
+    return;
+  }
+  const click = changes.contextMenuClick?.newValue;
+  if (!click) {
+    return;
+  }
+  if (
+    click.extensionId !== chrome.runtime.id ||
+    click.menuItemId !== expectedContextMenuId ||
+    click.clickCount !== 1 ||
+    click.pageUrl !== location.href
+  ) {
+    fail(`context-menu-result:${JSON.stringify(click)}`);
+    return;
+  }
+  document.title = `KWEB_MV3_CONTEXT_MENU_PASS|id=${chrome.runtime.id}` +
+    `|menu=${encodeURIComponent(click.menuItemId)}` +
+    `|clickCount=${click.clickCount}` +
+    `|page=${encodeURIComponent(click.pageUrl)}`;
+});
 
 const sendProbe = async () => {
   const response = await chrome.runtime.sendMessage({
-    kind: "kwebshell-mv3-core"
+    kind: "kwebshell-mv3-core",
+    mode: document.documentElement.dataset.mode
   });
   if (!response || response.error) {
     throw new Error(response?.error ?? "missing-response");

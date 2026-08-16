@@ -22,6 +22,7 @@ enum class Mv3CoreSelfTestMode {
   kIsolated,
   kOptions,
   kActionPopup,
+  kContextMenu,
 };
 
 struct HostConfiguration final {

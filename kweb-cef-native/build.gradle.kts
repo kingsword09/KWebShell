@@ -13,6 +13,8 @@ private class CefCmakeArguments(
     @get:Input
     val expectHardwareGpuUnavailable: Provider<String>,
     @get:Input
+    val expectCustomExtensionRuntime: Provider<String>,
+    @get:Input
     val javaHome: Provider<String>,
 ) : CommandLineArgumentProvider {
     override fun asArguments(): Iterable<String> {
@@ -41,10 +43,18 @@ private class CefCmakeArguments(
                 "-PkwebExpectHardwareGpuUnavailable must be 'true' or 'false'.",
             )
         }
+        val expectCustomRuntime = when (expectCustomExtensionRuntime.get().lowercase(Locale.ROOT)) {
+            "true" -> "ON"
+            "false" -> "OFF"
+            else -> throw GradleException(
+                "-PkwebExpectCustomExtensionRuntime must be 'true' or 'false'.",
+            )
+        }
         return listOf(
             "-DCEF_ROOT=${cefRootFile.absolutePath}",
             "-DPROJECT_ARCH=${projectArchitecture.get()}",
             "-DKWEB_EXPECT_HARDWARE_GPU_UNAVAILABLE=$expectUnavailable",
+            "-DKWEB_EXPECT_CUSTOM_EXTENSION_RUNTIME=$expectCustomRuntime",
             "-DJAVA_HOME=${javaHomeFile.invariantSeparatorsPath}",
         )
     }
@@ -57,6 +67,8 @@ plugins {
 val cefRoot = providers.gradleProperty("cefRoot")
 val expectHardwareGpuUnavailable =
     providers.gradleProperty("kwebExpectHardwareGpuUnavailable").orElse("false")
+val expectCustomExtensionRuntime =
+    providers.gradleProperty("kwebExpectCustomExtensionRuntime").orElse("false")
 val nativeBuildDirectory = layout.buildDirectory.dir("native")
 val nativeContractDirectory = nativeBuildDirectory.map { it.dir("contract") }
 val nativeUnitTestExecutable = providers.systemProperty("os.name").map { operatingSystem ->
@@ -112,6 +124,7 @@ tasks.register<Exec>("configureNative") {
             cefRoot,
             projectArchitecture,
             expectHardwareGpuUnavailable,
+            expectCustomExtensionRuntime,
             providers.systemProperty("java.home"),
         ),
     )

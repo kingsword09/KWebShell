@@ -18,7 +18,7 @@ class Mv3CoreConformanceFixtureTest {
         assertEquals(KWebExtensionPackageFormat.UNPACKED, verified.packageInfo.format)
         assertEquals(EXPECTED_EXTENSION_ID, verified.packageInfo.extensionId)
         assertEquals("worker.js", verified.packageInfo.manifest.background?.serviceWorker)
-        assertEquals(listOf("storage"), verified.packageInfo.manifest.permissions)
+        assertEquals(listOf("storage", "contextMenus"), verified.packageInfo.manifest.permissions)
         assertEquals("content.js", verified.packageInfo.manifest.contentScripts.single().js.single())
         assertEquals(
             KWebExtensionOptionsUi(page = "options.html", openInTab = true),
@@ -32,8 +32,11 @@ class Mv3CoreConformanceFixtureTest {
             verified.packageInfo.manifest.action,
         )
         assertEquals(
-            KWebExtensionPermissionDecision("storage", KWebExtensionPermissionKind.API_PERMISSION),
-            verified.packageInfo.permissionReview.required.single(),
+            listOf(
+                KWebExtensionPermissionDecision("storage", KWebExtensionPermissionKind.API_PERMISSION),
+                KWebExtensionPermissionDecision("contextMenus", KWebExtensionPermissionKind.API_PERMISSION),
+            ),
+            verified.packageInfo.permissionReview.required,
         )
         assertEquals(
             KWebExtensionPermissionDecision("https://kwebshell.test/*", KWebExtensionPermissionKind.HOST_ACCESS),

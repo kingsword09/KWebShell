@@ -1113,3 +1113,20 @@ index 00000000..aa1d9328
 +  }
 +  return GetOperationRegistry().LiveCount();
 +}
+diff --git a/libcef/browser/chrome/chrome_context_menu_handler.cc b/libcef/browser/chrome/chrome_context_menu_handler.cc
+index 32b59e9e..7bec5efd 100644
+--- a/libcef/browser/chrome/chrome_context_menu_handler.cc
++++ b/libcef/browser/chrome/chrome_context_menu_handler.cc
+@@ -8,2 +8,3 @@
+ #include "base/memory/weak_ptr.h"
++#include "base/command_line.h"
+ #include "cef/libcef/browser/alloy/alloy_browser_host_impl.h"
+@@ -356,3 +357,7 @@ bool HandleContextMenu(content::WebContents* opener,
+   auto browser = CefBrowserHostBase::GetBrowserForContents(opener);
+-  if (browser && browser->IsAlloyStyle()) {
++  // KWebShell requests Chrome's extension-aware model explicitly; all other
++  // Alloy browsers retain CEF's default model.
++  if (browser && browser->IsAlloyStyle() &&
++      !base::CommandLine::ForCurrentProcess()->HasSwitch(
++          "kweb-chrome-context-menu")) {
+     AlloyBrowserHostImpl::FromBaseChecked(browser)->ShowContextMenu(params);

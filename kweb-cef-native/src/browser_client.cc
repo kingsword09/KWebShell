@@ -1,6 +1,7 @@
 #include "browser_client.h"
 
 #include <string>
+#include <vector>
 
 #include "include/cef_parser.h"
 #include "include/wrapper/cef_helpers.h"
@@ -8,6 +9,32 @@
 
 namespace kwebshell {
 namespace {
+
+struct ContextMenuMatch final {
+  int command_id;
+  bool enabled;
+  bool visible;
+};
+
+void CollectContextMenuMatches(CefRefPtr<CefMenuModel> model,
+                               std::vector<ContextMenuMatch> *matches) {
+  if (!model) {
+    return;
+  }
+  for (size_t index = 0; index < model->GetCount(); ++index) {
+    const CefMenuModel::MenuItemType type = model->GetTypeAt(index);
+    if (type == MENUITEMTYPE_SUBMENU) {
+      CollectContextMenuMatches(model->GetSubMenuAt(index), matches);
+      continue;
+    }
+    if (type == MENUITEMTYPE_COMMAND &&
+        model->GetLabelAt(index).ToString() == Mv3CoreContextMenuItemLabel()) {
+      matches->push_back({model->GetCommandIdAt(index),
+                          model->IsEnabledAt(index),
+                          model->IsVisibleAt(index)});
+    }
+  }
+}
 
 std::string DisplayUrl(const CefString &url) {
   const std::string value = url.ToString();
@@ -22,11 +49,17 @@ std::string DisplayUrl(const CefString &url) {
 BrowserClient::BrowserClient(BrowserApp *app, NativeWindow *native_window,
                              std::shared_ptr<EventRecorder> recorder,
                              bool native_self_test, bool profile_self_test,
-                             bool mv3_core_self_test)
+                             bool mv3_core_self_test,
+                             bool mv3_context_menu_self_test)
     : app_(app), native_window_(native_window), recorder_(std::move(recorder)),
       native_self_test_(native_self_test),
       profile_self_test_(profile_self_test),
-      mv3_core_self_test_(mv3_core_self_test) {}
+      mv3_core_self_test_(mv3_core_self_test),
+      mv3_context_menu_self_test_(mv3_context_menu_self_test) {}
+
+CefRefPtr<CefContextMenuHandler> BrowserClient::GetContextMenuHandler() {
+  return mv3_context_menu_self_test_ ? this : nullptr;
+}
 
 CefRefPtr<CefDisplayHandler> BrowserClient::GetDisplayHandler() { return this; }
 
@@ -37,6 +70,128 @@ CefRefPtr<CefLifeSpanHandler> BrowserClient::GetLifeSpanHandler() {
 CefRefPtr<CefLoadHandler> BrowserClient::GetLoadHandler() { return this; }
 
 CefRefPtr<CefRequestHandler> BrowserClient::GetRequestHandler() { return this; }
+
+void BrowserClient::OnBeforeContextMenu(CefRefPtr<CefBrowser> browser,
+                                        CefRefPtr<CefFrame> frame,
+                                        CefRefPtr<CefContextMenuParams> params,
+                                        CefRefPtr<CefMenuModel> model) {
+  CEF_REQUIRE_UI_THREAD();
+  if (!mv3_context_menu_self_test_) {
+    return;
+  }
+  if (mv3_context_menu_model_seen_ || mv3_context_menu_model_rejected_) {
+    mv3_context_menu_model_rejected_ = true;
+    app_->OnFatalBrowserError("native.mv3.context-menu-model-duplicate", {});
+    return;
+  }
+  if (!frame || !frame->IsMain() || !params || !model) {
+    mv3_context_menu_model_rejected_ = true;
+    app_->OnFatalBrowserError("native.mv3.context-menu-model-invalid", {});
+    return;
+  }
+  const std::string page_url = params->GetPageUrl().ToString();
+  if (page_url != Mv3CoreSelfTestUrl()) {
+    mv3_context_menu_model_rejected_ = true;
+    app_->OnFatalBrowserError(
+        "native.mv3.context-menu-page-url-mismatch",
+        {{"expected", Mv3CoreSelfTestUrl()}, {"actual", page_url}});
+    return;
+  }
+
+  std::vector<ContextMenuMatch> matches;
+  CollectContextMenuMatches(model, &matches);
+  if (matches.size() != 1) {
+    mv3_context_menu_model_rejected_ = true;
+    app_->OnFatalBrowserError(
+        "native.mv3.context-menu-item-count-invalid",
+        {{"expected", "1"}, {"actual", std::to_string(matches.size())}});
+    return;
+  }
+  const ContextMenuMatch &match = matches.front();
+  if (match.command_id <= 0 || !match.enabled || !match.visible) {
+    mv3_context_menu_model_rejected_ = true;
+    app_->OnFatalBrowserError("native.mv3.context-menu-item-state-invalid",
+                              {{"command_id", std::to_string(match.command_id)},
+                               {"enabled", match.enabled ? "true" : "false"},
+                               {"visible", match.visible ? "true" : "false"}});
+    return;
+  }
+  mv3_context_menu_model_seen_ = true;
+  mv3_context_menu_command_id_ = match.command_id;
+  app_->OnMv3ContextMenuModelObserved(
+      match.command_id, static_cast<int>(model->GetCount()),
+      params->GetXCoord(), params->GetYCoord(), page_url);
+}
+
+bool BrowserClient::RunContextMenu(
+    CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+    CefRefPtr<CefContextMenuParams> params, CefRefPtr<CefMenuModel> model,
+    CefRefPtr<CefRunContextMenuCallback> callback) {
+  CEF_REQUIRE_UI_THREAD();
+  if (!mv3_context_menu_self_test_) {
+    return false;
+  }
+  if (!callback) {
+    app_->OnFatalBrowserError("native.mv3.context-menu-callback-missing", {});
+    return true;
+  }
+  if (mv3_context_menu_model_rejected_ || !mv3_context_menu_model_seen_) {
+    callback->Cancel();
+    if (!mv3_context_menu_model_rejected_) {
+      app_->OnFatalBrowserError("native.mv3.context-menu-model-missing", {});
+    }
+    return true;
+  }
+  if (mv3_context_menu_run_seen_) {
+    callback->Cancel();
+    app_->OnFatalBrowserError("native.mv3.context-menu-run-duplicate", {});
+    return true;
+  }
+  mv3_context_menu_run_seen_ = true;
+  app_->OnMv3ContextMenuSelectionDispatched(mv3_context_menu_command_id_);
+  callback->Continue(mv3_context_menu_command_id_, EVENTFLAG_NONE);
+  return true;
+}
+
+bool BrowserClient::OnContextMenuCommand(CefRefPtr<CefBrowser> browser,
+                                         CefRefPtr<CefFrame> frame,
+                                         CefRefPtr<CefContextMenuParams> params,
+                                         int command_id,
+                                         EventFlags event_flags) {
+  CEF_REQUIRE_UI_THREAD();
+  if (!mv3_context_menu_self_test_) {
+    return false;
+  }
+  if (!mv3_context_menu_run_seen_ || mv3_context_menu_command_seen_ ||
+      command_id != mv3_context_menu_command_id_) {
+    app_->OnFatalBrowserError(
+        "native.mv3.context-menu-command-invalid",
+        {{"expected", std::to_string(mv3_context_menu_command_id_)},
+         {"actual", std::to_string(command_id)},
+         {"duplicate", mv3_context_menu_command_seen_ ? "true" : "false"}});
+    return true;
+  }
+  mv3_context_menu_command_seen_ = true;
+  app_->OnMv3ContextMenuCommandObserved(command_id);
+  return false;
+}
+
+void BrowserClient::OnContextMenuDismissed(CefRefPtr<CefBrowser> browser,
+                                           CefRefPtr<CefFrame> frame) {
+  CEF_REQUIRE_UI_THREAD();
+  if (!mv3_context_menu_self_test_ || mv3_context_menu_model_rejected_) {
+    return;
+  }
+  if (!mv3_context_menu_command_seen_ || mv3_context_menu_dismissed_) {
+    app_->OnFatalBrowserError(
+        "native.mv3.context-menu-dismiss-state-invalid",
+        {{"command", mv3_context_menu_command_seen_ ? "seen" : "missing"},
+         {"duplicate", mv3_context_menu_dismissed_ ? "true" : "false"}});
+    return;
+  }
+  mv3_context_menu_dismissed_ = true;
+  app_->OnMv3ContextMenuDismissed();
+}
 
 void BrowserClient::OnTitleChange(CefRefPtr<CefBrowser> browser,
                                   const CefString &title) {
@@ -55,7 +210,12 @@ void BrowserClient::OnTitleChange(CefRefPtr<CefBrowser> browser,
     return;
   }
   if (mv3_core_self_test_) {
-    if (IsMv3CoreExtensionPagePassResult(title_string)) {
+    if (title_string.starts_with("KWEB_MV3_CONTEXT_MENU_PASS|")) {
+      app_->OnMv3ContextMenuPagePassed(title_string);
+    } else if (title_string.starts_with("KWEB_MV3_CONTEXT_MENU_FAIL|")) {
+      app_->OnFatalBrowserError("native.mv3.context-menu-self-test-failed",
+                                {{"result", title_string}});
+    } else if (IsMv3CoreExtensionPagePassResult(title_string)) {
       app_->OnMv3ExtensionPagePassed(title_string);
     } else if (IsMv3CoreExtensionPageFailureResult(title_string)) {
       app_->OnFatalBrowserError("native.mv3.extension-page-self-test-failed",
@@ -239,6 +399,27 @@ bool BrowserClient::NavigateSelfTestMainFrame(const std::string &url) {
     return false;
   }
   frame->LoadURL(url);
+  return true;
+}
+
+bool BrowserClient::TriggerMv3ContextMenuSelfTest() {
+  CEF_REQUIRE_UI_THREAD();
+  if (!mv3_context_menu_self_test_ || !browser_ ||
+      mv3_context_menu_input_sent_) {
+    return false;
+  }
+  mv3_context_menu_input_sent_ = true;
+  CefRefPtr<CefBrowserHost> host = browser_->GetHost();
+  if (!host) {
+    return false;
+  }
+  CefMouseEvent mouse_event;
+  mouse_event.x = Mv3CoreContextMenuX();
+  mouse_event.y = Mv3CoreContextMenuY();
+  mouse_event.modifiers = 0;
+  host->SendMouseMoveEvent(mouse_event, false);
+  host->SendMouseClickEvent(mouse_event, MBT_RIGHT, false, 1);
+  host->SendMouseClickEvent(mouse_event, MBT_RIGHT, true, 1);
   return true;
 }
 

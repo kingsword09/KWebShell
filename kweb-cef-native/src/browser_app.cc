@@ -103,14 +103,22 @@ void BrowserApp::OnBeforeCommandLineProcessing(
   command_line->AppendSwitchWithValue("disable-extensions-except",
                                      extension_path);
   command_line->AppendSwitchWithValue("load-extension", extension_path);
-  recorder_->Record(
-      "mv3_extension_load_configured",
-      {{"mode", Mv3CoreSelfTestModeName(
-                    configuration_.mv3_core_self_test_mode)},
-       {"path", extension_path.ToString()},
-       {"background_networking", "disabled"},
-       {"component_updates", "disabled"},
-       {"proxy", "disabled"}});
+  if (configuration_.mv3_core_self_test_mode ==
+      Mv3CoreSelfTestMode::kContextMenu) {
+    command_line->AppendSwitch("kweb-chrome-context-menu");
+  }
+  recorder_->Record("mv3_extension_load_configured",
+                    {{"mode", Mv3CoreSelfTestModeName(
+                                  configuration_.mv3_core_self_test_mode)},
+                     {"path", extension_path.ToString()},
+                     {"background_networking", "disabled"},
+                     {"component_updates", "disabled"},
+                     {"proxy", "disabled"},
+                     {"context_menu_backend",
+                      configuration_.mv3_core_self_test_mode ==
+                              Mv3CoreSelfTestMode::kContextMenu
+                          ? "chrome-render-view"
+                          : "alloy"}});
 }
 
 void BrowserApp::OnContextInitialized() {
@@ -187,10 +195,11 @@ void BrowserApp::OnProfileRequestContextInitialized(
 void BrowserApp::CreateBrowserForProfile() {
   CEF_REQUIRE_UI_THREAD();
   native_window_ = CreateNativeWindow(this, recorder_);
-  client_ = new BrowserClient(this, native_window_.get(), recorder_,
-                              configuration_.self_test,
-                              configuration_.IsProfileSelfTest(),
-                              configuration_.IsMv3CoreSelfTest());
+  client_ = new BrowserClient(
+      this, native_window_.get(), recorder_, configuration_.self_test,
+      configuration_.IsProfileSelfTest(), configuration_.IsMv3CoreSelfTest(),
+      configuration_.mv3_core_self_test_mode ==
+          Mv3CoreSelfTestMode::kContextMenu);
 
   std::string url = configuration_.url;
   if (configuration_.self_test) {
@@ -357,6 +366,11 @@ void BrowserApp::OnMv3CoreSelfTestPagePassed(const std::string &result) {
                     {{"mode", Mv3CoreSelfTestModeName(
                                   configuration_.mv3_core_self_test_mode)},
                      {"result", result}});
+  if (configuration_.mv3_core_self_test_mode ==
+      Mv3CoreSelfTestMode::kContextMenu) {
+    MaybeBeginMv3ContextMenuSelfTest();
+    return;
+  }
   if (Mv3CoreExtensionPageSelfTestForMode(
           configuration_.mv3_core_self_test_mode) != nullptr) {
     BeginMv3ExtensionPageNavigation();
@@ -401,6 +415,150 @@ void BrowserApp::OnMv3CoreSelfTestPageLoaded(const std::string &url) {
     return;
   }
   mv3_core_self_test_page_loaded_ = true;
+  MaybeBeginMv3ContextMenuSelfTest();
+  MaybeCompleteMv3CoreSelfTest();
+}
+
+void BrowserApp::MaybeBeginMv3ContextMenuSelfTest() {
+  CEF_REQUIRE_UI_THREAD();
+  if (configuration_.mv3_core_self_test_mode !=
+          Mv3CoreSelfTestMode::kContextMenu ||
+      !mv3_core_self_test_page_passed_ || !mv3_core_self_test_page_loaded_ ||
+      mv3_context_menu_input_requested_ || close_requested_ ||
+      fatal_error_reported_) {
+    return;
+  }
+  if (!client_) {
+    OnFatalBrowserError("native.mv3.context-menu-client-missing", {});
+    return;
+  }
+  mv3_context_menu_input_requested_ = true;
+  recorder_->Record("mv3_context_menu_input_requested",
+                    {{"x", std::to_string(Mv3CoreContextMenuX())},
+                     {"y", std::to_string(Mv3CoreContextMenuY())},
+                     {"url", Mv3CoreSelfTestUrl()}});
+  if (!client_->TriggerMv3ContextMenuSelfTest()) {
+    OnFatalBrowserError("native.mv3.context-menu-input-rejected",
+                        {{"x", std::to_string(Mv3CoreContextMenuX())},
+                         {"y", std::to_string(Mv3CoreContextMenuY())}});
+  }
+}
+
+void BrowserApp::OnMv3ContextMenuModelObserved(int command_id,
+                                               int top_level_item_count, int x,
+                                               int y,
+                                               const std::string &page_url) {
+  CEF_REQUIRE_UI_THREAD();
+  if (configuration_.mv3_core_self_test_mode !=
+          Mv3CoreSelfTestMode::kContextMenu ||
+      !mv3_context_menu_input_requested_ || mv3_context_menu_model_observed_ ||
+      mv3_context_menu_selection_dispatched_ ||
+      mv3_context_menu_command_observed_ || mv3_context_menu_dismissed_) {
+    OnFatalBrowserError("native.mv3.context-menu-model-state-invalid",
+                        {{"command_id", std::to_string(command_id)}});
+    return;
+  }
+  if (command_id <= 0 || top_level_item_count <= 0 ||
+      x != Mv3CoreContextMenuX() || y != Mv3CoreContextMenuY() ||
+      page_url != Mv3CoreSelfTestUrl()) {
+    OnFatalBrowserError(
+        "native.mv3.context-menu-model-invalid",
+        {{"command_id", std::to_string(command_id)},
+         {"top_level_item_count", std::to_string(top_level_item_count)},
+         {"expected_x", std::to_string(Mv3CoreContextMenuX())},
+         {"actual_x", std::to_string(x)},
+         {"expected_y", std::to_string(Mv3CoreContextMenuY())},
+         {"actual_y", std::to_string(y)},
+         {"expected_url", Mv3CoreSelfTestUrl()},
+         {"actual_url", page_url}});
+    return;
+  }
+  mv3_context_menu_model_observed_ = true;
+  mv3_context_menu_command_id_ = command_id;
+  recorder_->Record(
+      "mv3_context_menu_model_observed",
+      {{"command_id", std::to_string(command_id)},
+       {"top_level_item_count", std::to_string(top_level_item_count)},
+       {"x", std::to_string(x)},
+       {"y", std::to_string(y)},
+       {"url", page_url},
+       {"label", Mv3CoreContextMenuItemLabel()}});
+}
+
+void BrowserApp::OnMv3ContextMenuSelectionDispatched(int command_id) {
+  CEF_REQUIRE_UI_THREAD();
+  if (configuration_.mv3_core_self_test_mode !=
+          Mv3CoreSelfTestMode::kContextMenu ||
+      !mv3_context_menu_model_observed_ ||
+      mv3_context_menu_selection_dispatched_ ||
+      command_id != mv3_context_menu_command_id_) {
+    OnFatalBrowserError(
+        "native.mv3.context-menu-selection-invalid",
+        {{"expected", std::to_string(mv3_context_menu_command_id_)},
+         {"actual", std::to_string(command_id)},
+         {"duplicate",
+          mv3_context_menu_selection_dispatched_ ? "true" : "false"}});
+    return;
+  }
+  mv3_context_menu_selection_dispatched_ = true;
+  recorder_->Record("mv3_context_menu_selection_dispatched",
+                    {{"command_id", std::to_string(command_id)}});
+}
+
+void BrowserApp::OnMv3ContextMenuCommandObserved(int command_id) {
+  CEF_REQUIRE_UI_THREAD();
+  if (configuration_.mv3_core_self_test_mode !=
+          Mv3CoreSelfTestMode::kContextMenu ||
+      !mv3_context_menu_selection_dispatched_ ||
+      mv3_context_menu_command_observed_ ||
+      command_id != mv3_context_menu_command_id_) {
+    OnFatalBrowserError(
+        "native.mv3.context-menu-command-state-invalid",
+        {{"expected", std::to_string(mv3_context_menu_command_id_)},
+         {"actual", std::to_string(command_id)},
+         {"duplicate", mv3_context_menu_command_observed_ ? "true" : "false"}});
+    return;
+  }
+  mv3_context_menu_command_observed_ = true;
+  recorder_->Record("mv3_context_menu_command_observed",
+                    {{"command_id", std::to_string(command_id)},
+                     {"client_handled", "false"},
+                     {"default_dispatch", "requested"}});
+}
+
+void BrowserApp::OnMv3ContextMenuDismissed() {
+  CEF_REQUIRE_UI_THREAD();
+  if (configuration_.mv3_core_self_test_mode !=
+          Mv3CoreSelfTestMode::kContextMenu ||
+      !mv3_context_menu_command_observed_ || mv3_context_menu_dismissed_) {
+    OnFatalBrowserError(
+        "native.mv3.context-menu-dismiss-state-invalid",
+        {{"command", mv3_context_menu_command_observed_ ? "seen" : "missing"},
+         {"duplicate", mv3_context_menu_dismissed_ ? "true" : "false"}});
+    return;
+  }
+  mv3_context_menu_dismissed_ = true;
+  recorder_->Record("mv3_context_menu_dismissed");
+  MaybeCompleteMv3CoreSelfTest();
+}
+
+void BrowserApp::OnMv3ContextMenuPagePassed(const std::string &result) {
+  CEF_REQUIRE_UI_THREAD();
+  if (configuration_.mv3_core_self_test_mode !=
+          Mv3CoreSelfTestMode::kContextMenu ||
+      !mv3_context_menu_dismissed_ || mv3_context_menu_page_passed_) {
+    OnFatalBrowserError("native.mv3.context-menu-page-state-invalid",
+                        {{"result", result}});
+    return;
+  }
+  const std::string expected = ExpectedMv3CoreContextMenuResult();
+  if (result != expected) {
+    OnFatalBrowserError("native.mv3.context-menu-result-invalid",
+                        {{"expected", expected}, {"actual", result}});
+    return;
+  }
+  mv3_context_menu_page_passed_ = true;
+  recorder_->Record("mv3_context_menu_page_passed", {{"result", result}});
   MaybeCompleteMv3CoreSelfTest();
 }
 
@@ -447,6 +605,18 @@ void BrowserApp::MaybeCompleteProfileSelfTest() {
 void BrowserApp::MaybeCompleteMv3CoreSelfTest() {
   CEF_REQUIRE_UI_THREAD();
   if (!mv3_core_self_test_page_passed_ || !mv3_core_self_test_page_loaded_) {
+    return;
+  }
+  if (configuration_.mv3_core_self_test_mode ==
+      Mv3CoreSelfTestMode::kContextMenu) {
+    if (!mv3_context_menu_input_requested_ ||
+        !mv3_context_menu_model_observed_ ||
+        !mv3_context_menu_selection_dispatched_ ||
+        !mv3_context_menu_command_observed_ || !mv3_context_menu_dismissed_ ||
+        !mv3_context_menu_page_passed_) {
+      return;
+    }
+    RequestProfileFlushAndClose();
     return;
   }
   if (Mv3CoreExtensionPageSelfTestForMode(
@@ -598,6 +768,20 @@ void BrowserApp::OnSelfTestTimeout() {
         mv3_core_self_test_page_passed_ ? "passed" : "pending"},
        {"mv3_core_load",
         mv3_core_self_test_page_loaded_ ? "completed" : "pending"},
+       {"mv3_context_menu_input",
+        mv3_context_menu_input_requested_ ? "requested" : "pending"},
+       {"mv3_context_menu_model",
+        mv3_context_menu_model_observed_ ? "observed" : "pending"},
+       {"mv3_context_menu_command_id",
+        std::to_string(mv3_context_menu_command_id_)},
+       {"mv3_context_menu_selection",
+        mv3_context_menu_selection_dispatched_ ? "dispatched" : "pending"},
+       {"mv3_context_menu_command",
+        mv3_context_menu_command_observed_ ? "observed" : "pending"},
+       {"mv3_context_menu_dismiss",
+        mv3_context_menu_dismissed_ ? "completed" : "pending"},
+       {"mv3_context_menu_page",
+        mv3_context_menu_page_passed_ ? "passed" : "pending"},
        {"mv3_extension_page_surface",
         extension_page ? extension_page->surface : "none"},
        {"mv3_extension_page_navigation",

@@ -115,9 +115,13 @@ jobs:
           root="$(find "$extraction" -mindepth 1 -maxdepth 1 -type d -name 'cef_binary_*_minimal' -print -quit)"
           echo "KWEB_CUSTOM_CEF_ROOT=$root" >> "$GITHUB_ENV"
 
-      - name: Run real MV3 lifecycle acceptance
+      - name: Run real MV3 native and lifecycle acceptance
         shell: bash
         run: |
+          ./gradlew --no-daemon :kweb-cef-native:nativeTest \
+            -PcefRoot="$KWEB_CUSTOM_CEF_ROOT" \
+            -PkwebExpectCustomExtensionRuntime=true \
+            -PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}
           ./gradlew --no-daemon :kweb-desktop:extensionLifecycleIntegrationTest \
             -PcefRoot="$KWEB_CUSTOM_CEF_ROOT" \
             -PkwebExpectCustomExtensionRuntime=true \

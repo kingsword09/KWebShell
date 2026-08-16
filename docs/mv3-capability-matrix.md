@@ -154,10 +154,12 @@ normal extension-page substitution, CDP/JavaScript listener invocation, and
 emulated `chrome.devtools` objects are forbidden.
 
 The exact sequence passed the full native suite on macOS arm64 with both the
-pinned stock CEF runtime and the checksum-pinned custom runtime. The capability
-remains `UNPUBLISHED` until the same positive sequence passes on hosted Windows
-x64 and Linux x64; panel visibility/selection, sidebars, recorder integrations,
-and public DevTools-extension APIs require separate objectives.
+pinned stock CEF runtime and the checksum-pinned custom runtime. GitHub Actions
+run `31955852372` also passed the same positive stock-CEF sequence on hosted
+macOS arm64, Windows x64, and Linux x64. This fixed conformance remains
+`UNPUBLISHED` as a public DevTools-extension API; panel visibility/selection,
+sidebars, recorder integrations, and broader DevTools-extension APIs require
+separate objectives.
 
 ## Internal package-store boundary
 

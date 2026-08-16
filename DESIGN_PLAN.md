@@ -1043,9 +1043,12 @@ Implementation evidence as of 2026-08-16:
   extension result, closes DevTools, then flushes the Profile and closes the
   inspected Alloy child. It creates no direct extension-page navigation or
   synthetic DevTools API.
-- The full native CEF suite passed on macOS arm64 with the pinned stock
-  runtime and the checksum-pinned custom runtime. Windows x64 and Linux x64
-  hosted runs remain required before the capability can leave `UNPUBLISHED`.
+- The full native CEF suite passed on macOS arm64 with the pinned stock runtime
+  and the checksum-pinned custom runtime. GitHub Actions run `31955852372`
+  passed the same positive stock-CEF sequence on hosted macOS arm64, Windows
+  x64, and Linux x64. The checksum-pinned custom runtime has local macOS arm64
+  evidence; hosted custom-runtime coverage remains separate until published
+  artifacts exist.
 - The repository-level Gradle `check` passed on macOS arm64 against the pinned
   stock runtime: all 41 actionable tasks completed, the native suite passed
   10/10, and the final real MV3 conformance run completed in 303.11 seconds.

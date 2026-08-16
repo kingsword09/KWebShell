@@ -199,7 +199,8 @@ void BrowserApp::CreateBrowserForProfile() {
       this, native_window_.get(), recorder_, configuration_.self_test,
       configuration_.IsProfileSelfTest(), configuration_.IsMv3CoreSelfTest(),
       configuration_.mv3_core_self_test_mode ==
-          Mv3CoreSelfTestMode::kContextMenu);
+          Mv3CoreSelfTestMode::kContextMenu,
+      configuration_.mv3_core_self_test_mode == Mv3CoreSelfTestMode::kDevTools);
 
   std::string url = configuration_.url;
   if (configuration_.self_test) {
@@ -371,6 +372,11 @@ void BrowserApp::OnMv3CoreSelfTestPagePassed(const std::string &result) {
     MaybeBeginMv3ContextMenuSelfTest();
     return;
   }
+  if (configuration_.mv3_core_self_test_mode ==
+      Mv3CoreSelfTestMode::kDevTools) {
+    MaybeBeginMv3DevToolsSelfTest();
+    return;
+  }
   if (Mv3CoreExtensionPageSelfTestForMode(
           configuration_.mv3_core_self_test_mode) != nullptr) {
     BeginMv3ExtensionPageNavigation();
@@ -416,6 +422,7 @@ void BrowserApp::OnMv3CoreSelfTestPageLoaded(const std::string &url) {
   }
   mv3_core_self_test_page_loaded_ = true;
   MaybeBeginMv3ContextMenuSelfTest();
+  MaybeBeginMv3DevToolsSelfTest();
   MaybeCompleteMv3CoreSelfTest();
 }
 
@@ -441,6 +448,27 @@ void BrowserApp::MaybeBeginMv3ContextMenuSelfTest() {
     OnFatalBrowserError("native.mv3.context-menu-input-rejected",
                         {{"x", std::to_string(Mv3CoreContextMenuX())},
                          {"y", std::to_string(Mv3CoreContextMenuY())}});
+  }
+}
+
+void BrowserApp::MaybeBeginMv3DevToolsSelfTest() {
+  CEF_REQUIRE_UI_THREAD();
+  if (configuration_.mv3_core_self_test_mode !=
+          Mv3CoreSelfTestMode::kDevTools ||
+      !mv3_core_self_test_page_passed_ || !mv3_core_self_test_page_loaded_ ||
+      mv3_devtools_open_requested_ || close_requested_ ||
+      fatal_error_reported_) {
+    return;
+  }
+  if (!client_) {
+    OnFatalBrowserError("native.mv3.devtools-client-missing", {});
+    return;
+  }
+  mv3_devtools_open_requested_ = true;
+  recorder_->Record("mv3_devtools_open_requested",
+                    {{"inspected_url", Mv3CoreSelfTestUrl()}});
+  if (!client_->OpenMv3DevToolsSelfTest()) {
+    OnFatalBrowserError("native.mv3.devtools-open-rejected", {});
   }
 }
 
@@ -562,6 +590,84 @@ void BrowserApp::OnMv3ContextMenuPagePassed(const std::string &result) {
   MaybeCompleteMv3CoreSelfTest();
 }
 
+void BrowserApp::OnMv3DevToolsOpened() {
+  CEF_REQUIRE_UI_THREAD();
+  if (configuration_.mv3_core_self_test_mode !=
+          Mv3CoreSelfTestMode::kDevTools ||
+      !mv3_devtools_open_requested_ || mv3_devtools_opened_ ||
+      mv3_devtools_close_requested_ || mv3_devtools_closed_) {
+    OnFatalBrowserError("native.mv3.devtools-open-state-invalid", {});
+    return;
+  }
+  mv3_devtools_opened_ = true;
+  recorder_->Record("mv3_devtools_opened",
+                    {{"popup", "true"},
+                     {"runtime_style", "chrome"},
+                     {"windowless", "false"},
+                     {"native_window", "present"},
+                     {"profile_match", "true"},
+                     {"inspected_url", Mv3CoreSelfTestUrl()}});
+}
+
+void BrowserApp::OnMv3DevToolsFrontendLoaded(const std::string &url,
+                                             int http_status_code) {
+  CEF_REQUIRE_UI_THREAD();
+  if (configuration_.mv3_core_self_test_mode !=
+          Mv3CoreSelfTestMode::kDevTools ||
+      !mv3_devtools_opened_ || mv3_devtools_frontend_loaded_ ||
+      mv3_devtools_page_passed_ || mv3_devtools_close_requested_) {
+    OnFatalBrowserError("native.mv3.devtools-frontend-state-invalid",
+                        {{"url", url}});
+    return;
+  }
+  mv3_devtools_frontend_loaded_ = true;
+  recorder_->Record(
+      "mv3_devtools_frontend_loaded",
+      {{"url", url}, {"http_status", std::to_string(http_status_code)}});
+}
+
+void BrowserApp::OnMv3DevToolsPagePassed(const std::string &result) {
+  CEF_REQUIRE_UI_THREAD();
+  if (configuration_.mv3_core_self_test_mode !=
+          Mv3CoreSelfTestMode::kDevTools ||
+      !mv3_devtools_opened_ || !mv3_devtools_frontend_loaded_ ||
+      mv3_devtools_page_passed_ || mv3_devtools_close_requested_ ||
+      mv3_devtools_closed_) {
+    OnFatalBrowserError("native.mv3.devtools-page-state-invalid",
+                        {{"result", result}});
+    return;
+  }
+  const std::string expected = ExpectedMv3CoreDevToolsResult();
+  if (result != expected) {
+    OnFatalBrowserError("native.mv3.devtools-page-result-invalid",
+                        {{"expected", expected}, {"actual", result}});
+    return;
+  }
+  mv3_devtools_page_passed_ = true;
+  recorder_->Record("mv3_devtools_page_passed", {{"result", result}});
+  mv3_devtools_close_requested_ = true;
+  recorder_->Record("mv3_devtools_close_requested");
+  if (!client_ || !client_->CloseMv3DevToolsSelfTest()) {
+    OnFatalBrowserError("native.mv3.devtools-close-rejected", {});
+  }
+}
+
+void BrowserApp::OnMv3DevToolsClosed() {
+  CEF_REQUIRE_UI_THREAD();
+  if (configuration_.mv3_core_self_test_mode !=
+          Mv3CoreSelfTestMode::kDevTools ||
+      !mv3_devtools_open_requested_ || !mv3_devtools_opened_ ||
+      !mv3_devtools_frontend_loaded_ || !mv3_devtools_page_passed_ ||
+      !mv3_devtools_close_requested_ || mv3_devtools_closed_) {
+    OnFatalBrowserError("native.mv3.devtools-close-state-invalid", {});
+    return;
+  }
+  mv3_devtools_opened_ = false;
+  mv3_devtools_closed_ = true;
+  recorder_->Record("mv3_devtools_closed");
+  MaybeCompleteMv3CoreSelfTest();
+}
+
 void BrowserApp::OnMv3ExtensionPagePassed(const std::string &result) {
   CEF_REQUIRE_UI_THREAD();
   const Mv3CoreExtensionPageSelfTest *extension_page =
@@ -614,6 +720,16 @@ void BrowserApp::MaybeCompleteMv3CoreSelfTest() {
         !mv3_context_menu_selection_dispatched_ ||
         !mv3_context_menu_command_observed_ || !mv3_context_menu_dismissed_ ||
         !mv3_context_menu_page_passed_) {
+      return;
+    }
+    RequestProfileFlushAndClose();
+    return;
+  }
+  if (configuration_.mv3_core_self_test_mode ==
+      Mv3CoreSelfTestMode::kDevTools) {
+    if (!mv3_devtools_open_requested_ || mv3_devtools_opened_ ||
+        !mv3_devtools_frontend_loaded_ || !mv3_devtools_page_passed_ ||
+        !mv3_devtools_close_requested_ || !mv3_devtools_closed_) {
       return;
     }
     RequestProfileFlushAndClose();
@@ -782,6 +898,16 @@ void BrowserApp::OnSelfTestTimeout() {
         mv3_context_menu_dismissed_ ? "completed" : "pending"},
        {"mv3_context_menu_page",
         mv3_context_menu_page_passed_ ? "passed" : "pending"},
+       {"mv3_devtools_open_request",
+        mv3_devtools_open_requested_ ? "requested" : "pending"},
+       {"mv3_devtools_window",
+        mv3_devtools_opened_ ? "opened"
+                             : (mv3_devtools_closed_ ? "closed" : "pending")},
+       {"mv3_devtools_frontend",
+        mv3_devtools_frontend_loaded_ ? "loaded" : "pending"},
+       {"mv3_devtools_page", mv3_devtools_page_passed_ ? "passed" : "pending"},
+       {"mv3_devtools_close_request",
+        mv3_devtools_close_requested_ ? "requested" : "pending"},
        {"mv3_extension_page_surface",
         extension_page ? extension_page->surface : "none"},
        {"mv3_extension_page_navigation",

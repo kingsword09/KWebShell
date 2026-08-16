@@ -25,6 +25,8 @@ set(mv3_context_menu_x 120)
 set(mv3_context_menu_y 120)
 set(mv3_context_menu_result
   "KWEB_MV3_CONTEXT_MENU_PASS|id=${mv3_extension_id}|menu=kwebshell-mv3-context-menu|clickCount=1|page=https%3A%2F%2Fkwebshell.test%2Fmv3-core-self-test")
+set(mv3_devtools_result
+  "KWEB_MV3_DEVTOOLS_PASS|id=${mv3_extension_id}|origin=chrome-extension%3A%2F%2F${mv3_extension_id}|page=%2Fdevtools.html|panel=KWebShell%20MV3%20panel|panelPage=devtools-panel.html|inspected=kwebshell-devtools-inspected|eval=true|created=true")
 
 function(expected_mv3_result output mode)
   if(mode STREQUAL "restart")
@@ -306,8 +308,12 @@ function(validate_mv3_run event_log expected_mode)
   set(extension_page_navigation_seen FALSE)
   set(extension_page_load_seen FALSE)
   set(context_menu_mode FALSE)
+  set(devtools_mode FALSE)
   if(expected_mode STREQUAL "context-menu")
     set(context_menu_mode TRUE)
+  endif()
+  if(expected_mode STREQUAL "devtools")
+    set(devtools_mode TRUE)
   endif()
   set(required_events
     browser_process_start
@@ -349,6 +355,16 @@ function(validate_mv3_run event_log expected_mode)
       mv3_context_menu_command_observed
       mv3_context_menu_dismissed
       mv3_context_menu_page_passed
+    )
+  endif()
+  if(devtools_mode)
+    list(APPEND required_events
+      mv3_devtools_open_requested
+      mv3_devtools_opened
+      mv3_devtools_frontend_loaded
+      mv3_devtools_page_passed
+      mv3_devtools_close_requested
+      mv3_devtools_closed
     )
   endif()
 
@@ -564,6 +580,64 @@ function(validate_mv3_run event_log expected_mode)
         message(FATAL_ERROR
           "MV3 context-menu extension result was not exact: ${event_line}")
       endif()
+    elseif(event_name STREQUAL "mv3_devtools_open_requested")
+      if(NOT devtools_mode)
+        message(FATAL_ERROR
+          "MV3 DevTools open request was unexpected: ${event_line}")
+      endif()
+      kweb_read_json_member(devtools_inspected_url "${event_line}" inspected_url)
+      if(NOT devtools_inspected_url STREQUAL "${mv3_test_url}")
+        message(FATAL_ERROR
+          "MV3 DevTools opened for the wrong inspected URL: ${event_line}")
+      endif()
+    elseif(event_name STREQUAL "mv3_devtools_opened")
+      if(NOT devtools_mode)
+        message(FATAL_ERROR
+          "MV3 DevTools open event was unexpected: ${event_line}")
+      endif()
+      kweb_read_json_member(devtools_popup "${event_line}" popup)
+      kweb_read_json_member(devtools_runtime_style "${event_line}" runtime_style)
+      kweb_read_json_member(devtools_windowless "${event_line}" windowless)
+      kweb_read_json_member(devtools_native_window "${event_line}" native_window)
+      kweb_read_json_member(devtools_profile_match "${event_line}" profile_match)
+      kweb_read_json_member(devtools_inspected_url "${event_line}" inspected_url)
+      if(NOT devtools_popup STREQUAL "true" OR
+         NOT devtools_runtime_style STREQUAL "chrome" OR
+         NOT devtools_windowless STREQUAL "false" OR
+         NOT devtools_native_window STREQUAL "present" OR
+         NOT devtools_profile_match STREQUAL "true" OR
+         NOT devtools_inspected_url STREQUAL "${mv3_test_url}")
+        message(FATAL_ERROR
+          "MV3 DevTools window contract was not exact: ${event_line}")
+      endif()
+    elseif(event_name STREQUAL "mv3_devtools_frontend_loaded")
+      if(NOT devtools_mode)
+        message(FATAL_ERROR
+          "MV3 DevTools frontend load was unexpected: ${event_line}")
+      endif()
+      kweb_read_json_member(devtools_frontend_url "${event_line}" url)
+      kweb_read_json_member(devtools_frontend_status "${event_line}" http_status)
+      if(NOT devtools_frontend_url MATCHES "^devtools://" OR
+         NOT devtools_frontend_status STREQUAL "200")
+        message(FATAL_ERROR
+          "MV3 DevTools frontend load was not real: ${event_line}")
+      endif()
+    elseif(event_name STREQUAL "mv3_devtools_page_passed")
+      if(NOT devtools_mode)
+        message(FATAL_ERROR
+          "MV3 DevTools page result was unexpected: ${event_line}")
+      endif()
+      kweb_read_json_member(devtools_result "${event_line}" result)
+      if(NOT devtools_result STREQUAL "${mv3_devtools_result}")
+        message(FATAL_ERROR
+          "MV3 DevTools extension result was not exact: ${event_line}")
+      endif()
+    elseif(event_name STREQUAL "mv3_devtools_close_requested" OR
+           event_name STREQUAL "mv3_devtools_closed")
+      if(NOT devtools_mode)
+        message(FATAL_ERROR
+          "MV3 DevTools close event was unexpected: ${event_line}")
+      endif()
     elseif(event_name STREQUAL "cef_shutdown")
       kweb_read_json_member(exit_code "${event_line}" exit_code)
       if(NOT exit_code STREQUAL "0")
@@ -638,6 +712,16 @@ function(validate_mv3_run event_log expected_mode)
     assert_event_before(mv3_context_menu_page_passed
       profile_cookie_flush_started)
   endif()
+  if(devtools_mode)
+    assert_event_before(mv3_core_self_test_passed
+      mv3_devtools_open_requested)
+    assert_event_before(mv3_devtools_open_requested mv3_devtools_opened)
+    assert_event_before(mv3_devtools_opened mv3_devtools_frontend_loaded)
+    assert_event_before(mv3_devtools_frontend_loaded mv3_devtools_page_passed)
+    assert_event_before(mv3_devtools_page_passed mv3_devtools_close_requested)
+    assert_event_before(mv3_devtools_close_requested mv3_devtools_closed)
+    assert_event_before(mv3_devtools_closed profile_cookie_flush_started)
+  endif()
   assert_event_before(mv3_core_self_test_passed profile_cookie_flush_started)
   assert_event_before(profile_cookie_flush_completed browser_close_accepted)
   assert_event_before(browser_destroyed cef_quit_requested)
@@ -674,6 +758,7 @@ run_mv3(restart alpha mv3-restart.jsonl TRUE)
 run_mv3(isolated beta mv3-isolated.jsonl TRUE)
 run_mv3(options options mv3-options.jsonl FALSE)
 run_mv3(action-popup action-popup mv3-action-popup.jsonl FALSE)
+run_mv3(devtools devtools mv3-devtools.jsonl FALSE)
 if(EXPECT_CUSTOM_EXTENSION_RUNTIME)
   run_mv3(context-menu context-menu mv3-context-menu.jsonl FALSE)
 else()
@@ -682,8 +767,8 @@ endif()
 
 if(EXPECT_CUSTOM_EXTENSION_RUNTIME)
   message(STATUS
-    "Custom Alloy MV3 conformance passed on ${PLATFORM}: content script, runtime messaging, Service Worker idle restart, storage persistence, Profile isolation, options-page navigation, action-popup navigation, and Chromium context-menu command dispatch.")
+    "Custom Alloy MV3 conformance passed on ${PLATFORM}: content script, runtime messaging, Service Worker idle restart, storage persistence, Profile isolation, options-page navigation, action-popup navigation, DevTools extension page/panel dispatch, and Chromium context-menu command dispatch.")
 else()
   message(STATUS
-    "Stock Alloy MV3 conformance passed on ${PLATFORM}: published core, options, and action-popup behavior plus the strict unpublished context-menu capability gate.")
+    "Stock Alloy MV3 conformance passed on ${PLATFORM}: published core, options, action-popup, and DevTools extension behavior plus the strict unpublished context-menu capability gate.")
 endif()

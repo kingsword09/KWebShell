@@ -6,9 +6,16 @@ const fail = (message) => {
   document.title = `KWEB_MV3_CORE_FAIL|${message}`;
 };
 
+const failDevTools = (message) => {
+  document.title = `KWEB_MV3_DEVTOOLS_FAIL|${message}`;
+};
+
 const actionTitleFor = (messageCount) =>
   `KWebShell MV3 action count: ${messageCount}`;
 const expectedContextMenuId = "kwebshell-mv3-context-menu";
+const expectedDevToolsPanelTitle = "KWebShell MV3 panel";
+const expectedDevToolsPanelPage = "devtools-panel.html";
+const expectedDevToolsInspectedValue = "kwebshell-devtools-inspected";
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local") {
@@ -16,6 +23,35 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   }
   if (changes.contextMenuFailure?.newValue) {
     fail(`context-menu-worker:${changes.contextMenuFailure.newValue}`);
+    return;
+  }
+  if (changes.devtoolsFailure?.newValue) {
+    failDevTools(`devtools-page:${changes.devtoolsFailure.newValue}`);
+    return;
+  }
+  const devtools = changes.devtoolsConformance?.newValue;
+  if (devtools) {
+    const expectedOrigin = `chrome-extension://${chrome.runtime.id}`;
+    if (
+      devtools.extensionId !== chrome.runtime.id ||
+      devtools.origin !== expectedOrigin ||
+      devtools.page !== "/devtools.html" ||
+      devtools.panelTitle !== expectedDevToolsPanelTitle ||
+      devtools.panelPage !== expectedDevToolsPanelPage ||
+      devtools.inspectedValue !== expectedDevToolsInspectedValue ||
+      devtools.evalCompleted !== true ||
+      devtools.panelCreated !== true
+    ) {
+      failDevTools(`devtools-result:${JSON.stringify(devtools)}`);
+      return;
+    }
+    document.title = `KWEB_MV3_DEVTOOLS_PASS|id=${chrome.runtime.id}` +
+      `|origin=${encodeURIComponent(devtools.origin)}` +
+      `|page=${encodeURIComponent(devtools.page)}` +
+      `|panel=${encodeURIComponent(devtools.panelTitle)}` +
+      `|panelPage=${encodeURIComponent(devtools.panelPage)}` +
+      `|inspected=${encodeURIComponent(devtools.inspectedValue)}` +
+      "|eval=true|created=true";
     return;
   }
   const click = changes.contextMenuClick?.newValue;

@@ -282,6 +282,7 @@ set(KWEB_HOST_COMMON_SOURCES
   src/bridge_renderer_app.cc
   src/browser_app.cc
   src/browser_client.cc
+  ${KWEB_BROWSER_SURFACE_SOURCE}
   src/host_main.cc
   src/mv3_core_test_page.cc
   src/profile_test_page.cc

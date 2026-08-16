@@ -176,6 +176,10 @@ public:
     }
   }
 
+  uintptr_t GetRootWindowHandle() const override {
+    return static_cast<uintptr_t>(parent_window_);
+  }
+
   void RunNativeInputSelfTest() override {
     CEF_REQUIRE_UI_THREAD();
     if (self_test_started_ || allow_window_close_) {

@@ -247,6 +247,18 @@ void TestMv3CoreSelfTestConfigurationIsStrict() {
             context_menu_configuration->mv3_core_self_test_mode ==
                 kwebshell::Mv3CoreSelfTestMode::kContextMenu,
         "MV3 context-menu self-test mode should be explicit");
+
+  const auto devtools_configuration = kwebshell::HostConfiguration::Parse(
+      {RootCacheArgument(), ProfileArgument(),
+       "--kweb-mv3-core-self-test=devtools",
+       "--kweb-mv3-extension-path=" + extension_path},
+      &error);
+  Check(devtools_configuration.has_value(),
+        "MV3 DevTools self-test configuration should parse: " + error);
+  Check(devtools_configuration &&
+            devtools_configuration->mv3_core_self_test_mode ==
+                kwebshell::Mv3CoreSelfTestMode::kDevTools,
+        "MV3 DevTools self-test mode should be explicit");
 }
 
 void WriteMv3CoreFixtureFiles(const std::filesystem::path &root) {
@@ -257,6 +269,11 @@ void WriteMv3CoreFixtureFiles(const std::filesystem::path &root) {
     stream << "fixture";
   }
   for (const char *name : {"popup.html", "popup.js"}) {
+    std::ofstream stream(root / name);
+    stream << "fixture";
+  }
+  for (const char *name : {"devtools.html", "devtools.js",
+                           "devtools-panel.html", "devtools-panel.js"}) {
     std::ofstream stream(root / name);
     stream << "fixture";
   }
@@ -296,6 +313,16 @@ void TestMv3CoreFixtureValidationIsStrict() {
         "MV3 core fixture missing popup.html should fail");
   Check(error.find("popup.html") != std::string::npos,
         "missing MV3 popup fixture file should be identified");
+
+  const std::filesystem::path devtools_missing_fixture = test_root / "devtools";
+  WriteMv3CoreFixtureFiles(devtools_missing_fixture);
+  std::filesystem::remove(devtools_missing_fixture / "devtools.html",
+                          filesystem_error);
+  Check(!filesystem_error, "MV3 fixture DevTools page should be removable");
+  Check(!kwebshell::ValidateMv3CoreTestFixture(devtools_missing_fixture, error),
+        "MV3 core fixture missing devtools.html should fail");
+  Check(error.find("devtools.html") != std::string::npos,
+        "missing MV3 DevTools fixture file should be identified");
 
   const std::filesystem::path comma_fixture = test_root / "invalid,fixture";
   WriteMv3CoreFixtureFiles(comma_fixture);

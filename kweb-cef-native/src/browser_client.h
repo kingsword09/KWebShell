@@ -21,7 +21,7 @@ public:
   BrowserClient(BrowserApp *app, NativeWindow *native_window,
                 std::shared_ptr<EventRecorder> recorder, bool native_self_test,
                 bool profile_self_test, bool mv3_core_self_test,
-                bool mv3_context_menu_self_test);
+                bool mv3_context_menu_self_test, bool mv3_devtools_self_test);
 
   CefRefPtr<CefContextMenuHandler> GetContextMenuHandler() override;
   CefRefPtr<CefDisplayHandler> GetDisplayHandler() override;
@@ -74,6 +74,20 @@ public:
 
   bool NavigateSelfTestMainFrame(const std::string &url);
   bool TriggerMv3ContextMenuSelfTest();
+  bool OpenMv3DevToolsSelfTest();
+  bool CloseMv3DevToolsSelfTest();
+  void OnMv3DevToolsCreated(CefRefPtr<CefClient> client,
+                            CefRefPtr<CefBrowser> browser);
+  void OnMv3DevToolsLoadEnd(CefRefPtr<CefClient> client,
+                            CefRefPtr<CefFrame> frame, int http_status_code);
+  void OnMv3DevToolsLoadError(CefRefPtr<CefClient> client,
+                              CefRefPtr<CefFrame> frame, ErrorCode error_code,
+                              const CefString &error_text,
+                              const CefString &failed_url);
+  void OnMv3DevToolsRendererTerminated(CefRefPtr<CefClient> client,
+                                       TerminationStatus status, int error_code,
+                                       const CefString &error_string);
+  void OnMv3DevToolsClosed(CefRefPtr<CefClient> client);
   void CloseBrowser(bool force_close);
 
 private:
@@ -84,7 +98,10 @@ private:
   const bool profile_self_test_;
   const bool mv3_core_self_test_;
   const bool mv3_context_menu_self_test_;
+  const bool mv3_devtools_self_test_;
   CefRefPtr<CefBrowser> browser_;
+  CefClient *mv3_devtools_client_ = nullptr;
+  CefRefPtr<CefBrowser> mv3_devtools_browser_;
   bool native_self_test_started_ = false;
   bool mv3_context_menu_input_sent_ = false;
   bool mv3_context_menu_model_seen_ = false;
@@ -93,6 +110,9 @@ private:
   bool mv3_context_menu_command_seen_ = false;
   bool mv3_context_menu_dismissed_ = false;
   int mv3_context_menu_command_id_ = -1;
+  bool mv3_devtools_open_requested_ = false;
+  bool mv3_devtools_opened_ = false;
+  bool mv3_devtools_loaded_ = false;
 #if defined(OS_WIN) || defined(OS_LINUX)
   bool root_screen_rect_recorded_ = false;
 #endif

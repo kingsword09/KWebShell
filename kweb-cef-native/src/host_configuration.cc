@@ -122,6 +122,9 @@ ParseMv3CoreSelfTestMode(std::string_view value) {
   if (value == "context-menu") {
     return Mv3CoreSelfTestMode::kContextMenu;
   }
+  if (value == "devtools") {
+    return Mv3CoreSelfTestMode::kDevTools;
+  }
   return std::nullopt;
 }
 
@@ -214,7 +217,8 @@ HostConfiguration::Parse(const std::vector<std::string> &arguments,
           ValueAfter(argument, kMv3CoreSelfTestPrefix));
       if (!mode) {
         *error = "--kweb-mv3-core-self-test must be 'initial', 'restart', "
-                 "'isolated', 'options', 'action-popup', or 'context-menu'.";
+                 "'isolated', 'options', 'action-popup', 'context-menu', or "
+                 "'devtools'.";
         return std::nullopt;
       }
       configuration.mv3_core_self_test_mode = *mode;

@@ -1,9 +1,15 @@
 #include "browser_client.h"
 
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "browser_surface.h"
+#include "include/base/cef_bind.h"
+#include "include/base/cef_callback.h"
 #include "include/cef_parser.h"
+#include "include/cef_request_context.h"
+#include "include/wrapper/cef_closure_task.h"
 #include "include/wrapper/cef_helpers.h"
 #include "mv3_core_test_page.h"
 
@@ -44,18 +50,84 @@ std::string DisplayUrl(const CefString &url) {
   return value;
 }
 
+class Mv3DevToolsClient final : public CefClient,
+                                public CefLifeSpanHandler,
+                                public CefLoadHandler,
+                                public CefRequestHandler {
+public:
+  explicit Mv3DevToolsClient(CefRefPtr<BrowserClient> owner)
+      : owner_(std::move(owner)) {}
+
+  CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
+  CefRefPtr<CefLoadHandler> GetLoadHandler() override { return this; }
+  CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
+
+  void OnAfterCreated(CefRefPtr<CefBrowser> browser) override {
+    CEF_REQUIRE_UI_THREAD();
+    CefRefPtr<CefClient> client(this);
+    if (!CefPostTask(TID_UI, base::BindOnce(
+                                 [](CefRefPtr<BrowserClient> owner,
+                                    CefRefPtr<CefClient> callback_client,
+                                    CefRefPtr<CefBrowser> created) {
+                                   owner->OnMv3DevToolsCreated(callback_client,
+                                                               created);
+                                 },
+                                 owner_, client, browser))) {
+      owner_->OnMv3DevToolsCreated(client, nullptr);
+      if (browser) {
+        browser->GetHost()->CloseBrowser(true);
+      }
+    }
+  }
+
+  void OnBeforeClose(CefRefPtr<CefBrowser> browser) override {
+    CEF_REQUIRE_UI_THREAD();
+    owner_->OnMv3DevToolsClosed(CefRefPtr<CefClient>(this));
+  }
+
+  void OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+                 int http_status_code) override {
+    CEF_REQUIRE_UI_THREAD();
+    owner_->OnMv3DevToolsLoadEnd(CefRefPtr<CefClient>(this), frame,
+                                 http_status_code);
+  }
+
+  void OnLoadError(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+                   ErrorCode error_code, const CefString &error_text,
+                   const CefString &failed_url) override {
+    CEF_REQUIRE_UI_THREAD();
+    owner_->OnMv3DevToolsLoadError(CefRefPtr<CefClient>(this), frame,
+                                   error_code, error_text, failed_url);
+  }
+
+  void OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser,
+                                 TerminationStatus status, int error_code,
+                                 const CefString &error_string) override {
+    CEF_REQUIRE_UI_THREAD();
+    owner_->OnMv3DevToolsRendererTerminated(CefRefPtr<CefClient>(this), status,
+                                            error_code, error_string);
+  }
+
+private:
+  const CefRefPtr<BrowserClient> owner_;
+
+  IMPLEMENT_REFCOUNTING(Mv3DevToolsClient);
+};
+
 } // namespace
 
 BrowserClient::BrowserClient(BrowserApp *app, NativeWindow *native_window,
                              std::shared_ptr<EventRecorder> recorder,
                              bool native_self_test, bool profile_self_test,
                              bool mv3_core_self_test,
-                             bool mv3_context_menu_self_test)
+                             bool mv3_context_menu_self_test,
+                             bool mv3_devtools_self_test)
     : app_(app), native_window_(native_window), recorder_(std::move(recorder)),
       native_self_test_(native_self_test),
       profile_self_test_(profile_self_test),
       mv3_core_self_test_(mv3_core_self_test),
-      mv3_context_menu_self_test_(mv3_context_menu_self_test) {}
+      mv3_context_menu_self_test_(mv3_context_menu_self_test),
+      mv3_devtools_self_test_(mv3_devtools_self_test) {}
 
 CefRefPtr<CefContextMenuHandler> BrowserClient::GetContextMenuHandler() {
   return mv3_context_menu_self_test_ ? this : nullptr;
@@ -210,7 +282,12 @@ void BrowserClient::OnTitleChange(CefRefPtr<CefBrowser> browser,
     return;
   }
   if (mv3_core_self_test_) {
-    if (title_string.starts_with("KWEB_MV3_CONTEXT_MENU_PASS|")) {
+    if (title_string.starts_with("KWEB_MV3_DEVTOOLS_PASS|")) {
+      app_->OnMv3DevToolsPagePassed(title_string);
+    } else if (title_string.starts_with("KWEB_MV3_DEVTOOLS_FAIL|")) {
+      app_->OnFatalBrowserError("native.mv3.devtools-page-self-test-failed",
+                                {{"result", title_string}});
+    } else if (title_string.starts_with("KWEB_MV3_CONTEXT_MENU_PASS|")) {
       app_->OnMv3ContextMenuPagePassed(title_string);
     } else if (title_string.starts_with("KWEB_MV3_CONTEXT_MENU_FAIL|")) {
       app_->OnFatalBrowserError("native.mv3.context-menu-self-test-failed",
@@ -423,8 +500,158 @@ bool BrowserClient::TriggerMv3ContextMenuSelfTest() {
   return true;
 }
 
+bool BrowserClient::OpenMv3DevToolsSelfTest() {
+  CEF_REQUIRE_UI_THREAD();
+  const uintptr_t root_window = native_window_->GetRootWindowHandle();
+  if (!mv3_devtools_self_test_ || !browser_ || mv3_devtools_open_requested_ ||
+      root_window == 0) {
+    return false;
+  }
+  mv3_devtools_open_requested_ = true;
+  CefRefPtr<CefClient> client =
+      new Mv3DevToolsClient(CefRefPtr<BrowserClient>(this));
+  mv3_devtools_client_ = client.get();
+  CefWindowInfo window_info;
+  ConfigureDevToolsWindow(window_info, root_window, 1200, 800);
+  CefBrowserSettings settings;
+  settings.background_color = CefColorSetARGB(255, 255, 255, 255);
+  browser_->GetHost()->ShowDevTools(window_info, client, settings, CefPoint());
+  return true;
+}
+
+bool BrowserClient::CloseMv3DevToolsSelfTest() {
+  CEF_REQUIRE_UI_THREAD();
+  if (!mv3_devtools_self_test_ || !mv3_devtools_open_requested_ ||
+      !mv3_devtools_opened_ || !browser_ ||
+      !browser_->GetHost()->HasDevTools()) {
+    return false;
+  }
+  browser_->GetHost()->CloseDevTools();
+  return true;
+}
+
+void BrowserClient::OnMv3DevToolsCreated(CefRefPtr<CefClient> client,
+                                         CefRefPtr<CefBrowser> browser) {
+  CEF_REQUIRE_UI_THREAD();
+  if (!mv3_devtools_self_test_ || !mv3_devtools_open_requested_ ||
+      mv3_devtools_opened_ || !client || mv3_devtools_client_ != client.get()) {
+    if (browser) {
+      browser->GetHost()->CloseBrowser(true);
+    }
+    app_->OnFatalBrowserError("native.mv3.devtools-create-state-invalid", {});
+    return;
+  }
+
+  const bool is_popup = browser && browser->IsPopup();
+  const cef_runtime_style_t runtime_style =
+      browser ? browser->GetHost()->GetRuntimeStyle()
+              : CEF_RUNTIME_STYLE_DEFAULT;
+  const bool windowless =
+      browser && browser->GetHost()->IsWindowRenderingDisabled();
+  const bool has_window =
+      browser && browser->GetHost()->GetWindowHandle() != kNullWindowHandle;
+  CefRefPtr<CefRequestContext> devtools_context =
+      browser ? browser->GetHost()->GetRequestContext() : nullptr;
+  CefRefPtr<CefRequestContext> inspected_context =
+      browser_ ? browser_->GetHost()->GetRequestContext() : nullptr;
+  const bool profile_matches = devtools_context && inspected_context &&
+                               devtools_context->IsSame(inspected_context);
+  if (!is_popup || runtime_style != CEF_RUNTIME_STYLE_CHROME || windowless ||
+      !has_window || !profile_matches) {
+    app_->OnFatalBrowserError(
+        "native.mv3.devtools-browser-contract-invalid",
+        {{"popup", is_popup ? "true" : "false"},
+         {"runtime_style", std::to_string(runtime_style)},
+         {"windowless", windowless ? "true" : "false"},
+         {"native_window", has_window ? "present" : "missing"},
+         {"profile_match", profile_matches ? "true" : "false"}});
+    if (browser) {
+      browser->GetHost()->CloseBrowser(true);
+    }
+    return;
+  }
+
+  mv3_devtools_browser_ = browser;
+  mv3_devtools_opened_ = true;
+  app_->OnMv3DevToolsOpened();
+}
+
+void BrowserClient::OnMv3DevToolsLoadEnd(CefRefPtr<CefClient> client,
+                                         CefRefPtr<CefFrame> frame,
+                                         int http_status_code) {
+  CEF_REQUIRE_UI_THREAD();
+  if (!frame || !frame->IsMain()) {
+    return;
+  }
+  const std::string url = frame->GetURL().ToString();
+  if (!mv3_devtools_self_test_ || !mv3_devtools_opened_ ||
+      mv3_devtools_loaded_ || !client || mv3_devtools_client_ != client.get() ||
+      !url.starts_with("devtools://") || http_status_code != 200) {
+    app_->OnFatalBrowserError(
+        "native.mv3.devtools-frontend-load-invalid",
+        {{"url", url},
+         {"http_status", std::to_string(http_status_code)},
+         {"opened", mv3_devtools_opened_ ? "true" : "false"},
+         {"duplicate", mv3_devtools_loaded_ ? "true" : "false"}});
+    return;
+  }
+  mv3_devtools_loaded_ = true;
+  app_->OnMv3DevToolsFrontendLoaded(url, http_status_code);
+}
+
+void BrowserClient::OnMv3DevToolsLoadError(CefRefPtr<CefClient> client,
+                                           CefRefPtr<CefFrame> frame,
+                                           ErrorCode error_code,
+                                           const CefString &error_text,
+                                           const CefString &failed_url) {
+  CEF_REQUIRE_UI_THREAD();
+  if (!frame || !frame->IsMain() || error_code == ERR_ABORTED) {
+    return;
+  }
+  app_->OnFatalBrowserError(
+      "native.mv3.devtools-frontend-load-failed",
+      {{"error_code", std::to_string(error_code)},
+       {"error", error_text.ToString()},
+       {"url", failed_url.ToString()},
+       {"client_match",
+        client && mv3_devtools_client_ == client.get() ? "true" : "false"}});
+}
+
+void BrowserClient::OnMv3DevToolsRendererTerminated(
+    CefRefPtr<CefClient> client, TerminationStatus status, int error_code,
+    const CefString &error_string) {
+  CEF_REQUIRE_UI_THREAD();
+  app_->OnFatalBrowserError(
+      "native.mv3.devtools-renderer-terminated",
+      {{"status", std::to_string(status)},
+       {"error_code", std::to_string(error_code)},
+       {"error", error_string.ToString()},
+       {"client_match",
+        client && mv3_devtools_client_ == client.get() ? "true" : "false"}});
+}
+
+void BrowserClient::OnMv3DevToolsClosed(CefRefPtr<CefClient> client) {
+  CEF_REQUIRE_UI_THREAD();
+  const bool valid = mv3_devtools_self_test_ && mv3_devtools_open_requested_ &&
+                     mv3_devtools_opened_ && client &&
+                     mv3_devtools_client_ == client.get();
+  mv3_devtools_browser_ = nullptr;
+  mv3_devtools_client_ = nullptr;
+  mv3_devtools_open_requested_ = false;
+  mv3_devtools_opened_ = false;
+  mv3_devtools_loaded_ = false;
+  if (!valid) {
+    app_->OnFatalBrowserError("native.mv3.devtools-close-state-invalid", {});
+    return;
+  }
+  app_->OnMv3DevToolsClosed();
+}
+
 void BrowserClient::CloseBrowser(bool force_close) {
   CEF_REQUIRE_UI_THREAD();
+  if (mv3_devtools_browser_) {
+    mv3_devtools_browser_->GetHost()->CloseBrowser(true);
+  }
   if (browser_) {
     browser_->GetHost()->CloseBrowser(force_close);
   }

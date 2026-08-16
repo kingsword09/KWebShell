@@ -213,6 +213,10 @@ public:
     }
   }
 
+  uintptr_t GetRootWindowHandle() const override {
+    return reinterpret_cast<uintptr_t>((__bridge void *)window_);
+  }
+
   void OnBackingScaleFactorChanged() {
     CEF_REQUIRE_UI_THREAD();
     if (window_ == nil) {

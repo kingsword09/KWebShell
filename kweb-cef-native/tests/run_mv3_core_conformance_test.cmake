@@ -10,6 +10,8 @@ endif()
 
 set(mv3_test_url https://kwebshell.test/mv3-core-self-test)
 set(mv3_extension_id dhhnhmffjehhodphofnkingncijnaona)
+set(mv3_options_page_url
+  chrome-extension://dhhnhmffjehhodphofnkingncijnaona/options.html)
 
 function(expected_mv3_result output mode)
   if(mode STREQUAL "restart")
@@ -20,6 +22,12 @@ function(expected_mv3_result output mode)
   math(EXPR second_count "${first_count} + 1")
   set(${output}
     "KWEB_MV3_CORE_PASS|${mode}|first=${first_count}|second=${second_count}|suspended=true|isolated=true|id=${mv3_extension_id}"
+    PARENT_SCOPE)
+endfunction()
+
+function(expected_mv3_options_result output)
+  set(${output}
+    "KWEB_MV3_OPTIONS_PASS|id=${mv3_extension_id}|manifest=KWebShell%20MV3%20core%20conformance|messageCount=2|path=/options.html"
     PARENT_SCOPE)
 endfunction()
 
@@ -111,9 +119,16 @@ endfunction()
 
 function(validate_mv3_run event_log expected_mode)
   expected_mv3_result(expected_result "${expected_mode}")
+  if(expected_mode STREQUAL "options")
+    expected_mv3_options_result(expected_options_result)
+  endif()
   kweb_read_event_lines(event_lines "${event_log}")
   set(previous_sequence 0)
   set(renderer_process_seen FALSE)
+  set(core_navigation_seen FALSE)
+  set(core_load_seen FALSE)
+  set(options_navigation_seen FALSE)
+  set(options_load_seen FALSE)
   set(required_events
     browser_process_start
     mv3_extension_load_configured
@@ -139,6 +154,13 @@ function(validate_mv3_run event_log expected_mode)
     cef_shutdown_started
     cef_shutdown
   )
+  if(expected_mode STREQUAL "options")
+    list(APPEND required_events
+      mv3_options_page_navigation_requested
+      mv3_options_page_loaded
+      mv3_options_page_passed
+    )
+  endif()
 
   foreach(event_line IN LISTS event_lines)
     kweb_read_json_member(sequence "${event_line}" sequence)
@@ -207,13 +229,36 @@ function(validate_mv3_run event_log expected_mode)
         message(FATAL_ERROR
           "MV3 test intercepted an unexpected URL: ${event_line}")
       endif()
+    elseif(event_name STREQUAL "navigation_started")
+      kweb_read_json_member(navigated_url "${event_line}" url)
+      if(navigated_url STREQUAL "${mv3_test_url}")
+        set(core_navigation_seen TRUE)
+      elseif(expected_mode STREQUAL "options" AND
+             navigated_url STREQUAL "${mv3_options_page_url}")
+        set(options_navigation_seen TRUE)
+      else()
+        message(FATAL_ERROR
+          "MV3 ${expected_mode} navigated to an unexpected URL: ${event_line}")
+      endif()
     elseif(event_name STREQUAL "load_end")
       kweb_read_json_member(http_status "${event_line}" http_status)
       kweb_read_json_member(loaded_url "${event_line}" url)
-      if(NOT http_status STREQUAL "200" OR
-         NOT loaded_url STREQUAL "${mv3_test_url}")
+      if(loaded_url STREQUAL "${mv3_test_url}")
+        if(NOT http_status STREQUAL "200")
+          message(FATAL_ERROR
+            "MV3 core test page did not report HTTP 200: ${event_line}")
+        endif()
+        set(core_load_seen TRUE)
+      elseif(expected_mode STREQUAL "options" AND
+             loaded_url STREQUAL "${mv3_options_page_url}")
+        if(NOT http_status STREQUAL "200")
+          message(FATAL_ERROR
+            "MV3 options page did not report HTTP 200: ${event_line}")
+        endif()
+        set(options_load_seen TRUE)
+      else()
         message(FATAL_ERROR
-          "MV3 test page did not load from the controlled origin: ${event_line}")
+          "MV3 ${expected_mode} loaded an unexpected page: ${event_line}")
       endif()
     elseif(event_name STREQUAL "mv3_core_self_test_passed")
       kweb_read_json_member(mode "${event_line}" mode)
@@ -222,6 +267,27 @@ function(validate_mv3_run event_log expected_mode)
          NOT result STREQUAL "${expected_result}")
         message(FATAL_ERROR
           "MV3 core result was not exact: ${event_line}")
+      endif()
+    elseif(event_name STREQUAL "mv3_options_page_navigation_requested")
+      kweb_read_json_member(options_url "${event_line}" url)
+      if(NOT expected_mode STREQUAL "options" OR
+         NOT options_url STREQUAL "${mv3_options_page_url}")
+        message(FATAL_ERROR
+          "MV3 options navigation request was not exact: ${event_line}")
+      endif()
+    elseif(event_name STREQUAL "mv3_options_page_loaded")
+      kweb_read_json_member(options_url "${event_line}" url)
+      if(NOT expected_mode STREQUAL "options" OR
+         NOT options_url STREQUAL "${mv3_options_page_url}")
+        message(FATAL_ERROR
+          "MV3 options load was not exact: ${event_line}")
+      endif()
+    elseif(event_name STREQUAL "mv3_options_page_passed")
+      kweb_read_json_member(options_result "${event_line}" result)
+      if(NOT expected_mode STREQUAL "options" OR
+         NOT options_result STREQUAL "${expected_options_result}")
+        message(FATAL_ERROR
+          "MV3 options result was not exact: ${event_line}")
       endif()
     elseif(event_name STREQUAL "cef_shutdown")
       kweb_read_json_member(exit_code "${event_line}" exit_code)
@@ -247,6 +313,15 @@ function(validate_mv3_run event_log expected_mode)
         "MV3 ${expected_mode} did not record '${required_event}'.")
     endif()
   endforeach()
+  if(NOT core_navigation_seen OR NOT core_load_seen)
+    message(FATAL_ERROR
+      "MV3 ${expected_mode} did not navigate and load the controlled core page.")
+  endif()
+  if(expected_mode STREQUAL "options" AND
+     (NOT options_navigation_seen OR NOT options_load_seen))
+    message(FATAL_ERROR
+      "MV3 options mode did not navigate and load the exact extension page.")
+  endif()
 
   macro(assert_event_before first_event second_event)
     if(event_sequence_${first_event} GREATER_EQUAL
@@ -261,6 +336,16 @@ function(validate_mv3_run event_log expected_mode)
   assert_event_before(browser_created native_child_attached)
   assert_event_before(mv3_test_request_intercepted load_end)
   assert_event_before(load_end mv3_core_self_test_passed)
+  if(expected_mode STREQUAL "options")
+    assert_event_before(mv3_core_self_test_passed
+      mv3_options_page_navigation_requested)
+    assert_event_before(mv3_options_page_navigation_requested
+      mv3_options_page_loaded)
+    assert_event_before(mv3_options_page_navigation_requested
+      mv3_options_page_passed)
+    assert_event_before(mv3_options_page_loaded profile_cookie_flush_started)
+    assert_event_before(mv3_options_page_passed profile_cookie_flush_started)
+  endif()
   assert_event_before(mv3_core_self_test_passed profile_cookie_flush_started)
   assert_event_before(profile_cookie_flush_completed browser_close_accepted)
   assert_event_before(browser_destroyed cef_quit_requested)
@@ -295,6 +380,7 @@ require_invalid_fixture_rejected()
 run_mv3(initial alpha mv3-initial.jsonl FALSE)
 run_mv3(restart alpha mv3-restart.jsonl TRUE)
 run_mv3(isolated beta mv3-isolated.jsonl TRUE)
+run_mv3(options options mv3-options.jsonl FALSE)
 
 message(STATUS
-  "Alloy MV3 core conformance passed on ${PLATFORM}: content script, runtime messaging, Service Worker idle restart, storage persistence, and Profile isolation.")
+  "Alloy MV3 core conformance passed on ${PLATFORM}: content script, runtime messaging, Service Worker idle restart, storage persistence, Profile isolation, and options-page native-child navigation.")

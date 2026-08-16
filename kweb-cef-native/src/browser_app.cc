@@ -359,16 +359,72 @@ void BrowserApp::OnMv3CoreSelfTestPagePassed(const std::string &result) {
       {{"mode", Mv3CoreSelfTestModeName(
                     configuration_.mv3_core_self_test_mode)},
        {"result", result}});
+  if (configuration_.mv3_core_self_test_mode ==
+      Mv3CoreSelfTestMode::kOptions) {
+    BeginMv3OptionsPageNavigation();
+    return;
+  }
   MaybeCompleteMv3CoreSelfTest();
 }
 
-void BrowserApp::OnMv3CoreSelfTestPageLoaded() {
+void BrowserApp::OnMv3CoreSelfTestPageLoaded(const std::string &url) {
   CEF_REQUIRE_UI_THREAD();
-  if (!configuration_.IsMv3CoreSelfTest() ||
-      mv3_core_self_test_page_loaded_) {
+  if (!configuration_.IsMv3CoreSelfTest()) {
+    return;
+  }
+  if (configuration_.mv3_core_self_test_mode ==
+          Mv3CoreSelfTestMode::kOptions &&
+      mv3_options_page_navigation_requested_) {
+    if (url != Mv3CoreOptionsPageUrl()) {
+      OnFatalBrowserError("native.mv3.options-page-url-mismatch",
+                          {{"expected", Mv3CoreOptionsPageUrl()},
+                           {"actual", url}});
+      return;
+    }
+    if (mv3_options_page_loaded_) {
+      OnFatalBrowserError("native.mv3.options-page-duplicate-load", {});
+      return;
+    }
+    mv3_options_page_loaded_ = true;
+    recorder_->Record("mv3_options_page_loaded", {{"url", url}});
+    MaybeCompleteMv3CoreSelfTest();
+    return;
+  }
+  if (url != Mv3CoreSelfTestUrl()) {
+    OnFatalBrowserError("native.mv3.core-self-test-url-mismatch",
+                        {{"expected", Mv3CoreSelfTestUrl()}, {"actual", url}});
+    return;
+  }
+  if (mv3_core_self_test_page_loaded_) {
     return;
   }
   mv3_core_self_test_page_loaded_ = true;
+  MaybeCompleteMv3CoreSelfTest();
+}
+
+void BrowserApp::OnMv3OptionsPagePassed(const std::string &result) {
+  CEF_REQUIRE_UI_THREAD();
+  if (!configuration_.IsMv3CoreSelfTest() ||
+      configuration_.mv3_core_self_test_mode !=
+          Mv3CoreSelfTestMode::kOptions ||
+      !mv3_options_page_navigation_requested_) {
+    OnFatalBrowserError("native.mv3.options-page-unexpected-terminal-event",
+                        {{"result", result}});
+    return;
+  }
+  if (mv3_options_page_passed_) {
+    OnFatalBrowserError("native.mv3.options-page-duplicate-terminal-event",
+                        {{"result", result}});
+    return;
+  }
+  const std::string expected = ExpectedMv3OptionsPageResult();
+  if (result != expected) {
+    OnFatalBrowserError("native.mv3.options-page-result-invalid",
+                        {{"expected", expected}, {"actual", result}});
+    return;
+  }
+  mv3_options_page_passed_ = true;
+  recorder_->Record("mv3_options_page_passed", {{"result", result}});
   MaybeCompleteMv3CoreSelfTest();
 }
 
@@ -386,7 +442,26 @@ void BrowserApp::MaybeCompleteMv3CoreSelfTest() {
       !mv3_core_self_test_page_loaded_) {
     return;
   }
+  if (configuration_.mv3_core_self_test_mode ==
+          Mv3CoreSelfTestMode::kOptions &&
+      (!mv3_options_page_passed_ || !mv3_options_page_loaded_)) {
+    return;
+  }
   RequestProfileFlushAndClose();
+}
+
+void BrowserApp::BeginMv3OptionsPageNavigation() {
+  CEF_REQUIRE_UI_THREAD();
+  if (mv3_options_page_navigation_requested_) {
+    OnFatalBrowserError("native.mv3.options-page-duplicate-navigation", {});
+    return;
+  }
+  mv3_options_page_navigation_requested_ = true;
+  recorder_->Record("mv3_options_page_navigation_requested",
+                    {{"url", Mv3CoreOptionsPageUrl()}});
+  if (!client_ || !client_->NavigateSelfTestMainFrame(Mv3CoreOptionsPageUrl())) {
+    OnFatalBrowserError("native.mv3.options-page-navigation-rejected", {});
+  }
 }
 
 void BrowserApp::RequestProfileFlushAndClose() {
@@ -503,6 +578,12 @@ void BrowserApp::OnSelfTestTimeout() {
         mv3_core_self_test_page_passed_ ? "passed" : "pending"},
        {"mv3_core_load",
         mv3_core_self_test_page_loaded_ ? "completed" : "pending"},
+       {"mv3_options_navigation",
+        mv3_options_page_navigation_requested_ ? "requested" : "pending"},
+       {"mv3_options_page",
+        mv3_options_page_passed_ ? "passed" : "pending"},
+       {"mv3_options_load",
+        mv3_options_page_loaded_ ? "completed" : "pending"},
        {"profile_cookie_flush",
         profile_cookie_flush_completed_ ? "completed" : "pending"},
        {"renderer_process",

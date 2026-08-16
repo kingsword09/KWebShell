@@ -17,6 +17,8 @@ constexpr char kMv3CoreSelfTestUrl[] =
     "https://kwebshell.test/mv3-core-self-test";
 constexpr char kMv3CoreExtensionId[] =
     "dhhnhmffjehhodphofnkingncijnaona";
+constexpr char kMv3CoreOptionsPageUrl[] =
+    "chrome-extension://dhhnhmffjehhodphofnkingncijnaona/options.html";
 constexpr int kServiceWorkerIdleDelayMs = 40000;
 
 int FirstExpectedStorageCount(Mv3CoreSelfTestMode mode) {
@@ -87,11 +89,15 @@ const char *Mv3CoreSelfTestModeName(Mv3CoreSelfTestMode mode) {
     return "restart";
   case Mv3CoreSelfTestMode::kIsolated:
     return "isolated";
+  case Mv3CoreSelfTestMode::kOptions:
+    return "options";
   }
   return "invalid";
 }
 
 const char *Mv3CoreSelfTestUrl() { return kMv3CoreSelfTestUrl; }
+
+const char *Mv3CoreOptionsPageUrl() { return kMv3CoreOptionsPageUrl; }
 
 std::string ExpectedMv3CoreSelfTestResult(Mv3CoreSelfTestMode mode) {
   const int first_count = FirstExpectedStorageCount(mode);
@@ -100,6 +106,12 @@ std::string ExpectedMv3CoreSelfTestResult(Mv3CoreSelfTestMode mode) {
          std::to_string(first_count) + "|second=" +
          std::to_string(first_count + 1) +
          "|suspended=true|isolated=true|id=" + kMv3CoreExtensionId;
+}
+
+std::string ExpectedMv3OptionsPageResult() {
+  return "KWEB_MV3_OPTIONS_PASS|id=" + std::string(kMv3CoreExtensionId) +
+         "|manifest=KWebShell%20MV3%20core%20conformance"
+         "|messageCount=2|path=/options.html";
 }
 
 CefRefPtr<CefSchemeHandlerFactory> CreateMv3CoreSelfTestSchemeHandlerFactory(

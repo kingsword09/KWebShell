@@ -1,9 +1,9 @@
 # Manifest V3 capability matrix
 
-- Matrix version: 0.1
+- Matrix version: 0.2
 - Runtime baseline: CEF `151.3.16+gbe1e15d`, Chromium `151.0.7922.109`
 - Architecture: Chrome bootstrap with an Alloy native child
-- Published conformance objective: 5.2
+- Published conformance objectives: 5.2, 6.1
 
 This matrix is a product contract, not a list of manifest fields that happen to
 parse. `RUNTIME_VERIFIED` means the pinned Chromium runtime performed the exact
@@ -29,6 +29,7 @@ for the capability in this matrix version.
 | Extension state across complete CEF restart | `RUNTIME_VERIFIED` | Profile `alpha` advances from counts `1/2` to `3/4` after shutdown and restart. |
 | Extension state isolation between Profiles | `RUNTIME_VERIFIED` | Profile `beta` starts independently at counts `1/2`. |
 | Chromium extension and Service Worker disk state | `RUNTIME_VERIFIED` | Non-empty Profile databases are required after every run. |
+| Direct `options_ui` page navigation in the existing Alloy native child | `RUNTIME_VERIFIED` | After the core Service Worker sequence completes, the same native child loads the exact `chrome-extension://dhhnhmffjehhodphofnkingncijnaona/options.html` URL. The page proves its origin, `chrome.runtime.id`, manifest identity, and the persisted `storage.local` count on macOS arm64, Linux x64, and Windows x64. |
 
 `RUNTIME_VERIFIED` applies only to the exact methods and event path above. It is
 not a blanket claim for every member of `chrome.runtime`, `chrome.storage`, or
@@ -37,7 +38,7 @@ the content-script platform.
 ## Unpublished surface
 
 The following capabilities have no public KWebShell runtime contract in matrix
-version 0.1:
+version 0.2:
 
 | Area | Capabilities held back from the public API |
 | --- | --- |
@@ -45,7 +46,7 @@ version 0.1:
 | Worker events | Installation/update events, alarms, notifications, browser lifecycle events |
 | Script APIs | `chrome.scripting`, dynamic content scripts, user scripts |
 | Browser model | `chrome.tabs`, `chrome.windows`, tab groups, sessions |
-| Extension UI | action icon/badge, popup, options, context menus, commands |
+| Extension UI | action icon/badge, popup, Chrome-driven `openOptionsPage()`, product lifecycle-based options hosting, context menus, commands |
 | Network | `declarativeNetRequest` rule evaluation and feedback |
 | Extension surfaces | DevTools pages, offscreen documents, side panels |
 | Elevated integration | native messaging, debugger, management, proxy, private/incognito access |
@@ -56,10 +57,30 @@ name to runtime support. Each area moves out of `UNPUBLISHED` only with a real
 Chromium conformance fixture, typed failure behavior, and green tests on all
 three desktop targets.
 
+## Options page boundary
+
+Objective 6.1 proves only one exact navigation path: the native conformance
+host loads an installed test extension's declared `options_ui.page` into the
+same existing Alloy native child after the worker has persisted state. The host
+accepts no caller-provided extension URL and reports a typed error for an
+unexpected URL, failed load, mismatched page result, duplicate terminal event,
+or timeout.
+
+This is not a claim that KWebShell has a public `openOptionsPage()` API,
+Chrome's tab-management behavior, an action popup, or an install-and-open
+product flow. Those surfaces remain `UNPUBLISHED` until the profile-scoped
+custom runtime artifact gate and their own lifecycle conformance objectives
+pass on macOS, Windows, and Linux.
+
+The direct-navigation fixture passed the same pinned stock-CEF conformance test
+on macOS arm64, Linux x64, and Windows x64. This narrowly scoped evidence does
+not publish a product options-page API or expand the unrelated extension UI
+capabilities listed above.
+
 ## Internal package-store boundary
 
-Objective 5.3 adds no published runtime capability and does not change matrix
-version 0.1. It verifies the internal filesystem boundary that Objective 5.4
+Objective 5.3 adds no published runtime capability. It verifies the internal
+filesystem boundary that Objective 5.4
 will connect to the pinned Chromium Profile `ExtensionService`:
 
 - unpacked input is copied without following links and re-verified after the
@@ -114,8 +135,9 @@ published extension capability is unavailable.
 
 ## Platform gate
 
-The published Objective 5.2 baseline continues to require
-`kweb_mv3_core_conformance_test` on all three targets. Objective 5.4 publication
+The published baselines for Objectives 5.2 and 6.1 require
+`kweb_mv3_core_conformance_test` on all three targets, including the direct
+options-page native-child sequence. Objective 5.4 publication
 additionally requires `extensionLifecycleIntegrationTest` against the matching
 custom runtime:
 

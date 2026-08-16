@@ -211,11 +211,24 @@ void TestMv3CoreSelfTestConfigurationIsStrict() {
               std::filesystem::path(extension_path),
           "MV3 extension path should be retained exactly");
   }
+
+  const auto options_configuration = kwebshell::HostConfiguration::Parse(
+      {RootCacheArgument(), ProfileArgument(),
+       "--kweb-mv3-core-self-test=options",
+       "--kweb-mv3-extension-path=" + extension_path},
+      &error);
+  Check(options_configuration.has_value(),
+        "MV3 options self-test configuration should parse: " + error);
+  Check(options_configuration &&
+            options_configuration->mv3_core_self_test_mode ==
+                kwebshell::Mv3CoreSelfTestMode::kOptions,
+        "MV3 options self-test mode should be explicit");
 }
 
 void WriteMv3CoreFixtureFiles(const std::filesystem::path &root) {
   std::filesystem::create_directories(root);
-  for (const char *name : {"manifest.json", "worker.js", "content.js"}) {
+  for (const char *name : {"manifest.json", "worker.js", "content.js",
+                           "options.html", "options.js"}) {
     std::ofstream stream(root / name);
     stream << "fixture";
   }
@@ -239,11 +252,11 @@ void TestMv3CoreFixtureValidationIsStrict() {
   Check(validated && *validated == std::filesystem::canonical(valid_fixture),
         "MV3 core fixture should return its canonical path");
 
-  std::filesystem::remove(valid_fixture / "content.js", filesystem_error);
-  Check(!filesystem_error, "MV3 fixture content script should be removable");
+  std::filesystem::remove(valid_fixture / "options.html", filesystem_error);
+  Check(!filesystem_error, "MV3 fixture options page should be removable");
   Check(!kwebshell::ValidateMv3CoreTestFixture(valid_fixture, error),
-        "MV3 core fixture missing content.js should fail");
-  Check(error.find("content.js") != std::string::npos,
+        "MV3 core fixture missing options.html should fail");
+  Check(error.find("options.html") != std::string::npos,
         "missing MV3 fixture file should be identified");
 
   const std::filesystem::path comma_fixture = test_root / "invalid,fixture";

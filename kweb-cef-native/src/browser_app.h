@@ -44,7 +44,8 @@ public:
   void OnProfileSelfTestPagePassed(const std::string &result);
   void OnProfileSelfTestPageLoaded();
   void OnMv3CoreSelfTestPagePassed(const std::string &result);
-  void OnMv3CoreSelfTestPageLoaded();
+  void OnMv3CoreSelfTestPageLoaded(const std::string &url);
+  void OnMv3OptionsPagePassed(const std::string &result);
   void OnProfileCookieFlushCompleted();
   void OnFatalBrowserError(const std::string &code,
                            const std::map<std::string, std::string> &details);
@@ -59,6 +60,7 @@ private:
   void OnProfileCookieFlushTimeout();
   void MaybeCompleteProfileSelfTest();
   void MaybeCompleteMv3CoreSelfTest();
+  void BeginMv3OptionsPageNavigation();
   void MaybeCompleteSelfTest();
   void OnSelfTestInputSettled();
   void OnSelfTestTimeout();
@@ -78,6 +80,9 @@ private:
   bool profile_self_test_page_loaded_ = false;
   bool mv3_core_self_test_page_passed_ = false;
   bool mv3_core_self_test_page_loaded_ = false;
+  bool mv3_options_page_navigation_requested_ = false;
+  bool mv3_options_page_passed_ = false;
+  bool mv3_options_page_loaded_ = false;
   bool profile_cookie_flush_started_ = false;
   bool profile_cookie_flush_completed_ = false;
   bool close_requested_ = false;

@@ -1071,6 +1071,67 @@ Acceptance:
 - Binary/resource checksums and SBOM/license output are reproducible.
 - Upgrade, corruption, and failed-start diagnostics are actionable.
 
+### Phase 8: Replace JNI with the Java Foreign Function and Memory API
+
+This is a deliberate post-hardening, pre-1.0 breaking migration. It upgrades
+the desktop runtime baseline from JDK 21 to JDK 25 LTS and replaces the JNI
+binding library with direct FFM downcalls and upcalls over the existing
+versioned C ABI. It is not a second backend: JNI and FFM are never selected by
+a runtime property, shipped in parallel, or used as fallbacks for each other.
+
+Deliver:
+
+- A JDK 25 FFM binding layer for every exported engine and browser C function,
+  using exact absolute-path library lookup, platform ABI layouts, typed status
+  mapping, and session-scoped shared arenas.
+- Native-to-JVM upcall ownership that keeps callback stubs and their Java
+  owners alive until the terminal event returns, catches every callback
+  exception before it reaches native code, and permits callbacks from CEF-owned
+  threads without confined-arena violations.
+- A stable raw native-parent contract for Compose Desktop on Windows, macOS,
+  and Linux. The migration cannot delete JAWT/JNI until a supported mechanism
+  supplies the exact `HWND`, AppKit parent, or X11 drawable without Java object
+  references, reflection, private JDK APIs, window-tree guessing, or overlay
+  windows.
+- Removal of the JNI shared library, dynamically registered native methods,
+  `JNIEnv` thread attachment, global references, JNI string conversion, and
+  JAWT bridge after the replacement passes all acceptance tests.
+- Reproducible binding generation or checked-in layouts pinned to the C ABI,
+  with native `sizeof`, alignment, offset, calling-convention, and exported
+  symbol conformance checks on every supported target.
+- Benchmarks comparing JNI and FFM before deletion. The decision records
+  measured startup, downcall, upcall, Unicode payload, memory, and browser-event
+  results; no unverified performance multiplier is published.
+
+Acceptance:
+
+- The entire project compiles, tests, packages, and runs on JDK 25 LTS, and
+  launchers explicitly grant native access to the named KWebShell module. A
+  missing native-access grant fails at startup with a typed diagnostic.
+- FFM drives the real CEF engine and Alloy browser through the same macOS,
+  Windows, and Linux integration contract: Profile initialization, Unicode
+  navigation, resize, callbacks, cookie flush, browser close, engine shutdown,
+  and zero live counts all remain unchanged.
+- A callback stress contract exercises CEF-owned threads, callback exceptions,
+  concurrent command/close races, terminal-event ordering, arena closure, and
+  use-after-close for at least 1,000 complete browser lifecycles without a
+  crash, callback after close, leaked native memory, or stale upcall target.
+- The FFM layouts match the compiled C header on macOS arm64/x64, Windows x64,
+  and Linux x64. Unsupported architectures fail during configuration; layout
+  assumptions are never inferred from the current development host.
+- No source or built artifact contains `native` JVM methods, `JNIEnv`,
+  `JNI_OnLoad`, `RegisterNatives`, `AttachCurrentThread`, `NewGlobalRef`, JAWT,
+  or the JNI shared library. There is no compatibility shim or JNI fallback.
+- The production browser rendering path remains native-child GPU composition;
+  the FFM migration does not introduce frame transfer, OSR, additional IPC, or
+  a system WebView.
+
+The feasibility analysis and migration gates are recorded in
+[`docs/ffm-migration-analysis.md`](docs/ffm-migration-analysis.md). If the raw
+AWT/Compose parent-handle gate cannot be satisfied through a supported API,
+Phase 8 remains blocked rather than retaining a hidden JNI fragment or changing
+the rendering contract.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.
@@ -1080,6 +1141,8 @@ Required layers:
 - Common Kotlin unit tests for state machines, policies, errors, and package metadata.
 - C++ unit tests for CEF adapter, package verification, thread/lifecycle invariants, and native window routing.
 - JNI/C ABI integration tests for ownership, callbacks, strings, and failures.
+- FFM/C ABI layout, downcall, upcall, arena-lifetime, and native-access tests
+  after Phase 8 replaces JNI.
 - Real Chromium integration tests for navigation, CDP, DevTools, Profiles, and MV3.
 - Cross-platform UI tests for native surface, DPI, focus, input, popup, and shutdown.
 - Performance tests for startup, first contentful paint, navigation, GPU frame pacing, memory, and OSR comparison.
@@ -1113,6 +1176,7 @@ extensions: add MV3 package validation and CRX3 verification
 extensions: add MV3 Service Worker and core API host
 extensions: add extension UI surfaces
 release: add signed runtime packs and cross-platform packaging
+interop: replace JNI with JDK 25 FFM bindings
 ```
 
 Do not create a commit for a partial objective. Do not move a failing test to a later phase. Each commit must include the verification command or CI result in its body.
@@ -1128,3 +1192,6 @@ Do not create a commit for a partial objective. Do not move a failing test to a 
 - [JxBrowser extension guide](https://teamdev.com/jxbrowser/docs/guides/extensions/)
 - [Kotlin Toolchain](https://github.com/JetBrains/kotlin-toolchain)
 - [Kotlin Toolchain native interop](https://kotlin-toolchain.org/dev/user-guide/advanced/native-interop/)
+- [JEP 454: Foreign Function & Memory API](https://openjdk.org/jeps/454)
+- [JEP 472: Prepare to Restrict the Use of JNI](https://openjdk.org/jeps/472)
+- [OpenJDK jextract early-access builds](https://jdk.java.net/jextract/)

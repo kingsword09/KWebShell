@@ -54,7 +54,12 @@ void BrowserClient::OnTitleChange(CefRefPtr<CefBrowser> browser,
     return;
   }
   if (mv3_core_self_test_) {
-    if (title_string.starts_with("KWEB_MV3_CORE_PASS|")) {
+    if (title_string.starts_with("KWEB_MV3_OPTIONS_PASS|")) {
+      app_->OnMv3OptionsPagePassed(title_string);
+    } else if (title_string.starts_with("KWEB_MV3_OPTIONS_FAIL|")) {
+      app_->OnFatalBrowserError("native.mv3.options-page-self-test-failed",
+                                {{"result", title_string}});
+    } else if (title_string.starts_with("KWEB_MV3_CORE_PASS|")) {
       app_->OnMv3CoreSelfTestPagePassed(title_string);
     } else if (title_string.starts_with("KWEB_MV3_CORE_FAIL|")) {
       app_->OnFatalBrowserError("native.mv3.core-self-test-failed",
@@ -172,13 +177,14 @@ void BrowserClient::OnLoadEnd(CefRefPtr<CefBrowser> browser,
                               CefRefPtr<CefFrame> frame, int http_status_code) {
   CEF_REQUIRE_UI_THREAD();
   if (frame->IsMain()) {
+    const std::string url = frame->GetURL().ToString();
     recorder_->Record("load_end",
                       {{"http_status", std::to_string(http_status_code)},
                        {"url", DisplayUrl(frame->GetURL())}});
     if (profile_self_test_) {
       app_->OnProfileSelfTestPageLoaded();
     } else if (mv3_core_self_test_) {
-      app_->OnMv3CoreSelfTestPageLoaded();
+      app_->OnMv3CoreSelfTestPageLoaded(url);
     }
   }
 }
@@ -220,6 +226,19 @@ void BrowserClient::OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser,
                             {{"status", std::to_string(status)},
                              {"error_code", std::to_string(error_code)},
                              {"error", error_string.ToString()}});
+}
+
+bool BrowserClient::NavigateSelfTestMainFrame(const std::string &url) {
+  CEF_REQUIRE_UI_THREAD();
+  if (!browser_) {
+    return false;
+  }
+  CefRefPtr<CefFrame> frame = browser_->GetMainFrame();
+  if (!frame) {
+    return false;
+  }
+  frame->LoadURL(url);
+  return true;
 }
 
 void BrowserClient::CloseBrowser(bool force_close) {

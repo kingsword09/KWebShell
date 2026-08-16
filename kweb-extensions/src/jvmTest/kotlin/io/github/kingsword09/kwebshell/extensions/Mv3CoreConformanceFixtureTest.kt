@@ -21,6 +21,10 @@ class Mv3CoreConformanceFixtureTest {
         assertEquals(listOf("storage"), verified.packageInfo.manifest.permissions)
         assertEquals("content.js", verified.packageInfo.manifest.contentScripts.single().js.single())
         assertEquals(
+            KWebExtensionOptionsUi(page = "options.html", openInTab = true),
+            verified.packageInfo.manifest.optionsUi,
+        )
+        assertEquals(
             KWebExtensionPermissionDecision("storage", KWebExtensionPermissionKind.API_PERMISSION),
             verified.packageInfo.permissionReview.required.single(),
         )

@@ -13,7 +13,9 @@ class EventRecorder;
 
 const char *Mv3CoreSelfTestModeName(Mv3CoreSelfTestMode mode);
 const char *Mv3CoreSelfTestUrl();
+const char *Mv3CoreOptionsPageUrl();
 std::string ExpectedMv3CoreSelfTestResult(Mv3CoreSelfTestMode mode);
+std::string ExpectedMv3OptionsPageResult();
 
 CefRefPtr<CefSchemeHandlerFactory> CreateMv3CoreSelfTestSchemeHandlerFactory(
     Mv3CoreSelfTestMode mode, std::shared_ptr<EventRecorder> recorder);

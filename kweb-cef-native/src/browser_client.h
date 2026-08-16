@@ -53,6 +53,7 @@ public:
                                  TerminationStatus status, int error_code,
                                  const CefString &error_string) override;
 
+  bool NavigateSelfTestMainFrame(const std::string &url);
   void CloseBrowser(bool force_close);
 
 private:

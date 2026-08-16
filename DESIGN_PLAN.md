@@ -818,6 +818,55 @@ Deliver:
 
 - Options pages, context menus, DevTools pages, offscreen documents, side panels, and native messaging policy where supported.
 
+#### Objective 6.1: Options page native-child surface conformance
+
+This objective proves the narrow, real Chromium operation that later product
+options-page hosting will depend on: an MV3 extension's declared `options_ui`
+document loads in the existing Alloy native-child browser for the exact
+persistent Profile that loaded the extension. It does not expose a product
+install-and-open API before Objective 5.4 has checksum-pinned custom runtime
+artifacts on every advertised target.
+
+Acceptance:
+
+- The checked-in MV3 conformance extension declares one strict
+  `options_ui.page`, includes that regular file in the package snapshot, and
+  its options document proves its extension origin, `chrome.runtime.id`,
+  `chrome.runtime.getManifest()`, and the `storage.local` state written by the
+  Service Worker during the same run.
+- A test-only host mode first completes the existing content-script and
+  Service Worker conformance sequence, then navigates the *same* Alloy native
+  child directly to the exact `chrome-extension://<derived-id>/options.html`
+  URL. It verifies the expected extension ID, manifest name, persisted storage
+  value, path, request context, successful main-frame load, and ordered clean
+  shutdown.
+- The test mode accepts no arbitrary extension page URL, does not create an
+  overlay, a hidden top-level browser, an OSR surface, a synthetic
+  `chrome.runtime` object, a CDP tab, or an `openOptionsPage()` fallback. A
+  navigation failure, wrong title/result, duplicate terminal event, or timeout
+  is a typed test failure.
+- Package-boundary tests verify the fixture's `options_ui` metadata and asset
+  snapshot. Native unit tests cover strict mode parsing and fixture validation.
+  The real native-child conformance test runs on macOS arm64, Windows x64, and
+  Linux x64 with the pinned stock CEF runtime.
+- The capability matrix records only this direct test-bootstrap navigation as
+  runtime evidence. Action popups, Chrome-driven `openOptionsPage()`, and the
+  public lifecycle-based options host remain `UNPUBLISHED` until their own
+  complete custom-runtime conformance objectives pass.
+
+Implementation evidence as of 2026-08-16:
+
+- The fixture declares `options_ui.page=options.html` and package-boundary
+  validation proves the declared options page is a regular package resource.
+- The native `options` self-test completes the Service Worker idle/restart
+  sequence, then the same Alloy native child loads the exact extension options
+  URL. It records and verifies navigation, load, extension identity, manifest
+  identity, persisted `storage.local` state, and clean shutdown.
+- Native CTest passed the full real Chromium sequence locally on macOS arm64
+  and in GitHub Actions on macOS arm64, Windows x64, and Linux x64. This
+  objective is complete; its narrow runtime evidence does not publish a
+  product options-page API.
+
 Acceptance:
 
 - Each surface has a real native host and complete lifecycle tests.

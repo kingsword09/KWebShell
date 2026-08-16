@@ -116,6 +116,9 @@ ParseMv3CoreSelfTestMode(std::string_view value) {
   if (value == "options") {
     return Mv3CoreSelfTestMode::kOptions;
   }
+  if (value == "action-popup") {
+    return Mv3CoreSelfTestMode::kActionPopup;
+  }
   return std::nullopt;
 }
 
@@ -207,8 +210,8 @@ HostConfiguration::Parse(const std::vector<std::string> &arguments,
       const auto mode = ParseMv3CoreSelfTestMode(
           ValueAfter(argument, kMv3CoreSelfTestPrefix));
       if (!mode) {
-        *error = "--kweb-mv3-core-self-test must be 'initial', 'restart', or "
-                 "'isolated', or 'options'.";
+        *error = "--kweb-mv3-core-self-test must be 'initial', 'restart', "
+                 "'isolated', 'options', or 'action-popup'.";
         return std::nullopt;
       }
       configuration.mv3_core_self_test_mode = *mode;

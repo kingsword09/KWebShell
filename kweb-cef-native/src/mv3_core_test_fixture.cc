@@ -34,9 +34,9 @@ ValidateMv3CoreTestFixture(const std::filesystem::path &requested_path,
     return std::nullopt;
   }
 
-  constexpr std::array<const char *, 5> kRequiredFiles = {
+  constexpr std::array<const char *, 7> kRequiredFiles = {
       "manifest.json", "worker.js", "content.js", "options.html",
-      "options.js"};
+      "options.js", "popup.html", "popup.js"};
   for (const char *required_file : kRequiredFiles) {
     const std::filesystem::path file_path = canonical_path / required_file;
     const std::filesystem::file_status file_status =

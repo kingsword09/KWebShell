@@ -25,6 +25,13 @@ class Mv3CoreConformanceFixtureTest {
             verified.packageInfo.manifest.optionsUi,
         )
         assertEquals(
+            KWebExtensionAction(
+                defaultPopup = "popup.html",
+                defaultTitle = "KWebShell MV3 action",
+            ),
+            verified.packageInfo.manifest.action,
+        )
+        assertEquals(
             KWebExtensionPermissionDecision("storage", KWebExtensionPermissionKind.API_PERMISSION),
             verified.packageInfo.permissionReview.required.single(),
         )

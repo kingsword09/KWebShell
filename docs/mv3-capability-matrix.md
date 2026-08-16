@@ -99,6 +99,36 @@ macOS arm64, Linux x64, and Windows x64. This narrowly scoped evidence does
 not publish a product action host or expand the unrelated extension UI
 capabilities listed above.
 
+## Context-menu boundary
+
+Objective 6.3 proves one internal, fixed page-context command path. In the
+strict test mode, the Service Worker registers exactly one `contextMenus` item;
+the existing windowed Alloy native child receives a real right-button event;
+Chromium builds the extension-aware `RenderViewContextMenu`; and CEF observes
+the real command ID before returning `false` for Chromium's default dispatch.
+The worker then verifies the item and page URL, persists the click, and the
+content script reports the exact result before the Profile flushes and CEF
+shuts down.
+
+Stock CEF deliberately remains a negative gate for this path: it must complete
+the same renderer/core/right-click setup and fail with exactly zero matching
+extension items, without host-injected items, synthetic DOM input, JavaScript
+listener invocation, or a fabricated selection. The source patch is enabled
+only by the private `kweb-chrome-context-menu` switch in this test mode; all
+other Alloy browsers retain the upstream CEF model.
+
+The macOS arm64 checksum-pinned custom source build has passed the positive
+native-child sequence. Windows x64 and Linux x64 positive custom-runtime runs
+are gated by the self-hosted source-build workflow and must pass before this
+capability can move into the published table. Until all three custom runtimes
+pass, context menus remain `UNPUBLISHED` and KWebShell exposes no public menu,
+command, toolbar, or product-surface API.
+
+The current conformance scope intentionally excludes multiple or nested items,
+checked/radio state, editable/link/media contexts, dynamic updates, OS-native
+menu rendering, and arbitrary host item composition. Those behaviors require
+separate objectives and cannot be inferred from this fixed-item result.
+
 ## Internal package-store boundary
 
 Objective 5.3 adds no published runtime capability. It verifies the internal

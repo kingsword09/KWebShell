@@ -21,7 +21,7 @@
   "patches": [
     {
       "file": "patches/0001-profile-scoped-extension-lifecycle.patch",
-      "sha256": "3e1c1c14b9b947fcec2635bcee25a42cff16028792177ea84ae93aa37334cbbd",
+      "sha256": "c81913930b2cd48cf77db07c00122284397c14cbc5b53d7ed1a1e9e03b318db8",
       "modifiedPreimages": [
         {
           "path": "BUILD.gn",
@@ -30,6 +30,10 @@
         {
           "path": "cef_paths2.gypi",
           "sha256": "cac164e603a0247a5cae1bde804e6b885b9fb8d576b10b66d6e1c0d696c07a47"
+        },
+        {
+          "path": "libcef/browser/chrome/chrome_context_menu_handler.cc",
+          "sha256": "0d81297c0290f17f3cfda22109c314562195efe701af6633e8f755756718b326"
         }
       ],
       "createdPostimages": [

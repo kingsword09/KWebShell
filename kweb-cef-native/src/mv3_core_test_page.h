@@ -23,8 +23,13 @@ const Mv3CoreExtensionPageSelfTest *
 Mv3CoreExtensionPageSelfTestForMode(Mv3CoreSelfTestMode mode);
 bool IsMv3CoreExtensionPagePassResult(std::string_view result);
 bool IsMv3CoreExtensionPageFailureResult(std::string_view result);
+const char *Mv3CoreContextMenuItemId();
+const char *Mv3CoreContextMenuItemLabel();
+int Mv3CoreContextMenuX();
+int Mv3CoreContextMenuY();
 std::string ExpectedMv3CoreSelfTestResult(Mv3CoreSelfTestMode mode);
 std::string ExpectedMv3CoreExtensionPageResult(Mv3CoreSelfTestMode mode);
+std::string ExpectedMv3CoreContextMenuResult();
 
 CefRefPtr<CefSchemeHandlerFactory> CreateMv3CoreSelfTestSchemeHandlerFactory(
     Mv3CoreSelfTestMode mode, std::shared_ptr<EventRecorder> recorder);

@@ -921,6 +921,69 @@ Implementation evidence as of 2026-08-16:
   objective is complete; its narrow runtime evidence does not publish an action
   toolbar or popup-host API.
 
+#### Objective 6.3: Context-menu model and command-dispatch native-child conformance
+
+This objective proves the real Chromium/CEF dispatch path that a future
+Compose context-menu host will consume: an MV3 Service Worker registers one
+`chrome.contextMenus` item, a right-button event in the existing Alloy native
+child produces a CEF menu model containing that exact item, and selecting the
+model command reaches the extension's `onClicked` listener. It does not claim a
+product menu renderer, arbitrary host item composition, or OS-native visual
+integration before those have their own lifecycle and UI tests.
+
+Pinned CEF `151.3.16` routes every Alloy context-menu request directly to
+`CefMenuManager::CreateDefaultModel()` before Chrome creates a
+`RenderViewContextMenu`. That CEF-only model contains navigation/editing items
+but never Chromium's Profile-scoped extension items. Objective 6.3 therefore
+extends the existing checksum-pinned custom CEF patch: only an explicit
+`kweb-chrome-context-menu` browser-process switch lets the same Alloy
+`WebContents` continue through Chrome's real menu builder and CEF observer.
+Stock CEF must fail the capability gate; injecting the missing item in the
+host is not an admissible substitute.
+
+Acceptance:
+
+- The checked-in MV3 conformance extension requests `contextMenus`, removes
+  stale test items, creates one fixed page-context item with a fixed ID, title,
+  and document URL pattern, and awaits successful registration before the core
+  Service Worker response completes. Registration is lazy and occurs only when
+  the controlled page identifies `context-menu` mode, so unrelated core,
+  options, and action tests never touch an unpublished API. Its `onClicked`
+  listener verifies the exact item and controlled page URL, atomically
+  increments a storage-backed click count, and publishes the exact result
+  through `storage.onChanged` to the content script.
+- A strict test-only `context-menu` host mode first completes the existing
+  content-script and Service Worker idle/restart sequence, then sends a real
+  CEF right-button down/up pair at a fixed page coordinate in the same windowed
+  Alloy native child. A synthetic DOM `contextmenu` event, OSR input, JavaScript
+  invocation of the listener, and CDP input are forbidden substitutes.
+- `CefContextMenuHandler` recursively inspects the actual menu model, requires
+  exactly one enabled and visible item with the fixed title, records its real
+  command ID and page coordinates, and completes the CEF run-menu callback with
+  that command. `OnContextMenuCommand` must observe the same command and return
+  `false` so Chromium's default extension-command dispatcher handles it; the
+  worker click, storage update, content-script result, menu dismissal, and
+  ordered shutdown must all complete exactly once.
+- Missing or duplicate items, wrong page URLs, invalid command IDs, duplicate
+  menu callbacks, command mismatch, selection rejection, missing dismissal,
+  wrong extension result, renderer failure, and timeout are typed failures.
+  The test creates no product menu window and does not silently select another
+  menu item.
+- The source patch manifest pins the exact upstream context-menu preimage and
+  patch digest. Without the private switch, custom CEF retains upstream Alloy
+  behavior. The conformance host requests the switch only in strict
+  `context-menu` mode and records that backend choice.
+- Package-boundary and native unit tests validate the permission metadata and
+  strict mode parsing. Stock CEF on every hosted target must complete the real
+  core/idle/right-click sequence, then fail with exactly zero matching items
+  and no model-selection or dispatch event. The positive sequence must pass a
+  checksum-pinned custom CEF runtime on macOS arm64, Windows x64, and Linux x64
+  before any capability status changes.
+- The capability matrix may record only the fixed page-context item model and
+  command-dispatch sequence. Product menu rendering, multiple/nested extension
+  items, checked/radio state, editable/link/media contexts, dynamic updates,
+  and public host APIs remain `UNPUBLISHED` until their own objectives pass.
+
 Acceptance:
 
 - Each surface has a real native host and complete lifecycle tests.

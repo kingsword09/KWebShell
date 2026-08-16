@@ -178,6 +178,7 @@ public object CefSourcePatchManifestLoader {
     private val EXPECTED_SOURCE_PATHS: Set<String> = setOf(
         "BUILD.gn",
         "cef_paths2.gypi",
+        "libcef/browser/chrome/chrome_context_menu_handler.cc",
         "include/internal/cef_kweb_extension_abi.h",
         "libcef/browser/extensions/kweb_extension_adapter.cc",
     )

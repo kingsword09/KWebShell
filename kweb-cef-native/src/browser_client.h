@@ -6,11 +6,13 @@
 
 #include "browser_app.h"
 #include "include/cef_client.h"
+#include "include/cef_context_menu_handler.h"
 #include "native_window.h"
 
 namespace kwebshell {
 
 class BrowserClient final : public CefClient,
+                            public CefContextMenuHandler,
                             public CefDisplayHandler,
                             public CefLifeSpanHandler,
                             public CefLoadHandler,
@@ -18,12 +20,29 @@ class BrowserClient final : public CefClient,
 public:
   BrowserClient(BrowserApp *app, NativeWindow *native_window,
                 std::shared_ptr<EventRecorder> recorder, bool native_self_test,
-                bool profile_self_test, bool mv3_core_self_test);
+                bool profile_self_test, bool mv3_core_self_test,
+                bool mv3_context_menu_self_test);
 
+  CefRefPtr<CefContextMenuHandler> GetContextMenuHandler() override;
   CefRefPtr<CefDisplayHandler> GetDisplayHandler() override;
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override;
   CefRefPtr<CefLoadHandler> GetLoadHandler() override;
   CefRefPtr<CefRequestHandler> GetRequestHandler() override;
+
+  void OnBeforeContextMenu(CefRefPtr<CefBrowser> browser,
+                           CefRefPtr<CefFrame> frame,
+                           CefRefPtr<CefContextMenuParams> params,
+                           CefRefPtr<CefMenuModel> model) override;
+  bool RunContextMenu(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+                      CefRefPtr<CefContextMenuParams> params,
+                      CefRefPtr<CefMenuModel> model,
+                      CefRefPtr<CefRunContextMenuCallback> callback) override;
+  bool OnContextMenuCommand(CefRefPtr<CefBrowser> browser,
+                            CefRefPtr<CefFrame> frame,
+                            CefRefPtr<CefContextMenuParams> params,
+                            int command_id, EventFlags event_flags) override;
+  void OnContextMenuDismissed(CefRefPtr<CefBrowser> browser,
+                              CefRefPtr<CefFrame> frame) override;
 
   void OnTitleChange(CefRefPtr<CefBrowser> browser,
                      const CefString &title) override;
@@ -54,6 +73,7 @@ public:
                                  const CefString &error_string) override;
 
   bool NavigateSelfTestMainFrame(const std::string &url);
+  bool TriggerMv3ContextMenuSelfTest();
   void CloseBrowser(bool force_close);
 
 private:
@@ -63,8 +83,16 @@ private:
   const bool native_self_test_;
   const bool profile_self_test_;
   const bool mv3_core_self_test_;
+  const bool mv3_context_menu_self_test_;
   CefRefPtr<CefBrowser> browser_;
   bool native_self_test_started_ = false;
+  bool mv3_context_menu_input_sent_ = false;
+  bool mv3_context_menu_model_seen_ = false;
+  bool mv3_context_menu_model_rejected_ = false;
+  bool mv3_context_menu_run_seen_ = false;
+  bool mv3_context_menu_command_seen_ = false;
+  bool mv3_context_menu_dismissed_ = false;
+  int mv3_context_menu_command_id_ = -1;
 #if defined(OS_WIN) || defined(OS_LINUX)
   bool root_screen_rect_recorded_ = false;
 #endif

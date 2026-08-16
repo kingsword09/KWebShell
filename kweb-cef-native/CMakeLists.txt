@@ -33,6 +33,11 @@ option(
   "Run the strict no-hardware-GPU contract instead of the positive GPU test."
   OFF
 )
+option(
+  KWEB_EXPECT_CUSTOM_EXTENSION_RUNTIME
+  "Require custom CEF extension runtime conformance, including Chromium-backed Alloy context menus."
+  OFF
+)
 
 find_package(Threads REQUIRED)
 find_package(JNI REQUIRED COMPONENTS AWT JVM)
@@ -479,6 +484,7 @@ KWEB_ADD_NATIVE_SCRIPT_TEST(
   660
   "cef;extensions;integration;mv3;native;profile;service-worker;storage"
   "-DEXTENSION_PATH=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/mv3-core"
+  "-DEXPECT_CUSTOM_EXTENSION_RUNTIME=${KWEB_EXPECT_CUSTOM_EXTENSION_RUNTIME}"
 )
 KWEB_ADD_NATIVE_SCRIPT_TEST(
   kweb_renderer_failure_test

@@ -21,6 +21,11 @@ constexpr char kMv3CoreOptionsPageUrl[] =
     "chrome-extension://dhhnhmffjehhodphofnkingncijnaona/options.html";
 constexpr char kMv3CoreActionPopupUrl[] =
     "chrome-extension://dhhnhmffjehhodphofnkingncijnaona/popup.html";
+constexpr char kMv3CoreContextMenuItemId[] = "kwebshell-mv3-context-menu";
+constexpr char kMv3CoreContextMenuItemLabel[] =
+    "KWebShell MV3 context item";
+constexpr int kMv3CoreContextMenuX = 120;
+constexpr int kMv3CoreContextMenuY = 120;
 constexpr int kServiceWorkerIdleDelayMs = 40000;
 
 constexpr Mv3CoreExtensionPageSelfTest kOptionsPageSelfTest = {
@@ -100,6 +105,8 @@ const char *Mv3CoreSelfTestModeName(Mv3CoreSelfTestMode mode) {
     return "options";
   case Mv3CoreSelfTestMode::kActionPopup:
     return "action-popup";
+  case Mv3CoreSelfTestMode::kContextMenu:
+    return "context-menu";
   }
   return "invalid";
 }
@@ -117,6 +124,7 @@ Mv3CoreExtensionPageSelfTestForMode(Mv3CoreSelfTestMode mode) {
   case Mv3CoreSelfTestMode::kInitial:
   case Mv3CoreSelfTestMode::kRestart:
   case Mv3CoreSelfTestMode::kIsolated:
+  case Mv3CoreSelfTestMode::kContextMenu:
     return nullptr;
   }
   return nullptr;
@@ -131,6 +139,16 @@ bool IsMv3CoreExtensionPageFailureResult(std::string_view result) {
   return result.starts_with("KWEB_MV3_OPTIONS_FAIL|") ||
          result.starts_with("KWEB_MV3_ACTION_POPUP_FAIL|");
 }
+
+const char *Mv3CoreContextMenuItemId() { return kMv3CoreContextMenuItemId; }
+
+const char *Mv3CoreContextMenuItemLabel() {
+  return kMv3CoreContextMenuItemLabel;
+}
+
+int Mv3CoreContextMenuX() { return kMv3CoreContextMenuX; }
+
+int Mv3CoreContextMenuY() { return kMv3CoreContextMenuY; }
 
 std::string ExpectedMv3CoreSelfTestResult(Mv3CoreSelfTestMode mode) {
   const int first_count = FirstExpectedStorageCount(mode);
@@ -154,6 +172,13 @@ std::string ExpectedMv3CoreExtensionPageResult(Mv3CoreSelfTestMode mode) {
            "|messageCount=2|path=/popup.html";
   }
   return {};
+}
+
+std::string ExpectedMv3CoreContextMenuResult() {
+  return "KWEB_MV3_CONTEXT_MENU_PASS|id=" + std::string(kMv3CoreExtensionId) +
+         "|menu=" + std::string(kMv3CoreContextMenuItemId) +
+         "|clickCount=1"
+         "|page=https%3A%2F%2Fkwebshell.test%2Fmv3-core-self-test";
 }
 
 CefRefPtr<CefSchemeHandlerFactory> CreateMv3CoreSelfTestSchemeHandlerFactory(

@@ -34,6 +34,15 @@ class CefSourcePatchVerifierTest {
             catalog.manifest.adapterAbiFingerprint,
         )
         assertEquals(4, catalog.manifest.exports.size)
+        val patch = catalog.manifest.patches.single()
+        assertTrue(
+            patch.modifiedPreimages.any {
+                it.path == "libcef/browser/chrome/chrome_context_menu_handler.cc"
+            },
+        )
+        val patchText = Files.readString(catalog.root.resolve(patch.file))
+        assertTrue(patchText.contains("kweb-chrome-context-menu"))
+        assertTrue(patchText.contains("!base::CommandLine::ForCurrentProcess()->HasSwitch("))
     }
 
     @Test
@@ -247,10 +256,14 @@ class CefSourcePatchVerifierTest {
 
         val buildFile = source.resolve("BUILD.gn")
         val pathsFile = source.resolve("cef_paths2.gypi")
+        val contextMenuFile = source.resolve("libcef/browser/chrome/chrome_context_menu_handler.cc")
         val buildBefore = "source_set(\"libcef_static\") {\n}\n"
         val pathsBefore = "{\n  'includes_common_capi': []\n}\n"
+        val contextMenuBefore = "bool HandleContextMenu() {\n  return false;\n}\n"
+        Files.createDirectories(requireNotNull(contextMenuFile.parent))
         Files.writeString(buildFile, buildBefore)
         Files.writeString(pathsFile, pathsBefore)
+        Files.writeString(contextMenuFile, contextMenuBefore)
         runGit(source, "add", ".")
         runGit(source, "commit", "-m", "pinned source")
         val commit = runGit(source, "rev-parse", "HEAD").trim()
@@ -298,6 +311,10 @@ class CefSourcePatchVerifierTest {
                     modifiedPreimages = listOf(
                         CefSourceFileDigest("BUILD.gn", sha256(buildBefore)),
                         CefSourceFileDigest("cef_paths2.gypi", sha256(pathsBefore)),
+                        CefSourceFileDigest(
+                            "libcef/browser/chrome/chrome_context_menu_handler.cc",
+                            sha256(contextMenuBefore),
+                        ),
                     ),
                     createdPostimages = listOf(
                         CefSourceFileDigest(
@@ -339,6 +356,14 @@ new file mode 100644
 +++ b/include/internal/cef_kweb_extension_abi.h
 @@ -0,0 +1 @@
 +${headerContent.trimEnd()}
+diff --git a/libcef/browser/chrome/chrome_context_menu_handler.cc b/libcef/browser/chrome/chrome_context_menu_handler.cc
+--- a/libcef/browser/chrome/chrome_context_menu_handler.cc
++++ b/libcef/browser/chrome/chrome_context_menu_handler.cc
+@@ -1,3 +1,3 @@
+ bool HandleContextMenu() {
+-  return false;
++  return true;
+ }
 diff --git a/libcef/browser/extensions/kweb_extension_adapter.cc b/libcef/browser/extensions/kweb_extension_adapter.cc
 new file mode 100644
 --- /dev/null

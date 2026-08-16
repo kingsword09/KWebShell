@@ -46,6 +46,7 @@ The browser engine is a product boundary, not an implementation detail. The desk
 - If a change is intentionally breaking, state that in the commit body and list the migration required for the next objective.
 - Keep the worktree clean between objectives. Do not move on to the next objective with failing or skipped tests.
 - Documentation-only pull requests must not run the Windows, macOS, and Linux CEF matrix. Use a lightweight documentation check when one exists; otherwise `git diff --check` is sufficient before review and merge.
+- Pull-request titles, descriptions, and comments must use rendered Markdown with real line breaks. Never publish literal escape sequences such as `\n`; inspect the rendered pull-request body immediately after creating or editing it.
 - Integrate pull requests with squash merge only. Do not create merge commits or use GitHub's merge-commit strategy.
 - Delete the merged topic branch and verify the squash result on `main` before starting the next objective.
 

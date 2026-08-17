@@ -40,7 +40,36 @@ option(
 )
 
 find_package(Threads REQUIRED)
+if(NOT DEFINED JAVA_HOME OR JAVA_HOME STREQUAL "")
+  message(FATAL_ERROR "JAVA_HOME must identify the exact JDK used for the JNI target.")
+endif()
+file(REAL_PATH "${JAVA_HOME}" JAVA_HOME)
+if(NOT EXISTS "${JAVA_HOME}/include/jni.h")
+  message(FATAL_ERROR "JAVA_HOME does not contain include/jni.h: ${JAVA_HOME}")
+endif()
+set(ENV{JAVA_HOME} "${JAVA_HOME}")
+foreach(KWEB_JNI_CACHE_ENTRY IN ITEMS
+    JAVA_AWT_INCLUDE_PATH
+    JAVA_AWT_LIBRARY
+    JAVA_INCLUDE_PATH
+    JAVA_INCLUDE_PATH2
+    JAVA_JVM_LIBRARY)
+  unset(${KWEB_JNI_CACHE_ENTRY} CACHE)
+endforeach()
 find_package(JNI REQUIRED COMPONENTS AWT JVM)
+foreach(KWEB_JNI_PATH IN ITEMS
+    "${JAVA_AWT_INCLUDE_PATH}"
+    "${JAVA_AWT_LIBRARY}"
+    "${JAVA_INCLUDE_PATH}"
+    "${JAVA_INCLUDE_PATH2}"
+    "${JAVA_JVM_LIBRARY}")
+  file(REAL_PATH "${KWEB_JNI_PATH}" KWEB_JNI_REAL_PATH)
+  cmake_path(IS_PREFIX JAVA_HOME "${KWEB_JNI_REAL_PATH}" NORMALIZE KWEB_JNI_PATH_MATCHES)
+  if(NOT KWEB_JNI_PATH_MATCHES)
+    message(FATAL_ERROR
+      "FindJNI resolved a mixed-JDK path '${KWEB_JNI_REAL_PATH}' outside '${JAVA_HOME}'.")
+  endif()
+endforeach()
 if(WIN32)
   find_program(KWEB_DUMPBIN_EXECUTABLE dumpbin REQUIRED)
 endif()
@@ -66,6 +95,42 @@ KWEB_CONFIGURE_CONTRACT_TARGET(kweb_contract_support)
 target_include_directories(kweb_contract_support PUBLIC src)
 set_target_properties(kweb_contract_support PROPERTIES
   POSITION_INDEPENDENT_CODE ON
+)
+
+if(APPLE)
+  set(KWEB_INTEROP_PARENT_SOURCE tests/interop_probe_parent_mac.mm)
+elseif(WIN32)
+  set(KWEB_INTEROP_PARENT_SOURCE tests/interop_probe_parent_win.cc)
+else()
+  set(KWEB_INTEROP_PARENT_SOURCE tests/interop_probe_parent_linux.cc)
+endif()
+
+add_library(kweb_interop_probe SHARED
+  src/jni_string.cc
+  tests/interop_probe.cc
+  tests/interop_probe_jni.cc
+  ${KWEB_INTEROP_PARENT_SOURCE}
+)
+KWEB_CONFIGURE_CONTRACT_TARGET(kweb_interop_probe)
+target_include_directories(kweb_interop_probe PRIVATE include src tests)
+target_link_libraries(kweb_interop_probe PRIVATE
+  kweb_contract_support
+  JNI::JNI
+  Threads::Threads
+)
+if(APPLE)
+  target_link_libraries(kweb_interop_probe PRIVATE "-framework Cocoa")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  find_package(X11 REQUIRED)
+  target_link_libraries(kweb_interop_probe PRIVATE X11::X11)
+endif()
+set_target_properties(kweb_interop_probe PROPERTIES
+  OUTPUT_NAME "kwebshell_interop_probe"
+  CXX_VISIBILITY_PRESET hidden
+  VISIBILITY_INLINES_HIDDEN YES
+  ARCHIVE_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
+  LIBRARY_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
+  RUNTIME_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
 )
 
 add_library(kweb_jni SHARED
@@ -203,6 +268,32 @@ else()
 endif()
 
 enable_testing()
+add_executable(kweb_interop_probe_contract_tests
+  tests/interop_probe_contract_tests.cc
+)
+KWEB_CONFIGURE_CONTRACT_TARGET(kweb_interop_probe_contract_tests)
+target_include_directories(kweb_interop_probe_contract_tests PRIVATE tests)
+target_link_libraries(kweb_interop_probe_contract_tests PRIVATE kweb_interop_probe)
+set_target_properties(kweb_interop_probe_contract_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
+)
+if(APPLE)
+  set_target_properties(kweb_interop_probe_contract_tests PROPERTIES
+    BUILD_RPATH "${KWEB_CONTRACT_OUTPUT_DIR}"
+  )
+elseif(UNIX)
+  set_target_properties(kweb_interop_probe_contract_tests PROPERTIES
+    BUILD_RPATH "\$ORIGIN"
+  )
+endif()
+add_test(NAME kweb_interop_probe_contract_tests
+  COMMAND kweb_interop_probe_contract_tests
+)
+set_tests_properties(kweb_interop_probe_contract_tests PROPERTIES
+  LABELS "abi;interop;native"
+  TIMEOUT 30
+)
+
 add_executable(kweb_engine_abi_header_c_test
   tests/engine_abi_header_c_test.c
 )

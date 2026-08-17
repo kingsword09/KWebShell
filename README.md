@@ -36,11 +36,14 @@ Phase 7.1 adds the deterministic unsigned runtime payload boundary. The builder 
 
 Phase 7.2 adds the deterministic signed runtime release boundary. An explicit Ed25519 key pair signs a canonical release statement and the byte-identical unsigned payload inside a strict three-entry ZIP; the verifier requires an explicit trusted public key and re-runs the complete payload contract before accepting it. No network updater, key discovery, downgrade, rollback, or unsigned release path is exposed. See the [runtime release format](docs/runtime-release-format.md) for the exact envelope, key encoding, signature domain, and commands.
 
+Objective 8.1 adds a non-production JDK 25 FFM feasibility gate while leaving the production JNI backend unchanged. Native and Java probes freeze ABI version 6 at 18 exports, eight structures, and four callback signatures; compare JNI and FFM through one native test library; and validate Compose Desktop 1.11.1's public `ComposeWindow.windowHandle` as the future raw parent. Local macOS arm64 layout, symbol, callback, parent, and benchmark gates are GO. Windows and Linux remain pending hosted CI and Objective 8.2 cannot start until they reproduce the same result. See the [FFM migration analysis](docs/ffm-migration-analysis.md) for the exact measurements and remaining replacement gates.
+
 See [DESIGN_PLAN.md](DESIGN_PLAN.md) for architecture and delivery phases, the [Manifest V3 capability matrix](docs/mv3-capability-matrix.md) for the exact runtime surface, [ADR 0003](docs/adr/0003-versioned-native-session-contract.md) for the native ownership contract, [ADR 0004](docs/adr/0004-persistent-chromium-profile-context.md) for the Profile path and persistence contract, [ADR 0005](docs/adr/0005-in-process-jvm-cef-engine.md) for the JVM/CEF engine lifecycle, [ADR 0006](docs/adr/0006-real-awt-chromium-browser-session.md) for the real Alloy browser surface, [ADR 0007](docs/adr/0007-explicit-loopback-cdp-endpoint.md) for the secured CDP endpoint, [ADR 0008](docs/adr/0008-native-devtools-window-host.md) for the native DevTools lifecycle, [ADR 0009](docs/adr/0009-origin-scoped-generated-typed-bridge.md) for bridge isolation and cancellation, [ADR 0010](docs/adr/0010-manifest-v3-package-verification.md) for extension package security, [ADR 0011](docs/adr/0011-profile-scoped-extension-package-store.md) for managed extension objects and journals, [ADR 0012](docs/adr/0012-version-pinned-chromium-extension-lifecycle-adapter.md) for the custom CEF lifecycle boundary, and [AGENTS.md](AGENTS.md) for the non-fallback implementation rules.
 
 ## Requirements
 
-- JDK 21
+- JDK 21 for production modules and current JNI integration tests
+- JDK 25 LTS for the non-production Objective 8.1 FFM probe
 - Node.js 24 LTS and `npm ci` for the pinned TypeScript bridge compiler
 - The checked-in Gradle wrapper
 
@@ -55,6 +58,24 @@ npm ci
 ```
 
 The root `check` task compiles every included module, strictly compiles the generated TypeScript client, runs Kotlin tests, native unit/GUI tests, and the isolated real JVM/CEF engine integration contract, validates the pinned CEF runtime manifest, and builds plus independently verifies the real host runtime payload. On Linux the engine contract is launched through explicit `xvfb-run`; absence of that launcher fails configuration. `cefRoot` must point to an extracted, checksum-verified CEF distribution for the current host; it is never inferred from another platform or replaced by a system WebView.
+
+Objective 8.1 requires JDK 25 for the FFM process while production sources
+remain targeted to JDK 21. The native build resolves JNI headers, `libjawt`,
+and `libjvm` from the JDK 21 Gradle toolchain even when the Gradle daemon runs
+on JDK 25; mixed cached JDK paths fail CMake configuration. Run the complete
+local gate with an explicitly selected JDK 25:
+
+```shell
+JAVA_HOME=/absolute/path/to/jdk-25 ./gradlew :kweb-interop-probe:check \
+  -PcefRoot=/absolute/path/to/extracted/cef_binary
+```
+
+The gate verifies native layouts/calling conventions, all 18 engine symbols,
+strict 1 MiB and malformed Unicode boundaries, shared-Arena native-thread
+upcalls, callback containment, JNI/FFM behavioral parity, the public Compose
+native parent, and measured performance thresholds. Its structured report is written to
+`kweb-interop-probe/build/reports/interop-benchmark/results.json`. This module
+is test-only and does not select or ship an FFM production backend.
 
 To build and re-verify only the real host payload after its native prerequisites, run:
 

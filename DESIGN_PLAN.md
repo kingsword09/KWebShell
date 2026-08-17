@@ -1214,6 +1214,38 @@ binding library with direct FFM downcalls and upcalls over the existing
 versioned C ABI. It is not a second backend: JNI and FFM are never selected by
 a runtime property, shipped in parallel, or used as fallbacks for each other.
 
+#### Objective 8.1: Freeze and prove the FFM boundary
+
+This objective changes no production backend. It freezes the post-Phase-7 C
+ABI and produces executable evidence that Objective 8.2 can replace JNI
+without changing the native-child rendering contract.
+
+Acceptance:
+
+- ABI version 6 inventories exactly 18 exported engine functions, eight public
+  structures, and four callback signatures. A native conformance target proves
+  every size, alignment, field offset, symbol, and callback calling convention
+  on each supported 64-bit CI target.
+- A non-production Java 25 FFM probe resolves all 18 exports from exact
+  absolute library paths, matches every native layout fact, and exercises
+  downcalls, valid and malformed UTF-8 data through the 1 MiB boundary,
+  shared-Arena upcalls from native threads, callback exception containment,
+  and deterministic Arena closure. JDK 21 preview APIs are not used.
+- Compose Desktop 1.11.1 supplies the parent through its documented public
+  `ComposeWindow.windowHandle`. A real window test proves the returned value is
+  a valid `HWND`, X11 `Window`, or `NSWindow`; reflection, private JDK APIs,
+  JAWT calls owned by KWebShell, window-tree guessing, and overlay windows are
+  prohibited.
+- One benchmark harness invokes the same native test-library operations through
+  JNI and FFM after warmup. It records median and p95 latency for integer
+  startup and handle downcalls, strict Unicode payloads, fixed and variable
+  callbacks, and complete owner lifecycles, plus JVM allocation and native
+  live-byte observations. The initialization-only zero-argument query has an
+  absolute latency gate; high-frequency operations retain a relative JNI gate.
+- The macOS arm64, Windows x64, and Linux x64 jobs run the same conformance and
+  benchmark acceptance thresholds. The measured evidence and an explicit
+  go/no-go decision are recorded before Objective 8.2 starts.
+
 Deliver:
 
 - A JDK 25 FFM binding layer for every exported engine and browser C function,

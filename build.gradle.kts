@@ -19,6 +19,7 @@ tasks.named("check") {
     dependsOn(":kweb-bridge-codegen:check")
     dependsOn(":kweb-extensions:check")
     dependsOn(":kweb-desktop:check")
+    dependsOn(":kweb-interop-probe:check")
     dependsOn(":kweb-cef-native:check")
     dependsOn(":kweb-runtime-pack:check")
     dependsOn(":kweb-runtime-pack:verifyCefRuntimeManifest")

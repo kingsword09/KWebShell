@@ -1,17 +1,18 @@
 # JNI to FFM Migration Feasibility Analysis
 
-- Status: Planned feasibility gate for Phase 8
-- Date: 2026-08-13
+- Status: Objective 8.1 complete; local macOS arm64 and hosted
+  macOS arm64/Windows x64/Linux x64 gates are GO
+- Date: 2026-08-17
 - Target runtime: JDK 25 LTS
 
 ## Executive decision
 
 Migrating KWebShell's JVM/native binding from JNI to the Java Foreign Function
 and Memory API is technically feasible because the browser engine already
-exposes a small, versioned C ABI with opaque integer handles. The migration is
-not currently an implementation objective. It belongs after distribution and
-hardening, when the C ABI, Compose host contract, DevTools, and extension
-surfaces have stabilized.
+exposes a small, versioned C ABI with opaque integer handles. Objective 8.1
+changes no production backend: it freezes the post-Phase-7 ABI, proves a
+supported Compose parent handle, and measures a test-only JNI/FFM boundary
+before the breaking replacement in Objective 8.2.
 
 When Phase 8 begins, it will be a one-time breaking replacement:
 
@@ -21,28 +22,22 @@ When Phase 8 begins, it will be a one-time breaking replacement:
 - run the complete real-CEF contract on all advertised desktop targets;
 - do not ship selectable JNI and FFM backends.
 
-The critical blocker is not calling the C ABI. It is acquiring an exact native
-parent from a Compose/AWT component. The current implementation uses JAWT,
-which requires `JNIEnv*` and a Java object reference. FFM deliberately models C
-data and functions, not Java object handles. Pure FFM is therefore blocked
-until KWebShell can obtain the raw `HWND`, AppKit parent, or X11 drawable from a
-supported Compose/Skiko/JBR API or from a redesigned explicit surface contract.
+The critical parent-handle gate is now experimentally resolved through the
+documented `ComposeWindow.windowHandle` API in Compose Desktop 1.11.1 (Skiko
+0.144.6). It returns the top-level `HWND`, X11 `Window`, or macOS `NSWindow`;
+Objective 8.1 validates the value in platform native code on all three hosted
+targets. KWebShell's FFM probe never calls JAWT, reflects into the JDK, scans
+window trees, or creates an overlay.
 
 ## Current implementation baseline
 
-The Objective 3.3 worktree snapshot has ten Kotlin `external` methods, not the
-eleven methods in the earlier proposal. The old Phase 2 echo session has been
-deleted; browser operations now belong to the engine ABI.
+The post-Phase-7 boundary is ABI version 6. `NativeBindings` contains 17 Kotlin
+`external` methods, while `engine_abi.h` exports exactly 18 C functions, eight
+public structures (including `kweb_string_view`), and four callback signatures.
+The sets are not identical: JNI owns exact library bootstrap, while the C ABI
+owns `kweb_status_name` and `kweb_engine_platform_startup`.
 
-| Component | Current file | Lines | Responsibility |
-|---|---:|---:|---|
-| Engine/browser JNI bridge | `engine_jni_bridge.cc` | 846 | Exact library loading, ten JNI methods, callback contexts, global references, thread attachment, UTF conversion calls |
-| JNI entry point | `jni_bridge.cc` | 35 | `JNI_OnLoad`, class lookup, dynamic registration |
-| String conversion | `jni_string.cc` | 139 | Strict UTF-16/UTF-8 conversion |
-| Bridge/string headers | two headers | 33 | Registration and conversion declarations |
-| Total | five files | 1,053 | JNI-specific native boundary |
-
-The ten current JVM methods are:
+The current JVM methods are:
 
 ```text
 loadEngineLibrary
@@ -54,16 +49,23 @@ browserCreate
 browserNavigate
 browserResize
 browserClose
+browserOpenDevTools
+browserCloseDevTools
+browserBridgeRespond
+browserBridgeFail
 liveBrowserCount
+extensionStart
+extensionCancel
+liveExtensionOperationCount
 ```
 
-The C engine exports eleven functions because `kweb_status_name` is also part
-of the native ABI. FFM should bind the complete exported set rather than keep a
-second status-name table on the JVM side.
-
-This count is a baseline, not a promised deletion total. Phase 4 through Phase
-7 will add DevTools, bridge, extension, UI, and packaging operations. Phase 8
-must assess the then-current ABI instead of extrapolating from this snapshot.
+Objective 8.1's Java 25 inventory resolves all 18 C symbols from the exact
+engine library and executes ABI version, status-name, live-count, and typed
+invalid-operation calls. Native export inspection rejects missing and extra
+`kweb_*` symbols. The production JNI implementation currently comprises the
+1,371-line engine bridge, dynamic registration, strict string conversion, and
+platform JAWT parent sources; Objective 8.2 must delete that complete boundary,
+not the obsolete ten-method estimate.
 
 ## Corrections to the initial proposal
 
@@ -144,7 +146,7 @@ build.
 | Native callbacks | Medium-high | Shared Arena, strong owner retention, exception containment, terminal ordering |
 | Concurrent close | Medium-high | Close Arena only after terminal callback and dispatcher drain |
 | Error propagation | High | Keep integer status ABI and typed Kotlin mapping |
-| AWT native parent | Blocked | FFM cannot directly turn a `Component` object into JAWT `JNIEnv*`/`jobject` inputs |
+| Compose native parent | Proven on hosted targets | Consume public `ComposeWindow.windowHandle`; validate exact OS type before browser creation |
 | Windows/macOS/Linux ABI | High | Per-target CI for pointer size, alignment, calling convention, loader behavior |
 | Kotlin source ergonomics | High | Put low-level FFM in Java; retain an idiomatic internal Kotlin facade |
 
@@ -263,7 +265,7 @@ exact exported symbol set
 Hand-written numeric offsets without these tests are rejected. Unsupported
 targets fail at binding initialization with platform and architecture details.
 
-## The AWT/JAWT blocker
+## The Compose parent-handle gate
 
 The current `browserCreate` JNI method accepts a Java `Component`. Native code
 uses JAWT to resolve:
@@ -274,22 +276,20 @@ uses JAWT to resolve:
 
 JAWT functions require JNI values. FFM has no supported operation that converts
 an arbitrary Java object into a stable `jobject` or exposes the current
-`JNIEnv*`. Calling JAWT through FFM therefore does not remove the JNI
-dependency.
+`JNIEnv*`, so calling JAWT through FFM remains rejected.
 
-Phase 8 may proceed only after one of these supported designs is proven on all
-three platforms:
+Compose Desktop 1.11.1 resolves the gate through the documented public
+`ComposeWindow.windowHandle` property. Its contract returns `HWND` on Windows,
+an X11 `Window` on Linux, and `NSWindow` on macOS. `kweb-interop-probe` creates
+a real visible Compose window on the AWT event-dispatch thread and passes that
+value to a platform-native validator. Hosted macOS arm64 confirms a nonzero
+`NSWindow` with a content view, Windows x64 confirms a valid top-level `HWND`,
+and Linux x64 under Xvfb confirms a valid X11 `Window`; all three dispose the
+peer cleanly.
 
-1. Compose/Skiko/JBR exposes the exact native parent handle through a supported,
-   versioned API that KWebShell can pass as `uintptr_t` to the C ABI.
-2. KWebShell changes its Compose host ownership so the native parent is created
-   through the C ABI and integrated without overlays, hidden top-level windows,
-   reflection, or private JDK APIs.
-
-A residual JNI/JAWT shim, reflective `sun.awt` access, scanning window trees by
-title/order, or creating an overlay window does not satisfy a pure FFM
-migration. If neither supported design exists, Phase 8 is blocked and JNI
-remains the declared implementation until the constraint changes.
+Objective 8.2 will pass this raw value as `kweb_browser_config.native_parent`.
+It will not retain a JNI/JAWT shim, reflect into `sun.awt`, infer a window by
+title/order, or create a hidden or overlay top-level window.
 
 ## Migration sequence
 
@@ -305,6 +305,100 @@ stub or a selectable backend.
   boundary with FFM using the same native test library.
 - Record measurements and a go/no-go decision. This objective changes no
   production backend.
+
+Local macOS arm64 evidence uses Temurin 25.0.4 and the real ABI version 6
+engine built against the pinned CEF runtime. Native CTest proves all compiler
+layouts and callback conventions; the Java probe matches all eight layouts,
+resolves and binds all 18 engine exports, exercises 1 MiB and malformed UTF-8,
+shared-Arena callbacks from a native-created thread, callback exception
+containment, and validates a real `ComposeWindow.windowHandle`.
+The unchanged production JNI target still resolves its headers, `libjawt`, and
+`libjvm` from the exact JDK 21 Gradle toolchain; CMake clears and rejects stale
+FindJNI paths from a different daemon JDK.
+
+The benchmark fixes five warmup and 15 measured samples and uses linear
+interpolation for percentiles. The initialization-only zero-argument query has
+a 100 ns FFM p95 limit, avoiding an unstable ratio against a roughly 3 ns JNI
+denominator. The high-frequency FFM p95 limit remains `5x` JNI; owner creation
+additionally has a `1000x` ratio and 5 ms absolute limit. Every FFM operation
+is limited to 1 MiB of JVM allocation per invocation and native live bytes must
+be zero before and after measurement. The maximum Unicode case contains
+exactly 1 MiB of valid UTF-8. The latest local macOS Gradle-run measurements
+are:
+
+| Operation | JNI p95 ns | FFM p95 ns | FFM/JNI | FFM p95 JVM bytes/op |
+|---|---:|---:|---:|---:|
+| Zero-argument ABI-version downcall | 4.446 | 19.606 | 4.410 | 0.000 |
+| Integer downcall | 8.626 | 17.285 | 2.004 | 0.000 |
+| Small Unicode downcall | 283.114 | 295.982 | 1.045 | 408.000 |
+| Medium Unicode downcall | 5,769.488 | 6,057.429 | 1.050 | 408.000 |
+| Maximum Unicode downcall | 4,011,693.750 | 3,875,540.638 | 0.966 | 408.000 |
+| Fixed upcall | 173.433 | 65.434 | 0.377 | 4.986 |
+| Unicode upcall | 1,693.654 | 2,808.146 | 1.658 | 7,459.750 |
+| Owner lifecycle | 403.035 | 29,146.377 | 72.317 | 2,392.000 |
+
+Every threshold passes and native live bytes return to zero, so the local
+Objective 8.1 decision is **GO**. These are boundary microbenchmarks, not a
+claim that the browser is faster. Objective 8.2 still requires real CEF
+startup, navigation, callback stress, memory, and shutdown measurements on all
+advertised targets before deleting JNI.
+
+GitHub-hosted verification reproduced the same five warmup samples, 15
+measured samples, population variance, allocation ceilings, and zero native
+live-byte contract on macOS arm64, Windows x64, and Linux x64. All three hosted
+reports returned **GO**. The measurements below are immutable evidence from CI
+run `32036292736`; ratios are calculated from the recorded p95 values.
+
+Hosted Linux x64 on Temurin 25.0.4:
+
+| Operation | JNI p95 ns | FFM p95 ns | FFM/JNI | FFM p95 JVM bytes/op |
+|---|---:|---:|---:|---:|
+| Zero-argument ABI-version downcall | 5.302 | 6.947 | 1.310 | 0.000 |
+| Integer downcall | 5.330 | 9.113 | 1.710 | 0.000 |
+| Small Unicode downcall | 136.579 | 334.241 | 2.447 | 408.000 |
+| Medium Unicode downcall | 4,132.209 | 5,443.393 | 1.317 | 408.000 |
+| Maximum Unicode downcall | 2,717,776.338 | 3,304,086.850 | 1.216 | 408.000 |
+| Fixed upcall | 82.241 | 42.769 | 0.520 | 10.993 |
+| Unicode upcall | 2,071.926 | 5,519.828 | 2.664 | 7,459.750 |
+| Owner lifecycle | 372.012 | 76,231.344 | 204.916 | 2,392.528 |
+
+Hosted macOS arm64 on Temurin 25.0.3:
+
+| Operation | JNI p95 ns | FFM p95 ns | FFM/JNI | FFM p95 JVM bytes/op |
+|---|---:|---:|---:|---:|
+| Zero-argument ABI-version downcall | 4.937 | 15.992 | 3.239 | 0.000 |
+| Integer downcall | 7.809 | 15.564 | 1.993 | 0.000 |
+| Small Unicode downcall | 190.739 | 296.012 | 1.552 | 384.000 |
+| Medium Unicode downcall | 7,688.404 | 8,159.646 | 1.061 | 384.000 |
+| Maximum Unicode downcall | 5,761,166.075 | 5,576,118.763 | 0.968 | 384.000 |
+| Fixed upcall | 97.298 | 55.779 | 0.573 | 40.665 |
+| Unicode upcall | 1,554.500 | 3,160.038 | 2.033 | 7,459.750 |
+| Owner lifecycle | 239.001 | 24,196.751 | 101.241 | 2,392.000 |
+
+Hosted Windows x64 on Temurin 25.0.4:
+
+| Operation | JNI p95 ns | FFM p95 ns | FFM/JNI | FFM p95 JVM bytes/op |
+|---|---:|---:|---:|---:|
+| Zero-argument ABI-version downcall | 7.909 | 9.178 | 1.160 | 0.000 |
+| Integer downcall | 10.255 | 13.615 | 1.328 | 0.000 |
+| Small Unicode downcall | 1,056.128 | 642.692 | 0.609 | 408.000 |
+| Medium Unicode downcall | 31,014.270 | 12,165.610 | 0.392 | 408.000 |
+| Maximum Unicode downcall | 21,466,688.750 | 8,865,296.250 | 0.413 | 408.000 |
+| Fixed upcall | 130.151 | 68.684 | 0.528 | 10.626 |
+| Unicode upcall | 21,616.240 | 9,028.500 | 0.418 | 7,459.750 |
+| Owner lifecycle | 485.900 | 94,345.100 | 194.166 | 2,392.528 |
+
+Each hosted root `check` also passed the native ABI and real MV3 Chromium
+contracts, isolated JVM/CEF integration, runtime payload verification, all 18
+FFM engine bindings, native-thread upcalls, and the platform Compose parent
+proof. The hosted runtime ZIPs likewise contain no interop probe or JDK 25
+probe artifact.
+
+The final macOS arm64 root `check` passed all 11 sequential native CTests, the
+isolated JVM/CEF engine integration, runtime payload build and verification,
+the Compose parent proof, and every interop task in 6 minutes 43 seconds. The
+verified runtime ZIP contains no interop probe, Compose/Skiko probe dependency,
+or JDK 25 artifact.
 
 ### Objective 8.2: Perform the breaking JDK 25 and FFM replacement
 
@@ -408,8 +502,11 @@ Keep JNI through Phase 7 while the product ABI and native surface contracts are
 still changing. Preserve the small versioned C ABI and avoid adding new JNI
 object-oriented APIs; this keeps the future FFM boundary mechanical.
 
-After Phase 7, execute Objective 8.1. Proceed to Objective 8.2 only when all of
-the following are true:
+Objective 8.1 has local macOS arm64 and hosted macOS arm64/Windows x64/Linux x64
+GO results. The ABI, parent-handle, upcall, Arena, and benchmark gates required
+to start Objective 8.2 are satisfied. Objective 8.2 may proceed as a breaking
+replacement, but JNI must not be deleted until all of the following remain
+true for the production FFM implementation:
 
 - JDK 25 is accepted as the desktop minimum;
 - Kotlin, Gradle, Compose, packaging, and CI pass on JDK 25;

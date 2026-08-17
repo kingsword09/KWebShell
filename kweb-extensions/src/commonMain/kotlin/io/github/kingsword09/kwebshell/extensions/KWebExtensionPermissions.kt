@@ -91,6 +91,7 @@ public class KWebExtensionPermissionPolicy(
             "declarativeNetRequestFeedback",
             "declarativeNetRequestWithHostAccess",
             "notifications",
+            "offscreen",
             "scripting",
             "storage",
             "tabs",

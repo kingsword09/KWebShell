@@ -27,6 +27,8 @@ set(mv3_context_menu_result
   "KWEB_MV3_CONTEXT_MENU_PASS|id=${mv3_extension_id}|menu=kwebshell-mv3-context-menu|clickCount=1|page=https%3A%2F%2Fkwebshell.test%2Fmv3-core-self-test")
 set(mv3_devtools_result
   "KWEB_MV3_DEVTOOLS_PASS|id=${mv3_extension_id}|origin=chrome-extension%3A%2F%2F${mv3_extension_id}|page=%2Fdevtools.html|panel=KWebShell%20MV3%20panel|panelPage=devtools-panel.html|inspected=kwebshell-devtools-inspected|eval=true|created=true")
+set(mv3_offscreen_result
+  "KWEB_MV3_OFFSCREEN_PASS|id=${mv3_extension_id}|origin=chrome-extension%3A%2F%2F${mv3_extension_id}|page=%2Foffscreen.html|reason=DOM_PARSER|parser=KWebShell%20offscreen%20parser|before=false|during=true|closed=true|after=false|ready=1")
 
 function(expected_mv3_result output mode)
   if(mode STREQUAL "restart")
@@ -309,11 +311,15 @@ function(validate_mv3_run event_log expected_mode)
   set(extension_page_load_seen FALSE)
   set(context_menu_mode FALSE)
   set(devtools_mode FALSE)
+  set(offscreen_mode FALSE)
   if(expected_mode STREQUAL "context-menu")
     set(context_menu_mode TRUE)
   endif()
   if(expected_mode STREQUAL "devtools")
     set(devtools_mode TRUE)
+  endif()
+  if(expected_mode STREQUAL "offscreen")
+    set(offscreen_mode TRUE)
   endif()
   set(required_events
     browser_process_start
@@ -366,6 +372,9 @@ function(validate_mv3_run event_log expected_mode)
       mv3_devtools_close_requested
       mv3_devtools_closed
     )
+  endif()
+  if(offscreen_mode)
+    list(APPEND required_events mv3_offscreen_page_passed)
   endif()
 
   foreach(event_line IN LISTS event_lines)
@@ -638,6 +647,16 @@ function(validate_mv3_run event_log expected_mode)
         message(FATAL_ERROR
           "MV3 DevTools close event was unexpected: ${event_line}")
       endif()
+    elseif(event_name STREQUAL "mv3_offscreen_page_passed")
+      if(NOT offscreen_mode)
+        message(FATAL_ERROR
+          "MV3 offscreen result was unexpected: ${event_line}")
+      endif()
+      kweb_read_json_member(offscreen_result "${event_line}" result)
+      if(NOT offscreen_result STREQUAL "${mv3_offscreen_result}")
+        message(FATAL_ERROR
+          "MV3 offscreen extension result was not exact: ${event_line}")
+      endif()
     elseif(event_name STREQUAL "cef_shutdown")
       kweb_read_json_member(exit_code "${event_line}" exit_code)
       if(NOT exit_code STREQUAL "0")
@@ -722,6 +741,11 @@ function(validate_mv3_run event_log expected_mode)
     assert_event_before(mv3_devtools_close_requested mv3_devtools_closed)
     assert_event_before(mv3_devtools_closed profile_cookie_flush_started)
   endif()
+  if(offscreen_mode)
+    assert_event_before(mv3_core_self_test_passed mv3_offscreen_page_passed)
+    assert_event_before(mv3_offscreen_page_passed
+      profile_cookie_flush_started)
+  endif()
   assert_event_before(mv3_core_self_test_passed profile_cookie_flush_started)
   assert_event_before(profile_cookie_flush_completed browser_close_accepted)
   assert_event_before(browser_destroyed cef_quit_requested)
@@ -759,6 +783,7 @@ run_mv3(isolated beta mv3-isolated.jsonl TRUE)
 run_mv3(options options mv3-options.jsonl FALSE)
 run_mv3(action-popup action-popup mv3-action-popup.jsonl FALSE)
 run_mv3(devtools devtools mv3-devtools.jsonl FALSE)
+run_mv3(offscreen offscreen mv3-offscreen.jsonl FALSE)
 if(EXPECT_CUSTOM_EXTENSION_RUNTIME)
   run_mv3(context-menu context-menu mv3-context-menu.jsonl FALSE)
 else()
@@ -767,8 +792,8 @@ endif()
 
 if(EXPECT_CUSTOM_EXTENSION_RUNTIME)
   message(STATUS
-    "Custom Alloy MV3 conformance passed on ${PLATFORM}: content script, runtime messaging, Service Worker idle restart, storage persistence, Profile isolation, options-page navigation, action-popup navigation, DevTools extension page/panel dispatch, and Chromium context-menu command dispatch.")
+    "Custom Alloy MV3 conformance passed on ${PLATFORM}: content script, runtime messaging, Service Worker idle restart, storage persistence, Profile isolation, options-page navigation, action-popup navigation, DevTools extension page/panel dispatch, offscreen-document lifecycle, and Chromium context-menu command dispatch.")
 else()
   message(STATUS
-    "Stock Alloy MV3 conformance passed on ${PLATFORM}: published core, options, action-popup, and DevTools extension behavior plus the strict unpublished context-menu capability gate.")
+    "Stock Alloy MV3 conformance passed on ${PLATFORM}: core, options, action-popup, DevTools extension, and the fixed offscreen-document gate plus the strict unpublished context-menu capability gate.")
 endif()

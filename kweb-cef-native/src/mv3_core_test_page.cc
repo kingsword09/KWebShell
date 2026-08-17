@@ -114,6 +114,8 @@ const char *Mv3CoreSelfTestModeName(Mv3CoreSelfTestMode mode) {
     return "context-menu";
   case Mv3CoreSelfTestMode::kDevTools:
     return "devtools";
+  case Mv3CoreSelfTestMode::kOffscreen:
+    return "offscreen";
   }
   return "invalid";
 }
@@ -133,6 +135,7 @@ Mv3CoreExtensionPageSelfTestForMode(Mv3CoreSelfTestMode mode) {
   case Mv3CoreSelfTestMode::kIsolated:
   case Mv3CoreSelfTestMode::kContextMenu:
   case Mv3CoreSelfTestMode::kDevTools:
+  case Mv3CoreSelfTestMode::kOffscreen:
     return nullptr;
   }
   return nullptr;
@@ -197,6 +200,15 @@ std::string ExpectedMv3CoreDevToolsResult() {
          "|panelPage=devtools-panel.html"
          "|inspected=kwebshell-devtools-inspected"
          "|eval=true|created=true";
+}
+
+std::string ExpectedMv3CoreOffscreenResult() {
+  return "KWEB_MV3_OFFSCREEN_PASS|id=" + std::string(kMv3CoreExtensionId) +
+         "|origin=chrome-extension%3A%2F%2F" + kMv3CoreExtensionId +
+         "|page=%2Foffscreen.html"
+         "|reason=DOM_PARSER"
+         "|parser=KWebShell%20offscreen%20parser"
+         "|before=false|during=true|closed=true|after=false|ready=1";
 }
 
 CefRefPtr<CefSchemeHandlerFactory> CreateMv3CoreSelfTestSchemeHandlerFactory(

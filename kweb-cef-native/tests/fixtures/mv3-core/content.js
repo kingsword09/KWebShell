@@ -16,9 +16,82 @@ const expectedContextMenuId = "kwebshell-mv3-context-menu";
 const expectedDevToolsPanelTitle = "KWebShell MV3 panel";
 const expectedDevToolsPanelPage = "devtools-panel.html";
 const expectedDevToolsInspectedValue = "kwebshell-devtools-inspected";
+const expectedOffscreenPage = "/offscreen.html";
+const expectedOffscreenReason = "DOM_PARSER";
+const expectedOffscreenParser = "KWebShell offscreen parser";
+let offscreenTerminalPublished = false;
+
+const failOffscreen = (message) => {
+  document.title = `KWEB_MV3_OFFSCREEN_FAIL|${message}`;
+};
+
+const validateOffscreenRecord = (record) => {
+  const expected = {
+    extensionId: chrome.runtime.id,
+    origin: `chrome-extension://${chrome.runtime.id}`,
+    page: expectedOffscreenPage,
+    reason: expectedOffscreenReason,
+    parser: expectedOffscreenParser,
+    before: false,
+    during: true,
+    closed: true,
+    after: false,
+    ready: 1
+  };
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    throw new Error(`offscreen-record-type:${typeof record}`);
+  }
+  const expectedKeys = Object.keys(expected).sort();
+  const actualKeys = Object.keys(record).sort();
+  if (JSON.stringify(expectedKeys) !== JSON.stringify(actualKeys)) {
+    throw new Error(`offscreen-record-keys:${JSON.stringify(actualKeys)}`);
+  }
+  for (const key of expectedKeys) {
+    if (record[key] !== expected[key]) {
+      throw new Error(`offscreen-record-${key}:${JSON.stringify(record[key])}`);
+    }
+  }
+  return record;
+};
+
+const publishOffscreenResult = (record) => {
+  if (offscreenTerminalPublished) {
+    return;
+  }
+  validateOffscreenRecord(record);
+  offscreenTerminalPublished = true;
+  document.title = `KWEB_MV3_OFFSCREEN_PASS|id=${record.extensionId}` +
+    `|origin=${encodeURIComponent(record.origin)}` +
+    `|page=${encodeURIComponent(record.page)}` +
+    `|reason=${record.reason}` +
+    `|parser=${encodeURIComponent(record.parser)}` +
+    `|before=${record.before}` +
+    `|during=${record.during}` +
+    `|closed=${record.closed}` +
+    `|after=${record.after}|ready=${record.ready}`;
+};
+
+const readOffscreenRecord = async () => {
+  const { offscreenConformance, offscreenFailure } =
+    await chrome.storage.local.get({
+      offscreenConformance: null,
+      offscreenFailure: null
+    });
+  if (offscreenFailure !== null) {
+    throw new Error(`offscreen-worker:${offscreenFailure}`);
+  }
+  if (offscreenConformance === null) {
+    throw new Error("offscreen-record-missing");
+  }
+  return validateOffscreenRecord(offscreenConformance);
+};
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local") {
+    return;
+  }
+  if (changes.offscreenFailure?.newValue) {
+    failOffscreen(`worker:${changes.offscreenFailure.newValue}`);
     return;
   }
   if (changes.contextMenuFailure?.newValue) {
@@ -52,6 +125,9 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
       `|panelPage=${encodeURIComponent(devtools.panelPage)}` +
       `|inspected=${encodeURIComponent(devtools.inspectedValue)}` +
       "|eval=true|created=true";
+    return;
+  }
+  if (changes.offscreenConformance?.newValue) {
     return;
   }
   const click = changes.contextMenuClick?.newValue;
@@ -103,7 +179,9 @@ const run = async () => {
     first.manifestName !== "KWebShell MV3 core conformance" ||
     first.actionBadgeText !== String(firstExpected) ||
     first.actionTitle !== actionTitleFor(firstExpected) ||
-    first.senderUrl !== location.href
+    first.senderUrl !== location.href ||
+    (configuration.mode === "offscreen" &&
+      first.offscreenSource !== "created")
   ) {
     throw new Error(`first-response:${JSON.stringify(first)}`);
   }
@@ -117,7 +195,9 @@ const run = async () => {
     second.manifestName !== "KWebShell MV3 core conformance" ||
     second.actionBadgeText !== String(secondExpected) ||
     second.actionTitle !== actionTitleFor(secondExpected) ||
-    second.senderUrl !== location.href
+    second.senderUrl !== location.href ||
+    (configuration.mode === "offscreen" &&
+      second.offscreenSource !== "persisted")
   ) {
     throw new Error(`second-response:${JSON.stringify(second)}`);
   }
@@ -128,11 +208,19 @@ const run = async () => {
   document.title = `KWEB_MV3_CORE_PASS|${configuration.mode}` +
     `|first=${first.messageCount}|second=${second.messageCount}` +
     `|suspended=true|isolated=true|id=${expectedExtensionId}`;
+  if (configuration.mode === "offscreen") {
+    publishOffscreenResult(await readOffscreenRecord());
+  }
 };
 
 const start = () => {
   run().catch((error) => {
-    fail(error instanceof Error ? error.message : String(error));
+    const message = error instanceof Error ? error.message : String(error);
+    if (document.documentElement.dataset.mode === "offscreen") {
+      failOffscreen(message);
+    } else {
+      fail(message);
+    }
   });
 };
 

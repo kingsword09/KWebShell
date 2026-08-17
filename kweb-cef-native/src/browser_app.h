@@ -56,6 +56,7 @@ public:
                                    int http_status_code);
   void OnMv3DevToolsPagePassed(const std::string &result);
   void OnMv3DevToolsClosed();
+  void OnMv3OffscreenPagePassed(const std::string &result);
   void OnMv3ExtensionPagePassed(const std::string &result);
   void OnProfileCookieFlushCompleted();
   void OnFatalBrowserError(const std::string &code,
@@ -106,6 +107,7 @@ private:
   bool mv3_devtools_page_passed_ = false;
   bool mv3_devtools_close_requested_ = false;
   bool mv3_devtools_closed_ = false;
+  bool mv3_offscreen_page_passed_ = false;
   bool mv3_extension_page_navigation_requested_ = false;
   bool mv3_extension_page_passed_ = false;
   bool mv3_extension_page_loaded_ = false;

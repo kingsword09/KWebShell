@@ -128,6 +128,112 @@ private class HostRuntimePayloadArguments(
     }
 }
 
+private class HostRuntimeReleaseBuildArguments(
+    @get:Input
+    @get:Optional
+    val privateKey: Provider<String>,
+    @get:Input
+    @get:Optional
+    val publicKey: Provider<String>,
+    @get:Input
+    @get:Optional
+    val outputPack: Provider<String>,
+    @get:Input
+    val manifestPath: String,
+    @get:Input
+    val target: String,
+    @get:Input
+    val productVersion: String,
+    @get:Input
+    val payloadPath: String,
+) : CommandLineArgumentProvider {
+    override fun asArguments(): Iterable<String> {
+        val privateKeyFile = requireAbsoluteProperty(
+            privateKey,
+            "kwebReleasePrivateKey",
+            "absolute-path-to-ed25519-private-key.pk8",
+        )
+        val publicKeyFile = requireAbsoluteProperty(
+            publicKey,
+            "kwebReleasePublicKey",
+            "absolute-path-to-ed25519-public-key.der",
+        )
+        val outputFile = requireAbsoluteProperty(
+            outputPack,
+            "kwebRuntimeReleaseOutput",
+            "absolute-path-to-output-release.zip",
+        )
+        return listOf(
+            "release-build",
+            manifestPath,
+            target,
+            productVersion,
+            payloadPath,
+            privateKeyFile.absolutePath,
+            publicKeyFile.absolutePath,
+            outputFile.absolutePath,
+        )
+    }
+
+    private fun requireAbsoluteProperty(
+        provider: Provider<String>,
+        name: String,
+        example: String,
+    ): File {
+        val value = provider.orNull ?: throw GradleException("Missing -P$name=<$example>.")
+        val file = File(value)
+        if (!file.isAbsolute) throw GradleException("-P$name must be an absolute path: '$value'.")
+        return file
+    }
+}
+
+private class RuntimeReleaseVerifyArguments(
+    @get:Input
+    @get:Optional
+    val target: Provider<String>,
+    @get:Input
+    @get:Optional
+    val pack: Provider<String>,
+    @get:Input
+    @get:Optional
+    val publicKey: Provider<String>,
+    @get:Input
+    val manifestPath: String,
+    @get:Input
+    val productVersion: String,
+) : CommandLineArgumentProvider {
+    override fun asArguments(): Iterable<String> {
+        val targetValue = target.orNull ?: throw GradleException(
+            "Missing -PkwebTarget=<windows-x64|windows-arm64|macos-x64|macos-arm64|linux-x64|linux-arm64>.",
+        )
+        val packFile = requireAbsolute(pack, "kwebRuntimeRelease", "absolute-path-to-release.zip")
+        val publicKeyFile = requireAbsolute(
+            publicKey,
+            "kwebReleasePublicKey",
+            "absolute-path-to-ed25519-public-key.der",
+        )
+        return listOf(
+            "release-verify",
+            manifestPath,
+            targetValue,
+            productVersion,
+            packFile.absolutePath,
+            publicKeyFile.absolutePath,
+        )
+    }
+
+    private fun requireAbsolute(
+        provider: Provider<String>,
+        name: String,
+        example: String,
+    ): File {
+        val value = provider.orNull ?: throw GradleException("Missing -P$name=<$example>.")
+        val file = File(value)
+        if (!file.isAbsolute) throw GradleException("-P$name must be an absolute path: '$value'.")
+        return file
+    }
+}
+
 private fun detectHostRuntimeTarget(): String {
     val operatingSystem = System.getProperty("os.name").lowercase(Locale.ROOT)
     val os = when {
@@ -261,6 +367,51 @@ tasks.register<JavaExec>("verifyHostRuntimePayload") {
     )
     inputs.file(runtimeCatalogPath)
     inputs.file(hostRuntimePayloadArchive)
+}
+
+tasks.register<JavaExec>("buildHostRuntimeRelease") {
+    group = "build"
+    description = "Signs and independently verifies the deterministic host runtime release pack."
+    dependsOn(buildHostRuntimePayload)
+    dependsOn(tasks.classes)
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.kingsword09.kwebshell.runtime.CefRuntimeManifestCliKt")
+    inputs.file(runtimeCatalogPath)
+    inputs.file(hostRuntimePayloadArchive)
+    inputs.file(providers.gradleProperty("kwebReleasePrivateKey"))
+    inputs.file(providers.gradleProperty("kwebReleasePublicKey"))
+    outputs.file(providers.gradleProperty("kwebRuntimeReleaseOutput"))
+    argumentProviders.add(
+        HostRuntimeReleaseBuildArguments(
+            privateKey = providers.gradleProperty("kwebReleasePrivateKey"),
+            publicKey = providers.gradleProperty("kwebReleasePublicKey"),
+            outputPack = providers.gradleProperty("kwebRuntimeReleaseOutput"),
+            manifestPath = runtimeCatalogPath.asFile.absolutePath,
+            target = hostRuntimeTarget,
+            productVersion = project.version.toString(),
+            payloadPath = hostRuntimePayloadArchive.get().asFile.absolutePath,
+        ),
+    )
+}
+
+tasks.register<JavaExec>("verifyRuntimeRelease") {
+    group = "verification"
+    description = "Verifies a signed runtime release with one explicit trusted Ed25519 public key."
+    dependsOn(tasks.classes)
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.kingsword09.kwebshell.runtime.CefRuntimeManifestCliKt")
+    inputs.file(runtimeCatalogPath)
+    inputs.file(providers.gradleProperty("kwebRuntimeRelease"))
+    inputs.file(providers.gradleProperty("kwebReleasePublicKey"))
+    argumentProviders.add(
+        RuntimeReleaseVerifyArguments(
+            target = providers.gradleProperty("kwebTarget"),
+            pack = providers.gradleProperty("kwebRuntimeRelease"),
+            publicKey = providers.gradleProperty("kwebReleasePublicKey"),
+            manifestPath = runtimeCatalogPath.asFile.absolutePath,
+            productVersion = project.version.toString(),
+        ),
+    )
 }
 
 val verifyCefSourcePatchManifest = tasks.register<JavaExec>("verifyCefSourcePatchManifest") {

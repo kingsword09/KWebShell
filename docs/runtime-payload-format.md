@@ -5,7 +5,8 @@
 Schema version 1 is the deterministic unsigned content boundary for one
 KWebShell desktop target. It is an internal build artifact. It is not a release
 artifact, has no authenticity claim, and must not be published or selected by
-an updater until a later objective defines signatures and update metadata.
+an updater. Objective 7.2 wraps these exact bytes in the authenticated
+[`runtime-release-format.md`](runtime-release-format.md) boundary.
 
 The builder accepts exactly these absolute, normalized inputs:
 

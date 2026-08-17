@@ -1167,6 +1167,45 @@ Acceptance:
 - Binary/resource checksums and SBOM/license output are reproducible.
 - Upgrade, corruption, and failed-start diagnostics are actionable.
 
+#### Objective 7.2: Signed runtime release pack and update record
+
+This objective turns one independently verified Objective 7.1 payload into an
+authenticated, reproducible release record. The release record is transportable
+by a later update client, but it does not yet implement network discovery,
+version selection, installation, rollback, or crash recovery.
+
+Acceptance:
+
+- The signer accepts only absolute normalized paths to an already verified
+  payload, an Ed25519 PKCS#8 DER private key, a matching X.509 DER public key,
+  and an output pack. It derives `keyId` from the exact public-key DER and
+  rejects missing, special, symbolic-link, malformed, or mismatched inputs.
+- The pack is a deterministic classic ZIP containing exactly `metadata.json`,
+  the byte-identical nested `payload.zip`, and raw `signature.ed25519` in
+  lexical order. All entries use fixed timestamps, mode `0644`, UTF-8 names,
+  no extras/comments/encryption/data descriptors, and `STORED` compression.
+- Canonical metadata records the schema, product/version, target, CEF and
+  Chromium versions, nested payload size/SHA-256/tree digest, Ed25519
+  algorithm, and derived key ID. The signature covers a versioned domain
+  separator plus the exact metadata bytes. No timestamp, host path, or mutable
+  URL is signed.
+- The signer streams large payloads without loading them into memory, checks
+  for source mutation while writing, independently verifies the temporary pack
+  with the trusted public key, and publishes only through an atomic move.
+- The verifier independently validates the ZIP envelope, canonical metadata,
+  key ID, Ed25519 proof, nested payload digest, target/catalog/version, and the
+  complete Objective 7.1 payload contract. It requires an explicit trusted
+  public key and never downloads, guesses, or falls back to another key or
+  algorithm.
+- JVM tests cover all six target layouts, deterministic repeated signing,
+  malformed and mismatched keys, metadata/signature/payload tampering, ZIP
+  ordering/metadata/trailing-data attacks, target/version mismatch, source
+  mutation, and atomic output preservation. The tests run in the existing
+  macOS, Windows, and Linux CI matrix.
+- The format and explicit non-goals are documented in
+  `docs/runtime-release-format.md`; release signing is not wired into the
+  normal root `check` without an explicitly supplied private key.
+
 ### Phase 8: Replace JNI with the Java Foreign Function and Memory API
 
 This is a deliberate post-hardening, pre-1.0 breaking migration. It upgrades

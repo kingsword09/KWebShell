@@ -34,6 +34,8 @@ Objective 5.4 adds the internal Profile-scoped Chromium lifecycle adapter. A pin
 
 Phase 7.1 adds the deterministic unsigned runtime payload boundary. The builder packages the real target runtime, the exact engine/JNI dynamic-library closure, and pinned CEF notices; preserves safe macOS framework and engine symbolic links; emits canonical manifest metadata; independently verifies every entry and ZIP envelope; and publishes only through an atomic move. This payload is internal and unsigned, so it is not a release or update artifact. See the [runtime payload format](docs/runtime-payload-format.md) for its exact tree, manifest digest, modes, and ZIP rules.
 
+Phase 7.2 adds the deterministic signed runtime release boundary. An explicit Ed25519 key pair signs a canonical release statement and the byte-identical unsigned payload inside a strict three-entry ZIP; the verifier requires an explicit trusted public key and re-runs the complete payload contract before accepting it. No network updater, key discovery, downgrade, rollback, or unsigned release path is exposed. See the [runtime release format](docs/runtime-release-format.md) for the exact envelope, key encoding, signature domain, and commands.
+
 See [DESIGN_PLAN.md](DESIGN_PLAN.md) for architecture and delivery phases, the [Manifest V3 capability matrix](docs/mv3-capability-matrix.md) for the exact runtime surface, [ADR 0003](docs/adr/0003-versioned-native-session-contract.md) for the native ownership contract, [ADR 0004](docs/adr/0004-persistent-chromium-profile-context.md) for the Profile path and persistence contract, [ADR 0005](docs/adr/0005-in-process-jvm-cef-engine.md) for the JVM/CEF engine lifecycle, [ADR 0006](docs/adr/0006-real-awt-chromium-browser-session.md) for the real Alloy browser surface, [ADR 0007](docs/adr/0007-explicit-loopback-cdp-endpoint.md) for the secured CDP endpoint, [ADR 0008](docs/adr/0008-native-devtools-window-host.md) for the native DevTools lifecycle, [ADR 0009](docs/adr/0009-origin-scoped-generated-typed-bridge.md) for bridge isolation and cancellation, [ADR 0010](docs/adr/0010-manifest-v3-package-verification.md) for extension package security, [ADR 0011](docs/adr/0011-profile-scoped-extension-package-store.md) for managed extension objects and journals, [ADR 0012](docs/adr/0012-version-pinned-chromium-extension-lifecycle-adapter.md) for the custom CEF lifecycle boundary, and [AGENTS.md](AGENTS.md) for the non-fallback implementation rules.
 
 ## Requirements
@@ -61,7 +63,28 @@ To build and re-verify only the real host payload after its native prerequisites
   -PcefRoot=/absolute/path/to/extracted/cef_binary
 ```
 
-The unsigned archive is written to `kweb-runtime-pack/build/runtime-payload/` and is not publishable until the later signing objective is complete. Standalone `./gradlew :kweb-runtime-pack:check` exercises all synthetic target layouts and corruption cases without requiring `cefRoot`.
+The unsigned archive is written to `kweb-runtime-pack/build/runtime-payload/` and remains an internal input rather than a publishable artifact. Standalone `./gradlew :kweb-runtime-pack:check` exercises all synthetic target layouts and corruption cases without requiring `cefRoot`.
+
+To produce a signed host release from that verified payload, provide the two DER key files and output path explicitly:
+
+```shell
+./gradlew :kweb-runtime-pack:buildHostRuntimeRelease \
+  -PcefRoot=/absolute/path/to/extracted/cef_binary \
+  -PkwebReleasePrivateKey=/absolute/path/to/ed25519-private-key.pk8 \
+  -PkwebReleasePublicKey=/absolute/path/to/ed25519-public-key.der \
+  -PkwebRuntimeReleaseOutput=/absolute/path/to/KWebShell-release.zip
+```
+
+Re-verification accepts only the declared target and trusted public key:
+
+```shell
+./gradlew :kweb-runtime-pack:verifyRuntimeRelease \
+  -PkwebTarget=macos-arm64 \
+  -PkwebRuntimeRelease=/absolute/path/to/KWebShell-release.zip \
+  -PkwebReleasePublicKey=/absolute/path/to/ed25519-public-key.der
+```
+
+The signing task is not a dependency of root `check` and never obtains a key from the environment, network, repository, or an embedded pack entry.
 
 On a runner known to have no hardware GPU, use the explicit negative capability contract:
 

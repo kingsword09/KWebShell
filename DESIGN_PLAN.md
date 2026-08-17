@@ -1117,6 +1117,50 @@ Deliver:
 - Signed runtime packs and update metadata.
 - Crash reporting, diagnostics, license notices, sandbox policy, and reproducible packaging.
 
+#### Objective 7.1: Reproducible verified runtime payload
+
+This objective defines the unsigned content payload that a later signing and
+update objective will authenticate. It packages the real native build output,
+the exact JNI/engine libraries, and the pinned CEF license notices. It is not a
+release artifact and cannot be published or selected by an update client until
+the signing objective exists.
+
+Acceptance:
+
+- The builder accepts explicit absolute paths for one extracted catalog-pinned
+  CEF root, the matching native `Release` directory, the native contract
+  directory, and the output archive. It requires the exact catalog directory
+  name, non-empty regular `LICENSE.txt` and `CREDITS.html` files, a non-empty
+  native runtime tree, and exactly the target's JNI and engine library closure.
+  Missing, duplicate, special-file, path-escape, or mismatched-target input is
+  a typed failure; no system CEF, alternate directory, or reduced payload is
+  selected.
+- The payload contains `runtime/`, `native/`, and `licenses/` entries plus one
+  canonical `manifest.json`. It walks without following symbolic links,
+  preserves safe relative symlinks and stable executable modes, rejects links
+  that resolve outside their declared input root, and never records an
+  absolute builder path or host-specific timestamp.
+- `manifest.json` records the schema, KWebShell/CEF/Chromium versions, target,
+  source artifact identity, every payload path in lexical order, entry type,
+  normalized mode, size, SHA-256 digest, link target where applicable, and one
+  deterministic tree SHA-256. The manifest is canonical UTF-8 JSON with one
+  trailing newline.
+- ZIP entries are lexical, unique, UTF-8, use one fixed timestamp and pinned
+  compression settings, and carry normalized Unix mode metadata. Two builds
+  from byte-identical input trees with different input mtimes must be
+  byte-for-byte identical and have the same archive SHA-256.
+- An independent verifier reopens the archive and rejects duplicate or unsafe
+  names, unsupported entry types/modes/timestamps, missing notices/runtime or
+  binding libraries, non-canonical manifest bytes, payload/manifest mismatch,
+  SHA-256 or tree-digest mismatch, trailing data, and target/catalog mismatch
+  with typed errors. Verification never trusts the builder's in-memory result.
+- Unit tests cover all six target layouts with synthetic trees, macOS framework
+  and engine symlinks, deterministic rebuilds, notice/binding omissions,
+  escaping links, archive corruption, manifest tampering, payload tampering,
+  duplicates, and unsafe paths. The hosted macOS arm64, Windows x64, and Linux
+  x64 jobs each build and verify the payload from their real pinned CEF/native
+  outputs before this objective merges.
+
 Acceptance:
 
 - Clean machines install and launch the sample application on all targets.

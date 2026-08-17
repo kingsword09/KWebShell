@@ -1,6 +1,7 @@
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Optional
+import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.gradle.process.CommandLineArgumentProvider
 import java.util.Locale
 
@@ -33,7 +34,7 @@ private class CefCmakeArguments(
         val javaHomeFile = File(javaHome.get())
         if (!javaHomeFile.isAbsolute || !javaHomeFile.resolve("include/jni.h").isFile) {
             throw GradleException(
-                "The active JDK does not provide include/jni.h: '${javaHomeFile.absolutePath}'.",
+                "The JDK 21 JNI toolchain does not provide include/jni.h: '${javaHomeFile.absolutePath}'.",
             )
         }
         val expectUnavailable = when (expectHardwareGpuUnavailable.get().lowercase(Locale.ROOT)) {
@@ -61,7 +62,14 @@ private class CefCmakeArguments(
 }
 
 plugins {
-    base
+    `java-base`
+}
+
+val jniJavaLauncher = javaToolchains.launcherFor {
+    languageVersion.set(JavaLanguageVersion.of(21))
+}
+val jniJavaHome = jniJavaLauncher.map { launcher ->
+    launcher.metadata.installationPath.asFile.absolutePath
 }
 
 val cefRoot = providers.gradleProperty("cefRoot")
@@ -90,6 +98,13 @@ val engineLibraryFileName = providers.systemProperty("os.name").map { operatingS
         operatingSystem.lowercase(Locale.ROOT).startsWith("windows") -> "kwebshell_engine.dll"
         operatingSystem.lowercase(Locale.ROOT).startsWith("mac") -> "libkwebshell_engine.dylib"
         else -> "libkwebshell_engine.so"
+    }
+}
+val interopProbeLibraryFileName = providers.systemProperty("os.name").map { operatingSystem ->
+    when {
+        operatingSystem.lowercase(Locale.ROOT).startsWith("windows") -> "kwebshell_interop_probe.dll"
+        operatingSystem.lowercase(Locale.ROOT).startsWith("mac") -> "libkwebshell_interop_probe.dylib"
+        else -> "libkwebshell_interop_probe.so"
     }
 }
 val projectArchitecture = providers.systemProperty("os.arch").map { architecture ->
@@ -125,7 +140,7 @@ tasks.register<Exec>("configureNative") {
             projectArchitecture,
             expectHardwareGpuUnavailable,
             expectCustomExtensionRuntime,
-            providers.systemProperty("java.home"),
+            jniJavaHome,
         ),
     )
 }
@@ -145,6 +160,9 @@ tasks.register<Exec>("buildNative") {
         directory.file(fileName)
     })
     outputs.file(nativeContractDirectory.zip(engineLibraryFileName) { directory, fileName ->
+        directory.file(fileName)
+    })
+    outputs.file(nativeContractDirectory.zip(interopProbeLibraryFileName) { directory, fileName ->
         directory.file(fileName)
     })
     outputs.file(nativeBuildDirectory.zip(nativeUnitTestExecutable) { directory, executable ->

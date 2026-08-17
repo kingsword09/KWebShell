@@ -3,6 +3,7 @@ import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Optional
 import org.gradle.process.CommandLineArgumentProvider
+import java.util.Locale
 
 private class CefRuntimeArtifactArguments(
     @get:Input
@@ -73,6 +74,78 @@ private class CefCustomRuntimeArtifactArguments(
     }
 }
 
+private class HostRuntimePayloadArguments(
+    @get:Input
+    @get:Optional
+    val cefRoot: Provider<String>,
+    @get:Input
+    @get:Optional
+    val requestedTarget: Provider<String>,
+    @get:Input
+    val target: String,
+    @get:Input
+    val productVersion: String,
+    @get:Input
+    val manifestPath: String,
+    @get:Input
+    val nativeReleasePath: String,
+    @get:Input
+    val nativeContractPath: String,
+    @get:Input
+    val outputArchivePath: String,
+) : CommandLineArgumentProvider {
+    override fun asArguments(): Iterable<String> {
+        val cefRootValue = cefRoot.orNull ?: throw GradleException(
+            "Missing -PcefRoot=<absolute-path-to-extracted-cef-distribution> for runtime payload.",
+        )
+        val cefRootFile = File(cefRootValue)
+        if (!cefRootFile.isAbsolute) {
+            throw GradleException("-PcefRoot must be an absolute path: '$cefRootValue'.")
+        }
+        val outputFile = File(outputArchivePath)
+        val outputParent = outputFile.parentFile
+            ?: throw GradleException("The runtime payload output must have a parent directory: '$outputFile'.")
+        if (!outputParent.isDirectory && !outputParent.mkdirs() && !outputParent.isDirectory) {
+            throw GradleException("Unable to create the runtime payload output directory: '$outputParent'.")
+        }
+        requestedTarget.orNull?.let { requested ->
+            if (requested != target) {
+                throw GradleException(
+                    "-PkwebTarget '$requested' does not match the host runtime payload target '$target'.",
+                )
+            }
+        }
+        return listOf(
+            "payload-build",
+            manifestPath,
+            target,
+            productVersion,
+            cefRootFile.absolutePath,
+            nativeReleasePath,
+            nativeContractPath,
+            outputArchivePath,
+        )
+    }
+}
+
+private fun detectHostRuntimeTarget(): String {
+    val operatingSystem = System.getProperty("os.name").lowercase(Locale.ROOT)
+    val os = when {
+        operatingSystem.startsWith("windows") -> "windows"
+        operatingSystem.startsWith("mac") || operatingSystem.startsWith("darwin") -> "macos"
+        operatingSystem.startsWith("linux") -> "linux"
+        else -> throw GradleException("Unsupported host operating system for runtime payload: '$operatingSystem'.")
+    }
+    val architecture = when (System.getProperty("os.arch").lowercase(Locale.ROOT)) {
+        "x86_64", "amd64" -> "x64"
+        "aarch64", "arm64" -> "arm64"
+        else -> throw GradleException(
+            "Unsupported host architecture for runtime payload: '${System.getProperty("os.arch")}'.",
+        )
+    }
+    return "$os-$architecture"
+}
+
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
@@ -88,6 +161,7 @@ kotlin {
 
 dependencies {
     api(project(":kweb-core"))
+    implementation(libs.commons.compress)
     implementation(libs.kotlinx.serialization.json)
 
     testImplementation(kotlin("test-junit5"))
@@ -98,6 +172,15 @@ val cefSourcePatchManifest =
     rootProject.layout.projectDirectory.file("runtime/cef/extension-adapter-patch.json")
 val cefSourceBuildTool = rootProject.layout.projectDirectory.file("runtime/cef/build-custom-runtime.py")
 val cefSourceBuildTests = rootProject.layout.projectDirectory.dir("runtime/cef/tests")
+val hostRuntimeTarget = detectHostRuntimeTarget()
+val hostRuntimePayloadDirectory = layout.buildDirectory.dir("runtime-payload")
+val hostRuntimePayloadArchive = hostRuntimePayloadDirectory.map {
+    it.file("KWebShell-${project.version}-$hostRuntimeTarget.zip")
+}
+val nativeProjectDirectory = rootProject.layout.projectDirectory.dir("kweb-cef-native")
+val nativeReleaseDirectory = nativeProjectDirectory.dir("build/native/Release")
+val nativeContractDirectory = nativeProjectDirectory.dir("build/native/contract")
+val runtimeCatalogPath = rootProject.layout.projectDirectory.file("runtime/cef-runtime.json")
 
 tasks.test {
     useJUnitPlatform()
@@ -129,6 +212,55 @@ tasks.register<JavaExec>("verifyCefRuntimeArtifact") {
             manifestPath = rootProject.layout.projectDirectory.file("runtime/cef-runtime.json").asFile.absolutePath,
         ),
     )
+}
+
+val buildHostRuntimePayload = tasks.register<JavaExec>("buildHostRuntimePayload") {
+    group = "build"
+    description = "Builds and independently verifies the deterministic host runtime payload."
+    dependsOn(":kweb-cef-native:buildNative")
+    dependsOn(tasks.classes)
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.kingsword09.kwebshell.runtime.CefRuntimeManifestCliKt")
+    inputs.file(runtimeCatalogPath)
+    inputs.property("cefRoot", providers.gradleProperty("cefRoot"))
+    inputs.files(
+        providers.gradleProperty("cefRoot").map { root ->
+            listOf(File(root, "LICENSE.txt"), File(root, "CREDITS.html"))
+        },
+    )
+    inputs.dir(nativeReleaseDirectory)
+    inputs.dir(nativeContractDirectory)
+    outputs.file(hostRuntimePayloadArchive)
+    argumentProviders.add(
+        HostRuntimePayloadArguments(
+            cefRoot = providers.gradleProperty("cefRoot"),
+            requestedTarget = providers.gradleProperty("kwebTarget"),
+            target = hostRuntimeTarget,
+            productVersion = project.version.toString(),
+            manifestPath = runtimeCatalogPath.asFile.absolutePath,
+            nativeReleasePath = nativeReleaseDirectory.asFile.absolutePath,
+            nativeContractPath = nativeContractDirectory.asFile.absolutePath,
+            outputArchivePath = hostRuntimePayloadArchive.get().asFile.absolutePath,
+        ),
+    )
+}
+
+tasks.register<JavaExec>("verifyHostRuntimePayload") {
+    group = "verification"
+    description = "Reopens and verifies the deterministic host runtime payload."
+    dependsOn(buildHostRuntimePayload)
+    dependsOn(tasks.classes)
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.kingsword09.kwebshell.runtime.CefRuntimeManifestCliKt")
+    args(
+        "payload-verify",
+        runtimeCatalogPath.asFile.absolutePath,
+        hostRuntimeTarget,
+        project.version.toString(),
+        hostRuntimePayloadArchive.get().asFile.absolutePath,
+    )
+    inputs.file(runtimeCatalogPath)
+    inputs.file(hostRuntimePayloadArchive)
 }
 
 val verifyCefSourcePatchManifest = tasks.register<JavaExec>("verifyCefSourcePatchManifest") {

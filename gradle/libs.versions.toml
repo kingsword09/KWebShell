@@ -2,9 +2,11 @@
 junit-platform = "1.14.4"
 kotlin = "2.4.10"
 coroutines = "1.11.0"
+commons-compress = "1.28.0"
 kotlinx-serialization = "1.11.0"
 
 [libraries]
+commons-compress = { module = "org.apache.commons:commons-compress", version.ref = "commons-compress" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit-platform" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }

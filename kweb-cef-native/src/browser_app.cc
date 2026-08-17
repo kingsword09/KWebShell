@@ -668,6 +668,27 @@ void BrowserApp::OnMv3DevToolsClosed() {
   MaybeCompleteMv3CoreSelfTest();
 }
 
+void BrowserApp::OnMv3OffscreenPagePassed(const std::string &result) {
+  CEF_REQUIRE_UI_THREAD();
+  if (configuration_.mv3_core_self_test_mode !=
+          Mv3CoreSelfTestMode::kOffscreen ||
+      !mv3_core_self_test_page_passed_ || !mv3_core_self_test_page_loaded_ ||
+      mv3_offscreen_page_passed_ || profile_cookie_flush_started_) {
+    OnFatalBrowserError("native.mv3.offscreen-page-state-invalid",
+                        {{"result", result}});
+    return;
+  }
+  const std::string expected = ExpectedMv3CoreOffscreenResult();
+  if (result != expected) {
+    OnFatalBrowserError("native.mv3.offscreen-page-result-invalid",
+                        {{"expected", expected}, {"actual", result}});
+    return;
+  }
+  mv3_offscreen_page_passed_ = true;
+  recorder_->Record("mv3_offscreen_page_passed", {{"result", result}});
+  MaybeCompleteMv3CoreSelfTest();
+}
+
 void BrowserApp::OnMv3ExtensionPagePassed(const std::string &result) {
   CEF_REQUIRE_UI_THREAD();
   const Mv3CoreExtensionPageSelfTest *extension_page =
@@ -730,6 +751,14 @@ void BrowserApp::MaybeCompleteMv3CoreSelfTest() {
     if (!mv3_devtools_open_requested_ || mv3_devtools_opened_ ||
         !mv3_devtools_frontend_loaded_ || !mv3_devtools_page_passed_ ||
         !mv3_devtools_close_requested_ || !mv3_devtools_closed_) {
+      return;
+    }
+    RequestProfileFlushAndClose();
+    return;
+  }
+  if (configuration_.mv3_core_self_test_mode ==
+      Mv3CoreSelfTestMode::kOffscreen) {
+    if (!mv3_offscreen_page_passed_) {
       return;
     }
     RequestProfileFlushAndClose();
@@ -908,6 +937,8 @@ void BrowserApp::OnSelfTestTimeout() {
        {"mv3_devtools_page", mv3_devtools_page_passed_ ? "passed" : "pending"},
        {"mv3_devtools_close_request",
         mv3_devtools_close_requested_ ? "requested" : "pending"},
+       {"mv3_offscreen_page",
+        mv3_offscreen_page_passed_ ? "passed" : "pending"},
        {"mv3_extension_page_surface",
         extension_page ? extension_page->surface : "none"},
        {"mv3_extension_page_navigation",

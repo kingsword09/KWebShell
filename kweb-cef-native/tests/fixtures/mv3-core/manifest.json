@@ -8,7 +8,8 @@
   },
   "permissions": [
     "storage",
-    "contextMenus"
+    "contextMenus",
+    "offscreen"
   ],
   "options_ui": {
     "page": "options.html",

@@ -31,6 +31,7 @@ std::string ExpectedMv3CoreSelfTestResult(Mv3CoreSelfTestMode mode);
 std::string ExpectedMv3CoreExtensionPageResult(Mv3CoreSelfTestMode mode);
 std::string ExpectedMv3CoreContextMenuResult();
 std::string ExpectedMv3CoreDevToolsResult();
+std::string ExpectedMv3CoreOffscreenResult();
 
 CefRefPtr<CefSchemeHandlerFactory> CreateMv3CoreSelfTestSchemeHandlerFactory(
     Mv3CoreSelfTestMode mode, std::shared_ptr<EventRecorder> recorder);

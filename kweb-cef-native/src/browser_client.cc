@@ -282,7 +282,12 @@ void BrowserClient::OnTitleChange(CefRefPtr<CefBrowser> browser,
     return;
   }
   if (mv3_core_self_test_) {
-    if (title_string.starts_with("KWEB_MV3_DEVTOOLS_PASS|")) {
+    if (title_string.starts_with("KWEB_MV3_OFFSCREEN_PASS|")) {
+      app_->OnMv3OffscreenPagePassed(title_string);
+    } else if (title_string.starts_with("KWEB_MV3_OFFSCREEN_FAIL|")) {
+      app_->OnFatalBrowserError("native.mv3.offscreen-page-self-test-failed",
+                                {{"result", title_string}});
+    } else if (title_string.starts_with("KWEB_MV3_DEVTOOLS_PASS|")) {
       app_->OnMv3DevToolsPagePassed(title_string);
     } else if (title_string.starts_with("KWEB_MV3_DEVTOOLS_FAIL|")) {
       app_->OnFatalBrowserError("native.mv3.devtools-page-self-test-failed",

@@ -161,6 +161,33 @@ macOS arm64, Windows x64, and Linux x64. This fixed conformance remains
 sidebars, recorder integrations, and broader DevTools-extension APIs require
 separate objectives.
 
+## Offscreen document boundary
+
+Objective 6.5 proves one exact MV3 offscreen-document lifecycle, but does not
+add a public offscreen API. The installed fixture's Service Worker uses the
+real `chrome.offscreen.hasDocument`, `createDocument`, and `closeDocument`
+methods with the fixed `DOM_PARSER` reason and justification. Chromium creates
+the declared `offscreen.html` document in the same Profile; the host never
+navigates the Alloy child to the extension URL and never creates a hidden CEF
+browser as a substitute.
+
+The worker verifies the manifest identity and exact permission set before
+creation. The offscreen document verifies its own `chrome-extension://`
+origin, path, runtime ID, `runtime.getURL()` result, and a real `DOMParser`
+result, then sends one ready message. Chromium intentionally does not expose
+`runtime.getManifest()` to an `offscreen_extension` context. The worker accepts
+the message only from the exact extension sender, requires `hasDocument`
+transitions `false -> true -> false`, persists one atomic `storage.local`
+record, and validates that record on the next Service-Worker wake without
+recreating the document. Wrong senders, duplicate messages, invalid
+transitions, API errors, and timeouts are typed failures.
+
+This fixed conformance does not claim audio or media playback, user/media
+capture, workers, clipboard, WebRTC, arbitrary reasons or URLs, concurrent
+documents, or a public host-side offscreen API. Those surfaces remain
+`UNPUBLISHED` until their own lifecycle objectives pass on macOS, Windows, and
+Linux.
+
 ## Internal package-store boundary
 
 Objective 5.3 adds no published runtime capability. It verifies the internal

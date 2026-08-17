@@ -1053,6 +1053,58 @@ Implementation evidence as of 2026-08-16:
   stock runtime: all 41 actionable tasks completed, the native suite passed
   10/10, and the final real MV3 conformance run completed in 303.11 seconds.
 
+#### Objective 6.5: Offscreen document lifecycle conformance
+
+This objective proves the real MV3 `chrome.offscreen` document lifecycle in
+Chromium's Profile-scoped extension service. The host must not emulate the API,
+navigate the main Alloy child to `offscreen.html`, or create a second hidden
+browser. The document is created and destroyed only by Chromium in response to
+the extension Service Worker calling the real API.
+
+Acceptance:
+
+- The checked-in MV3 fixture declares the `offscreen` permission and one fixed
+  `offscreen.html` document. The worker verifies the manifest identity and
+  exact permissions before creation. The document verifies its exact extension
+  origin, path, runtime ID, `runtime.getURL()` result, and a real `DOMParser`
+  result for the fixed parser marker. It sends one fixed ready message from the
+  offscreen context; the worker validates the sender URL/ID and returns an
+  explicit acknowledgement. It does not call `runtime.getManifest()`, which
+  Chromium deliberately excludes from `offscreen_extension` contexts.
+- The strict test-only `offscreen` host mode runs the existing core Service
+  Worker sequence. The first worker probe must observe
+  `chrome.offscreen.hasDocument() == false`, call
+  `chrome.offscreen.createDocument({url: "offscreen.html", reasons:
+  ["DOM_PARSER"], justification: "fixed conformance justification"})`,
+  observe the document while it is live, validate the ready message, call the
+  real `closeDocument()`, and observe `hasDocument() == false` again. It then
+  writes exactly one `storage.local` conformance record. A later probe after
+  Service Worker idle suspension and wake-up must validate that persisted
+  record and must not create the document again; the two responses identify
+  their source as exactly `created` and `persisted`.
+- The worker rejects duplicate or unexpected ready messages, wrong sender
+  origin/ID/path, wrong reason or parser marker, duplicate creation, invalid
+  `hasDocument` transitions, stale failure records, and every API or timeout
+  error with a typed failure. Failure cleanup may close an actually-created
+  document, but it may not report synthetic success or fall back to a hidden
+  browser/page.
+- The native state machine accepts exactly one offscreen terminal result,
+  validates the fixed encoded record, and gates Profile cookie flushing on the
+  order `mv3_core_self_test_passed < mv3_offscreen_page_passed <
+  profile_cookie_flush_started`. No offscreen browser, direct extension-page
+  navigation, JavaScript injection, or CDP listener is permitted.
+- Package-boundary and native unit tests validate the `offscreen` permission,
+  all fixture resources, and strict `offscreen` mode parsing. The native
+  conformance script runs the positive sequence against stock CEF on macOS,
+  Windows, and Linux and against the checksum-pinned custom runtime when
+  enabled. The capability remains `UNPUBLISHED` until all three targets pass
+  the exact lifecycle.
+- The capability matrix may publish only this fixed document creation,
+  DOM-parser, sender-validation, close, and persisted-record sequence. Audio,
+  media, workers, clipboard, WebRTC, arbitrary offscreen URLs, concurrent
+  documents, and public offscreen-host APIs remain `UNPUBLISHED` pending their
+  own objectives.
+
 Acceptance:
 
 - Each surface has a real native host and complete lifecycle tests.

@@ -24,6 +24,7 @@ enum class Mv3CoreSelfTestMode {
   kActionPopup,
   kContextMenu,
   kDevTools,
+  kOffscreen,
 };
 
 struct HostConfiguration final {

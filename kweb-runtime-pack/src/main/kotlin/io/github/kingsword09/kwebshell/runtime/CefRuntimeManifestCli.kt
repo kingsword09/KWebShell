@@ -8,6 +8,8 @@ internal fun main(arguments: Array<String>) {
     when (arguments.firstOrNull()) {
         "manifest" -> verifyManifest(arguments)
         "artifact" -> verifyArtifact(arguments)
+        "payload-build" -> buildPayload(arguments)
+        "payload-verify" -> verifyPayload(arguments)
         else -> invalidArguments(arguments)
     }
 }
@@ -30,6 +32,46 @@ private fun verifyArtifact(arguments: Array<String>) {
     println("Verified ${artifactPath.toAbsolutePath()} for ${target.id}.")
 }
 
+private fun buildPayload(arguments: Array<String>) {
+    requireArgumentCount(arguments, 8)
+    val catalog = CefRuntimeCatalogLoader.load(Path.of(arguments[1]))
+    val target = KWebTarget.parse(arguments[2])
+    val result = KWebRuntimePayloadAssembler.build(
+        KWebRuntimePayloadBuildRequest(
+            catalog = catalog,
+            target = target,
+            productVersion = arguments[3],
+            cefRoot = Path.of(arguments[4]),
+            nativeReleaseDirectory = Path.of(arguments[5]),
+            nativeContractDirectory = Path.of(arguments[6]),
+            outputArchive = Path.of(arguments[7]),
+        ),
+    )
+    println(
+        "Built ${result.archive.toAbsolutePath()} for ${target.id}; " +
+            "archive SHA-256 ${result.archiveSha256}.",
+    )
+}
+
+private fun verifyPayload(arguments: Array<String>) {
+    requireArgumentCount(arguments, 5)
+    val catalog = CefRuntimeCatalogLoader.load(Path.of(arguments[1]))
+    val target = KWebTarget.parse(arguments[2])
+    val archive = Path.of(arguments[4])
+    val manifest = KWebRuntimePayloadVerifier.verify(
+        KWebRuntimePayloadVerificationRequest(
+            archive = archive,
+            catalog = catalog,
+            target = target,
+            productVersion = arguments[3],
+        ),
+    )
+    println(
+        "Verified ${archive.toAbsolutePath()} for ${target.id}; " +
+            "${manifest.entries.size} payload entries.",
+    )
+}
+
 private fun requireArgumentCount(arguments: Array<String>, expected: Int) {
     if (arguments.size != expected) {
         invalidArguments(arguments)
@@ -42,6 +84,9 @@ private fun invalidArguments(arguments: Array<String>): Nothing {
         details = mapOf("arguments" to arguments.joinToString(separator = " ")),
         message =
             "Usage: manifest <manifest-path> or " +
-                "artifact <manifest-path> <target> <archive-path>.",
+                "artifact <manifest-path> <target> <archive-path> or " +
+                "payload-build <manifest-path> <target> <product-version> " +
+                "<cef-root> <native-release> <native-contract> <output-archive> or " +
+                "payload-verify <manifest-path> <target> <product-version> <archive-path>.",
     )
 }

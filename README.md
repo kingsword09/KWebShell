@@ -32,6 +32,8 @@ Phase 5.3 adds the internal Profile-scoped immutable package store required by t
 
 Objective 5.4 adds the internal Profile-scoped Chromium lifecycle adapter. A pinned source patch extends `libcef` with four private `cef_kweb_*` C exports; the JNI engine discovers and fingerprints them dynamically, and stock CEF fails with `native.abi.extension-runtime-abi-missing`. The coordinator now drives real install, update, reload, query, uninstall, cancellation, and restart reconciliation through Chromium's extension service. Reload readiness waits for prior Profile worker teardown before it starts the current activation, rather than relying on a delay. On macOS arm64, the source-built runtime has passed the full lifecycle fixture, including a replaced Service Worker, retained `storage.local`, two-Profile isolation, forced process loss, five cancelled-reload reconciliation cycles, duplicate-operation rejection, and uninstall persistence. Package lifecycle remains `UNPUBLISHED`: Windows x64 and Linux x64 custom artifacts have not yet passed the same gate, and the runtime manifest intentionally contains no publication entries.
 
+Phase 7.1 adds the deterministic unsigned runtime payload boundary. The builder packages the real target runtime, the exact engine/JNI dynamic-library closure, and pinned CEF notices; preserves safe macOS framework and engine symbolic links; emits canonical manifest metadata; independently verifies every entry and ZIP envelope; and publishes only through an atomic move. This payload is internal and unsigned, so it is not a release or update artifact. See the [runtime payload format](docs/runtime-payload-format.md) for its exact tree, manifest digest, modes, and ZIP rules.
+
 See [DESIGN_PLAN.md](DESIGN_PLAN.md) for architecture and delivery phases, the [Manifest V3 capability matrix](docs/mv3-capability-matrix.md) for the exact runtime surface, [ADR 0003](docs/adr/0003-versioned-native-session-contract.md) for the native ownership contract, [ADR 0004](docs/adr/0004-persistent-chromium-profile-context.md) for the Profile path and persistence contract, [ADR 0005](docs/adr/0005-in-process-jvm-cef-engine.md) for the JVM/CEF engine lifecycle, [ADR 0006](docs/adr/0006-real-awt-chromium-browser-session.md) for the real Alloy browser surface, [ADR 0007](docs/adr/0007-explicit-loopback-cdp-endpoint.md) for the secured CDP endpoint, [ADR 0008](docs/adr/0008-native-devtools-window-host.md) for the native DevTools lifecycle, [ADR 0009](docs/adr/0009-origin-scoped-generated-typed-bridge.md) for bridge isolation and cancellation, [ADR 0010](docs/adr/0010-manifest-v3-package-verification.md) for extension package security, [ADR 0011](docs/adr/0011-profile-scoped-extension-package-store.md) for managed extension objects and journals, [ADR 0012](docs/adr/0012-version-pinned-chromium-extension-lifecycle-adapter.md) for the custom CEF lifecycle boundary, and [AGENTS.md](AGENTS.md) for the non-fallback implementation rules.
 
 ## Requirements
@@ -50,7 +52,16 @@ npm ci
   -PcefRoot=/absolute/path/to/extracted/cef_binary_151.3.16+gbe1e15d+chromium-151.0.7922.109_macosarm64_minimal
 ```
 
-The root `check` task compiles every included module, strictly compiles the generated TypeScript client, runs Kotlin tests, native unit/GUI tests, and the isolated real JVM/CEF engine integration contract, and validates the pinned CEF runtime manifest. On Linux the engine contract is launched through explicit `xvfb-run`; absence of that launcher fails configuration. `cefRoot` must point to an extracted, checksum-verified CEF distribution for the current host; it is never inferred from another platform or replaced by a system WebView.
+The root `check` task compiles every included module, strictly compiles the generated TypeScript client, runs Kotlin tests, native unit/GUI tests, and the isolated real JVM/CEF engine integration contract, validates the pinned CEF runtime manifest, and builds plus independently verifies the real host runtime payload. On Linux the engine contract is launched through explicit `xvfb-run`; absence of that launcher fails configuration. `cefRoot` must point to an extracted, checksum-verified CEF distribution for the current host; it is never inferred from another platform or replaced by a system WebView.
+
+To build and re-verify only the real host payload after its native prerequisites, run:
+
+```shell
+./gradlew :kweb-runtime-pack:verifyHostRuntimePayload \
+  -PcefRoot=/absolute/path/to/extracted/cef_binary
+```
+
+The unsigned archive is written to `kweb-runtime-pack/build/runtime-payload/` and is not publishable until the later signing objective is complete. Standalone `./gradlew :kweb-runtime-pack:check` exercises all synthetic target layouts and corruption cases without requiring `cefRoot`.
 
 On a runner known to have no hardware GPU, use the explicit negative capability contract:
 

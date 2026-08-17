@@ -700,12 +700,6 @@ void BrowserApp::OnMv3ExtensionPagePassed(const std::string &result) {
                         {{"result", result}});
     return;
   }
-  if (mv3_extension_page_passed_) {
-    OnFatalBrowserError(
-        "native.mv3.extension-page-duplicate-terminal-event",
-        {{"surface", extension_page->surface}, {"result", result}});
-    return;
-  }
   const std::string expected = ExpectedMv3CoreExtensionPageResult(
       configuration_.mv3_core_self_test_mode);
   if (result != expected) {
@@ -713,6 +707,9 @@ void BrowserApp::OnMv3ExtensionPagePassed(const std::string &result) {
                         {{"surface", extension_page->surface},
                          {"expected", expected},
                          {"actual", result}});
+    return;
+  }
+  if (mv3_extension_page_passed_) {
     return;
   }
   mv3_extension_page_passed_ = true;

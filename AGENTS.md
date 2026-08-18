@@ -32,7 +32,7 @@ The browser engine is a product boundary, not an implementation detail. The desk
 
 - Implement objectives one at a time. Define the acceptance criteria before editing code.
 - Each objective must include unit tests, native integration tests, and cross-platform tests proportional to its risk.
-- Chromium, CEF, JNI/C ABI, windowing, rendering, profile, DevTools, and Manifest V3 behavior must be tested with real runtime artifacts, not mocks alone.
+- Chromium, CEF, FFM/C ABI, windowing, rendering, profile, DevTools, and Manifest V3 behavior must be tested with real runtime artifacts, not mocks alone.
 - A change is complete only after its tests pass, packaging is verified, and the relevant documentation is updated.
 - Never claim support for an API or Manifest V3 capability without a conformance test demonstrating it.
 
@@ -56,9 +56,9 @@ The browser engine is a product boundary, not an implementation detail. The desk
 - `kweb-compose`: Compose UI and native-surface composition only; it must not own Chromium internals.
 - `kweb-desktop`: desktop session, window, page, DevTools, CDP, and profile orchestration.
 - `kweb-bridge`: typed Kotlin/JavaScript RPC and generated bindings. Keep the transport independent of CEF.
-- `kweb-cef-native`: C++ CEF/Chromium host, C ABI/JNI boundary, native window integration, and extension adapter.
+- `kweb-cef-native`: C++ CEF/Chromium host, C ABI, native window integration, and extension adapter.
 - `kweb-extensions`: Manifest V3 package validation, permission policy, lifecycle model, and capability reporting.
-- Keep CEF C++ types behind an opaque C ABI or JNI boundary. Do not leak `CefRefPtr`, CEF callbacks, or Chromium classes into common Kotlin code.
+- Keep CEF C++ types behind the opaque C ABI. Do not leak `CefRefPtr`, CEF callbacks, or Chromium classes into common Kotlin code.
 - Reuse Chromium's extension service, Service Worker lifecycle, permission enforcement, content-script injection, and network rule engines. Do not reimplement them in Kotlin or JavaScript.
 - Profiles are explicit and persistent when extensions are enabled. Never share extension state implicitly between profiles.
 - Native child rendering is the required high-performance path. Off-screen rendering is a separately declared capability and must not be substituted silently.
@@ -83,7 +83,7 @@ Do not promise compatibility with every Chrome Web Store extension. Publish a ve
 ## Build and Platform Rules
 
 - Kotlin Toolchain/Amper may orchestrate Kotlin Multiplatform modules, Kotlin/Native cinterop, resource packaging, and native artifact provisioning. It does not replace CEF's C++/Chromium build, GN/Ninja, CMake, or platform SDKs.
-- Use JVM + JNI for the first Compose Desktop integration. Add Kotlin/Native bindings only after the C ABI and lifecycle contracts are stable.
+- Use JDK 25 FFM for the Compose Desktop integration. Keep FFM layouts and calls internal to the Java binding layer while Kotlin owns lifecycle and public API behavior.
 - Kotlin/Native interop must consume a small, versioned C ABI. C++ must be compiled by the platform-compatible C++ toolchain and loaded as a native library or host process.
 - Test Windows, macOS, and Linux separately. A successful build on one host does not imply support on another.
 - CEF/Chromium version, binary provenance, runtime resources, locales, codecs, sandbox settings, and license notices must be pinned and reproducible.

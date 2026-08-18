@@ -73,9 +73,9 @@ class KWebRuntimePayloadTest {
     }
 
     @Test
-    fun rejectsMissingNativeBindingBeforeCreatingAnArchive() {
+    fun rejectsMissingEngineBindingBeforeCreatingAnArchive() {
         withFixture(KWebTarget.parse("windows-x64")) { fixture ->
-            Files.delete(fixture.nativeContract.resolve("kwebshell_jni.dll"))
+            Files.delete(fixture.nativeContract.resolve("kwebshell_engine.dll"))
             val error = assertFailsWith<KWebRuntimePayloadException> { build(fixture) }
             assertTrue(
                 error.code == "runtime.payload.input-attributes-failed" ||
@@ -93,6 +93,19 @@ class KWebRuntimePayloadTest {
             Files.writeString(fixture.root.resolve("outside"), "outside")
             val error = assertFailsWith<KWebRuntimePayloadException> { build(fixture) }
             assertEquals("runtime.payload.input-symlink-escape", error.code)
+        }
+    }
+
+    @Test
+    fun rejectsRecursiveInputSymlink() {
+        withFixture(KWebTarget.parse("macos-arm64")) { fixture ->
+            val recursive = fixture.nativeRelease.resolve(
+                "KWebShell.app/Contents/Frameworks/" +
+                    "Chromium Embedded Framework.framework/Versions/A/A",
+            )
+            Files.createSymbolicLink(recursive, Path.of("A"))
+            val error = assertFailsWith<KWebRuntimePayloadException> { build(fixture) }
+            assertEquals("runtime.payload.input-symlink-target-missing", error.code)
         }
     }
 

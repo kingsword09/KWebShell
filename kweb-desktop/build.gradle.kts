@@ -2,31 +2,75 @@ import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Locale
 import org.gradle.api.tasks.JavaExec
+import org.gradle.api.tasks.compile.JavaCompile
+import org.gradle.jvm.tasks.Jar
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
 }
 
+val desktopModuleName = "io.github.kingsword09.kwebshell.desktop"
+
 kotlin {
     explicitApi()
-    jvmToolchain(21)
+    jvmToolchain(25)
     compilerOptions {
-        jvmTarget.set(JvmTarget.JVM_21)
+        jvmTarget.set(JvmTarget.JVM_25)
     }
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.encoding = "UTF-8"
+    options.release.set(25)
+    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
+}
+
+val skikoTarget = providers.systemProperty("os.name").zip(
+    providers.systemProperty("os.arch"),
+) { operatingSystem, architecture ->
+    val os = when {
+        operatingSystem.lowercase(Locale.ROOT).startsWith("windows") -> "windows"
+        operatingSystem.lowercase(Locale.ROOT).startsWith("mac") -> "macos"
+        operatingSystem.lowercase(Locale.ROOT).startsWith("linux") -> "linux"
+        else -> throw GradleException("Unsupported desktop operating system '$operatingSystem'.")
+    }
+    val arch = when (architecture.lowercase(Locale.ROOT)) {
+        "x86_64", "amd64" -> "x64"
+        "aarch64", "arm64" -> "arm64"
+        else -> throw GradleException("Unsupported desktop architecture '$architecture'.")
+    }
+    "$os-$arch"
 }
 
 dependencies {
     api(project(":kweb-core"))
     implementation(project(":kweb-bridge"))
     implementation(project(":kweb-extensions"))
+    implementation(libs.compose.ui.desktop)
     implementation(libs.kotlinx.coroutines.core)
+    runtimeOnly("org.jetbrains.skiko:skiko-awt-runtime-${skikoTarget.get()}:${libs.versions.skiko.get()}")
     testImplementation(libs.kotlinx.serialization.json)
 
     testImplementation(kotlin("test-junit5"))
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 
+val desktopJar = tasks.named<Jar>("jar") {
+    manifest.attributes["Automatic-Module-Name"] = desktopModuleName
+}
+val desktopTestClasses = files(
+    layout.buildDirectory.dir("classes/kotlin/test"),
+    layout.buildDirectory.dir("classes/java/test"),
+)
+val namedDesktopDependencies = files(
+    providers.provider {
+        val excluded = sourceSets.main.get().output.files.mapTo(hashSetOf()) { it.absoluteFile }
+        excluded += desktopTestClasses.files.map(File::getAbsoluteFile)
+        sourceSets.test.get().runtimeClasspath.files.filterNot { it.absoluteFile in excluded }
+    },
+)
+val namedDesktopClasspath = files(desktopTestClasses, namedDesktopDependencies)
 val bridgeCodegen = configurations.create("bridgeCodegen")
 dependencies {
     bridgeCodegen(project(":kweb-bridge-codegen"))
@@ -75,11 +119,11 @@ tasks.named("compileTestKotlin") {
     dependsOn(generateConformanceBridge)
 }
 
-val nativeJniLibrary = providers.systemProperty("os.name").map { operatingSystem ->
+val nativeEngineLibrary = providers.systemProperty("os.name").map { operatingSystem ->
     val fileName = when {
-        operatingSystem.lowercase(Locale.ROOT).startsWith("windows") -> "kwebshell_jni.dll"
-        operatingSystem.lowercase(Locale.ROOT).startsWith("mac") -> "libkwebshell_jni.dylib"
-        else -> "libkwebshell_jni.so"
+        operatingSystem.lowercase(Locale.ROOT).startsWith("windows") -> "kwebshell_engine.dll"
+        operatingSystem.lowercase(Locale.ROOT).startsWith("mac") -> "libkwebshell_engine.dylib"
+        else -> "libkwebshell_engine.so"
     }
     rootProject.layout.projectDirectory
         .file("kweb-cef-native/build/native/contract/$fileName")
@@ -88,12 +132,11 @@ val nativeJniLibrary = providers.systemProperty("os.name").map { operatingSystem
 
 tasks.test {
     useJUnitPlatform()
-    dependsOn(":kweb-cef-native:buildNative")
-    inputs.file(nativeJniLibrary)
-    systemProperty(
-        "kweb.native.library.path",
-        nativeJniLibrary.map { it.absolutePath }.get(),
-    )
+    dependsOn(desktopJar)
+    val modulePath = desktopJar.get().archiveFile.get().asFile.absolutePath
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    systemProperty("kweb.desktop.module.path", modulePath)
+    systemProperty("kweb.desktop.named.classpath", namedDesktopClasspath.asPath)
 }
 
 val operatingSystem = providers.systemProperty("os.name")
@@ -142,8 +185,9 @@ val nativeLocales = operatingSystem.map { name ->
     }
 }
 val engineIntegrationRoot = layout.buildDirectory.dir("engine-integration")
+val engineIntegrationClasspath = namedDesktopDependencies
 val integrationJava = javaToolchains.launcherFor {
-    languageVersion.set(JavaLanguageVersion.of(21))
+    languageVersion.set(JavaLanguageVersion.of(25))
 }
 val expectCustomExtensionRuntime = providers.gradleProperty("kwebExpectCustomExtensionRuntime")
     .map { value ->
@@ -157,8 +201,12 @@ val cleanEngineIntegration = tasks.register<Delete>("cleanEngineIntegration") {
 }
 val engineIntegrationJavaCommand = buildList {
     add(integrationJava.get().executablePath.asFile.absolutePath)
+    add("--module-path=${desktopJar.get().archiveFile.get().asFile.absolutePath}")
+    add("--patch-module=$desktopModuleName=${desktopTestClasses.asPath}")
+    add("--add-modules=$desktopModuleName,java.net.http,jdk.httpserver")
+    add("--enable-native-access=$desktopModuleName")
     add("-Djava.awt.headless=false")
-    add("-Dkweb.native.library.path=${nativeJniLibrary.get().absolutePath}")
+    add("-Dkweb.native.library.path=${nativeEngineLibrary.get().absolutePath}")
     add("-Dkweb.engine.integration.root=${engineIntegrationRoot.get().asFile.absolutePath}")
     add("-Dkweb.engine.cef.runtime.path=${nativeCefRuntime.get().absolutePath}")
     add("-Dkweb.engine.subprocess.path=${nativeBrowserSubprocess.get().absolutePath}")
@@ -172,9 +220,13 @@ val engineIntegrationJavaCommand = buildList {
     add("-Dkweb.engine.integration.lifecycle.v1=${mv3LifecycleFixture.dir("v1").asFile.absolutePath}")
     add("-Dkweb.engine.integration.lifecycle.v2=${mv3LifecycleFixture.dir("v2").asFile.absolutePath}")
     add("-Dkweb.engine.integration.expect.custom.extension.runtime=${expectCustomExtensionRuntime.get()}")
+    add("-Dkweb.desktop.module.path=${desktopJar.get().archiveFile.get().asFile.absolutePath}")
+    add("-Dkweb.desktop.test.classes=${desktopTestClasses.asPath}")
+    add("-Dkweb.desktop.integration.classpath=${engineIntegrationClasspath.asPath}")
     add("-cp")
-    add(sourceSets.test.get().runtimeClasspath.asPath)
-    add("io.github.kingsword09.kwebshell.desktop.internal.NativeEngineIntegrationMainKt")
+    add(engineIntegrationClasspath.asPath)
+    add("-m")
+    add("$desktopModuleName/io.github.kingsword09.kwebshell.desktop.internal.NativeEngineIntegrationMainKt")
     add("coordinator")
 }
 val extensionLifecycleIntegrationJavaCommand =
@@ -187,11 +239,12 @@ val engineIntegrationTest = tasks.register<Exec>("engineIntegrationTest") {
         cleanEngineIntegration,
         generateConformanceBridge,
         tasks.testClasses,
+        desktopJar,
         ":kweb-cef-native:buildNative",
     )
     mustRunAfter(tasks.test, ":kweb-cef-native:nativeTest")
 
-    inputs.file(nativeJniLibrary)
+    inputs.file(nativeEngineLibrary)
     inputs.file(nativeCefRuntime)
     inputs.file(nativeBrowserSubprocess)
     inputs.file(nativeResources.map { it.resolve("resources.pak") })
@@ -225,11 +278,12 @@ val extensionLifecycleIntegrationTest = tasks.register<Exec>("extensionLifecycle
         cleanEngineIntegration,
         generateConformanceBridge,
         tasks.testClasses,
+        desktopJar,
         ":kweb-cef-native:buildNative",
     )
     mustRunAfter(tasks.test, ":kweb-cef-native:nativeTest", engineIntegrationTest)
 
-    inputs.file(nativeJniLibrary)
+    inputs.file(nativeEngineLibrary)
     inputs.file(nativeCefRuntime)
     inputs.file(nativeBrowserSubprocess)
     inputs.file(nativeResources.map { it.resolve("resources.pak") })

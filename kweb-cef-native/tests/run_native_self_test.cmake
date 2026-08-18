@@ -45,6 +45,8 @@ set(required_events
 )
 if(NOT PLATFORM STREQUAL "Darwin")
   list(APPEND required_events root_screen_rect_reported)
+else()
+  list(APPEND required_events macos_process_requirement_metrics_disabled)
 endif()
 
 foreach(event_line IN LISTS event_lines)
@@ -201,6 +203,12 @@ function(assert_event_before first_event second_event)
 endfunction()
 
 assert_event_before(browser_process_start cef_context_initialized)
+if(PLATFORM STREQUAL "Darwin")
+  assert_event_before(
+    macos_process_requirement_metrics_disabled
+    cef_context_initialized
+  )
+endif()
 assert_event_before(cef_context_initialized native_window_created)
 assert_event_before(native_window_created browser_created)
 assert_event_before(browser_created native_child_attached)

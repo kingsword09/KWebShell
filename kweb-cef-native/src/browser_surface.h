@@ -19,8 +19,9 @@ public:
                              int32_t *actual_width,
                              int32_t *actual_height) = 0;
   virtual bool ValidateParentage() const = 0;
-  virtual void DestroyBrowserWindow() = 0;
-  virtual void BrowserDestroyed() = 0;
+  virtual kweb_status RequestBrowserClose() = 0;
+  virtual kweb_status CompleteBrowserClose(bool *handled_out) = 0;
+  virtual kweb_status BrowserDestroyed() = 0;
 };
 
 std::unique_ptr<BrowserSurface>

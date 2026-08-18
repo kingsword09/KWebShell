@@ -450,6 +450,12 @@ internal object KWebRuntimePayloadAssembler {
             details = mapOf("path" to source.toString(), "linkTarget" to linkTarget),
             message = "The runtime payload input symbolic link escapes its declared input tree.",
         )
+        payloadRequire(
+            Files.exists(resolved),
+            code = "runtime.payload.input-symlink-target-missing",
+            details = mapOf("path" to source.toString(), "linkTarget" to linkTarget),
+            message = "The runtime payload symbolic link does not resolve to an existing input.",
+        )
         KWebRuntimePayloadContract.validateLinkTarget(payloadPath, linkTarget)
         payloadRequire(
             expectedTarget == null || linkTarget == expectedTarget,

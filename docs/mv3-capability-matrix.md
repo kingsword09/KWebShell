@@ -239,7 +239,7 @@ only that fixture with background networking, component updates, and proxy use
 disabled. This proves Chromium capability without external network dependence
 but deliberately does not define product installation semantics.
 
-The production JNI engine sets `command_line_args_disabled` and does not expose
+The production FFM-backed engine sets `command_line_args_disabled` and does not expose
 these self-test arguments. KWebShell does not fall back to command-line loading,
 a system WebView, an emulated `chrome.*` object, or another Profile when a
 published extension capability is unavailable.

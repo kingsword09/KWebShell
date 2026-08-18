@@ -26,7 +26,7 @@ without bridge configuration receive no bridge functions.
 each live CEF query to a monotonically increasing request ID and atomically
 consumes it on success, typed failure, renderer cancellation, navigation, or
 browser close. Kotlin dispatches each request in a dedicated coroutine scope off
-the CEF and JNI callback threads. Page cancellation cancels the exact handler job;
+the CEF and FFM upcall threads. Page cancellation cancels the exact handler job;
 browser close cancels and joins every remaining job before the JVM owner returns.
 
 `kweb-bridge` defines the closed version-1 JSON envelope and typed failure format.
@@ -62,7 +62,7 @@ The isolated real CEF integration covers structured Unicode round trips, typed
 business failures, unknown methods, timeout and `AbortSignal` cancellation,
 navigation cancellation, page-close cancellation, same-origin child-frame
 exclusion, cross-origin main-page exclusion, and off-CEF-thread handler execution.
-A raw JNI/C ABI contract additionally verifies incomplete and malformed bridge
+A raw FFM/C ABI contract additionally verifies incomplete and malformed bridge
 configuration, invalid response JSON, one-shot response ownership, duplicate
 responses, and late responses after cancellation. The same root `check` contract
 runs on macOS arm64, Linux x64 under Xvfb, and Windows x64 in GitHub Actions.

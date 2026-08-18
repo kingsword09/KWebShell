@@ -32,6 +32,7 @@ val skikoTarget = providers.systemProperty("os.name").zip(
 }
 
 dependencies {
+    implementation(project(":kweb-desktop"))
     implementation(libs.compose.ui.desktop)
     runtimeOnly("org.jetbrains.skiko:skiko-awt-runtime-${skikoTarget.get()}:${libs.versions.skiko.get()}")
 }
@@ -92,19 +93,6 @@ val verifyFfmProbe = tasks.register<JavaExec>("verifyFfmProbe") {
     mustRunAfter(realCefVerificationTasks)
 }
 
-val verifyJniFfmContract = tasks.register<JavaExec>("verifyJniFfmContract") {
-    group = "verification"
-    description = "Compares JNI and JDK 25 FFM behavior through one native probe library."
-    dependsOn(tasks.classes, ":kweb-cef-native:buildNative")
-    javaLauncher.set(jdk25Launcher)
-    jvmArgs("--enable-native-access=ALL-UNNAMED")
-    classpath = sourceSets.main.get().runtimeClasspath
-    mainClass.set("io.github.kingsword09.kwebshell.interop.probe.JniFfmContractMain")
-    args(interopProbeLibrary.get().absolutePath)
-    inputs.file(interopProbeLibrary)
-    mustRunAfter(verifyFfmProbe)
-}
-
 val verifyFfmEngineAbi = tasks.register<JavaExec>("verifyFfmEngineAbi") {
     group = "verification"
     description = "Binds all 18 frozen engine ABI exports and exercises safe calls through JDK 25 FFM."
@@ -123,7 +111,7 @@ val verifyFfmEngineAbi = tasks.register<JavaExec>("verifyFfmEngineAbi") {
     }
     inputs.file(cefRuntimeLibrary)
     inputs.file(engineLibrary)
-    mustRunAfter(verifyJniFfmContract)
+    mustRunAfter(verifyFfmProbe)
 }
 
 val parentJavaCommand = listOf(
@@ -151,28 +139,9 @@ val verifyComposeNativeParent = tasks.register<Exec>("verifyComposeNativeParent"
     mustRunAfter(verifyFfmEngineAbi)
 }
 
-val benchmarkReport = layout.buildDirectory.file("reports/interop-benchmark/results.json")
-val benchmarkInterop = tasks.register<JavaExec>("benchmarkInterop") {
-    group = "verification"
-    description = "Measures the same native operations through JNI and JDK 25 FFM."
-    dependsOn(tasks.classes, ":kweb-cef-native:buildNative")
-    javaLauncher.set(jdk25Launcher)
-    jvmArgs("--enable-native-access=ALL-UNNAMED")
-    classpath = sourceSets.main.get().runtimeClasspath
-    mainClass.set("io.github.kingsword09.kwebshell.interop.probe.InteropBenchmarkMain")
-    args(
-        interopProbeLibrary.get().absolutePath,
-        benchmarkReport.get().asFile.absolutePath,
-    )
-    inputs.file(interopProbeLibrary)
-    mustRunAfter(verifyComposeNativeParent)
-}
-
 tasks.named("check") {
     dependsOn(":kweb-cef-native:nativeTest")
     dependsOn(verifyFfmProbe)
-    dependsOn(verifyJniFfmContract)
     dependsOn(verifyFfmEngineAbi)
     dependsOn(verifyComposeNativeParent)
-    dependsOn(benchmarkInterop)
 }

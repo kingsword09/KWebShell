@@ -179,6 +179,7 @@ pnpm-debug.log*
 .cef/
 .cef-ci/
 .cef-cache/
+.cef-local/
 cef-cache/
 cef_binary_*/
 .kwebshell/

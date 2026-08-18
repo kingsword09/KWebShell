@@ -42,14 +42,20 @@ build outputs and are not packaged; the helper copies inside
 `KWebShell.app/Contents/Frameworks` are packaged. Windows and Linux package the
 complete flat `Release` tree below `runtime/`.
 
+The macOS native build recreates and verifies the canonical versioned framework
+links before the payload builder reads them. The ZIP preserves those link
+targets and modes exactly. This schema makes no platform code-signing claim;
+release authenticity comes exclusively from the signed release envelope
+described above.
+
 `native/` contains no tests, import libraries, object files, or static
 libraries. Its exact closure is:
 
 | Target OS | Entries |
 | --- | --- |
-| Windows | `kwebshell_engine.dll`, `kwebshell_jni.dll` |
-| macOS | `libkwebshell_engine.1.0.0.dylib`, `libkwebshell_engine.1.dylib -> libkwebshell_engine.1.0.0.dylib`, `libkwebshell_engine.dylib -> libkwebshell_engine.1.dylib`, `libkwebshell_jni.dylib` |
-| Linux | `libkwebshell_engine.so.1.0.0`, `libkwebshell_engine.so.1 -> libkwebshell_engine.so.1.0.0`, `libkwebshell_engine.so -> libkwebshell_engine.so.1`, `libkwebshell_jni.so` |
+| Windows | `kwebshell_engine.dll` |
+| macOS | `libkwebshell_engine.1.0.0.dylib`, `libkwebshell_engine.1.dylib -> libkwebshell_engine.1.0.0.dylib`, `libkwebshell_engine.dylib -> libkwebshell_engine.1.dylib` |
+| Linux | `libkwebshell_engine.so.1.0.0`, `libkwebshell_engine.so.1 -> libkwebshell_engine.so.1.0.0`, `libkwebshell_engine.so -> libkwebshell_engine.so.1` |
 
 The architecture is identified by `manifest.json`; library names are shared by
 x64 and arm64 for each operating system.

@@ -10,6 +10,7 @@ import io.github.kingsword09.kwebshell.extensions.KWebExtensionRuntimeResult
 import io.github.kingsword09.kwebshell.extensions.KWebExtensionRuntimeState
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -22,33 +23,75 @@ internal class NativeExtensionRuntime(
         suspendCancellableCoroutine { continuation ->
             val callbackHandle = AtomicLong(0)
             val completed = AtomicBoolean(false)
-            val sink = NativeExtensionResultSink { operationHandle, engineHandle, browserHandle, operationValue,
-                outcomeValue, stateValue, extensionId, version, path, errorCode, errorMessage ->
-                if (!completed.compareAndSet(false, true)) {
-                    return@NativeExtensionResultSink
+            val terminalCallback = AtomicBoolean(false)
+            val releaseScheduled = AtomicBoolean(false)
+
+            fun scheduleOwnerRelease() {
+                val handle = callbackHandle.get()
+                if (handle <= 0L || !terminalCallback.get() || !releaseScheduled.compareAndSet(false, true)) {
+                    return
                 }
-                val result = try {
-                    validateResult(
-                        request = request,
-                        callbackHandle = callbackHandle,
-                        operationHandle = operationHandle,
-                        engineHandle = engineHandle,
-                        browserHandle = browserHandle,
-                        operationValue = operationValue,
-                        outcomeValue = outcomeValue,
-                        stateValue = stateValue,
-                        extensionId = extensionId,
-                        version = version,
-                        path = path,
-                        errorCode = errorCode,
-                        errorMessage = errorMessage,
-                    )
-                } catch (error: KWebExtensionRuntimeException) {
-                    continuation.resumeWith(Result.failure(error))
-                    return@NativeExtensionResultSink
+                ownerReleaseExecutor.execute {
+                    try {
+                        NativeBindings.releaseExtensionOwner(handle)
+                    } catch (error: Throwable) {
+                        browser.recordExtensionOwnerReleaseFailure(handle, error)
+                    }
                 }
-                continuation.resumeWith(Result.success(result))
             }
+
+            val sink = NativeExtensionResultSink(
+                callback = result@{ operationHandle, engineHandle, browserHandle, operationValue,
+                    outcomeValue, stateValue, extensionId, version, path, errorCode, errorMessage ->
+                    callbackHandle.compareAndSet(0, operationHandle)
+                    try {
+                        if (!completed.compareAndSet(false, true)) {
+                            return@result
+                        }
+                        val resultValue = try {
+                            validateResult(
+                                request = request,
+                                callbackHandle = callbackHandle,
+                                operationHandle = operationHandle,
+                                engineHandle = engineHandle,
+                                browserHandle = browserHandle,
+                                operationValue = operationValue,
+                                outcomeValue = outcomeValue,
+                                stateValue = stateValue,
+                                extensionId = extensionId,
+                                version = version,
+                                path = path,
+                                errorCode = errorCode,
+                                errorMessage = errorMessage,
+                            )
+                        } catch (error: KWebExtensionRuntimeException) {
+                            continuation.resumeWith(Result.failure(error))
+                            return@result
+                        }
+                        continuation.resumeWith(Result.success(resultValue))
+                    } finally {
+                        terminalCallback.set(true)
+                        scheduleOwnerRelease()
+                    }
+                },
+                failureCallback = { code, message, cause ->
+                    terminalCallback.set(true)
+                    if (completed.compareAndSet(false, true)) {
+                        continuation.resumeWith(
+                            Result.failure(
+                                KWebExtensionRuntimeException(
+                                    dispatchState = KWebExtensionRuntimeDispatchState.MAY_HAVE_DISPATCHED,
+                                    code = code,
+                                    details = mapOf("expectedExtensionId" to request.extensionId),
+                                    message = message,
+                                    cause = cause,
+                                ),
+                            ),
+                        )
+                    }
+                    scheduleOwnerRelease()
+                },
+            )
             val nativeHandle = NativeBindings.extensionStart(
                 browser = browser.requireLiveHandle("extension-${request.operation.name.lowercase()}"),
                 sink = sink,
@@ -58,7 +101,6 @@ internal class NativeExtensionRuntime(
                 extensionPath = request.extensionPath?.toString().orEmpty(),
             )
             if (nativeHandle <= 0L) {
-                completed.set(true)
                 val status = if (nativeHandle < 0L) {
                     (-nativeHandle).toInt()
                 } else {
@@ -69,20 +111,23 @@ internal class NativeExtensionRuntime(
                     value = status,
                     details = mapOf("extensionId" to request.extensionId),
                 )
-                continuation.resumeWith(
-                    Result.failure(
-                        KWebExtensionRuntimeException(
-                            dispatchState = KWebExtensionRuntimeDispatchState.NOT_DISPATCHED,
-                            code = nativeFailure.code,
-                            details = nativeFailure.details,
-                            message = nativeFailure.message ?: "The native extension operation was not dispatched.",
-                            cause = nativeFailure,
+                if (completed.compareAndSet(false, true)) {
+                    continuation.resumeWith(
+                        Result.failure(
+                            KWebExtensionRuntimeException(
+                                dispatchState = KWebExtensionRuntimeDispatchState.NOT_DISPATCHED,
+                                code = nativeFailure.code,
+                                details = nativeFailure.details,
+                                message = nativeFailure.message ?: "The native extension operation was not dispatched.",
+                                cause = nativeFailure,
+                            ),
                         ),
-                    ),
-                )
+                    )
+                }
                 return@suspendCancellableCoroutine
             }
             callbackHandle.compareAndSet(0, nativeHandle)
+            scheduleOwnerRelease()
             if (callbackHandle.get() != nativeHandle) {
                 if (completed.compareAndSet(false, true)) {
                     continuation.resumeWith(
@@ -98,6 +143,8 @@ internal class NativeExtensionRuntime(
                         ),
                     )
                 }
+                terminalCallback.set(true)
+                scheduleOwnerRelease()
                 return@suspendCancellableCoroutine
             }
             continuation.invokeOnCancellation {
@@ -200,6 +247,10 @@ internal class NativeExtensionRuntime(
     )
 
     internal companion object {
+        private val ownerReleaseExecutor = Executors.newSingleThreadExecutor { task ->
+            Thread(task, "KWebShell-extension-owner-release").also { it.isDaemon = true }
+        }
+
         internal fun liveNativeOperationCount(): Long = NativeBindings.liveExtensionOperationCount()
     }
 }

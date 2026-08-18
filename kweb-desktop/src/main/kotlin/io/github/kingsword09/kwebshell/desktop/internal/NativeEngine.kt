@@ -54,7 +54,10 @@ internal class NativeEngine private constructor(
             callbackThread.set(thread)
         }
     }
-    private val sink = NativeEngineEventSink(::receiveNativeEvent)
+    private val sink = NativeEngineEventSink(
+        failureCallback = ::receiveFfmCallbackFailure,
+        callback = ::receiveNativeEvent,
+    )
 
     internal val lifecycle: StateFlow<KWebLifecycleState> = mutableLifecycle.asStateFlow()
     internal val remoteDebuggingPort: Int = configuration.remoteDebuggingPort
@@ -125,8 +128,11 @@ internal class NativeEngine private constructor(
             )
         }
 
+        var terminalObserved = false
+        var dispatcherTerminated = false
         try {
-            if (!awaitTerminalEvent()) {
+            terminalObserved = awaitTerminalEvent()
+            if (!terminalObserved) {
                 failure = failure ?: KWebNativeException(
                     code = "native.engine.closed-event-timeout",
                     details = mapOf("timeoutMs" to CALLBACK_TIMEOUT.toMillis().toString()),
@@ -141,12 +147,32 @@ internal class NativeEngine private constructor(
             }
 
             callbackExecutor.shutdown()
-            if (!awaitExecutorTermination()) {
+            dispatcherTerminated = awaitExecutorTermination()
+            if (!dispatcherTerminated) {
                 failure = failure ?: KWebNativeException(
                     code = "native.engine.callback-timeout",
                     details = mapOf("timeoutMs" to CALLBACK_TIMEOUT.toMillis().toString()),
                     message = "The native engine callback dispatcher did not terminate in time.",
                 )
+            }
+            if (terminalObserved && dispatcherTerminated) {
+                try {
+                    val ownerFailure = NativeBindings.releaseEngineOwner(handle)
+                    if (ownerFailure != null && callbackFailure.get() == null) {
+                        failure = failure ?: KWebNativeException(
+                            code = "native.ffm.engine-callback-failed",
+                            details = mapOf("handle" to handle.toString()),
+                            message = "The FFM engine callback owner recorded an unreported failure.",
+                            cause = ownerFailure,
+                        )
+                    }
+                } catch (error: KWebNativeException) {
+                    if (failure == null) {
+                        failure = error
+                    } else if (failure !== error) {
+                        failure.addSuppressed(error)
+                    }
+                }
             }
             failure = failure ?: callbackFailure.get()
             if (failure == null && mutableLifecycle.value != KWebLifecycleState.CLOSED) {
@@ -208,6 +234,15 @@ internal class NativeEngine private constructor(
                 cause = error,
             )
         }
+    }
+
+    private fun receiveFfmCallbackFailure(code: String, message: String, cause: Throwable) {
+        recordCallbackFailure(
+            code = code,
+            details = emptyMap(),
+            message = message,
+            cause = cause,
+        )
     }
 
     private fun processNativeEvent(handle: Long, sequence: Long, typeValue: Int) {
@@ -380,6 +415,7 @@ internal class NativeEngine private constructor(
                         "enginePath" to NativeBindings.libraryPaths.engine.toString(),
                         "cefRuntimePath" to validated.cefRuntime.toString(),
                     ),
+                    cause = NativeBindings.lastEngineLibraryLoadFailure(),
                 )
             }
             val engineAbiVersion = NativeBindings.engineAbiVersion()

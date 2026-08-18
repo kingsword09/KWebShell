@@ -7,6 +7,7 @@
 #include <atomic>
 #include <chrono>
 #include <climits>
+#include <cstdlib>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -16,6 +17,7 @@
 
 #include <dlfcn.h>
 
+#include "cef_command_line_policy.h"
 #include "include/cef_api_hash.h"
 #include "include/cef_application_mac.h"
 #include "include/cef_version.h"
@@ -29,6 +31,13 @@ constexpr size_t kMaximumRuntimePathSize = 32768;
 constexpr int32_t kNoPendingWorkDelay = INT_MAX;
 constexpr int64_t kMaximumPumpDelayMs = 1000 / 30;
 constexpr auto kShutdownGraceDelay = std::chrono::milliseconds(999);
+constexpr char kMachPortPeerValidationEnvironment[] =
+    "MACH_PORT_RENDEZVOUS_PEER_VALDATION";
+constexpr char kMachPortPeerValidationFeatures[] =
+    "MachPortRendezvousValidatePeerRequirements,"
+    "MachPortRendezvousEnforcePeerRequirements";
+constexpr char kProcessRequirementMetricsFeature[] =
+    "GatherProcessRequirementMetrics";
 
 std::mutex platform_mutex;
 std::filesystem::path configured_runtime_path;
@@ -407,6 +416,12 @@ kweb_status EnginePlatformStartup(const char *cef_runtime_path_utf8,
                  ? KWEB_STATUS_OK
                  : KWEB_STATUS_CEF_RUNTIME_MISMATCH;
     }
+    if (::setenv(kMachPortPeerValidationEnvironment, "0", 1) != 0) {
+      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    }
+    fprintf(stderr,
+            "KWEBSHELL_NATIVE_ENGINE:macos_peer_validation_disabled\n");
+    fflush(stderr);
     const std::string runtime_path = requested.string();
     if (!cef_load_library(runtime_path.c_str())) {
       return KWEB_STATUS_CEF_RUNTIME_LOAD_FAILED;
@@ -482,8 +497,21 @@ void ConfigureEngineCommandLineOnPlatform(
   }
   command_line->AppendSwitch("disable-in-process-stack-traces");
   command_line->AppendSwitch("use-mock-keychain");
-  command_line->AppendSwitchWithValue("remote-debugging-address",
-                                      "127.0.0.1");
+  command_line->AppendSwitchWithValue("remote-debugging-address", "127.0.0.1");
+  if (AppendDisabledCefFeatures(command_line,
+                                kMachPortPeerValidationFeatures)) {
+    fprintf(
+        stderr,
+        "KWEBSHELL_NATIVE_ENGINE:macos_peer_validation_features_disabled\n");
+    fflush(stderr);
+  }
+  if (AppendDisabledCefFeatures(command_line,
+                                kProcessRequirementMetricsFeature)) {
+    fprintf(
+        stderr,
+        "KWEBSHELL_NATIVE_ENGINE:macos_process_requirement_metrics_disabled\n");
+    fflush(stderr);
+  }
   if (command_line->HasSwitch("disable-in-process-stack-traces") &&
       command_line->HasSwitch("use-mock-keychain")) {
     fprintf(stderr, "KWEBSHELL_NATIVE_ENGINE:macos_browser_policy_applied\n");

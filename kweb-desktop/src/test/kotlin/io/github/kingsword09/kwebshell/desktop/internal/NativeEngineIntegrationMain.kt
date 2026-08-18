@@ -49,6 +49,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
@@ -65,13 +66,24 @@ private const val LIFECYCLE_V1_PROPERTY = "kweb.engine.integration.lifecycle.v1"
 private const val LIFECYCLE_V2_PROPERTY = "kweb.engine.integration.lifecycle.v2"
 private const val EXPECT_CUSTOM_EXTENSION_RUNTIME_PROPERTY =
     "kweb.engine.integration.expect.custom.extension.runtime"
+private const val DESKTOP_MODULE_PATH_PROPERTY = "kweb.desktop.module.path"
+private const val DESKTOP_TEST_CLASSES_PROPERTY = "kweb.desktop.test.classes"
+private const val DESKTOP_INTEGRATION_CLASSPATH_PROPERTY = "kweb.desktop.integration.classpath"
+private const val DESKTOP_MODULE_NAME = "io.github.kingsword09.kwebshell.desktop"
 private const val LIFECYCLE_EXTENSION_ID = "dhhnhmffjehhodphofnkingncijnaona"
 private const val LIFECYCLE_CANCEL_RECONCILIATION_CYCLES = 5
+private const val FFM_BROWSER_STRESS_LIFECYCLES = 1_000
 private const val LIFECYCLE_CRASH_DURABLE_MARKER = "KWEBSHELL_EXTENSION_CRASH_STATE_DURABLE"
 private const val HOLDER_OPENED_MARKER = "KWEBSHELL_ENGINE_HOLDER_OPENED"
 private const val STAGE_PREFIX = "KWEBSHELL_ENGINE_STAGE:"
 private const val MACOS_BROWSER_POLICY_MARKER =
     "KWEBSHELL_NATIVE_ENGINE:macos_browser_policy_applied"
+private const val MACOS_PEER_VALIDATION_MARKER =
+    "KWEBSHELL_NATIVE_ENGINE:macos_peer_validation_disabled"
+private const val MACOS_PEER_VALIDATION_FEATURES_MARKER =
+    "KWEBSHELL_NATIVE_ENGINE:macos_peer_validation_features_disabled"
+private const val MACOS_PROCESS_REQUIREMENT_METRICS_MARKER =
+    "KWEBSHELL_NATIVE_ENGINE:macos_process_requirement_metrics_disabled"
 private const val MAIN_CLASS =
     "io.github.kingsword09.kwebshell.desktop.internal.NativeEngineIntegrationMainKt"
 private const val FIRST_TITLE = "KWebShell profile 第一页🙂"
@@ -82,6 +94,7 @@ private enum class IntegrationMode(val argument: String) {
     SUCCESS("success"),
     CALLBACK_FAILURE("callback-failure"),
     LISTENER_FAILURE("listener-failure"),
+    FFM_STRESS("ffm-stress"),
     HOLDER("holder"),
     INITIALIZATION_FAILURE("initialization-failure"),
     PORT_COLLISION("port-collision"),
@@ -107,6 +120,7 @@ fun main(arguments: Array<String>) {
             IntegrationMode.SUCCESS -> runSuccessfulLifecycle()
             IntegrationMode.CALLBACK_FAILURE -> runCallbackFailureLifecycle()
             IntegrationMode.LISTENER_FAILURE -> runListenerFailureLifecycle()
+            IntegrationMode.FFM_STRESS -> runFfmStressLifecycle()
             IntegrationMode.HOLDER -> runHolderLifecycle()
             IntegrationMode.INITIALIZATION_FAILURE -> runInitializationFailureLifecycle()
             IntegrationMode.PORT_COLLISION -> runPortCollisionLifecycle()
@@ -131,6 +145,7 @@ private fun runCoordinator() {
     runChildAndRequireSuccess(IntegrationMode.PORT_COLLISION, root.resolve("port-collision"))
     runChildAndRequireSuccess(IntegrationMode.CALLBACK_FAILURE, root.resolve("callback-failure"))
     runChildAndRequireSuccess(IntegrationMode.LISTENER_FAILURE, root.resolve("listener-failure"))
+    runChildAndRequireSuccess(IntegrationMode.FFM_STRESS, root.resolve("ffm-stress"))
 
     val sharedRoot = root.resolve("initialization-failure")
     val holder = startChild(IntegrationMode.HOLDER, sharedRoot)
@@ -203,13 +218,13 @@ private fun runSuccessfulLifecycle() {
     val firstDevToolsClosed = CountDownLatch(1)
     val profile = configuration.rootCache.resolve("integration-profile")
     BrowserOrigin().use { origin ->
-        val surface = NativeEngine.onAwtEventDispatchThread { AwtBrowserSurface.create(800, 600) }
+        val surface = NativeEngine.onAwtEventDispatchThread { ComposeBrowserSurface.create(800, 600) }
         try {
             requireCreateFailure(
                 NativeEngine.onAwtEventDispatchThread {
                     rawBrowserCreate(
                         engine,
-                        surface.component,
+                        surface.nativeParent,
                         configuration.rootCache.resolve("nested/profile"),
                         origin.firstUrl,
                         800,
@@ -222,7 +237,7 @@ private fun runSuccessfulLifecycle() {
                 NativeEngine.onAwtEventDispatchThread {
                     rawBrowserCreate(
                         engine,
-                        surface.component,
+                        surface.nativeParent,
                         configuration.rootCache.resolve("invalid-url-profile"),
                         "not-a-url",
                         800,
@@ -231,7 +246,7 @@ private fun runSuccessfulLifecycle() {
                 },
                 NativeStatus.NAVIGATION_INVALID,
             )
-            runRawBridgeAbiConformance(engine, surface.component, configuration.rootCache, origin, cdp)
+            runRawBridgeAbiConformance(engine, surface.nativeParent, configuration.rootCache, origin, cdp)
             requireStatus(
                 NativeEngine.onAwtEventDispatchThread {
                     NativeBindings.browserResize(0L, 0, 600)
@@ -242,7 +257,7 @@ private fun runSuccessfulLifecycle() {
             val bridgeHandler = ConformanceBridgeTestHandler()
             val browser = NativeBrowser.open(
                 engine = engine,
-                component = surface.component,
+                nativeParent = surface.nativeParent,
                 profilePath = profile,
                 initialUrl = origin.firstUrl,
                 width = 800,
@@ -743,16 +758,16 @@ private fun withExtensionLifecycleBrowsers(
     val engine = NativeEngine.open(configuration)
     try {
         BrowserOrigin().use { origin ->
-            val alphaSurface = NativeEngine.onAwtEventDispatchThread { AwtBrowserSurface.create(800, 600) }
-            val betaSurface = NativeEngine.onAwtEventDispatchThread { AwtBrowserSurface.create(800, 600) }
-            val crashSurface = NativeEngine.onAwtEventDispatchThread { AwtBrowserSurface.create(800, 600) }
+            val alphaSurface = NativeEngine.onAwtEventDispatchThread { ComposeBrowserSurface.create(800, 600) }
+            val betaSurface = NativeEngine.onAwtEventDispatchThread { ComposeBrowserSurface.create(800, 600) }
+            val crashSurface = NativeEngine.onAwtEventDispatchThread { ComposeBrowserSurface.create(800, 600) }
             var alpha: NativeBrowser? = null
             var beta: NativeBrowser? = null
             var crash: NativeBrowser? = null
             try {
                 val alphaBrowser = NativeBrowser.open(
                     engine = engine,
-                    component = alphaSurface.component,
+                    nativeParent = alphaSurface.nativeParent,
                     profilePath = configuration.rootCache.resolve("alpha"),
                     initialUrl = "about:blank",
                     width = 800,
@@ -761,7 +776,7 @@ private fun withExtensionLifecycleBrowsers(
                 alpha = alphaBrowser
                 val betaBrowser = NativeBrowser.open(
                     engine = engine,
-                    component = betaSurface.component,
+                    nativeParent = betaSurface.nativeParent,
                     profilePath = configuration.rootCache.resolve("beta"),
                     initialUrl = "about:blank",
                     width = 800,
@@ -770,7 +785,7 @@ private fun withExtensionLifecycleBrowsers(
                 beta = betaBrowser
                 val crashBrowser = NativeBrowser.open(
                     engine = engine,
-                    component = crashSurface.component,
+                    nativeParent = crashSurface.nativeParent,
                     profilePath = configuration.rootCache.resolve("crash"),
                     initialUrl = "about:blank",
                     width = 800,
@@ -800,6 +815,8 @@ private fun withExtensionLifecycleBrowsers(
     }
     require(NativeBrowser.liveNativeBrowserCount() == 0L)
     require(NativeEngine.liveNativeEngineCount() == 0L)
+    awaitNativeExtensionOperationCount(0L)
+    awaitFfmCallbackOwnerCount(0)
 }
 
 private fun awaitPersistedExtensionPreference(profile: Path, extensionId: String) {
@@ -834,6 +851,18 @@ private fun awaitNativeExtensionOperationCount(expected: Long) {
     }
     require(actual == expected) {
         "Native extension operation count remained $actual instead of $expected."
+    }
+}
+
+private fun awaitFfmCallbackOwnerCount(expected: Int) {
+    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+    var actual = NativeBindings.liveCallbackOwnerCount()
+    while (actual != expected && System.nanoTime() < deadline) {
+        Thread.sleep(25)
+        actual = NativeBindings.liveCallbackOwnerCount()
+    }
+    require(actual == expected) {
+        "FFM callback owner count remained $actual instead of $expected."
     }
 }
 
@@ -921,7 +950,7 @@ private data class RawBridgeEvent(
 
 private fun runRawBridgeAbiConformance(
     engine: NativeEngine,
-    component: java.awt.Component,
+    nativeParent: Long,
     rootCache: Path,
     origin: BrowserOrigin,
     cdp: CdpClient,
@@ -933,7 +962,7 @@ private fun runRawBridgeAbiConformance(
             NativeBindings.browserCreate(
                 engine.requireLiveHandle("bridge-config-test"),
                 eventSink,
-                component,
+                nativeParent,
                 rootCache.resolve("bridge-origin-without-sink").toString(),
                 origin.firstUrl,
                 0,
@@ -951,7 +980,7 @@ private fun runRawBridgeAbiConformance(
             NativeBindings.browserCreate(
                 engine.requireLiveHandle("bridge-config-test"),
                 eventSink,
-                component,
+                nativeParent,
                 rootCache.resolve("bridge-sink-without-origin").toString(),
                 origin.firstUrl,
                 0,
@@ -969,7 +998,7 @@ private fun runRawBridgeAbiConformance(
             NativeBindings.browserCreate(
                 engine.requireLiveHandle("bridge-origin-test"),
                 eventSink,
-                component,
+                nativeParent,
                 rootCache.resolve("bridge-invalid-origin").toString(),
                 origin.firstUrl,
                 0,
@@ -985,11 +1014,18 @@ private fun runRawBridgeAbiConformance(
     val created = CountDownLatch(1)
     val closed = CountDownLatch(1)
     val browserHandle = AtomicLong(0)
+    val terminalHandleStatus = AtomicInteger(Int.MIN_VALUE)
     val browserEvents = NativeBrowserEventSink { _, browser, _, type, _, _, _, _, _ ->
         browserHandle.compareAndSet(0, browser)
         when (NativeBrowserEventType.fromValue(type)) {
             NativeBrowserEventType.CREATED -> created.countDown()
-            NativeBrowserEventType.CLOSED -> closed.countDown()
+            NativeBrowserEventType.CLOSED -> {
+                terminalHandleStatus.compareAndSet(
+                    Int.MIN_VALUE,
+                    NativeBindings.browserResize(browser, 800, 600),
+                )
+                closed.countDown()
+            }
             else -> Unit
         }
     }
@@ -1003,7 +1039,7 @@ private fun runRawBridgeAbiConformance(
         NativeBindings.browserCreate(
             engine.requireLiveHandle("raw-bridge-create"),
             browserEvents,
-            component,
+            nativeParent,
             rootCache.resolve("raw-bridge-profile").toString(),
             origin.firstUrl,
             0,
@@ -1102,6 +1138,15 @@ private fun runRawBridgeAbiConformance(
         )
         require(closed.await(30, TimeUnit.SECONDS)) {
             "The raw bridge browser did not publish its terminal event."
+        }
+        val ownerFailure = NativeBindings.releaseBrowserOwner(handle)
+        requireStatus(
+            terminalHandleStatus.get(),
+            NativeStatus.INVALID_HANDLE,
+            "raw bridge terminal callback stale browser resize",
+        )
+        require(ownerFailure == null) {
+            "The raw bridge browser FFM owner reported a callback failure."
         }
     }
     require(NativeBrowser.liveNativeBrowserCount() == 0L)
@@ -1305,7 +1350,7 @@ private fun javascriptString(value: String): String = buildString {
 }
 
 private fun requireProfileDiskState(profile: Path) {
-    val cookieStore = if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
+    val cookieStore = if (isWindows()) {
         profile.resolve("Network/Cookies")
     } else {
         profile.resolve("Cookies")
@@ -1333,7 +1378,7 @@ private fun runCallbackFailureLifecycle() {
                     closedObserved.countDown()
                 } else {
                     callbackObserved.countDown()
-                    error("deliberate JNI callback contract failure")
+                    error("deliberate FFM callback contract failure")
                 }
             },
         )
@@ -1341,10 +1386,111 @@ private fun runCallbackFailureLifecycle() {
     require(result > 0L)
     require(callbackObserved.await(30, TimeUnit.SECONDS))
     val closeStatus = NativeEngine.onAwtEventDispatchThread { NativeBindings.engineClose(result) }
-    requireStatus(closeStatus, NativeStatus.CALLBACK_FAILED, "JNI callback failure")
+    requireStatus(closeStatus, NativeStatus.OK, "FFM callback failure close")
     require(closedObserved.await(30, TimeUnit.SECONDS))
+    val callbackFailure = NativeBindings.releaseEngineOwner(result)
+    require(callbackFailure is IllegalStateException &&
+        callbackFailure.message == "deliberate FFM callback contract failure"
+    ) {
+        "The FFM owner did not contain the deliberate callback failure: $callbackFailure"
+    }
     require(NativeEngine.liveNativeEngineCount() == 0L)
-    println("KWebShell engine JNI callback failure contract passed.")
+    println("KWebShell engine FFM callback failure contract passed.")
+}
+
+private fun runFfmStressLifecycle() {
+    val configuration = runtimeConfiguration()
+    val engine = NativeEngine.open(configuration)
+    val surface = NativeEngine.onAwtEventDispatchThread { ComposeBrowserSurface.create(320, 240) }
+    val executor = Executors.newFixedThreadPool(2) { task ->
+        Thread(task, "KWebShell-ffm-stress-race").also { it.isDaemon = true }
+    }
+    var primaryFailure: Throwable? = null
+    var currentLifecycle = 0
+    try {
+        repeat(FFM_BROWSER_STRESS_LIFECYCLES) { index ->
+            currentLifecycle = index + 1
+            val events = CopyOnWriteArrayList<NativeBrowserEvent>()
+            val browser = NativeBrowser.open(
+                engine = engine,
+                nativeParent = surface.nativeParent,
+                profilePath = configuration.rootCache.resolve("stress-profile"),
+                initialUrl = "about:blank",
+                width = 320,
+                height = 240,
+                listener = events::add,
+            )
+            val staleHandle = browser.requireLiveHandle("ffm-stress")
+            val start = CountDownLatch(1)
+            val command = executor.submit<Throwable?> {
+                start.await()
+                runCatching { browser.navigate("about:blank#stress-$index") }.exceptionOrNull()
+            }
+            val close = executor.submit {
+                start.await()
+                browser.close()
+            }
+            start.countDown()
+            close.get(30, TimeUnit.SECONDS)
+            val commandFailure = command.get(30, TimeUnit.SECONDS)
+            if (commandFailure != null) {
+                require(commandFailure is KWebNativeException && commandFailure.code in setOf(
+                    "native.browser.closed",
+                    "native.abi.browser-closing",
+                    "native.abi.browser-not-ready",
+                    "native.abi.invalid-handle",
+                )) {
+                    "Concurrent FFM command failed unexpectedly at lifecycle $index: $commandFailure"
+                }
+            }
+            browser.close()
+            require(browser.lifecycle.value == KWebLifecycleState.CLOSED)
+            require(events.first().type == NativeBrowserEventType.CREATED)
+            require(events.last().type == NativeBrowserEventType.CLOSED)
+            require(events.map(NativeBrowserEvent::sequence) == (1L..events.size.toLong()).toList())
+            val callbackCount = events.size
+            requireStatus(
+                NativeBindings.browserResize(staleHandle, 320, 240),
+                NativeStatus.INVALID_HANDLE,
+                "FFM stress stale browser resize",
+            )
+            require(events.size == callbackCount) {
+                "A browser callback arrived after lifecycle $index closed."
+            }
+            require(NativeBrowser.liveNativeBrowserCount() == 0L)
+            require(NativeExtensionRuntime.liveNativeOperationCount() == 0L)
+            require(NativeBindings.liveCallbackOwnerCount() == 1) {
+                "Lifecycle $index leaked an FFM callback owner."
+            }
+            if ((index + 1) % 100 == 0) {
+                println("KWebShell FFM browser stress completed ${index + 1} lifecycles.")
+                System.out.flush()
+            }
+        }
+    } catch (error: Throwable) {
+        val contextualFailure = IllegalStateException("FFM stress lifecycle $currentLifecycle failed.", error)
+        primaryFailure = contextualFailure
+        throw contextualFailure
+    } finally {
+        executor.shutdownNow()
+        val cleanupFailures = listOfNotNull(
+            runCatching { NativeEngine.onAwtEventDispatchThread(surface::close) }.exceptionOrNull(),
+            runCatching { NativeEngine.onAwtEventDispatchThread(engine::close) }.exceptionOrNull(),
+        )
+        val failure = primaryFailure
+        if (failure != null) {
+            cleanupFailures.forEach(failure::addSuppressed)
+        } else if (cleanupFailures.isNotEmpty()) {
+            val cleanupFailure = IllegalStateException("FFM stress cleanup failed.", cleanupFailures.first())
+            cleanupFailures.drop(1).forEach(cleanupFailure::addSuppressed)
+            throw cleanupFailure
+        }
+    }
+    require(NativeEngine.liveNativeEngineCount() == 0L)
+    require(NativeBrowser.liveNativeBrowserCount() == 0L)
+    require(NativeExtensionRuntime.liveNativeOperationCount() == 0L)
+    require(NativeBindings.liveCallbackOwnerCount() == 0)
+    println("KWebShell FFM completed $FFM_BROWSER_STRESS_LIFECYCLES real browser lifecycles.")
 }
 
 private fun runListenerFailureLifecycle() {
@@ -1440,7 +1586,7 @@ private fun rawCreate(configuration: NativeEngineConfiguration, sink: NativeEngi
 
 private fun rawBrowserCreate(
     engine: NativeEngine,
-    component: java.awt.Component,
+    nativeParent: Long,
     profile: Path,
     initialUrl: String,
     width: Int,
@@ -1448,7 +1594,7 @@ private fun rawBrowserCreate(
 ): Long = NativeBindings.browserCreate(
     engine.requireLiveHandle("browser-create-test"),
     NativeBrowserEventSink { _, _, _, _, _, _, _, _, _ -> },
-    component,
+    nativeParent,
     profile.toString(),
     initialUrl,
     0,
@@ -1721,7 +1867,8 @@ private data class ChildProcess(
 
 private fun runChildAndRequireSuccess(mode: IntegrationMode, root: Path) {
     val child = startChild(mode, root)
-    require(child.process.waitFor(120, TimeUnit.SECONDS)) {
+    val timeoutSeconds = if (mode == IntegrationMode.FFM_STRESS) 1_800L else 120L
+    require(child.process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
         val diagnostics = collectTimeoutDiagnostics(child.process)
         child.process.destroyForcibly()
         "Native engine child '${mode.argument}' timed out.\n${child.output()}\n$diagnostics"
@@ -1731,12 +1878,19 @@ private fun runChildAndRequireSuccess(mode: IntegrationMode, root: Path) {
         "Native engine child '${mode.argument}' exited with ${child.process.exitValue()}.\n${child.output()}"
     }
     if (mode == IntegrationMode.SUCCESS && isMacOs()) {
-        val policyIndexes = child.lines.mapIndexedNotNull { index, line ->
-            index.takeIf { line == MACOS_BROWSER_POLICY_MARKER }
+        val policyIndexes = listOf(
+            MACOS_PEER_VALIDATION_MARKER,
+            MACOS_PEER_VALIDATION_FEATURES_MARKER,
+            MACOS_PROCESS_REQUIREMENT_METRICS_MARKER,
+            MACOS_BROWSER_POLICY_MARKER,
+        ).map { marker ->
+            child.lines.mapIndexedNotNull { index, line ->
+                index.takeIf { line == marker }
+            }
         }
         val openedIndex = child.lines.indexOf("${STAGE_PREFIX}opened")
-        require(policyIndexes.size == 1 && openedIndex > policyIndexes.single()) {
-            "The macOS browser policy was not applied exactly once before OnContextInitialized.\n${child.output()}"
+        require(policyIndexes.all { it.size == 1 && openedIndex > it.single() }) {
+            "The macOS process policies were not applied exactly once before OnContextInitialized.\n${child.output()}"
         }
     }
 }
@@ -1766,6 +1920,8 @@ private fun runChildAndRequireCrash(mode: IntegrationMode, root: Path) {
 
 private fun isMacOs(): Boolean = System.getProperty("os.name").startsWith("Mac", ignoreCase = true)
 
+private fun isWindows(): Boolean = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
+
 private fun collectTimeoutDiagnostics(process: Process): String = buildString {
     appendLine("JVM thread dump:")
     appendLine(
@@ -1773,7 +1929,7 @@ private fun collectTimeoutDiagnostics(process: Process): String = buildString {
             Path.of(
                 System.getProperty("java.home"),
                 "bin",
-                if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) "jcmd.exe" else "jcmd",
+                if (isWindows()) "jcmd.exe" else "jcmd",
             ).toString(),
             process.pid().toString(),
             "Thread.print",
@@ -1810,7 +1966,7 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
     val javaExecutable = Path.of(
         System.getProperty("java.home"),
         "bin",
-        if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) "java.exe" else "java",
+        if (isWindows()) "java.exe" else "java",
     )
     val inheritedProperties = listOf(
         NATIVE_LIBRARY_PATH_PROPERTY,
@@ -1826,6 +1982,10 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
     )
     val command = buildList {
         add(javaExecutable.toString())
+        add("--module-path=${System.getProperty(DESKTOP_MODULE_PATH_PROPERTY)}")
+        add("--patch-module=$DESKTOP_MODULE_NAME=${System.getProperty(DESKTOP_TEST_CLASSES_PROPERTY)}")
+        add("--add-modules=$DESKTOP_MODULE_NAME,java.net.http,jdk.httpserver")
+        add("--enable-native-access=$DESKTOP_MODULE_NAME")
         add("-Djava.awt.headless=false")
         inheritedProperties.forEach { name ->
             add("-D$name=${System.getProperty(name) ?: error("Missing '$name'.")}")
@@ -1838,8 +1998,9 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
             add("-D$CDP_PORT_PROPERTY=${findFreePort()}")
         }
         add("-cp")
-        add(System.getProperty("java.class.path"))
-        add(MAIN_CLASS)
+        add(System.getProperty(DESKTOP_INTEGRATION_CLASSPATH_PROPERTY))
+        add("-m")
+        add("$DESKTOP_MODULE_NAME/$MAIN_CLASS")
         add(mode.argument)
     }
     val process = ProcessBuilder(command).redirectErrorStream(true).start()

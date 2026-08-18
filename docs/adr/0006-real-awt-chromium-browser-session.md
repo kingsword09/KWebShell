@@ -1,4 +1,4 @@
-# ADR 0006: Embed a real Alloy browser in a displayable AWT parent
+# ADR 0006: Embed a real Alloy browser in a Compose native parent
 
 - Status: Accepted
 - Date: 2026-08-12
@@ -15,22 +15,44 @@ and callbacks sourced from CEF rather than simulated events.
 Objective 3.3 replaces the echo ABI with browser operations on the engine ABI.
 One browser owns one non-global `CefRequestContext`, one `SessionClient`, and
 one platform surface. Profile paths are absolute direct children of the engine
-root cache; invalid paths, URLs, dimensions, or AWT peers fail immediately.
+root cache; invalid paths, URLs, dimensions, or Compose native parents fail
+immediately.
 
 The browser is always windowed Alloy with windowless rendering disabled:
 
-- Windows uses the AWT Canvas `HWND` and destroys the native child `HWND`.
-- Linux uses the Canvas X11 drawable and requests forced CEF close.
-- macOS resolves the AWT JAWT surface layer to its exact AppKit `NSWindow`,
-  inserts a dedicated intermediate `NSView`, and removes the CEF view from that
-  hierarchy to start native destruction.
+- Windows consumes the public `ComposeWindow.windowHandle` as the top-level
+  `HWND`, creates a KWebShell-owned child container for Chromium, and initiates
+  forced close through `CefBrowserHost`. In `DoClose`, it hides and moves the
+  complete container beneath a dedicated invisible top-level shutdown root
+  while Chromium keeps the same immediate parent, then returns `false`. CEF
+  posts `WM_CLOSE` to the isolated root, whose WndProc destroys the root and
+  lets Win32 recursively deliver the browser child's `WM_NCDESTROY` without
+  closing Compose.
+- Linux consumes the same property as the top-level X11 `Window` and requests
+  forced CEF close for the child browser.
+- macOS consumes the property as the exact AppKit `NSWindow`, inserts a
+  dedicated intermediate `NSView`, and removes the CEF view from that hierarchy
+  to start native destruction.
 
 CEF callbacks produce ordered created, navigation, address, loading, title,
 load, resize, fatal, and closed events. Resize is accepted only after a native
 platform query reports the requested dimensions. Close flushes cookies first,
-then waits for `OnBeforeClose`; the terminal event removes the browser registry
-entry and JNI global callback reference exactly once. Engine close while a
-browser is live returns `engine-has-live-browsers` without changing the Kotlin
+then waits for `OnBeforeClose`. Surface ownership is retained until three CEF
+UI quiescence tasks have run after CEF releases its final `SessionClient`
+owner, which follows browser-host and platform-delegate teardown. Registry
+removal and the terminal callback are published after that barrier. A command
+re-entered from that callback therefore receives `invalid-handle`, never `browser-closing`.
+On Windows, `DoClose` moves the complete container to the shutdown root while
+preserving Chromium's immediate parent, then returns `false` so CEF sends its
+standard root-close notification. The root WndProc, not the callback stack,
+destroys the hierarchy. Only after CEF reaches `OnBeforeClose` and releases the
+final client owner may the now-empty surface be released; direct Chromium-child
+reparenting or destruction is forbidden.
+The deferred registry removal and `CLOSED` upcall form the terminal barrier, so
+a subsequent lifecycle cannot race Chromium/Aura destruction from the prior one.
+After the callback returns, the JVM closes the FFM callback owner and its
+shared Arena. Engine close while a browser is live returns
+`engine-has-live-browsers` without changing the Kotlin
 engine handle or OPEN state, so shutdown can be retried after browser close.
 
 ## Consequences
@@ -38,7 +60,7 @@ engine handle or OPEN state, so shutdown can be retried after browser close.
 The embedded page is a real Chromium surface with native input, focus, GPU
 compositing, Profile storage, and Unicode navigation. The API is intentionally
 breaking and internal until DevTools/CDP and Compose ownership are connected.
-Every advertised desktop platform must build and run the same ABI, JNI, and
+Every advertised desktop platform must build and run the same ABI, FFM, and
 real-browser integration contract; there is no OS WebView, OSR, or hidden-window
 fallback.
 

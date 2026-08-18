@@ -1,9 +1,13 @@
 #include "browser_surface.h"
 
+#include <atomic>
 #include <memory>
 
 #if defined(OS_WIN)
 #include <windows.h>
+#include <commctrl.h>
+
+#pragma comment(lib, "comctl32.lib")
 #elif defined(OS_LINUX)
 #include <X11/Xlib.h>
 
@@ -17,24 +21,60 @@ namespace {
 
 class WindowsBrowserSurface final : public BrowserSurface {
 public:
-  WindowsBrowserSurface(HWND parent, int32_t x, int32_t y)
-      : parent_(parent), x_(x), y_(y) {}
+  WindowsBrowserSurface(HWND parent, int32_t x, int32_t y, int32_t width,
+                        int32_t height)
+      : parent_(parent), x_(x), y_(y) {
+    const HINSTANCE instance = ::GetModuleHandleW(nullptr);
+    if (parent_ != nullptr && ::IsWindow(parent_)) {
+      container_ = ::CreateWindowExW(
+          WS_EX_NOPARENTNOTIFY, L"STATIC", L"",
+          WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y,
+          width, height, parent, nullptr, instance, nullptr);
+    }
+    if (container_ != nullptr) {
+      subclass_id_ = NextSubclassId();
+      parent_subclassed_ = ::SetWindowSubclass(
+          parent_, ParentWindowSubclassProc, subclass_id_,
+          reinterpret_cast<DWORD_PTR>(this)) != FALSE;
+    }
+  }
 
-  CefWindowHandle parent_handle() const override { return parent_; }
+  ~WindowsBrowserSurface() override {
+    if (parent_subclassed_) {
+      ::RemoveWindowSubclass(parent_, ParentWindowSubclassProc, subclass_id_);
+    }
+    if (container_ != nullptr && ::IsWindow(container_)) {
+      ::DestroyWindow(container_);
+    }
+  }
+
+  bool IsValid() const {
+    return parent_subclassed_ && parent_ != nullptr && ::IsWindow(parent_) &&
+           container_ != nullptr && ::IsWindow(container_) &&
+           ::GetParent(container_) == parent_;
+  }
+
+  CefWindowHandle parent_handle() const override { return container_; }
 
   void BrowserCreated(CefRefPtr<CefBrowser> browser) override {
     browser_ = browser;
     browser_window_ = browser->GetHost()->GetWindowHandle();
     if (browser_window_ != nullptr && ::IsWindow(browser_window_)) {
-      ::SetWindowPos(browser_window_, nullptr, x_, y_, 0, 0,
-                     SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER);
+      RECT bounds{};
+      if (::GetClientRect(container_, &bounds)) {
+        ::SetWindowPos(browser_window_, nullptr, 0, 0, bounds.right,
+                       bounds.bottom, SWP_NOACTIVATE | SWP_NOZORDER);
+      }
     }
   }
 
   kweb_status Resize(int32_t width, int32_t height, int32_t *actual_width,
                      int32_t *actual_height) override {
-    if (browser_window_ == nullptr || !::IsWindow(browser_window_) ||
-        !::SetWindowPos(browser_window_, nullptr, x_, y_, width, height,
+    if (!IsValid() || browser_window_ == nullptr ||
+        !::IsWindow(browser_window_) ||
+        !::SetWindowPos(container_, nullptr, x_, y_, width, height,
+                        SWP_NOACTIVATE | SWP_NOZORDER) ||
+        !::SetWindowPos(browser_window_, nullptr, 0, 0, width, height,
                         SWP_NOACTIVATE | SWP_NOZORDER)) {
       return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
     }
@@ -54,27 +94,87 @@ public:
   }
 
   bool ValidateParentage() const override {
-    return parent_ != nullptr && ::IsWindow(parent_) &&
+    return parent_ != nullptr && ::IsWindow(parent_) && IsValid() &&
            browser_window_ != nullptr && ::IsWindow(browser_window_) &&
-           ::GetParent(browser_window_) == parent_;
+           ::GetParent(browser_window_) == container_;
   }
 
-  void DestroyBrowserWindow() override {
-    if (browser_window_ != nullptr && ::IsWindow(browser_window_)) {
-      ::DestroyWindow(browser_window_);
+  kweb_status RequestBrowserClose() override {
+    if (!IsValid() || !browser_ || browser_window_ == nullptr ||
+        !::IsWindow(browser_window_) ||
+        ::GetParent(browser_window_) != container_) {
+      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
     }
+    close_requested_ = true;
+    browser_->GetHost()->CloseBrowser(true);
+    return KWEB_STATUS_OK;
   }
 
-  void BrowserDestroyed() override {
+  kweb_status CompleteBrowserClose(bool *handled_out) override {
+    if (handled_out == nullptr) {
+      return KWEB_STATUS_INVALID_ARGUMENT;
+    }
+    *handled_out = false;
+    if (!IsValid() || browser_window_ == nullptr ||
+        !::IsWindow(browser_window_) ||
+        ::GetParent(browser_window_) != container_) {
+      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    }
+    if (!close_requested_) {
+      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    }
+    return KWEB_STATUS_OK;
+  }
+
+  kweb_status BrowserDestroyed() override {
     browser_ = nullptr;
     browser_window_ = nullptr;
+    return KWEB_STATUS_OK;
   }
 
 private:
+  static UINT_PTR NextSubclassId() {
+    static std::atomic<UINT_PTR> next_id = 1;
+    return next_id.fetch_add(1, std::memory_order_relaxed);
+  }
+
+  static LRESULT CALLBACK ParentWindowSubclassProc(HWND window, UINT message,
+                                                    WPARAM w_param,
+                                                    LPARAM l_param,
+                                                    UINT_PTR subclass_id,
+                                                    DWORD_PTR ref_data) {
+    (void)subclass_id;
+    auto *surface = reinterpret_cast<WindowsBrowserSurface *>(ref_data);
+    if (surface != nullptr && message == WM_CLOSE &&
+        surface->ForwardAcceptedClose()) {
+      return 0;
+    }
+    return ::DefSubclassProc(window, message, w_param, l_param);
+  }
+
+  bool ForwardAcceptedClose() {
+    if (!close_requested_ || close_forwarded_ || !browser_ ||
+        browser_window_ == nullptr || !::IsWindow(browser_window_) ||
+        ::GetParent(browser_window_) != container_ ||
+        ::GetAncestor(browser_window_, GA_ROOT) != parent_) {
+      return false;
+    }
+    close_forwarded_ = true;
+    // DoClose has already returned false, so CEF has accepted destruction and
+    // its host WndProc can now destroy only the browser child window.
+    ::SendMessageW(browser_window_, WM_CLOSE, 0, 0);
+    return true;
+  }
+
   const HWND parent_;
   const int32_t x_;
   const int32_t y_;
+  HWND container_ = nullptr;
   HWND browser_window_ = nullptr;
+  UINT_PTR subclass_id_ = 0;
+  bool parent_subclassed_ = false;
+  bool close_requested_ = false;
+  bool close_forwarded_ = false;
   CefRefPtr<CefBrowser> browser_;
 };
 
@@ -136,15 +236,26 @@ public:
     return result != 0 && parent == parent_;
   }
 
-  void DestroyBrowserWindow() override {
+  kweb_status RequestBrowserClose() override {
     if (browser_) {
       browser_->GetHost()->CloseBrowser(true);
+      return KWEB_STATUS_OK;
     }
+    return KWEB_STATUS_BROWSER_NOT_READY;
   }
 
-  void BrowserDestroyed() override {
+  kweb_status CompleteBrowserClose(bool *handled_out) override {
+    if (handled_out == nullptr) {
+      return KWEB_STATUS_INVALID_ARGUMENT;
+    }
+    *handled_out = false;
+    return KWEB_STATUS_OK;
+  }
+
+  kweb_status BrowserDestroyed() override {
     browser_ = nullptr;
     browser_window_ = None;
+    return KWEB_STATUS_OK;
   }
 
 private:
@@ -191,8 +302,14 @@ CreateBrowserSurface(uintptr_t native_parent, int32_t x, int32_t y,
     *status_out = KWEB_STATUS_PARENT_SURFACE_INVALID;
     return nullptr;
   }
+  auto surface =
+      std::make_unique<WindowsBrowserSurface>(parent, x, y, width, height);
+  if (!surface->IsValid()) {
+    *status_out = KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    return nullptr;
+  }
   *status_out = KWEB_STATUS_OK;
-  return std::make_unique<WindowsBrowserSurface>(parent, x, y);
+  return surface;
 #elif defined(OS_LINUX)
   Display *display = cef_get_xdisplay();
   const Window parent = static_cast<Window>(native_parent);

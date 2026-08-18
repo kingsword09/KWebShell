@@ -67,8 +67,8 @@ run also requires a real renderer, ordered lifecycle events, cookie flush, clean
 browser destruction, and bounded CEF shutdown.
 
 This objective remains internal to `kweb-cef-native`. It does not expose a
-public `KWebProfile` until the same lifecycle is connected to the real JNI and
-browser session contract.
+public `KWebProfile` until the same lifecycle is connected to the production
+FFM and browser session contract.
 
 ## Consequences
 

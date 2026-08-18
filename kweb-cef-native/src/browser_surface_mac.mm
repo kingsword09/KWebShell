@@ -67,21 +67,32 @@ public:
            [browser_view_ superview] == container_;
   }
 
-  void DestroyBrowserWindow() override {
+  kweb_status RequestBrowserClose() override {
     if (browser_view_ != nil) {
       [browser_view_ removeFromSuperview];
       for (NSView *view in [browser_view_ subviews]) {
         [view removeFromSuperview];
       }
+      return KWEB_STATUS_OK;
     }
+    return KWEB_STATUS_BROWSER_NOT_READY;
   }
 
-  void BrowserDestroyed() override {
+  kweb_status CompleteBrowserClose(bool *handled_out) override {
+    if (handled_out == nullptr) {
+      return KWEB_STATUS_INVALID_ARGUMENT;
+    }
+    *handled_out = false;
+    return KWEB_STATUS_OK;
+  }
+
+  kweb_status BrowserDestroyed() override {
     browser_ = nullptr;
     browser_view_ = nil;
     [container_ removeFromSuperview];
     container_ = nil;
     parent_ = nil;
+    return KWEB_STATUS_OK;
   }
 
 private:

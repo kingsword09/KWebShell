@@ -72,6 +72,7 @@ internal fun nativeStatusException(
     operation: String,
     value: Int,
     details: Map<String, String> = emptyMap(),
+    cause: Throwable? = null,
 ): KWebNativeException {
     val status = NativeStatus.fromValue(value)
     val statusId = status?.id ?: "unknown-status"
@@ -82,5 +83,6 @@ internal fun nativeStatusException(
             "status" to value.toString(),
         ),
         message = "Native operation '$operation' failed with status '$statusId' ($value).",
+        cause = cause,
     )
 }

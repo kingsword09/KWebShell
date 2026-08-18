@@ -33,6 +33,7 @@ constexpr size_t kMaximumTextSize = 1024 * 1024;
 constexpr int32_t kMaximumViewportDimension = 32768;
 constexpr int64_t kCookieFlushTimeoutMs = 30000;
 constexpr int64_t kDevToolsOpenTimeoutMs = 30000;
+constexpr int kTerminalQuiescenceTasks = 3;
 constexpr uint64_t kMaximumBridgeRequestId =
     static_cast<uint64_t>((std::numeric_limits<int64_t>::max)());
 constexpr kweb_browser_handle kMaximumBrowserHandle =
@@ -161,6 +162,7 @@ class SessionClient final : public CefClient,
 public:
   explicit SessionClient(std::weak_ptr<BrowserSession> session)
       : session_(std::move(session)) {}
+  ~SessionClient() override;
 
   CefRefPtr<CefDisplayHandler> GetDisplayHandler() override { return this; }
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
@@ -660,8 +662,24 @@ public:
           error.empty() ? "renderer-terminated" : error);
   }
 
+  bool CompleteBrowserClose(CefRefPtr<CefBrowser> browser) {
+    CEF_REQUIRE_UI_THREAD();
+    if (!browser || !browser_ || !browser_->IsSame(browser) || !surface_) {
+      Fatal(KWEB_STATUS_INTERNAL_ERROR, "browser-close-state-invalid");
+      return true;
+    }
+    bool handled = false;
+    const kweb_status status = surface_->CompleteBrowserClose(&handled);
+    if (status != KWEB_STATUS_OK) {
+      Fatal(status, "native-child-close-failed");
+      return true;
+    }
+    return handled;
+  }
+
   void BeforeClose() {
     CEF_REQUIRE_UI_THREAD();
+    before_close_observed_ = true;
     ready_.store(false, std::memory_order_release);
     if (bridge_router_ && browser_) {
       bridge_router_->OnBeforeClose(browser_);
@@ -679,15 +697,21 @@ public:
       }
     }
     if (surface_) {
-      surface_->BrowserDestroyed();
-      surface_.reset();
+      const kweb_status status = surface_->BrowserDestroyed();
+      if (status != KWEB_STATUS_OK) {
+        EmitFatalOnce(status, "native-surface-release-failed");
+      }
     }
     browser_ = nullptr;
     client_ = nullptr;
     request_context_ = nullptr;
-    if (!wait_for_devtools) {
-      CompleteTerminal();
-    }
+    MaybeScheduleTerminalCompletion();
+  }
+
+  void SourceClientDestroyed() {
+    CEF_REQUIRE_UI_THREAD();
+    source_client_destroyed_ = true;
+    MaybeScheduleTerminalCompletion();
   }
 
   void FlushCompleted() {
@@ -766,7 +790,7 @@ private:
     devtools_close_requested_.store(false, std::memory_order_release);
     if (source_close_waiting_for_devtools_) {
       source_close_waiting_for_devtools_ = false;
-      CompleteTerminal();
+      MaybeScheduleTerminalCompletion();
     }
   }
 
@@ -788,7 +812,7 @@ private:
     devtools_open_failed_.store(false, std::memory_order_release);
     if (source_close_waiting_for_devtools_) {
       source_close_waiting_for_devtools_ = false;
-      CompleteTerminal();
+      MaybeScheduleTerminalCompletion();
     }
   }
 
@@ -865,11 +889,13 @@ private:
   void CloseBrowser() {
     CEF_REQUIRE_UI_THREAD();
     if (browser_) {
-      surface_->DestroyBrowserWindow();
+      const kweb_status status = surface_->RequestBrowserClose();
+      if (status != KWEB_STATUS_OK) {
+        EmitFatalOnce(status, "native-child-close-failed");
+      }
       return;
     }
     if (surface_) {
-      surface_->BrowserDestroyed();
       surface_.reset();
     }
     client_ = nullptr;
@@ -879,11 +905,7 @@ private:
 
   void Fatal(int32_t status_code, std::string code) {
     CEF_REQUIRE_UI_THREAD();
-    bool expected = false;
-    if (fatal_emitted_.compare_exchange_strong(expected, true,
-                                               std::memory_order_acq_rel)) {
-      Emit(KWEB_BROWSER_EVENT_FATAL_ERROR, 0, code, status_code, 0, 0);
-    }
+    EmitFatalOnce(status_code, std::move(code));
     closing_.store(true, std::memory_order_release);
     if (flush_started_ && !flush_completed_) {
       CloseBrowser();
@@ -892,14 +914,62 @@ private:
     BeginClose();
   }
 
+  void EmitFatalOnce(int32_t status_code, std::string code) {
+    bool expected = false;
+    if (fatal_emitted_.compare_exchange_strong(expected, true,
+                                               std::memory_order_acq_rel)) {
+      Emit(KWEB_BROWSER_EVENT_FATAL_ERROR, 0, code, status_code, 0, 0);
+    }
+  }
+
+  void ScheduleTerminalCompletion() {
+    CEF_REQUIRE_UI_THREAD();
+    bool expected = false;
+    if (!terminal_completion_scheduled_.compare_exchange_strong(
+            expected, true, std::memory_order_acq_rel)) {
+      return;
+    }
+    PostTerminalCompletionTask(kTerminalQuiescenceTasks);
+  }
+
+  void MaybeScheduleTerminalCompletion() {
+    CEF_REQUIRE_UI_THREAD();
+    if (before_close_observed_ && source_client_destroyed_ &&
+        !source_close_waiting_for_devtools_) {
+      ScheduleTerminalCompletion();
+    }
+  }
+
+  void PostTerminalCompletionTask(int remaining_tasks) {
+    CEF_REQUIRE_UI_THREAD();
+    if (remaining_tasks == 0) {
+      CompleteTerminal();
+      return;
+    }
+    auto self = shared_from_this();
+    if (!CefPostTask(
+            TID_UI,
+            base::BindOnce(
+                [](std::shared_ptr<BrowserSession> session, int remaining) {
+                  session->PostTerminalCompletionTask(remaining);
+                },
+                std::move(self), remaining_tasks - 1))) {
+      EmitFatalOnce(KWEB_STATUS_CEF_UI_TASK_FAILED,
+                    "terminal-completion-task-rejected");
+      CompleteTerminal();
+    }
+  }
+
   void CompleteTerminal() {
     bool expected = false;
     if (!terminal_emitted_.compare_exchange_strong(
             expected, true, std::memory_order_acq_rel)) {
       return;
     }
-    Emit(KWEB_BROWSER_EVENT_CLOSED, 0, {}, 0, 0, 0);
-    Registry().Complete(handle_, this);
+    surface_.reset();
+    auto keep_alive = shared_from_this();
+    Registry().Complete(handle_, keep_alive.get());
+    keep_alive->Emit(KWEB_BROWSER_EVENT_CLOSED, 0, {}, 0, 0, 0);
   }
 
   void Emit(kweb_browser_event_type type, uint32_t flags,
@@ -954,14 +1024,24 @@ private:
   std::atomic<bool> closing_ = false;
   std::atomic<bool> fatal_emitted_ = false;
   std::atomic<bool> terminal_emitted_ = false;
+  std::atomic<bool> terminal_completion_scheduled_ = false;
   std::atomic<bool> devtools_open_requested_ = false;
   std::atomic<bool> devtools_opened_ = false;
   std::atomic<bool> devtools_close_requested_ = false;
   std::atomic<bool> devtools_open_failed_ = false;
   bool source_close_waiting_for_devtools_ = false;
+  bool before_close_observed_ = false;
+  bool source_client_destroyed_ = false;
   bool flush_started_ = false;
   bool flush_completed_ = false;
 };
+
+SessionClient::~SessionClient() {
+  CEF_REQUIRE_UI_THREAD();
+  if (auto session = session_.lock()) {
+    session->SourceClientDestroyed();
+  }
+}
 
 void SessionClient::OnAddressChange(CefRefPtr<CefBrowser> browser,
                                     CefRefPtr<CefFrame> frame,
@@ -992,8 +1072,10 @@ void SessionClient::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
 
 bool SessionClient::DoClose(CefRefPtr<CefBrowser> browser) {
   CEF_REQUIRE_UI_THREAD();
-  (void)browser;
-  return false;
+  if (auto session = session_.lock()) {
+    return session->CompleteBrowserClose(browser);
+  }
+  return true;
 }
 
 void SessionClient::OnBeforeClose(CefRefPtr<CefBrowser> browser) {

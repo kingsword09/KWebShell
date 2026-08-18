@@ -114,6 +114,8 @@ jobs:
 
       - name: Run focused Windows engine integration
         shell: bash
+        env:
+          KWEBSHELL_TRACE_CLOSE: "1"
         run: |
           ./gradlew --no-daemon :kweb-desktop:engineIntegrationTest \
             -PcefRoot="$PWD/.cef-ci/source/$CEF_DIRECTORY" \

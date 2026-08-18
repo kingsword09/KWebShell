@@ -1,6 +1,7 @@
 #include "browser_surface.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <memory>
 
 #if defined(OS_WIN)
@@ -40,6 +41,10 @@ class WindowsBrowserSurface final : public BrowserSurface {
   }
 
   ~WindowsBrowserSurface() override {
+    if (std::getenv("KWEBSHELL_TRACE_CLOSE") != nullptr) {
+      std::fprintf(stderr, "KWEBSHELL_CLOSE_TRACE stage=surface-destroyed container=%p\n",
+                   static_cast<void *>(container_));
+    }
     if (container_ != nullptr && ::IsWindow(container_)) {
       ::DestroyWindow(container_);
     }

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <limits>
 #include <map>
@@ -39,6 +40,16 @@ constexpr uint64_t kMaximumBridgeRequestId =
     static_cast<uint64_t>((std::numeric_limits<int64_t>::max)());
 constexpr kweb_browser_handle kMaximumBrowserHandle =
     static_cast<kweb_browser_handle>(std::numeric_limits<int64_t>::max());
+
+// Opt-in diagnostics for the browser close chain; enabled with the
+// KWEBSHELL_TRACE_CLOSE environment variable.
+void TraceCloseStage(kweb_browser_handle browser, const char *stage) {
+  static const bool enabled = std::getenv("KWEBSHELL_TRACE_CLOSE") != nullptr;
+  if (enabled) {
+    std::fprintf(stderr, "KWEBSHELL_CLOSE_TRACE browser=%llu stage=%s\n",
+                 static_cast<unsigned long long>(browser), stage);
+  }
+}
 
 std::filesystem::path PathFromUtf8(const char *data, size_t size) {
 #if defined(_WIN32)
@@ -329,6 +340,7 @@ public:
   }
 
   kweb_status Close() {
+    TraceCloseStage(handle_, "close-requested");
     bool expected = false;
     if (!closing_.compare_exchange_strong(expected, true,
                                           std::memory_order_acq_rel)) {
@@ -665,6 +677,9 @@ public:
 
   bool CompleteBrowserClose(CefRefPtr<CefBrowser> browser) {
     CEF_REQUIRE_UI_THREAD();
+    TraceCloseStage(handle_, closing_.load(std::memory_order_acquire)
+                                  ? "do-close-closing"
+                                  : "do-close-open");
     if (!browser || closing_.load(std::memory_order_acquire)) {
       // CEF delivered an unusable browser or the session is already closing;
       // take CEF's default destruction path instead of a fatal teardown.
@@ -685,6 +700,7 @@ public:
 
   void BeforeClose() {
     CEF_REQUIRE_UI_THREAD();
+    TraceCloseStage(handle_, "before-close");
     before_close_observed_ = true;
     ready_.store(false, std::memory_order_release);
     if (bridge_router_ && browser_) {
@@ -716,12 +732,14 @@ public:
 
   void SourceClientDestroyed() {
     CEF_REQUIRE_UI_THREAD();
+    TraceCloseStage(handle_, "source-client-destroyed");
     source_client_destroyed_ = true;
     MaybeScheduleTerminalCompletion();
   }
 
   void FlushCompleted() {
     CEF_REQUIRE_UI_THREAD();
+    TraceCloseStage(handle_, "flush-completed");
     if (!flush_started_ || flush_completed_) {
       Fatal(KWEB_STATUS_INTERNAL_ERROR, "cookie-flush-state-invalid");
       return;
@@ -859,6 +877,7 @@ private:
 
   void BeginClose() {
     CEF_REQUIRE_UI_THREAD();
+    TraceCloseStage(handle_, "begin-close");
     closing_.store(true, std::memory_order_release);
     ready_.store(false, std::memory_order_release);
     if (!request_context_) {
@@ -894,6 +913,7 @@ private:
 
   void CloseBrowser() {
     CEF_REQUIRE_UI_THREAD();
+    TraceCloseStage(handle_, browser_ ? "close-browser-live" : "close-browser-gone");
     if (browser_) {
       const kweb_status status = surface_->RequestBrowserClose();
       if (status != KWEB_STATUS_OK) {
@@ -934,6 +954,7 @@ private:
 
   void ScheduleTerminalCompletion() {
     CEF_REQUIRE_UI_THREAD();
+    TraceCloseStage(handle_, "terminal-scheduled");
     bool expected = false;
     if (!terminal_completion_scheduled_.compare_exchange_strong(
             expected, true, std::memory_order_acq_rel)) {
@@ -971,6 +992,7 @@ private:
   }
 
   void CompleteTerminal() {
+    TraceCloseStage(handle_, "terminal-complete");
     bool expected = false;
     if (!terminal_emitted_.compare_exchange_strong(
             expected, true, std::memory_order_acq_rel)) {

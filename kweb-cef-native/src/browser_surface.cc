@@ -6,6 +6,10 @@
 
 #if defined(OS_WIN)
 #include <windows.h>
+
+#include "include/base/cef_bind.h"
+#include "include/base/cef_callback.h"
+#include "include/wrapper/cef_closure_task.h"
 #elif defined(OS_LINUX)
 #include <X11/Xlib.h>
 
@@ -109,15 +113,26 @@ class WindowsBrowserSurface final : public BrowserSurface {
     if (close_accepted_) {
       return KWEB_STATUS_OK;
     }
-    // CEF has accepted the close (DoClose). Destroying the window here is
+    // CEF has accepted the close (DoClose returned). Destroying the window is
     // required for a SetAsChild browser under a foreign parent: CEF's default
     // destruction defers for roughly thirty seconds waiting for the window to
-    // go away, and destroying before DoClose races Aura's tracking under a
-    // concurrent navigate.
+    // disappear, destroying before acceptance races Aura's tracking, and
+    // destroying inline from DoClose re-enters CEF mid-dispatch (access
+    // violation). Post the destruction as the next UI task instead.
     close_accepted_ = true;
-    if (browser_window_ != nullptr && ::IsWindow(browser_window_) &&
-        ::GetParent(browser_window_) == parent_) {
-      ::DestroyWindow(browser_window_);
+    const HWND browser_window = browser_window_;
+    if (browser_window != nullptr && ::IsWindow(browser_window) &&
+        ::GetParent(browser_window) == parent_ &&
+        !CefPostTask(
+            TID_UI,
+            base::BindOnce(
+                [](HWND window) {
+                  if (::IsWindow(window)) {
+                    ::DestroyWindow(window);
+                  }
+                },
+                browser_window))) {
+      return KWEB_STATUS_CEF_UI_TASK_FAILED;
     }
     return KWEB_STATUS_OK;
   }

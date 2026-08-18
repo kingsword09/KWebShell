@@ -1,13 +1,10 @@
 #include "browser_surface.h"
 
-#include <atomic>
+#include <cstdio>
 #include <memory>
 
 #if defined(OS_WIN)
 #include <windows.h>
-#include <commctrl.h>
-
-#pragma comment(lib, "comctl32.lib")
 #elif defined(OS_LINUX)
 #include <X11/Xlib.h>
 
@@ -19,30 +16,12 @@ namespace {
 
 #if defined(OS_WIN)
 
-// Window state shared between the CEF UI thread (surface methods) and the
-// subclass procedure, which Windows invokes on the parent window's owning
-// thread. The subclass procedure must never touch the surface object itself
-// because the surface is destroyed on the CEF UI thread without waiting for
-// in-flight procedure calls. The proxy is released through a posted message
-// that the subclass procedure handles, so the proxy strictly outlives every
-// procedure call that can still reach it.
-struct WindowsWindowProxy {
-  WindowsWindowProxy(HWND parent_window, HWND container_window,
-                     UINT_PTR subclass)
-      : parent(parent_window), container(container_window),
-        subclass_id(subclass) {}
-
-  std::atomic<bool> close_requested{false};
-  std::atomic<bool> close_forwarded{false};
-  std::atomic<bool> surface_released{false};
-  std::atomic<HWND> browser_window{nullptr};
-  const HWND parent;
-  const HWND container;
-  const UINT_PTR subclass_id;
-};
-
-constexpr UINT kProxyReleaseMessage = WM_APP + 0x0B57;
-
+// Every member and every Win32 call in this class happen on the CEF UI
+// thread, which is also the thread that creates the container window. The
+// parent HWND belongs to the embedding thread (AWT on the JVM path) and is
+// only inspected with thread-safe queries. Do not subclass or otherwise
+// modify the parent window from this thread: commctl subclass installation
+// from a non-owning thread fails nondeterministically.
 class WindowsBrowserSurface final : public BrowserSurface {
  public:
   WindowsBrowserSurface(HWND parent, int32_t x, int32_t y, int32_t width,
@@ -54,56 +33,33 @@ class WindowsBrowserSurface final : public BrowserSurface {
           WS_EX_NOPARENTNOTIFY, L"STATIC", L"",
           WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y,
           width, height, parent, nullptr, instance, nullptr);
-    }
-    if (container_ != nullptr) {
-      proxy_ = new WindowsWindowProxy(parent_, container_, NextSubclassId());
-      parent_subclassed_ = ::SetWindowSubclass(
-          parent_, ParentWindowSubclassProc, proxy_->subclass_id,
-          reinterpret_cast<DWORD_PTR>(proxy_)) != FALSE;
-      if (!parent_subclassed_) {
-        delete proxy_;
-        proxy_ = nullptr;
+      if (container_ == nullptr) {
+        create_error_ = ::GetLastError();
       }
     }
   }
 
   ~WindowsBrowserSurface() override {
-    // The container window was created on this (CEF UI) thread, so destroying
-    // it here is thread-correct. The subclass procedure runs on the parent
-    // window's owning thread instead, so the proxy must be released there.
-    if (proxy_ != nullptr) {
-      proxy_->surface_released.store(true, std::memory_order_release);
-      if (!::PostMessageW(proxy_->parent, kProxyReleaseMessage, 0,
-                          reinterpret_cast<LPARAM>(proxy_))) {
-        // The parent window is gone, so the subclass chain is gone with it
-        // and no procedure call can reach this proxy anymore.
-        ::RemoveWindowSubclass(proxy_->parent, ParentWindowSubclassProc,
-                               proxy_->subclass_id);
-        delete proxy_;
-      }
-      proxy_ = nullptr;
-    }
     if (container_ != nullptr && ::IsWindow(container_)) {
       ::DestroyWindow(container_);
     }
   }
 
   bool IsValid() const {
-    return parent_subclassed_ && proxy_ != nullptr && parent_ != nullptr &&
-           ::IsWindow(parent_) && container_ != nullptr &&
-           ::IsWindow(container_) && ::GetParent(container_) == parent_;
+    return parent_ != nullptr && ::IsWindow(parent_) &&
+           container_ != nullptr && ::IsWindow(container_) &&
+           ::GetParent(container_) == parent_;
   }
 
   CefWindowHandle parent_handle() const override { return container_; }
 
   void BrowserCreated(CefRefPtr<CefBrowser> browser) override {
     browser_ = browser;
-    const HWND browser_window = browser->GetHost()->GetWindowHandle();
-    proxy_->browser_window.store(browser_window, std::memory_order_release);
-    if (browser_window != nullptr && ::IsWindow(browser_window)) {
+    browser_window_ = browser->GetHost()->GetWindowHandle();
+    if (browser_window_ != nullptr && ::IsWindow(browser_window_)) {
       RECT bounds{};
       if (::GetClientRect(container_, &bounds)) {
-        ::SetWindowPos(browser_window, nullptr, 0, 0, bounds.right,
+        ::SetWindowPos(browser_window_, nullptr, 0, 0, bounds.right,
                        bounds.bottom, SWP_NOACTIVATE | SWP_NOZORDER);
       }
     }
@@ -111,18 +67,16 @@ class WindowsBrowserSurface final : public BrowserSurface {
 
   kweb_status Resize(int32_t width, int32_t height, int32_t *actual_width,
                      int32_t *actual_height) override {
-    const HWND browser_window =
-        proxy_->browser_window.load(std::memory_order_acquire);
-    if (!IsValid() || browser_window == nullptr ||
-        !::IsWindow(browser_window) ||
+    if (!IsValid() || browser_window_ == nullptr ||
+        !::IsWindow(browser_window_) ||
         !::SetWindowPos(container_, nullptr, x_, y_, width, height,
                         SWP_NOACTIVATE | SWP_NOZORDER) ||
-        !::SetWindowPos(browser_window, nullptr, 0, 0, width, height,
+        !::SetWindowPos(browser_window_, nullptr, 0, 0, width, height,
                         SWP_NOACTIVATE | SWP_NOZORDER)) {
       return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
     }
     RECT bounds{};
-    if (!::GetClientRect(browser_window, &bounds)) {
+    if (!::GetClientRect(browser_window_, &bounds)) {
       return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
     }
     *actual_width = bounds.right - bounds.left;
@@ -137,27 +91,23 @@ class WindowsBrowserSurface final : public BrowserSurface {
   }
 
   bool ValidateParentage() const override {
-    const HWND browser_window =
-        proxy_->browser_window.load(std::memory_order_acquire);
     return parent_ != nullptr && ::IsWindow(parent_) && IsValid() &&
-           browser_window != nullptr && ::IsWindow(browser_window) &&
-           ::GetParent(browser_window) == container_;
+           browser_window_ != nullptr && ::IsWindow(browser_window_) &&
+           ::GetParent(browser_window_) == container_;
   }
 
   kweb_status RequestBrowserClose() override {
-    if (proxy_->close_requested.load(std::memory_order_acquire)) {
+    if (close_requested_) {
       // A close is already in flight; requesting another one would race with
       // the destruction that CEF has already accepted.
       return KWEB_STATUS_OK;
     }
-    const HWND browser_window =
-        proxy_->browser_window.load(std::memory_order_acquire);
-    if (!IsValid() || !browser_ || browser_window == nullptr ||
-        !::IsWindow(browser_window) ||
-        ::GetParent(browser_window) != container_) {
+    if (!IsValid() || !browser_ || browser_window_ == nullptr ||
+        !::IsWindow(browser_window_) ||
+        ::GetParent(browser_window_) != container_) {
       return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
     }
-    proxy_->close_requested.store(true, std::memory_order_release);
+    close_requested_ = true;
     browser_->GetHost()->CloseBrowser(true);
     return KWEB_STATUS_OK;
   }
@@ -167,18 +117,16 @@ class WindowsBrowserSurface final : public BrowserSurface {
       return KWEB_STATUS_INVALID_ARGUMENT;
     }
     *handled_out = false;
-    if (!proxy_->close_requested.load(std::memory_order_acquire)) {
+    if (!close_requested_) {
       // CEF initiated this close itself (for example the host window received
       // WM_CLOSE) instead of a session RequestBrowserClose call. Accept CEF's
       // default destruction instead of tearing the session down fatally.
-      proxy_->close_requested.store(true, std::memory_order_release);
+      close_requested_ = true;
       return KWEB_STATUS_OK;
     }
-    const HWND browser_window =
-        proxy_->browser_window.load(std::memory_order_acquire);
-    if (!IsValid() || browser_window == nullptr ||
-        !::IsWindow(browser_window) ||
-        ::GetParent(browser_window) != container_) {
+    if (!IsValid() || browser_window_ == nullptr ||
+        !::IsWindow(browser_window_) ||
+        ::GetParent(browser_window_) != container_) {
       return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
     }
     return KWEB_STATUS_OK;
@@ -186,64 +134,33 @@ class WindowsBrowserSurface final : public BrowserSurface {
 
   kweb_status BrowserDestroyed() override {
     browser_ = nullptr;
-    proxy_->browser_window.store(nullptr, std::memory_order_release);
+    browser_window_ = nullptr;
     return KWEB_STATUS_OK;
   }
 
+  void ReportInvalidSurface() const {
+    std::fprintf(
+        stderr,
+        "KWEBSHELL_SURFACE_INVALID parent_is_window=%d container=%p "
+        "container_is_window=%d parentage=%d create_win_error=%lu\n",
+        parent_ != nullptr && ::IsWindow(parent_) ? 1 : 0,
+        static_cast<void *>(container_),
+        container_ != nullptr && ::IsWindow(container_) ? 1 : 0,
+        container_ != nullptr && parent_ != nullptr &&
+                ::GetParent(container_) == parent_
+            ? 1
+            : 0,
+        static_cast<unsigned long>(create_error_));
+  }
+
  private:
-  static UINT_PTR NextSubclassId() {
-    static std::atomic<UINT_PTR> next_id = 1;
-    return next_id.fetch_add(1, std::memory_order_relaxed);
-  }
-
-  static LRESULT CALLBACK ParentWindowSubclassProc(HWND window, UINT message,
-                                                   WPARAM w_param,
-                                                   LPARAM l_param,
-                                                   UINT_PTR subclass_id,
-                                                   DWORD_PTR ref_data) {
-    (void)subclass_id;
-    if (message == kProxyReleaseMessage && l_param != 0) {
-      // The release message is addressed to one proxy but travels through
-      // every installed subclass procedure, so the first procedure that sees
-      // it performs the removal on the window's owning thread.
-      auto *released = reinterpret_cast<WindowsWindowProxy *>(l_param);
-      ::RemoveWindowSubclass(window, ParentWindowSubclassProc,
-                             released->subclass_id);
-      delete released;
-      return 0;
-    }
-    auto *proxy = reinterpret_cast<WindowsWindowProxy *>(ref_data);
-    if (proxy != nullptr && message == WM_CLOSE &&
-        !proxy->surface_released.load(std::memory_order_acquire) &&
-        ForwardAcceptedClose(proxy)) {
-      return 0;
-    }
-    return ::DefSubclassProc(window, message, w_param, l_param);
-  }
-
-  static bool ForwardAcceptedClose(WindowsWindowProxy *proxy) {
-    const HWND browser_window =
-        proxy->browser_window.load(std::memory_order_acquire);
-    if (!proxy->close_requested.load(std::memory_order_acquire) ||
-        proxy->close_forwarded.load(std::memory_order_acquire) ||
-        browser_window == nullptr || !::IsWindow(browser_window) ||
-        ::GetParent(browser_window) != proxy->container ||
-        ::GetAncestor(browser_window, GA_ROOT) != proxy->parent) {
-      return false;
-    }
-    proxy->close_forwarded.store(true, std::memory_order_release);
-    // DoClose has already returned false, so CEF has accepted destruction and
-    // its host WndProc can now destroy only the browser child window.
-    ::SendMessageW(browser_window, WM_CLOSE, 0, 0);
-    return true;
-  }
-
   const HWND parent_;
   const int32_t x_;
   const int32_t y_;
   HWND container_ = nullptr;
-  WindowsWindowProxy *proxy_ = nullptr;
-  bool parent_subclassed_ = false;
+  HWND browser_window_ = nullptr;
+  DWORD create_error_ = 0;
+  bool close_requested_ = false;
   CefRefPtr<CefBrowser> browser_;
 };
 
@@ -374,6 +291,7 @@ CreateBrowserSurface(uintptr_t native_parent, int32_t x, int32_t y,
   auto surface =
       std::make_unique<WindowsBrowserSurface>(parent, x, y, width, height);
   if (!surface->IsValid()) {
+    surface->ReportInvalidSurface();
     *status_out = KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
     return nullptr;
   }

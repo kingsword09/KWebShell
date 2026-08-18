@@ -87,18 +87,17 @@ class WindowsBrowserSurface final : public BrowserSurface {
   }
 
   kweb_status RequestBrowserClose() override {
+    if (close_accepted_) {
+      // A close is already in flight; requesting another one would race with
+      // the destruction that CEF has already accepted.
+      return KWEB_STATUS_OK;
+    }
     if (!browser_ || browser_window_ == nullptr ||
         !::IsWindow(browser_window_) ||
         ::GetParent(browser_window_) != parent_) {
       return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
     }
-    // Route the close through CEF's own host WndProc: CloseBrowser(true)
-    // defers destruction of a SetAsChild window under a foreign parent for
-    // roughly thirty seconds, while destroying the window externally races
-    // Aura's tracking under a concurrent navigate and trips
-    // "Check failed: !is_destroyed_". WM_CLOSE reaches DoClose, which accepts
-    // CEF's default destruction path.
-    ::PostMessageW(browser_window_, WM_CLOSE, 0, 0);
+    browser_->GetHost()->CloseBrowser(true);
     return KWEB_STATUS_OK;
   }
 
@@ -106,9 +105,20 @@ class WindowsBrowserSurface final : public BrowserSurface {
     if (handled_out == nullptr) {
       return KWEB_STATUS_INVALID_ARGUMENT;
     }
-    // Accept CEF-initiated closes (for example a stray WM_CLOSE) through
-    // CEF's default destruction path.
     *handled_out = false;
+    if (close_accepted_) {
+      return KWEB_STATUS_OK;
+    }
+    // CEF has accepted the close (DoClose). Destroying the window here is
+    // required for a SetAsChild browser under a foreign parent: CEF's default
+    // destruction defers for roughly thirty seconds waiting for the window to
+    // go away, and destroying before DoClose races Aura's tracking under a
+    // concurrent navigate.
+    close_accepted_ = true;
+    if (browser_window_ != nullptr && ::IsWindow(browser_window_) &&
+        ::GetParent(browser_window_) == parent_) {
+      ::DestroyWindow(browser_window_);
+    }
     return KWEB_STATUS_OK;
   }
 
@@ -123,6 +133,7 @@ class WindowsBrowserSurface final : public BrowserSurface {
   const int32_t x_;
   const int32_t y_;
   HWND browser_window_ = nullptr;
+  bool close_accepted_ = false;
   CefRefPtr<CefBrowser> browser_;
 };
 

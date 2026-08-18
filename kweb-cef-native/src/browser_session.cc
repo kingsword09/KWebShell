@@ -14,6 +14,10 @@
 #include <system_error>
 #include <utility>
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
 #include "browser_surface.h"
 #include "bridge_protocol.h"
 #include "engine_internal.h"
@@ -46,8 +50,20 @@ constexpr kweb_browser_handle kMaximumBrowserHandle =
 void TraceCloseStage(kweb_browser_handle browser, const char *stage) {
   static const bool enabled = std::getenv("KWEBSHELL_TRACE_CLOSE") != nullptr;
   if (enabled) {
-    std::fprintf(stderr, "KWEBSHELL_CLOSE_TRACE browser=%llu stage=%s\n",
+    std::fprintf(stderr, "KWEBSHELL_CLOSE_TRACE browser=%llu stage=%s",
                  static_cast<unsigned long long>(browser), stage);
+#if defined(_WIN32)
+    DWORD handle_count = 0;
+    if (::GetProcessHandleCount(::GetCurrentProcess(), &handle_count)) {
+      std::fprintf(stderr, " handles=%lu", handle_count);
+    }
+    const DWORD gdi_objects = ::GetGuiResources(GR_GDIOBJECTS);
+    const DWORD user_objects = ::GetGuiResources(GR_USEROBJECTS);
+    if (gdi_objects != 0 || user_objects != 0) {
+      std::fprintf(stderr, " gdi=%lu user=%lu", gdi_objects, user_objects);
+    }
+#endif
+    std::fprintf(stderr, "\n");
   }
 }
 

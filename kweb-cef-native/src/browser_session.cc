@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
 #include <filesystem>
 #include <limits>
 #include <map>
@@ -664,7 +665,12 @@ public:
 
   bool CompleteBrowserClose(CefRefPtr<CefBrowser> browser) {
     CEF_REQUIRE_UI_THREAD();
-    if (!browser || !browser_ || !browser_->IsSame(browser) || !surface_) {
+    if (!browser || closing_.load(std::memory_order_acquire)) {
+      // CEF delivered an unusable browser or the session is already closing;
+      // take CEF's default destruction path instead of a fatal teardown.
+      return false;
+    }
+    if (!browser_ || !browser_->IsSame(browser) || !surface_) {
       Fatal(KWEB_STATUS_INTERNAL_ERROR, "browser-close-state-invalid");
       return true;
     }
@@ -918,6 +924,10 @@ private:
     bool expected = false;
     if (fatal_emitted_.compare_exchange_strong(expected, true,
                                                std::memory_order_acq_rel)) {
+      std::fprintf(stderr,
+                   "KWEBSHELL_NATIVE_FATAL browser=%llu status=%d code=%s\n",
+                   static_cast<unsigned long long>(handle_), status_code,
+                   code.c_str());
       Emit(KWEB_BROWSER_EVENT_FATAL_ERROR, 0, code, status_code, 0, 0);
     }
   }

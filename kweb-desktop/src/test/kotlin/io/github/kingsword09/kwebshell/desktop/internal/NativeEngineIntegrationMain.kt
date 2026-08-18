@@ -1015,7 +1015,8 @@ private fun runRawBridgeAbiConformance(
     val closed = CountDownLatch(1)
     val browserHandle = AtomicLong(0)
     val terminalHandleStatus = AtomicInteger(Int.MIN_VALUE)
-    val browserEvents = NativeBrowserEventSink { _, browser, _, type, _, _, _, _, _ ->
+    val fatalEvents = CopyOnWriteArrayList<String>()
+    val browserEvents = NativeBrowserEventSink { _, browser, _, type, _, text, statusCode, _, _ ->
         browserHandle.compareAndSet(0, browser)
         when (NativeBrowserEventType.fromValue(type)) {
             NativeBrowserEventType.CREATED -> created.countDown()
@@ -1026,6 +1027,8 @@ private fun runRawBridgeAbiConformance(
                 )
                 closed.countDown()
             }
+            NativeBrowserEventType.FATAL_ERROR ->
+                fatalEvents += "code='$text' status=$statusCode"
             else -> Unit
         }
     }
@@ -1131,13 +1134,20 @@ private fun runRawBridgeAbiConformance(
             "late raw bridge response",
         )
     } finally {
+        val prematureTerminal = closed.count == 0L
+        val fatalSummary = fatalEvents.joinToString("; ").ifEmpty { null }
         requireStatus(
             NativeEngine.onAwtEventDispatchThread { NativeBindings.browserClose(handle) },
             NativeStatus.OK,
-            "close raw bridge browser",
+            "close raw bridge browser" +
+                (if (prematureTerminal) " after a premature terminal event" else "") +
+                (fatalSummary?.let { " with fatal events: $it" } ?: ""),
         )
         require(closed.await(30, TimeUnit.SECONDS)) {
             "The raw bridge browser did not publish its terminal event."
+        }
+        require(fatalEvents.isEmpty()) {
+            "The raw bridge browser reported fatal events: ${fatalEvents.joinToString("; ")}."
         }
         val ownerFailure = NativeBindings.releaseBrowserOwner(handle)
         requireStatus(

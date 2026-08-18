@@ -53,12 +53,13 @@ void TraceCloseStage(kweb_browser_handle browser, const char *stage) {
     std::fprintf(stderr, "KWEBSHELL_CLOSE_TRACE browser=%llu stage=%s",
                  static_cast<unsigned long long>(browser), stage);
 #if defined(_WIN32)
+    const HANDLE trace_process = ::GetCurrentProcess();
     DWORD handle_count = 0;
-    if (::GetProcessHandleCount(::GetCurrentProcess(), &handle_count)) {
+    if (::GetProcessHandleCount(trace_process, &handle_count)) {
       std::fprintf(stderr, " handles=%lu", handle_count);
     }
-    const DWORD gdi_objects = ::GetGuiResources(GR_GDIOBJECTS);
-    const DWORD user_objects = ::GetGuiResources(GR_USEROBJECTS);
+    const DWORD gdi_objects = ::GetGuiResources(trace_process, GR_GDIOBJECTS);
+    const DWORD user_objects = ::GetGuiResources(trace_process, GR_USEROBJECTS);
     if (gdi_objects != 0 || user_objects != 0) {
       std::fprintf(stderr, " gdi=%lu user=%lu", gdi_objects, user_objects);
     }

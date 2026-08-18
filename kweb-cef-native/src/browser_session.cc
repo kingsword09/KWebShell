@@ -680,9 +680,8 @@ public:
     TraceCloseStage(handle_, closing_.load(std::memory_order_acquire)
                                   ? "do-close-closing"
                                   : "do-close-open");
-    if (!browser || closing_.load(std::memory_order_acquire)) {
-      // CEF delivered an unusable browser or the session is already closing;
-      // take CEF's default destruction path instead of a fatal teardown.
+    if (!browser) {
+      // CEF delivered an unusable browser; take its default destruction path.
       return false;
     }
     if (!browser_ || !browser_->IsSame(browser) || !surface_) {

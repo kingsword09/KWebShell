@@ -17,19 +17,55 @@ namespace {
 
 #if defined(OS_WIN)
 
+constexpr wchar_t kShutdownRootClassName[] = L"KWebShellBrowserShutdownRoot";
+
+LRESULT CALLBACK ShutdownRootWindowProc(HWND window, UINT message,
+                                        WPARAM w_param, LPARAM l_param) {
+  if (message == WM_CLOSE) {
+    const HWND browser_window = reinterpret_cast<HWND>(
+        ::GetWindowLongPtrW(window, GWLP_USERDATA));
+    ::SetWindowLongPtrW(window, GWLP_USERDATA, 0);
+    if (browser_window != nullptr && ::IsWindow(browser_window) &&
+        ::GetAncestor(browser_window, GA_ROOT) == window) {
+      // Close through CEF's host WndProc now that DoClose has returned and
+      // AlloyBrowserHostImpl has accepted destruction.
+      ::SendMessageW(browser_window, WM_CLOSE, 0, 0);
+    }
+    return 0;
+  }
+  return ::DefWindowProcW(window, message, w_param, l_param);
+}
+
+ATOM RegisterShutdownRootClass(HINSTANCE instance) {
+  WNDCLASSEXW window_class{};
+  window_class.cbSize = sizeof(window_class);
+  window_class.lpfnWndProc = ShutdownRootWindowProc;
+  window_class.hInstance = instance;
+  window_class.lpszClassName = kShutdownRootClassName;
+  return ::RegisterClassExW(&window_class);
+}
+
 // Every member and every Win32 call in this class happen on the CEF UI
-// thread, which is also the thread that creates the container window. The
-// parent HWND belongs to the embedding thread (AWT on the JVM path) and is
-// only inspected with thread-safe queries. Do not subclass or otherwise
-// modify the parent window from this thread: commctl subclass installation
-// from a non-owning thread fails nondeterministically.
+// thread, which also creates the container and the hidden shutdown root.
+// The embedding-owned parent HWND is only inspected with thread-safe
+// queries. A browser child window created with SetAsChild under a foreign
+// parent stalls CEF's default destruction for roughly thirty seconds, so
+// CompleteBrowserClose re-parents the container under our own hidden popup
+// root where CEF's close sequence proceeds immediately.
 class WindowsBrowserSurface final : public BrowserSurface {
  public:
   WindowsBrowserSurface(HWND parent, int32_t x, int32_t y, int32_t width,
                         int32_t height)
       : parent_(parent), x_(x), y_(y) {
     const HINSTANCE instance = ::GetModuleHandleW(nullptr);
-    if (parent_ != nullptr && ::IsWindow(parent_)) {
+    static const ATOM shutdown_root_class = RegisterShutdownRootClass(instance);
+    if (shutdown_root_class != 0) {
+      shutdown_root_ = ::CreateWindowExW(
+          WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW, kShutdownRootClassName, L"",
+          WS_POPUP, 0, 0, 0, 0, nullptr, nullptr, instance, nullptr);
+    }
+    if (shutdown_root_ != nullptr && parent_ != nullptr &&
+        ::IsWindow(parent_)) {
       container_ = ::CreateWindowExW(
           WS_EX_NOPARENTNOTIFY, L"STATIC", L"",
           WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y,
@@ -42,18 +78,41 @@ class WindowsBrowserSurface final : public BrowserSurface {
 
   ~WindowsBrowserSurface() override {
     if (std::getenv("KWEBSHELL_TRACE_CLOSE") != nullptr) {
-      std::fprintf(stderr, "KWEBSHELL_CLOSE_TRACE stage=surface-destroyed container=%p\n",
+      std::fprintf(stderr,
+                   "KWEBSHELL_CLOSE_TRACE stage=surface-destroyed root=%p "
+                   "container=%p\n",
+                   static_cast<void *>(shutdown_root_),
                    static_cast<void *>(container_));
     }
     if (container_ != nullptr && ::IsWindow(container_)) {
       ::DestroyWindow(container_);
     }
+    if (shutdown_root_ != nullptr && ::IsWindow(shutdown_root_)) {
+      ::DestroyWindow(shutdown_root_);
+    }
   }
 
   bool IsValid() const {
-    return parent_ != nullptr && ::IsWindow(parent_) &&
-           container_ != nullptr && ::IsWindow(container_) &&
-           ::GetParent(container_) == parent_;
+    return shutdown_root_ != nullptr && ::IsWindow(shutdown_root_) &&
+           ::GetParent(shutdown_root_) == nullptr && container_ != nullptr &&
+           ::IsWindow(container_) && ::GetParent(container_) == parent_;
+  }
+
+  void ReportInvalidSurface() const {
+    std::fprintf(
+        stderr,
+        "KWEBSHELL_SURFACE_INVALID parent_is_window=%d root=%p root_is_window=%d "
+        "container=%p container_is_window=%d parentage=%d create_win_error=%lu\n",
+        parent_ != nullptr && ::IsWindow(parent_) ? 1 : 0,
+        static_cast<void *>(shutdown_root_),
+        shutdown_root_ != nullptr && ::IsWindow(shutdown_root_) ? 1 : 0,
+        static_cast<void *>(container_),
+        container_ != nullptr && ::IsWindow(container_) ? 1 : 0,
+        container_ != nullptr && parent_ != nullptr &&
+                ::GetParent(container_) == parent_
+            ? 1
+            : 0,
+        static_cast<unsigned long>(create_error_));
   }
 
   CefWindowHandle parent_handle() const override { return container_; }
@@ -102,7 +161,7 @@ class WindowsBrowserSurface final : public BrowserSurface {
   }
 
   kweb_status RequestBrowserClose() override {
-    if (close_requested_) {
+    if (close_hierarchy_detached_) {
       // A close is already in flight; requesting another one would race with
       // the destruction that CEF has already accepted.
       return KWEB_STATUS_OK;
@@ -122,18 +181,43 @@ class WindowsBrowserSurface final : public BrowserSurface {
       return KWEB_STATUS_INVALID_ARGUMENT;
     }
     *handled_out = false;
-    if (!close_requested_) {
-      // CEF initiated this close itself (for example the host window received
-      // WM_CLOSE) instead of a session RequestBrowserClose call. Accept CEF's
-      // default destruction instead of tearing the session down fatally.
-      close_requested_ = true;
+    if (close_hierarchy_detached_) {
       return KWEB_STATUS_OK;
     }
     if (!IsValid() || browser_window_ == nullptr ||
         !::IsWindow(browser_window_) ||
         ::GetParent(browser_window_) != container_) {
+      if (!close_requested_) {
+        // CEF initiated this close itself while the window hierarchy was not
+        // in the expected state; accept CEF's default destruction instead of
+        // tearing the session down fatally.
+        close_requested_ = true;
+        close_hierarchy_detached_ = true;
+        return KWEB_STATUS_OK;
+      }
       return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
     }
+    ::ShowWindow(container_, SW_HIDE);
+    const HWND previous_parent = ::SetParent(container_, shutdown_root_);
+    if (previous_parent != parent_) {
+      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    }
+    if (::GetParent(container_) != shutdown_root_ ||
+        ::GetParent(browser_window_) != container_ ||
+        ::GetAncestor(browser_window_, GA_ROOT) != shutdown_root_) {
+      ::SetParent(container_, parent_);
+      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    }
+    ::SetWindowLongPtrW(shutdown_root_, GWLP_USERDATA,
+                        reinterpret_cast<LONG_PTR>(browser_window_));
+    if (reinterpret_cast<HWND>(
+            ::GetWindowLongPtrW(shutdown_root_, GWLP_USERDATA)) !=
+        browser_window_) {
+      ::SetParent(container_, parent_);
+      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    }
+    close_requested_ = true;
+    close_hierarchy_detached_ = true;
     return KWEB_STATUS_OK;
   }
 
@@ -143,29 +227,16 @@ class WindowsBrowserSurface final : public BrowserSurface {
     return KWEB_STATUS_OK;
   }
 
-  void ReportInvalidSurface() const {
-    std::fprintf(
-        stderr,
-        "KWEBSHELL_SURFACE_INVALID parent_is_window=%d container=%p "
-        "container_is_window=%d parentage=%d create_win_error=%lu\n",
-        parent_ != nullptr && ::IsWindow(parent_) ? 1 : 0,
-        static_cast<void *>(container_),
-        container_ != nullptr && ::IsWindow(container_) ? 1 : 0,
-        container_ != nullptr && parent_ != nullptr &&
-                ::GetParent(container_) == parent_
-            ? 1
-            : 0,
-        static_cast<unsigned long>(create_error_));
-  }
-
  private:
   const HWND parent_;
   const int32_t x_;
   const int32_t y_;
+  HWND shutdown_root_ = nullptr;
   HWND container_ = nullptr;
   HWND browser_window_ = nullptr;
   DWORD create_error_ = 0;
   bool close_requested_ = false;
+  bool close_hierarchy_detached_ = false;
   CefRefPtr<CefBrowser> browser_;
 };
 

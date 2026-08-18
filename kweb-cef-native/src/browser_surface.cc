@@ -92,7 +92,13 @@ class WindowsBrowserSurface final : public BrowserSurface {
         ::GetParent(browser_window_) != parent_) {
       return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
     }
-    ::DestroyWindow(browser_window_);
+    // Route the close through CEF's own host WndProc: CloseBrowser(true)
+    // defers destruction of a SetAsChild window under a foreign parent for
+    // roughly thirty seconds, while destroying the window externally races
+    // Aura's tracking under a concurrent navigate and trips
+    // "Check failed: !is_destroyed_". WM_CLOSE reaches DoClose, which accepts
+    // CEF's default destruction path.
+    ::PostMessageW(browser_window_, WM_CLOSE, 0, 0);
     return KWEB_STATUS_OK;
   }
 

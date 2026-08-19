@@ -1,6 +1,7 @@
 #include "browser_surface.h"
 
 #include <cstdio>
+#include <cwchar>
 #include <cstdlib>
 #include <memory>
 
@@ -22,6 +23,7 @@ namespace {
 #if defined(OS_WIN)
 
 constexpr int kBrowserWindowDestructionQuiescenceTasks = 8;
+constexpr wchar_t kBrowserWidgetWindowClassPrefix[] = L"Chrome_WidgetWin_";
 
 bool BrowserWindowOwnsFocus(HWND window) {
   const HWND focused = ::GetFocus();
@@ -85,6 +87,35 @@ void DrainBrowserWindowPointerMessagesInSubtree(HWND window) {
   ::EnumChildWindows(window, DrainBrowserWindowPointerMessagesCallback, 0);
 }
 
+bool IsBrowserWidgetWindow(HWND window) {
+  wchar_t class_name[64]{};
+  const int class_name_length =
+      ::GetClassNameW(window, class_name, static_cast<int>(sizeof(class_name) /
+                                                          sizeof(wchar_t)));
+  constexpr int prefix_length =
+      static_cast<int>(sizeof(kBrowserWidgetWindowClassPrefix) /
+                       sizeof(wchar_t)) -
+      1;
+  return class_name_length >= prefix_length &&
+         std::wcsncmp(class_name, kBrowserWidgetWindowClassPrefix,
+                      prefix_length) == 0;
+}
+
+HWND FindBrowserWidgetWindow(HWND browser_window) {
+  HWND result = nullptr;
+  for (HWND child = ::GetWindow(browser_window, GW_CHILD); child != nullptr;
+       child = ::GetWindow(child, GW_HWNDNEXT)) {
+    if (!IsBrowserWidgetWindow(child)) {
+      continue;
+    }
+    if (result != nullptr) {
+      return nullptr;
+    }
+    result = child;
+  }
+  return result;
+}
+
 void ReleaseBrowserWindowInputState(HWND window) {
   ReleaseBrowserWindowPointerState(window, 0);
   ::EnumChildWindows(window, ReleaseBrowserWindowPointerState, 0);
@@ -113,12 +144,43 @@ void DestroyBrowserWindowAfterQuiescence(HWND window, HWND parent,
   }
 }
 
+void DestroyBrowserWindowAfterWidgetClose(HWND window, HWND parent,
+                                          HWND widget_window,
+                                          int remaining_tasks) {
+  DrainBrowserWindowPointerMessagesInSubtree(window);
+  if (::IsWindow(widget_window)) {
+    if (remaining_tasks > 0 &&
+        CefPostTask(TID_UI,
+                    base::BindOnce(DestroyBrowserWindowAfterWidgetClose,
+                                   window, parent, widget_window,
+                                   remaining_tasks - 1))) {
+      return;
+    }
+    std::fprintf(stderr,
+                 "KWEBSHELL_CLOSE_ERROR stage=widget-close-timeout "
+                 "browser_window=%p widget_window=%p remaining_tasks=%d\n",
+                 static_cast<void *>(window),
+                 static_cast<void *>(widget_window), remaining_tasks);
+    ::DestroyWindow(widget_window);
+  }
+  if (::IsWindow(widget_window)) {
+    std::fprintf(stderr,
+                 "KWEBSHELL_CLOSE_ERROR stage=widget-destruction-failed "
+                 "browser_window=%p widget_window=%p\n",
+                 static_cast<void *>(window),
+                 static_cast<void *>(widget_window));
+  }
+  DestroyBrowserWindowAfterQuiescence(
+      window, parent, kBrowserWindowDestructionQuiescenceTasks - 1);
+}
+
 // Windowing model proven on the Windows matrix: the CEF browser window is a
 // direct child of the embedding-owned parent and every member and Win32 call
 // happens on the CEF UI thread. A session close destroys the browser window
-// explicitly; CEF runs its own close sequence from the WM_DESTROY
-// notification. Intermediate container windows and shutdown-root re-parenting
-// conflict with Aura's window tracking under stress (repeated
+// explicitly after closing CEF's inner Aura Widget; CEF runs its own close
+// sequence from the outer host's WM_DESTROY notification. Intermediate
+// container windows and shutdown-root re-parenting conflict with Aura's window
+// tracking under stress (repeated
 // "Check failed: !is_destroyed_" and a wedged UI thread), so this class keeps
 // the foreign-parent hierarchy exactly as CEF created it.
 class WindowsBrowserSurface final : public BrowserSurface {
@@ -233,9 +295,18 @@ class WindowsBrowserSurface final : public BrowserSurface {
       return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
     }
     DrainBrowserWindowPointerMessagesInSubtree(browser_window);
+    const HWND widget_window = FindBrowserWidgetWindow(browser_window);
+    if (widget_window == nullptr || !::IsWindow(widget_window) ||
+        ::GetParent(widget_window) != browser_window) {
+      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    }
+    // CEF owns a top-level Aura Widget inside CefBrowserWindow. Close that
+    // Widget through its native message path and let Chromium tear down the
+    // Aura root before destroying the outer CEF host HWND.
+    ::SendMessageW(widget_window, WM_CLOSE, 0, 0);
     if (!CefPostTask(TID_UI,
-                     base::BindOnce(DestroyBrowserWindowAfterQuiescence,
-                                    browser_window, parent_,
+                     base::BindOnce(DestroyBrowserWindowAfterWidgetClose,
+                                    browser_window, parent_, widget_window,
                                     kBrowserWindowDestructionQuiescenceTasks -
                                         1))) {
       return KWEB_STATUS_CEF_UI_TASK_FAILED;

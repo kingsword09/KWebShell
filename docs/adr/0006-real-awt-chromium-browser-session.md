@@ -25,9 +25,10 @@ The browser is always windowed Alloy with windowless rendering disabled:
   through `CefBrowserHost`. In `DoClose`, KWebShell returns `true` to accept its
   custom destruction path, clears pointer capture and hover tracking, drains
   queued pointer messages from the child subtree, disables and hides the child,
-  synchronously confirms focus has left its
-  `Chrome_WidgetWin` subtree, drains eight CEF UI queue turns, and then destroys
-  the Chromium child. Returning `false` is forbidden because
+  synchronously confirms focus has left its `Chrome_WidgetWin` subtree, closes
+  and confirms destruction of CEF's inner Aura Widget, drains eight CEF UI
+  queue turns, and then destroys the outer Chromium child. Returning `false` is
+  forbidden because
   CEF 151 sends the standard close notification to the top-level Compose ancestor.
 - Linux consumes the same property as the top-level X11 `Window` and requests
   forced CEF close for the child browser.
@@ -45,7 +46,8 @@ removal and the terminal callback are published after that barrier. A command
 re-entered from that callback therefore receives `invalid-handle`, never `browser-closing`.
 On Windows, `DoClose` returns `true`, clears pointer state and queued pointer
 messages, blocks new child input,
-confirms focus loss, and drains eight CEF UI queue turns before destroying the child. Only after
+confirms focus loss, closes CEF's inner Aura Widget, and drains eight CEF UI
+queue turns before destroying the outer child. Only after
 CEF reaches `OnBeforeClose` and releases the final client owner may the now-empty
 surface be released. The real Windows stress test checks after every close that
 the same Compose `HWND` remains visible and accepts an OS-generated mouse click,

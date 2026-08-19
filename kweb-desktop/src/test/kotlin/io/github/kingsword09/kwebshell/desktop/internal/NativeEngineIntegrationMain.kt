@@ -2053,13 +2053,14 @@ private fun runChildAndRequireSuccess(mode: IntegrationMode, root: Path) {
         "Native engine child '${mode.argument}' exited with ${child.process.exitValue()}.\n${child.output()}"
     }
     if (mode == IntegrationMode.FFM_STRESS && isWindows()) {
-        val auraDestructionDiagnostics = child.lines.filter { line ->
+        val windowsDestructionDiagnostics = child.lines.filter { line ->
             line.contains("Check failed: !is_destroyed_", ignoreCase = true) ||
                 line.contains("ui/aura/window.cc", ignoreCase = true) &&
-                line.contains("destroy", ignoreCase = true)
+                line.contains("destroy", ignoreCase = true) ||
+                line.contains("KWEBSHELL_CLOSE_ERROR", ignoreCase = false)
         }
-        require(auraDestructionDiagnostics.isEmpty()) {
-            "Windows FFM stress reported Aura double-destruction diagnostics.\n${child.output()}"
+        require(windowsDestructionDiagnostics.isEmpty()) {
+            "Windows FFM stress reported native destruction diagnostics.\n${child.output()}"
         }
     }
     if (mode == IntegrationMode.SUCCESS && isMacOs()) {

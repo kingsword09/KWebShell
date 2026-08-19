@@ -451,9 +451,9 @@ Acceptance:
   `DoClose` accepts KWebShell's custom destruction path by returning `true` and
   clears capture and hover tracking, drains queued pointer messages from the
   `Chrome_WidgetWin` subtree, disables and hides the direct Chromium child,
-  synchronously confirms that
-  focus has left the subtree, and drains eight CEF UI queue turns before
-  destroying the child.
+  synchronously confirms that focus has left the subtree, closes CEF's inner
+  Aura Widget and confirms that its HWND is gone, and drains eight CEF UI queue
+  turns before destroying the outer CEF child.
   Returning `false` is prohibited because CEF 151 then sends `WM_CLOSE` to the
   top-level Compose ancestor. Destroying the child before acceptance or inline
   from `DoClose` is also prohibited because it races or re-enters Chromium/Aura
@@ -1341,8 +1341,9 @@ Acceptance:
   Every Windows lifecycle starts through `CefBrowserHost`; `DoClose` returns
   `true` for KWebShell's custom destruction path, clears pointer capture and
   hover tracking, drains queued pointer messages, blocks new input, confirms
-  focus loss from the Chromium subtree, drains eight CEF UI queue turns, and
-  destroys only Chromium's direct child. It reaches `OnBeforeClose`
+  focus loss from the Chromium subtree, closes and confirms destruction of the
+  inner CEF Aura Widget, drains eight CEF UI queue turns, and destroys only
+  Chromium's outer direct child. It reaches `OnBeforeClose`
   without CEF sending `WM_CLOSE` to Compose. After every close, the stress test
   must prove that the same Compose `HWND` remains visible and accepts a real
   mouse click; any Aura destroyed-window diagnostic fails the child even when

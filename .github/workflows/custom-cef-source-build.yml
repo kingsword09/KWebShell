@@ -39,13 +39,11 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Set up JDK 25 probe and JDK 21 production runtime
+      - name: Set up JDK 25 runtime
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: |
-            25
-            21
+          java-version: "25"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6

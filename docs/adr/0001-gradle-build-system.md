@@ -1,11 +1,11 @@
 # ADR 0001: Use Gradle for the initial build system
 
-- Status: Accepted
+- Status: Accepted, amended by Objective 8.2
 - Date: 2026-08-10
 
 ## Context
 
-KWebShell must build Kotlin Multiplatform contracts, JVM Compose integration, generated Kotlin/TypeScript bindings, JNI libraries, CMake projects, and versioned CEF runtime packs. The first browser vertical slice uses Compose Desktop on the JVM and a C++ CEF host behind JNI.
+KWebShell must build Kotlin Multiplatform contracts, JVM Compose integration, generated Kotlin/TypeScript bindings, JDK 25 FFM bindings, CMake projects, and versioned CEF runtime packs. The first browser vertical slice used JNI; Objective 8.2 deletes it after the versioned C ABI and raw Compose parent contract became stable.
 
 Kotlin Toolchain provides a simpler declarative Kotlin build and supports Kotlin/Native cinterop, but its published documentation currently describes the tool as alpha and subject to change. It also does not replace CEF's GN/Ninja/CMake and platform C++ toolchains.
 
@@ -15,10 +15,11 @@ Use the checked-in Gradle wrapper as the repository build entry point for the in
 
 - Gradle is pinned to 9.7.0.
 - Kotlin is pinned to the latest stable 2.4 line available when this decision was accepted, 2.4.10.
-- JVM compilation and tests require JDK 21.
+- JVM compilation, tests, and launchers require JDK 25 LTS.
+- The desktop JAR has automatic module name `io.github.kingsword09.kwebshell.desktop`; production launchers grant native access only to that module.
 - Dependencies are declared through the version catalog and resolved only from repositories declared in `settings.gradle.kts`.
 - Native C++ builds remain explicit CMake/GN/Ninja tasks invoked by Gradle; they are not translated into Kotlin compilation tasks.
-- Kotlin Toolchain will be evaluated only after the JNI and C ABI contracts are stable and the same native artifacts can be consumed without changing their lifecycle or packaging behavior.
+- Kotlin Toolchain may be evaluated separately after the current Gradle, CMake, and C ABI verification remains stable; it is not a replacement for the native CEF build.
 
 ## Consequences
 

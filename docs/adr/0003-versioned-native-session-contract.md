@@ -3,6 +3,9 @@
 - Status: Superseded by ADR 0006
 - Date: 2026-08-11
 
+Objective 8.2 retains the versioned C ABI but replaces the historical JNI
+adapter described below with the JDK 25 FFM binding.
+
 ## Context
 
 KWebShell needs a stable boundary between Kotlin/JVM orchestration and the C++ Chromium host. CEF objects, callbacks, allocators, and standard-library types cannot safely cross a binary boundary compiled by different platform toolchains. JNI also has different text, thread, exception, and reference-lifetime rules from both Kotlin and C++.

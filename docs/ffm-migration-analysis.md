@@ -1,26 +1,19 @@
 # JNI to FFM Migration Feasibility Analysis
 
-- Status: Objective 8.1 complete; local macOS arm64 and hosted
-  macOS arm64/Windows x64/Linux x64 gates are GO
-- Date: 2026-08-17
+- Status: Objective 8.1 evidence complete; Objective 8.2 production replacement
+  passes local macOS arm64 acceptance and awaits hosted merge gates
+- Date: 2026-08-18
 - Target runtime: JDK 25 LTS
 
 ## Executive decision
 
-Migrating KWebShell's JVM/native binding from JNI to the Java Foreign Function
-and Memory API is technically feasible because the browser engine already
-exposes a small, versioned C ABI with opaque integer handles. Objective 8.1
-changes no production backend: it freezes the post-Phase-7 ABI, proves a
-supported Compose parent handle, and measures a test-only JNI/FFM boundary
-before the breaking replacement in Objective 8.2.
-
-When Phase 8 begins, it will be a one-time breaking replacement:
-
-- upgrade the desktop runtime from JDK 21 to JDK 25 LTS;
-- replace JNI downcalls and callbacks with FFM downcalls and upcall stubs;
-- remove the JNI library and JNI-specific tests in the same objective;
-- run the complete real-CEF contract on all advertised desktop targets;
-- do not ship selectable JNI and FFM backends.
+KWebShell's JVM/native binding now uses the Java Foreign Function and Memory
+API over the existing small, versioned C ABI with opaque integer handles.
+Objective 8.1 froze that ABI, proved a supported Compose parent handle, and
+measured a test-only JNI/FFM boundary. Objective 8.2 applies the resulting
+one-time breaking replacement: every JVM module targets JDK 25, production
+downcalls and upcalls use FFM, and the JNI/JAWT implementation and payload are
+deleted. There is no backend selector or compatibility path.
 
 The critical parent-handle gate is now experimentally resolved through the
 documented `ComposeWindow.windowHandle` API in Compose Desktop 1.11.1 (Skiko
@@ -31,41 +24,18 @@ window trees, or creates an overlay.
 
 ## Current implementation baseline
 
-The post-Phase-7 boundary is ABI version 6. `NativeBindings` contains 17 Kotlin
-`external` methods, while `engine_abi.h` exports exactly 18 C functions, eight
-public structures (including `kweb_string_view`), and four callback signatures.
-The sets are not identical: JNI owns exact library bootstrap, while the C ABI
-owns `kweb_status_name` and `kweb_engine_platform_startup`.
+The production boundary remains ABI version 6: exactly 18 C functions, eight
+public structures including `kweb_string_view`, and four callback signatures.
+The internal Java 25 layer binds every export from canonical absolute paths,
+performs strict UTF-8 conversion, owns shared-Arena upcall stubs, and presents a
+primitive/SAM-only facade to Kotlin. `NativeBindings` is ordinary Kotlin code;
+it contains no JVM `native` methods and does not expose FFM types.
 
-The current JVM methods are:
-
-```text
-loadEngineLibrary
-engineAbiVersion
-engineCreate
-engineClose
-liveEngineCount
-browserCreate
-browserNavigate
-browserResize
-browserClose
-browserOpenDevTools
-browserCloseDevTools
-browserBridgeRespond
-browserBridgeFail
-liveBrowserCount
-extensionStart
-extensionCancel
-liveExtensionOperationCount
-```
-
-Objective 8.1's Java 25 inventory resolves all 18 C symbols from the exact
-engine library and executes ABI version, status-name, live-count, and typed
-invalid-operation calls. Native export inspection rejects missing and extra
-`kweb_*` symbols. The production JNI implementation currently comprises the
-1,371-line engine bridge, dynamic registration, strict string conversion, and
-platform JAWT parent sources; Objective 8.2 must delete that complete boundary,
-not the obsolete ten-method estimate.
+Compose, coroutines, lifecycle state, Profiles, Bridge, DevTools, and MV3 remain
+Kotlin-owned. Java is restricted to the low-level ABI binding where
+`MemoryLayout`, `MemorySegment`, and exact `MethodHandle` carrier types are most
+direct. The deleted JNI implementation is retained only in repository history
+and Objective 8.1 measurements.
 
 ## Corrections to the initial proposal
 
@@ -89,12 +59,12 @@ conformance tests remain mandatory.
 
 An Arena controls native allocations, memory segments, library lookup scope,
 and the lifetime of an upcall stub. It does not automatically define the
-logical lifetime of a browser callback owner. KWebShell must retain the bound
+logical lifetime of a browser callback owner. KWebShell retains the bound
 method handle, callback owner, upcall segment, and shared Arena until the
 native terminal callback has returned. Closing that Arena early is equivalent
 to exposing a dangling function pointer.
 
-### Native-thread callbacks still require design work
+### Native-thread callbacks require explicit ownership
 
 FFM performs the JVM/native transition for an upcall, so application code no
 longer calls `AttachCurrentThread` or `DetachCurrentThread`. That does not make
@@ -117,7 +87,7 @@ or `10x` product performance improvement without project-specific evidence.
 Maintainability and removal of JNI object/thread plumbing are the primary
 expected benefits.
 
-### jextract is not a stable build dependency yet
+### jextract is not a stable build dependency
 
 The OpenJDK jextract downloads are still labeled early access. KWebShell must
 not download an unpinned latest tool or regenerate bindings differently on
@@ -129,17 +99,16 @@ each developer machine. The two acceptable implementation choices are:
 2. Hand-write the small binding layer and verify every layout, offset, symbol,
    and calling convention against a native C conformance executable.
 
-The choice must be made from measured generated-code quality when Phase 8
-starts. The current ABI is small enough that a hand-written, generated-style
-Java layer may be simpler than making an early-access generator part of every
-build.
+Objective 8.2 selects the second option. The checked-in, generated-style Java
+layer is small enough to review directly, while native conformance tests remain
+the authority for every layout, offset, symbol, and callback signature.
 
 ## Feasibility by subsystem
 
 | Subsystem | Feasibility | Required treatment |
 |---|---|---|
 | C ABI downcalls | High | `Linker.nativeLinker`, exact descriptors, static Java wrappers |
-| Exact engine loading | High | `SymbolLookup.libraryLookup(path, arena)` plus existing explicit CEF platform startup |
+| Exact engine loading | High | Arena-scoped `SymbolLookup.libraryLookup(path, arena)`; Windows first uses FFM `LoadLibraryExW` with exact paths and dependency-safe search flags |
 | Engine/browser structs | High | Generated or verified platform layouts; never hard-coded offsets without conformance |
 | UTF-8 input | High | Allocate exact UTF-8 bytes and pass pointer plus byte count; no NUL reliance |
 | UTF-8 callback payload | High | Reinterpret only for declared size, validate, and copy before callback return |
@@ -198,6 +167,13 @@ an actionable typed error; it must not switch to JNI.
 
 `System.loadLibrary` and ambient loader search remain prohibited. The FFM layer
 must use a canonical absolute engine path and an Arena-scoped library lookup.
+On Windows, JDK 25's path lookup delegates to plain `LoadLibrary`, whose
+dependent-library search does not include the target DLL directory. The FFM
+layer therefore preloads the exact CEF and engine paths through
+`LoadLibraryExW` with `LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR` and
+`LOAD_LIBRARY_SEARCH_DEFAULT_DIRS`, opens both Arena-scoped lookups, then
+releases only the temporary preload references. It does not mutate `PATH` or
+the process-wide DLL directory and does not fall back to a name lookup.
 CEF runtime provenance, framework loading on macOS, `XInitThreads` on Linux,
 and runtime/header version checks remain responsibilities of the existing
 engine/platform C ABI.
@@ -267,8 +243,8 @@ targets fail at binding initialization with platform and architecture details.
 
 ## The Compose parent-handle gate
 
-The current `browserCreate` JNI method accepts a Java `Component`. Native code
-uses JAWT to resolve:
+The removed `browserCreate` JNI method accepted a Java `Component`. Native code
+used JAWT to resolve:
 
 - the Canvas `HWND` on Windows;
 - the X11 drawable on Linux;
@@ -287,9 +263,9 @@ value to a platform-native validator. Hosted macOS arm64 confirms a nonzero
 and Linux x64 under Xvfb confirms a valid X11 `Window`; all three dispose the
 peer cleanly.
 
-Objective 8.2 will pass this raw value as `kweb_browser_config.native_parent`.
-It will not retain a JNI/JAWT shim, reflect into `sun.awt`, infer a window by
-title/order, or create a hidden or overlay top-level window.
+Objective 8.2 passes this raw value as `kweb_browser_config.native_parent`.
+It retains no JNI/JAWT shim and does not reflect into `sun.awt`, infer a window
+by title/order, or create a hidden or overlay top-level window.
 
 ## Migration sequence
 
@@ -402,18 +378,80 @@ or JDK 25 artifact.
 
 ### Objective 8.2: Perform the breaking JDK 25 and FFM replacement
 
-- Upgrade Gradle toolchains, bytecode target, CI, packaging, and documentation
-  to JDK 25 LTS in one change.
-- Add the Java FFM binding and Kotlin facade for the complete ABI.
-- Replace callback/global-reference ownership with explicit shared-Arena
-  ownership.
-- Run all real CEF and cross-platform tests through FFM.
-- Delete the JNI/JAWT library, native methods, conversion sources, packaging,
-  and tests before merging.
+- Gradle toolchains, bytecode, CI, launchers, and documentation require JDK 25.
+- The complete ABI is implemented by an internal Java FFM binding and Kotlin
+  facade.
+- Engine, browser, bridge, and extension upcalls use explicit shared-Arena
+  owners released only after terminal callback quiescence.
+- Real CEF integration rejects a stale handle from inside the terminal upcall,
+  then runs a 1,000-browser navigation/close race contract with stale-handle
+  and zero-owner assertions.
+- The JNI/JAWT library, native methods, conversion sources, packaging, and
+  comparison-only probe code are deleted.
 
 No deprecation period or runtime backend switch is added because KWebShell is
 pre-1.0 and its engineering rules prefer a coherent breaking contract over a
 dual implementation.
+
+Local macOS arm64 acceptance uses OpenJDK 25.0.4 and the catalog-pinned CEF
+151.3.16 archive. The archive size, SHA-1, and bzip2 stream pass the repository
+verifier. All 11 native CTests pass, followed by the eight-layout FFM probe,
+all 18 production symbol bindings, native-thread upcalls, and the real
+`ComposeWindow.windowHandle` validator. The named-module JVM/CEF suite passes
+CDP, DevTools, Profile, Bridge, callback-failure, and process-singleton paths,
+then completes 1,000 real browser navigation/close races with contiguous
+events, stale-handle rejection, no callbacks after close, and zero native and
+FFM owners. The fingerprint-verified macOS custom CEF runtime also passes MV3
+install, update, reload, cancellation reconciliation, hard-crash recovery,
+Profile isolation, and uninstall through the same production FFM layer.
+
+Hosted macOS arm64, Windows x64, and Linux x64 jobs remain merge gates. Local
+macOS evidence is not used to infer another platform's loader, calling
+convention, or native-parent behavior.
+
+The macOS job also requires the upstream
+`MACH_PORT_RENDEZVOUS_PEER_VALDATION=0` unsigned-embedder policy marker exactly
+once before `OnContextInitialized`, plus a marker proving that the browser
+process disabled both Mach-port peer-validation features. A fourth marker
+proves that `GatherProcessRequirementMetrics` is disabled: Chromium schedules
+that diagnostic Security.framework validation as `CONTINUE_ON_SHUTDOWN`, while
+the browser process in this integration is the JVM executable rather than the
+CEF helper app. Inability to install any policy is a terminal
+platform-initialization error. Before any runtime test, the macOS build also
+recreates the CEF framework hierarchy from a clean directory and rejects
+recursive, missing, or non-canonical framework links. Distribution code
+signing remains outside the native compiler task because it does not change the
+JVM browser-process identity.
+
+The Windows 1,000-lifecycle contract requires every native child to initiate
+close through `CefBrowserHost`. Chromium is a direct child of the Compose
+`HWND`. `DoClose` returns `true` to accept KWebShell's custom destruction path,
+clears pointer capture and hover tracking, drains queued pointer messages from
+the child subtree, disables and hides the child,
+synchronously confirms focus has left the inner `Chrome_WidgetWin`, closes and
+confirms destruction of CEF's Aura Widget, drains eight CEF UI queue turns, and
+then destroys the outer Chromium child. Returning
+`false` would make CEF 151 send the notification to
+the top-level Compose ancestor; posting `WM_CLOSE` again after returning `true` re-enters
+`TryCloseBrowser` while CEF has reset its destruction state to `NONE`, so the
+application-owned path must destroy the child directly. After every lifecycle,
+the test
+checks the same Compose `HWND` is visible and receives an OS-generated click;
+an Aura destroyed-window diagnostic is fatal even if the child exits zero.
+
+`OnBeforeClose` is CEF's last client callback, but CEF still completes browser
+observer, `browser_info`, platform delegate, and browser-host destruction after
+that callback returns. KWebShell therefore waits for CEF to release its final
+`SessionClient` owner, then retains the empty surface across three CEF UI
+quiescence tasks. It releases the surface, removes the registry entry, and
+publishes `CLOSED` only after that barrier. Kotlin cannot begin the next lifecycle until
+the post-callback quiescence barrier has completed.
+
+Profile context initialization is also part of the upcall lifetime boundary.
+The shared context cache holds weak, cancellable waiters; a browser closed while
+waiting is removed before `CLOSED`, and later context success or failure visits
+only live sessions. The Windows real-CEF suite closes a concurrent waiter burst,
+releases every FFM owner, and then completes the shared context with a survivor.
 
 ## Verification matrix
 
@@ -444,25 +482,16 @@ The existing real Chromium tests remain the behavioral oracle. FFM is an
 interop replacement, not permission to weaken browser, Profile, GPU, DevTools,
 extension, or shutdown coverage.
 
-## Benchmark plan
+## Benchmark interpretation
 
-The benchmark compares like-for-like signatures after warmup:
+Objective 8.1 recorded the like-for-like JNI/FFM warmup, median, p95,
+allocation, native-memory, and variance evidence above before deletion. Its
+comparison harness is intentionally not shipped as a second backend in
+Objective 8.2. Product conclusions remain grounded in the real browser suite
+and 1,000-lifecycle stability run; boundary microbenchmarks are not presented
+as an end-to-end Chromium speed multiplier.
 
-- zero-argument integer downcall (`abiVersion`);
-- handle plus integer downcall (`resize` validation fixture);
-- UTF-8 downcall at small, medium, and maximum accepted payload sizes;
-- fixed-size lifecycle upcall;
-- variable UTF-8 browser-event upcall;
-- create/close ownership cycle;
-- complete engine/browser startup, navigation, and shutdown.
-
-Report median, p95, allocation rate, native memory, and variance. Separate
-microbenchmark results from end-to-end browser results. FFM adoption does not
-require a fabricated speedup: equal end-to-end performance is acceptable if it
-removes JNI complexity without regressing startup, callback latency, memory, or
-stability beyond thresholds established by Objective 8.1.
-
-## Cost and expected benefit
+## Original cost estimate and expected benefit
 
 The initial 9-14 week estimate overstates work that the stable C ABI has
 already completed and understates the native-parent risk. A realistic estimate
@@ -498,24 +527,17 @@ not accepted without repository history and measured maintenance data.
 
 ## Final recommendation
 
-Keep JNI through Phase 7 while the product ABI and native surface contracts are
-still changing. Preserve the small versioned C ABI and avoid adding new JNI
-object-oriented APIs; this keeps the future FFM boundary mechanical.
+Use the JDK 25 FFM implementation as the only JVM/native backend. The stable C
+ABI keeps the low-level Java layer small while Kotlin continues to own product
+behavior. Do not restore JNI for platform defects; a failing target remains
+unsupported until the same FFM, native-child, Profile, DevTools, and MV3
+contracts pass there.
 
-Objective 8.1 has local macOS arm64 and hosted macOS arm64/Windows x64/Linux x64
-GO results. The ABI, parent-handle, upcall, Arena, and benchmark gates required
-to start Objective 8.2 are satisfied. Objective 8.2 may proceed as a breaking
-replacement, but JNI must not be deleted until all of the following remain
-true for the production FFM implementation:
-
-- JDK 25 is accepted as the desktop minimum;
-- Kotlin, Gradle, Compose, packaging, and CI pass on JDK 25;
-- an exact supported raw-parent mechanism works on Windows, macOS, and Linux;
-- FFM upcall stress and Arena lifetime tests pass;
-- the full real-CEF test suite can run without JNI-specific hooks.
-
-This makes FFM the intended long-term direction without hiding the one
-constraint that can prevent a complete migration.
+Objective 8.1 supplies immutable layout, parent, callback, and performance
+evidence for macOS arm64, Windows x64, and Linux x64. Objective 8.2 removes the
+old boundary and makes the corresponding real-CEF suite, 1,000-lifecycle stress
+contract, named-module native-access test, deletion audit, and engine-only
+runtime payload mandatory merge gates.
 
 ## References
 
@@ -524,3 +546,5 @@ constraint that can prevent a complete migration.
 - [JEP 472: Prepare to Restrict the Use of JNI](https://openjdk.org/jeps/472)
 - [JDK 25 Linker API](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/foreign/Linker.html)
 - [OpenJDK jextract early-access builds](https://jdk.java.net/jextract/)
+- [Chromium 151 Mach-port rendezvous peer-validation policy](https://chromium.googlesource.com/chromium/src/+/refs/branch-heads/7922/base/apple/mach_port_rendezvous_mac.cc)
+- [CEF windowed browser close lifecycle](https://github.com/chromiumembedded/cef/blob/master/include/cef_life_span_handler.h)

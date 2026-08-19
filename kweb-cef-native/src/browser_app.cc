@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "browser_client.h"
+#include "cef_command_line_policy.h"
 #include "host_main.h"
 #include "include/base/cef_bind.h"
 #include "include/base/cef_callback.h"
@@ -22,6 +23,10 @@ namespace {
 constexpr int64_t kProfileCookieFlushTimeoutMs = 30000;
 constexpr int64_t kDefaultSelfTestTimeoutMs = 30000;
 constexpr int64_t kMv3CoreSelfTestTimeoutMs = 150000;
+#if defined(OS_MAC)
+constexpr char kProcessRequirementMetricsFeature[] =
+    "GatherProcessRequirementMetrics";
+#endif
 
 void AssignCefPath(cef_string_t *output, const std::filesystem::path &path) {
   CefString cef_path(output);
@@ -82,8 +87,14 @@ CefRefPtr<CefBrowserProcessHandler> BrowserApp::GetBrowserProcessHandler() {
 }
 
 void BrowserApp::OnBeforeCommandLineProcessing(
-    const CefString &process_type,
-    CefRefPtr<CefCommandLine> command_line) {
+    const CefString &process_type, CefRefPtr<CefCommandLine> command_line) {
+#if defined(OS_MAC)
+  if (process_type.empty() &&
+      AppendDisabledCefFeatures(command_line,
+                                kProcessRequirementMetricsFeature)) {
+    recorder_->Record("macos_process_requirement_metrics_disabled");
+  }
+#endif
   if (!process_type.empty() || !configuration_.IsMv3CoreSelfTest()) {
     return;
   }

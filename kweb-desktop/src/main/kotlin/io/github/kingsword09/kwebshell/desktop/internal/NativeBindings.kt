@@ -2,18 +2,18 @@ package io.github.kingsword09.kwebshell.desktop.internal
 
 import io.github.kingsword09.kwebshell.core.KWebConfigurationException
 import io.github.kingsword09.kwebshell.core.KWebNativeException
+import io.github.kingsword09.kwebshell.desktop.internal.ffm.FfmBindings
+import io.github.kingsword09.kwebshell.desktop.internal.ffm.FfmCallbacks
+import io.github.kingsword09.kwebshell.desktop.internal.ffm.FfmNativeAccessException
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
 import java.util.Locale
-import java.awt.Component
-import kotlin.jvm.JvmName
 
 internal const val NATIVE_LIBRARY_PATH_PROPERTY: String = "kweb.native.library.path"
 
 internal data class NativeLibraryPaths(
     val engine: Path,
-    val jni: Path,
 )
 
 internal fun nativeEngineLibraryFileName(operatingSystem: String): String =
@@ -29,36 +29,35 @@ internal fun nativeEngineLibraryFileName(operatingSystem: String): String =
     }
 
 internal fun resolveNativeLibraryPaths(
-    configuredJniPath: String,
+    configuredEnginePath: String,
     operatingSystem: String,
 ): NativeLibraryPaths {
     val engineFileName = nativeEngineLibraryFileName(operatingSystem)
-    val jniPath = try {
-        Path.of(configuredJniPath)
+    val enginePath = try {
+        Path.of(configuredEnginePath)
     } catch (error: InvalidPathException) {
         throw KWebConfigurationException(
             code = "native.library.path-invalid",
-            details = mapOf("path" to configuredJniPath),
-            message = "The KWebShell JNI library path is invalid.",
+            details = mapOf("path" to configuredEnginePath),
+            message = "The KWebShell engine library path is invalid.",
             cause = error,
         )
     }
-    if (!jniPath.isAbsolute || !Files.isRegularFile(jniPath)) {
+    if (!enginePath.isAbsolute || enginePath.normalize() != enginePath || !Files.isRegularFile(enginePath)) {
         throw KWebConfigurationException(
             code = "native.library.path-invalid",
-            details = mapOf("path" to configuredJniPath),
-            message = "The KWebShell JNI library path must identify a regular file.",
+            details = mapOf("path" to configuredEnginePath),
+            message = "The KWebShell engine library path must be absolute, normalized, and identify a regular file.",
         )
     }
-    val enginePath = jniPath.resolveSibling(engineFileName)
-    if (!Files.isRegularFile(enginePath)) {
+    if (enginePath.fileName.toString() != engineFileName) {
         throw KWebConfigurationException(
             code = "native.engine-library.path-invalid",
             details = mapOf("path" to enginePath.toString()),
-            message = "The KWebShell engine library must be adjacent to the JNI library.",
+            message = "The configured file name does not match the current platform engine library.",
         )
     }
-    return NativeLibraryPaths(engine = enginePath, jni = jniPath)
+    return NativeLibraryPaths(engine = enginePath)
 }
 
 internal object NativeBindings {
@@ -69,38 +68,28 @@ internal object NativeBindings {
             ?: throw KWebConfigurationException(
                 code = "native.library.path-missing",
                 details = mapOf("property" to NATIVE_LIBRARY_PATH_PROPERTY),
-                message = "The absolute KWebShell JNI library path is required.",
+                message = "The absolute KWebShell engine library path is required.",
             )
-        val paths = resolveNativeLibraryPaths(configuredPath, System.getProperty("os.name"))
-        libraryPaths = paths
-        loadNativeLibrary(
-            path = paths.jni,
-            errorCode = "native.library.load-failed",
-            errorMessage = "The KWebShell JNI library could not be loaded.",
+        libraryPaths = resolveNativeLibraryPaths(configuredPath, System.getProperty("os.name"))
+    }
+
+    internal fun loadEngineLibrary(enginePath: String, cefRuntimePath: String): Int = try {
+        FfmBindings.loadEngineLibrary(enginePath, cefRuntimePath)
+    } catch (error: FfmNativeAccessException) {
+        throw KWebConfigurationException(
+            code = "native.ffm.native-access-disabled",
+            details = mapOf("grant" to error.grantTarget()),
+            message = "KWebShell FFM native access is disabled for the desktop module.",
+            cause = error,
         )
     }
 
-    private fun loadNativeLibrary(path: Path, errorCode: String, errorMessage: String) {
-        try {
-            System.load(path.toString())
-        } catch (error: UnsatisfiedLinkError) {
-            throw KWebNativeException(
-                code = errorCode,
-                details = mapOf("path" to path.toString()),
-                message = errorMessage,
-                cause = error,
-            )
-        }
-    }
+    internal fun lastEngineLibraryLoadFailure(): Throwable? =
+        FfmBindings.lastEngineLibraryLoadFailure()
 
-    @JvmName("loadEngineLibrary")
-    internal external fun loadEngineLibrary(enginePath: String, cefRuntimePath: String): Int
+    internal fun engineAbiVersion(): Int = FfmBindings.engineAbiVersion()
 
-    @JvmName("engineAbiVersion")
-    internal external fun engineAbiVersion(): Int
-
-    @JvmName("engineCreate")
-    internal external fun engineCreate(
+    internal fun engineCreate(
         sink: NativeEngineEventSink,
         cefRuntimePath: String,
         browserSubprocessPath: String,
@@ -109,19 +98,29 @@ internal object NativeBindings {
         rootCachePath: String,
         logPath: String,
         remoteDebuggingPort: Int,
-    ): Long
+    ): Long = FfmBindings.engineCreate(
+        FfmCallbacks.EngineEvent(sink::onNativeEngineEvent),
+        FfmCallbacks.Failure(sink::onNativeCallbackFailure),
+        cefRuntimePath,
+        browserSubprocessPath,
+        resourcesPath,
+        localesPath,
+        rootCachePath,
+        logPath,
+        remoteDebuggingPort,
+    )
 
-    @JvmName("engineClose")
-    internal external fun engineClose(handle: Long): Int
+    internal fun engineClose(handle: Long): Int = FfmBindings.engineClose(handle)
 
-    @JvmName("liveEngineCount")
-    internal external fun liveEngineCount(): Long
+    internal fun releaseEngineOwner(handle: Long): Throwable? =
+        releaseOwner("engine", handle) { FfmBindings.releaseEngineOwner(handle) }
 
-    @JvmName("browserCreate")
-    internal external fun browserCreate(
+    internal fun liveEngineCount(): Long = FfmBindings.liveEngineCount()
+
+    internal fun browserCreate(
         engine: Long,
         sink: NativeBrowserEventSink,
-        component: Component,
+        nativeParent: Long,
         profilePath: String,
         initialUrl: String,
         x: Int,
@@ -130,53 +129,85 @@ internal object NativeBindings {
         height: Int,
         bridgeOrigin: String,
         bridgeSink: NativeBridgeEventSink?,
-    ): Long
+    ): Long = FfmBindings.browserCreate(
+        engine,
+        FfmCallbacks.BrowserEvent(sink::onNativeBrowserEvent),
+        bridgeSink?.let { FfmCallbacks.BridgeEvent(it::onNativeBridgeEvent) },
+        FfmCallbacks.Failure(sink::onNativeCallbackFailure),
+        nativeParent,
+        profilePath,
+        initialUrl,
+        x,
+        y,
+        width,
+        height,
+        bridgeOrigin,
+    )
 
-    @JvmName("browserNavigate")
-    internal external fun browserNavigate(handle: Long, url: String): Int
+    internal fun browserNavigate(handle: Long, url: String): Int = FfmBindings.browserNavigate(handle, url)
 
-    @JvmName("browserResize")
-    internal external fun browserResize(handle: Long, width: Int, height: Int): Int
+    internal fun browserResize(handle: Long, width: Int, height: Int): Int =
+        FfmBindings.browserResize(handle, width, height)
 
-    @JvmName("browserClose")
-    internal external fun browserClose(handle: Long): Int
+    internal fun browserClose(handle: Long): Int = FfmBindings.browserClose(handle)
 
-    @JvmName("browserOpenDevTools")
-    internal external fun browserOpenDevTools(handle: Long): Int
+    internal fun browserOpenDevTools(handle: Long): Int = FfmBindings.browserOpenDevTools(handle)
 
-    @JvmName("browserCloseDevTools")
-    internal external fun browserCloseDevTools(handle: Long): Int
+    internal fun browserCloseDevTools(handle: Long): Int = FfmBindings.browserCloseDevTools(handle)
 
-    @JvmName("browserBridgeRespond")
-    internal external fun browserBridgeRespond(handle: Long, requestId: Long, responseJson: String): Int
+    internal fun browserBridgeRespond(handle: Long, requestId: Long, responseJson: String): Int =
+        FfmBindings.browserBridgeRespond(handle, requestId, responseJson)
 
-    @JvmName("browserBridgeFail")
-    internal external fun browserBridgeFail(handle: Long, requestId: Long, failureJson: String): Int
+    internal fun browserBridgeFail(handle: Long, requestId: Long, failureJson: String): Int =
+        FfmBindings.browserBridgeFail(handle, requestId, failureJson)
 
-    @JvmName("liveBrowserCount")
-    internal external fun liveBrowserCount(): Long
+    internal fun releaseBrowserOwner(handle: Long): Throwable? =
+        releaseOwner("browser", handle) { FfmBindings.releaseBrowserOwner(handle) }
 
-    @JvmName("extensionStart")
-    internal external fun extensionStart(
+    internal fun liveBrowserCount(): Long = FfmBindings.liveBrowserCount()
+
+    internal fun extensionStart(
         browser: Long,
         sink: NativeExtensionResultSink,
         operation: Int,
         extensionId: String,
         expectedVersion: String,
         extensionPath: String,
-    ): Long
+    ): Long = FfmBindings.extensionStart(
+        browser,
+        FfmCallbacks.ExtensionResult(sink::onNativeExtensionResult),
+        FfmCallbacks.Failure(sink::onNativeCallbackFailure),
+        operation,
+        extensionId,
+        expectedVersion,
+        extensionPath,
+    )
 
-    @JvmName("extensionCancel")
-    internal external fun extensionCancel(operation: Long): Int
+    internal fun extensionCancel(operation: Long): Int = FfmBindings.extensionCancel(operation)
 
-    @JvmName("liveExtensionOperationCount")
-    internal external fun liveExtensionOperationCount(): Long
+    internal fun releaseExtensionOwner(operation: Long): Throwable? =
+        releaseOwner("extension", operation) { FfmBindings.releaseExtensionOwner(operation) }
+
+    internal fun liveExtensionOperationCount(): Long = FfmBindings.liveExtensionOperationCount()
+
+    internal fun liveCallbackOwnerCount(): Int = FfmBindings.liveCallbackOwnerCount()
+
+    private inline fun releaseOwner(kind: String, handle: Long, release: () -> Throwable?): Throwable? = try {
+        release()
+    } catch (error: Throwable) {
+        throw KWebNativeException(
+            code = "native.ffm.$kind-owner-release-failed",
+            details = mapOf("handle" to handle.toString()),
+            message = "The terminal native callback owner could not be released.",
+            cause = error,
+        )
+    }
 }
 
 internal class NativeEngineEventSink(
+    private val failureCallback: (String, String, Throwable) -> Unit = ::throwNativeCallbackFailure,
     private val callback: (Long, Long, Int) -> Unit,
 ) {
-    @JvmName("onNativeEngineEvent")
     internal fun onNativeEngineEvent(
         handle: Long,
         sequence: Long,
@@ -184,12 +215,16 @@ internal class NativeEngineEventSink(
     ) {
         callback(handle, sequence, type)
     }
+
+    internal fun onNativeCallbackFailure(code: String, message: String, cause: Throwable) {
+        failureCallback(code, message, cause)
+    }
 }
 
 internal class NativeBrowserEventSink(
+    private val failureCallback: (String, String, Throwable) -> Unit = ::throwNativeCallbackFailure,
     private val callback: (Long, Long, Long, Int, Int, String, Int, Int, Int) -> Unit,
 ) {
-    @JvmName("onNativeBrowserEvent")
     internal fun onNativeBrowserEvent(
         engine: Long,
         browser: Long,
@@ -203,12 +238,15 @@ internal class NativeBrowserEventSink(
     ) {
         callback(engine, browser, sequence, type, flags, text, statusCode, width, height)
     }
+
+    internal fun onNativeCallbackFailure(code: String, message: String, cause: Throwable) {
+        failureCallback(code, message, cause)
+    }
 }
 
 internal class NativeBridgeEventSink(
     private val callback: (Long, Long, Long, Int, String) -> Unit,
 ) {
-    @JvmName("onNativeBridgeEvent")
     internal fun onNativeBridgeEvent(
         engine: Long,
         browser: Long,
@@ -221,9 +259,9 @@ internal class NativeBridgeEventSink(
 }
 
 internal class NativeExtensionResultSink(
+    private val failureCallback: (String, String, Throwable) -> Unit = ::throwNativeCallbackFailure,
     private val callback: (Long, Long, Long, Int, Int, Int, String, String, String, String, String) -> Unit,
 ) {
-    @JvmName("onNativeExtensionResult")
     internal fun onNativeExtensionResult(
         operationHandle: Long,
         engine: Long,
@@ -251,4 +289,16 @@ internal class NativeExtensionResultSink(
             errorMessage,
         )
     }
+
+    internal fun onNativeCallbackFailure(code: String, message: String, cause: Throwable) {
+        failureCallback(code, message, cause)
+    }
 }
+
+private fun throwNativeCallbackFailure(code: String, message: String, cause: Throwable): Nothing =
+    throw KWebNativeException(
+        code = code,
+        details = emptyMap(),
+        message = message,
+        cause = cause,
+    )

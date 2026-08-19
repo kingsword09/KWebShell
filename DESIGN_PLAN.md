@@ -47,7 +47,7 @@ Compose Desktop JVM
         v
   kweb-core contracts
         |
-     JNI + C ABI
+ JDK 25 FFM + C ABI
         |
         v
   kweb-cef-native (C++)
@@ -69,7 +69,7 @@ Compose Desktop JVM
 | `kweb-desktop` | Desktop session, window, page, DevTools, CDP, and Profile orchestration | C++ implementation details |
 | `kweb-bridge` | Typed Kotlin/JavaScript RPC and generated schemas | Arbitrary renderer evaluation as a transport |
 | `kweb-extensions` | Manifest parsing, package model, policy model, capability matrix, conformance fixtures | Reimplementing Chromium's extension runtime |
-| `kweb-cef-native` | CEF initialization, browser hosts, native surfaces, C ABI/JNI, extension adapter | Kotlin business state |
+| `kweb-cef-native` | CEF initialization, browser hosts, native surfaces, C ABI, extension adapter | Kotlin business state |
 | `kweb-runtime-pack` | Reproducible CEF binaries, resources, locales, licenses, and platform packaging | Runtime version selection at application startup |
 
 ## 4. Public Contracts
@@ -90,7 +90,7 @@ KWebCapability
 KWebError
 ```
 
-The common module describes behavior, not the implementation mechanism. CEF handles and CEF callbacks remain behind opaque native handles or JNI objects.
+The common module describes behavior, not the implementation mechanism. CEF handles and callbacks remain behind opaque native handles; FFM types stay internal to the desktop binding layer.
 
 ## 5. Rendering and Windowing
 
@@ -361,8 +361,27 @@ Acceptance:
   message pump runs on AppKit throughout. The macOS browser process uses a
   fixed embedder command-line policy with mock Keychain storage so a JVM that
   has no application Keychain identity cannot leave OSCrypt blocked during
-  shutdown; arbitrary host arguments remain disabled. Windows and Linux use
-  CEF's supported multi-threaded windowed message loop.
+  shutdown. Before loading CEF, macOS also installs Chromium's explicit
+  unsigned-embedder policy by setting the upstream
+  `MACH_PORT_RENDEZVOUS_PEER_VALDATION=0` contract exactly once. The JVM host
+  and CEF helper do not share one code-signing identity, so enforcing a
+  same-identity peer requirement is not a valid embedder policy. Every build
+  still recreates the versioned CEF framework links from a clean directory and
+  rejects recursive or non-canonical links before runtime tests. Distribution
+  code signing remains a release-boundary operation and is not performed by the
+  native compiler task. The browser-process command line also disables Chromium's
+  `MachPortRendezvousValidatePeerRequirements` and
+  `MachPortRendezvousEnforcePeerRequirements` features while preserving every
+  existing disabled feature; the environment value alone only covers child
+  processes before FeatureList initialization. It also disables Chromium's
+  diagnostic-only `GatherProcessRequirementMetrics` task. That best-effort task
+  performs Security.framework validation against the JVM executable and is
+  declared `CONTINUE_ON_SHUTDOWN`, so it is invalid work for this unsigned
+  embedder and can otherwise block `CefShutdown`. Failure to install any part of
+  the policy is terminal; runtime checksum, absolute helper paths, and fixed
+  arguments remain mandatory, and no retry or alternate backend is used.
+  Arbitrary host arguments remain disabled.
+  Windows and Linux use CEF's supported multi-threaded windowed message loop.
 - The engine emits one ordered `opened` event only after
   `CefBrowserProcessHandler::OnContextInitialized`, and one terminal `closed`
   event only after `CefShutdown` returns. No callback begins after Kotlin
@@ -371,14 +390,20 @@ Acceptance:
   failure, stale handle, and post-close operations return declared typed
   errors. Reinitialization after terminal shutdown is rejected because CEF
   supports one lifecycle per process.
+- Engine shutdown releases every cached Profile request context on `TID_UI`.
+  Windows and Linux wait on the initialization thread until the clear operation
+  and three subsequent CEF UI queue turns complete; only then may they call
+  `CefShutdown`. A post or barrier failure is typed and leaves shutdown
+  unaccepted. The single-threaded macOS UI path releases directly and its
+  external message pump performs the existing pre-shutdown drain.
 - A dedicated JVM integration process loads the real native libraries and
   pinned CEF runtime, opens the engine, observes the real context callback,
   closes it cleanly directly from the AWT event-dispatch thread, and leaves the
   native live-engine count at zero on macOS, Windows, and Linux. On macOS the
-  process also proves that the fixed browser policy is installed exactly once
-  before the context callback. A timeout captures a JVM thread dump and, on
-  macOS, a native process sample before terminating the child. Linux runs under
-  an explicit Xvfb launcher.
+  process also proves that all four macOS process-policy markers are emitted
+  exactly once before the context callback. A timeout captures a JVM thread
+  dump and, on macOS, a native process sample before terminating the child.
+  Linux runs under an explicit Xvfb launcher.
 - The Phase 2 echo session is intentionally deleted by Objective 3.3. Any
   consumer of its request-only events must migrate to the real browser event
   contract in the same breaking change; no compatibility alias remains.
@@ -407,9 +432,9 @@ Acceptance:
   initialization, and verifies that the created browser owns that exact
   context.
 - The embedded browser is a windowed, hardware-accelerated native child with
-  explicit Alloy runtime style. Windows uses the Canvas `HWND`, Linux uses its
-  X11 drawable, and macOS resolves the AWT top-level peer to its AppKit
-  `NSWindow` and owns a dedicated intermediate `NSView`. An unavailable or
+  explicit Alloy runtime style. Windows parents Chromium directly beneath the
+  exact Compose window `HWND`, Linux uses the Canvas X11 drawable, and macOS resolves the AWT top-level peer
+  to its AppKit `NSWindow` and owns a dedicated intermediate `NSView`. An unavailable or
   incompatible native peer fails with a typed status; OSR or a hidden top-level
   Chromium window is never substituted.
 - Ordered events report browser-created, main-frame navigation-started,
@@ -422,21 +447,46 @@ Acceptance:
   applied size. Commands racing with close return only declared terminal or
   closing statuses and never target a released browser.
 - Close flushes the Profile cookie store before requesting native destruction.
-  Windows destroys the child `HWND`, Linux requests forced CEF close, and
-  macOS removes the CEF `NSView` from its AppKit hierarchy, which is the
-  windowed Alloy operation that causes CEF to deliver `OnBeforeClose`. The
-  platform child is released only after that callback, exactly one terminal
-  event is emitted, and the JNI global reference is released only after that
-  event has returned. Engine close is rejected while any browser is live; the
-  Kotlin engine retains its handle and remains OPEN so the caller can close
-  the browser and retry. Clean browser then engine shutdown leaves both live
-  counts at zero.
+  Windows and Linux initiate close through `CefBrowserHost`. On Windows,
+  `DoClose` accepts KWebShell's custom destruction path by returning `true` and
+  clears capture and hover tracking, drains queued pointer messages from the
+  `Chrome_WidgetWin` subtree, disables and hides the direct Chromium child,
+  synchronously confirms that focus has left the subtree, closes CEF's inner
+  Aura Widget and confirms that its HWND is gone, and drains eight CEF UI queue
+  turns before destroying the outer CEF child.
+  Returning `false` is prohibited because CEF 151 then sends `WM_CLOSE` to the
+  top-level Compose ancestor. Destroying the child before acceptance or inline
+  from `DoClose` is also prohibited because it races or re-enters Chromium/Aura
+  teardown. macOS removes the CEF `NSView` from its
+  AppKit hierarchy, which causes CEF to deliver `OnBeforeClose`. The callback
+  clears browser ownership. The three-task quiescence barrier starts only after
+  CEF releases its final `SessionClient` owner, which occurs after browser-host
+  and platform-delegate teardown. Platform surface release, registry removal,
+  and the single terminal event are deferred across that barrier so Chromium
+  finishes its current destruction stack and posted Widget cleanup before Kotlin
+  can start another lifecycle. The FFM callback owner is released only after
+  that event has returned. Engine close is rejected
+  while any browser is live; the Kotlin engine retains its handle and remains OPEN so the
+  caller can close the browser and retry. Clean browser then engine shutdown
+  leaves both live counts at zero.
+- Sessions waiting for a shared Profile context are weak, cancellable waiters.
+  Closing before context initialization removes the waiter on the CEF UI thread
+  before `CLOSED`; a later success or failure can notify only sessions that are
+  still live. A terminal session is never retained by the Profile cache and no
+  native callback can target its released FFM Arena.
+- Profile cache identity is the canonical physical directory, not the caller's
+  lexical spelling. Existing directories resolve symlinks and filesystem case
+  aliases before CEF settings and cache lookup; lookup also uses filesystem
+  equivalence so one physical Profile cannot acquire two request contexts.
 - A dedicated JVM integration process creates a real visible AWT host and real
   CEF browser, loads a controlled page, observes navigation and load callbacks,
   navigates to a second non-ASCII URL, resizes the native child, closes it, and
   then shuts down CEF. The test rejects callback reordering, Profile mismatch,
   non-Alloy/windowless rendering, missing native parentage, post-close callback,
-  leaked handles, and persistence artifacts missing after shutdown.
+  leaked handles, and persistence artifacts missing after shutdown. Every
+  Windows stress lifecycle also proves that the same Compose window remains
+  visible with the same `HWND` and receives a real OS mouse click after the
+  browser closes.
 - The real integration contract passes locally on macOS with the pinned
   Temurin and CEF artifacts and runs as mandatory GitHub Actions acceptance on
   macOS arm64, Windows x64, and Linux x64 under Xvfb. C header conformance,
@@ -1120,8 +1170,8 @@ Deliver:
 #### Objective 7.1: Reproducible verified runtime payload
 
 This objective defines the unsigned content payload that a later signing and
-update objective will authenticate. It packages the real native build output,
-the exact JNI/engine libraries, and the pinned CEF license notices. It is not a
+update objective will authenticate. After Objective 8.2 it packages the real
+native build output, the engine library closure, and the pinned CEF license notices. It is not a
 release artifact and cannot be published or selected by an update client until
 the signing objective exists.
 
@@ -1131,7 +1181,7 @@ Acceptance:
   CEF root, the matching native `Release` directory, the native contract
   directory, and the output archive. It requires the exact catalog directory
   name, non-empty regular `LICENSE.txt` and `CREDITS.html` files, a non-empty
-  native runtime tree, and exactly the target's JNI and engine library closure.
+  native runtime tree, and exactly the target's engine library closure.
   Missing, duplicate, special-file, path-escape, or mismatched-target input is
   a typed failure; no system CEF, alternate directory, or reduced payload is
   selected.
@@ -1246,6 +1296,8 @@ Acceptance:
   benchmark acceptance thresholds. The measured evidence and an explicit
   go/no-go decision are recorded before Objective 8.2 starts.
 
+#### Objective 8.2: Perform the breaking JDK 25 and FFM replacement
+
 Deliver:
 
 - A JDK 25 FFM binding layer for every exported engine and browser C function,
@@ -1279,10 +1331,32 @@ Acceptance:
   Windows, and Linux integration contract: Profile initialization, Unicode
   navigation, resize, callbacks, cookie flush, browser close, engine shutdown,
   and zero live counts all remain unchanged.
+- The macOS application bundle is rebuilt idempotently with the canonical CEF
+  framework links before integration starts. A recursive, missing, or
+  non-canonical framework link is a test failure, never a runtime retry.
 - A callback stress contract exercises CEF-owned threads, callback exceptions,
   concurrent command/close races, terminal-event ordering, arena closure, and
   use-after-close for at least 1,000 complete browser lifecycles without a
   crash, callback after close, leaked native memory, or stale upcall target.
+  Every Windows lifecycle starts through `CefBrowserHost`; `DoClose` returns
+  `true` for KWebShell's custom destruction path, clears pointer capture and
+  hover tracking, drains queued pointer messages, blocks new input, confirms
+  focus loss from the Chromium subtree, closes and confirms destruction of the
+  inner CEF Aura Widget, drains eight CEF UI queue turns, and destroys only
+  Chromium's outer direct child. It reaches `OnBeforeClose`
+  without CEF sending `WM_CLOSE` to Compose. After every close, the stress test
+  must prove that the same Compose `HWND` remains visible and accepts a real
+  mouse click; any Aura destroyed-window diagnostic fails the child even when
+  its exit code is zero.
+  A separate real-CEF burst queues concurrent browsers on one new Profile,
+  closes the waiting sessions, releases their terminal FFM owners, and then
+  completes initialization through a surviving browser without a late upcall.
+  Windows repeats the Profile through a case alias, while macOS/Linux repeat it
+  through a directory symlink; both must reuse the same physical context.
+  After `OnBeforeClose`, CEF must release its final `SessionClient` owner before
+  registry removal and the `CLOSED` upcall can occur across three CEF UI
+  quiescence tasks; directly destroying a live window is not an accepted
+  shortcut.
 - The FFM layouts match the compiled C header on macOS arm64/x64, Windows x64,
   and Linux x64. Unsupported architectures fail during configuration; layout
   assumptions are never inferred from the current development host.
@@ -1294,10 +1368,11 @@ Acceptance:
   a system WebView.
 
 The feasibility analysis and migration gates are recorded in
-[`docs/ffm-migration-analysis.md`](docs/ffm-migration-analysis.md). If the raw
-AWT/Compose parent-handle gate cannot be satisfied through a supported API,
-Phase 8 remains blocked rather than retaining a hidden JNI fragment or changing
-the rendering contract.
+[`docs/ffm-migration-analysis.md`](docs/ffm-migration-analysis.md). The raw
+Compose parent gate is satisfied by the public `ComposeWindow.windowHandle`
+contract on all three hosted targets. This remains a hard requirement: a future
+platform without an equivalent supported handle is rejected rather than given
+a hidden JNI fragment or a different rendering contract.
 
 ## 12. Test Strategy
 
@@ -1307,9 +1382,8 @@ Required layers:
 
 - Common Kotlin unit tests for state machines, policies, errors, and package metadata.
 - C++ unit tests for CEF adapter, package verification, thread/lifecycle invariants, and native window routing.
-- JNI/C ABI integration tests for ownership, callbacks, strings, and failures.
-- FFM/C ABI layout, downcall, upcall, arena-lifetime, and native-access tests
-  after Phase 8 replaces JNI.
+- FFM/C ABI integration tests for ownership, callbacks, strings, failures,
+  layout, downcalls, upcalls, Arena lifetime, and native access.
 - Real Chromium integration tests for navigation, CDP, DevTools, Profiles, and MV3.
 - Cross-platform UI tests for native surface, DPI, focus, input, popup, and shutdown.
 - Performance tests for startup, first contentful paint, navigation, GPU frame pacing, memory, and OSR comparison.

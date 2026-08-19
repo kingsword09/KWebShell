@@ -30,8 +30,34 @@ primary Profile, and macOS and Windows commonly use case-insensitive filesystems
 - The host creates and canonicalizes the root and Profile directories, then
   repeats the direct-child check. A symlink or filesystem alias cannot redirect
   the Profile outside the declared root.
+- The canonical physical Profile path is used for CEF settings and cache
+  identity. Cache lookup additionally checks filesystem equivalence, covering
+  case aliases on Windows/macOS and symlink aliases without creating duplicate
+  contexts for one directory.
 - Each Profile uses `CefRequestContext::CreateContext` with its own cache path
   and `persist_session_cookies = true`.
+- One request context exists per Profile cache path and is shared by every
+  browser created on that Profile for the lifetime of the engine. Rebuilding a
+  context per browser session forced Chromium to re-initialize and re-tear
+  down the same profile storage on every open, and that initialization can
+  stall for tens of seconds under churn, which is observable as a browser
+  creation timeout. The shared context is cached on the CEF UI thread,
+  browser sessions that request a Profile while its context is still
+  initializing queue until `OnRequestContextInitialized` fires, a failed
+  initialization fails the queued sessions with a typed error and allows the
+  next session to retry, and the contexts are released after the last browser
+  session completed and before `CefShutdown`. Profiles remain isolated from
+  each other; only the global request context is rejected.
+- The initialization queue stores weak, explicitly cancellable session waiters.
+  A session closed before initialization is removed on the CEF UI thread before
+  its terminal event. Context success or failure drains only live waiters, so a
+  completed session cannot be retained past `CLOSED` or receive an upcall after
+  Kotlin releases its FFM Arena.
+- Engine close clears the cache only on `TID_UI`. Multi-threaded Windows/Linux
+  engines block their initialization thread until the clear and three later UI
+  queue turns complete before entering `CefShutdown`; the macOS UI-thread path
+  clears directly and relies on its bounded external-pump drain. Failure to post
+  or finish this barrier rejects shutdown with a typed status.
 - Browser creation waits for
   `CefRequestContextHandler::OnRequestContextInitialized`. A null or global
   context, a cache-path mismatch, or context creation failure is fatal.
@@ -67,8 +93,8 @@ run also requires a real renderer, ordered lifecycle events, cookie flush, clean
 browser destruction, and bounded CEF shutdown.
 
 This objective remains internal to `kweb-cef-native`. It does not expose a
-public `KWebProfile` until the same lifecycle is connected to the real JNI and
-browser session contract.
+public `KWebProfile` until the same lifecycle is connected to the production
+FFM and browser session contract.
 
 ## Consequences
 

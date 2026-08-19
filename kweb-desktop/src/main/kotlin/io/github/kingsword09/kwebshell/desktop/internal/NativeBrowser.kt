@@ -26,7 +26,6 @@ import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
-import java.awt.Component
 import java.awt.EventQueue
 import java.awt.Toolkit
 import java.nio.file.Files
@@ -87,7 +86,6 @@ internal enum class NativeBridgeEventType(val value: Int) {
 internal class NativeBrowser private constructor(
     private val engine: NativeEngine,
     private val listener: (NativeBrowserEvent) -> Unit,
-    private val component: Component,
     private val profilePath: Path,
     private val bridgeDispatcher: KWebBridgeDispatcher?,
 ) : AutoCloseable {
@@ -112,7 +110,10 @@ internal class NativeBrowser private constructor(
             callbackThread.set(thread)
         }
     }
-    private val sink = NativeBrowserEventSink(::receiveNativeEvent)
+    private val sink = NativeBrowserEventSink(
+        failureCallback = ::receiveFfmCallbackFailure,
+        callback = ::receiveNativeEvent,
+    )
     private val bridgeScope = CoroutineScope(
         SupervisorJob() + Dispatchers.IO + CoroutineName("KWebShell-bridge-${dispatcherIds.incrementAndGet()}"),
     )
@@ -208,41 +209,67 @@ internal class NativeBrowser private constructor(
         }
 
         var failure: KWebNativeException? = null
+        var ownerHandle = 0L
+        var terminalObserved = false
+        var dispatcherTerminated = false
         try {
             if (mutableLifecycle.value != KWebLifecycleState.FAILED) {
                 mutableLifecycle.value = KWebLifecycleState.CLOSING
             }
-            val handle = nativeHandle.getAndSet(0)
-            if (handle == 0L) {
+            ownerHandle = nativeHandle.getAndSet(0)
+            if (ownerHandle == 0L) {
                 failure = KWebNativeException(
                     code = "native.browser.handle-missing",
                     details = emptyMap(),
                     message = "The native browser lost ownership of its handle.",
                 )
             } else {
-                val status = NativeBindings.browserClose(handle)
+                val status = NativeBindings.browserClose(ownerHandle)
                 if (status != NativeStatus.OK.value && status != NativeStatus.BROWSER_CLOSING.value) {
                     failure = nativeStatusException(
                         operation = "browser-close",
                         value = status,
-                        details = mapOf("handle" to handle.toString()),
+                        details = mapOf("handle" to ownerHandle.toString()),
                     )
-                } else if (!awaitTerminalEvent()) {
-                    failure = KWebNativeException(
-                        code = "native.browser.closed-event-timeout",
-                        details = mapOf("timeoutMs" to CALLBACK_TIMEOUT.toMillis().toString()),
-                        message = "The native browser terminal callback did not arrive in time.",
-                    )
+                } else {
+                    terminalObserved = awaitTerminalEvent()
+                    if (!terminalObserved) {
+                        failure = KWebNativeException(
+                            code = "native.browser.closed-event-timeout",
+                            details = mapOf("timeoutMs" to CALLBACK_TIMEOUT.toMillis().toString()),
+                            message = "The native browser terminal callback did not arrive in time.",
+                        )
+                    }
                 }
             }
             callbackExecutor.shutdown()
             closeBridgeScope()
-            if (!awaitExecutorTermination()) {
+            dispatcherTerminated = awaitExecutorTermination()
+            if (!dispatcherTerminated) {
                 failure = failure ?: KWebNativeException(
                     code = "native.browser.callback-timeout",
                     details = mapOf("timeoutMs" to CALLBACK_TIMEOUT.toMillis().toString()),
                     message = "The native browser callback dispatcher did not terminate in time.",
                 )
+            }
+            if (ownerHandle != 0L && terminalObserved && dispatcherTerminated) {
+                try {
+                    val ownerFailure = NativeBindings.releaseBrowserOwner(ownerHandle)
+                    if (ownerFailure != null && callbackFailure.get() == null) {
+                        failure = failure ?: KWebNativeException(
+                            code = "native.ffm.browser-callback-failed",
+                            details = mapOf("handle" to ownerHandle.toString()),
+                            message = "The FFM browser callback owner recorded an unreported failure.",
+                            cause = ownerFailure,
+                        )
+                    }
+                } catch (error: KWebNativeException) {
+                    if (failure == null) {
+                        failure = error
+                    } else if (failure !== error) {
+                        failure.addSuppressed(error)
+                    }
+                }
             }
             failure = failure ?: callbackFailure.get() ?: fatalFailure.get()
             if (failure == null && mutableLifecycle.value != KWebLifecycleState.CLOSED) {
@@ -307,6 +334,10 @@ internal class NativeBrowser private constructor(
                 error,
             )
         }
+    }
+
+    private fun receiveFfmCallbackFailure(code: String, message: String, cause: Throwable) {
+        recordCallbackFailure(code, emptyMap(), message, cause)
     }
 
     private fun receiveNativeBridgeEvent(
@@ -486,14 +517,20 @@ internal class NativeBrowser private constructor(
     }
 
     private fun requireOpenHandle(operation: String): Long {
-        if (closeStarted.get() || mutableLifecycle.value != KWebLifecycleState.OPEN) {
-            throw KWebNativeException(
-                code = "native.browser.closed",
-                details = mapOf("operation" to operation),
-                message = "The native browser is not open.",
-            )
+        fun requireOpenState() {
+            if (closeStarted.get() || mutableLifecycle.value != KWebLifecycleState.OPEN) {
+                throw KWebNativeException(
+                    code = "native.browser.closed",
+                    details = mapOf("operation" to operation),
+                    message = "The native browser is not open.",
+                )
+            }
         }
-        return nativeHandle.get().takeIf { it != 0L } ?: throw KWebNativeException(
+        requireOpenState()
+        val handle = nativeHandle.get()
+        if (handle != 0L) return handle
+        requireOpenState()
+        throw KWebNativeException(
             code = "native.browser.handle-missing",
             details = mapOf("operation" to operation),
             message = "The native browser handle is unavailable.",
@@ -520,6 +557,15 @@ internal class NativeBrowser private constructor(
             ),
             message = "The native extension operation could not be cancelled.",
             cause = nativeStatusException("extension-cancel", status),
+        )
+    }
+
+    internal fun recordExtensionOwnerReleaseFailure(operationHandle: Long, error: Throwable) {
+        recordCallbackFailure(
+            code = "native.ffm.extension-owner-release-failed",
+            details = mapOf("operationHandle" to operationHandle.toString()),
+            message = "The terminal extension callback owner could not be released.",
+            cause = error,
         )
     }
 
@@ -651,7 +697,7 @@ internal class NativeBrowser private constructor(
 
         internal fun open(
             engine: NativeEngine,
-            component: Component,
+            nativeParent: Long,
             profilePath: Path,
             initialUrl: String,
             width: Int,
@@ -667,11 +713,11 @@ internal class NativeBrowser private constructor(
                     message = "Bridge origin and dispatcher must be configured together.",
                 )
             }
-            if (!component.isDisplayable || !component.isShowing) {
+            if (nativeParent == 0L) {
                 throw KWebConfigurationException(
-                    code = "native.browser.awt-parent-not-displayable",
+                    code = "native.browser.native-parent-invalid",
                     details = emptyMap(),
-                    message = "The browser AWT parent must be displayable and showing.",
+                    message = "The browser requires a non-zero ComposeWindow native parent handle.",
                 )
             }
             val root = engine.rootCachePath()
@@ -702,12 +748,12 @@ internal class NativeBrowser private constructor(
                     cause = error,
                 )
             }
-            val browser = NativeBrowser(engine, listener, component, normalizedProfile, bridgeDispatcher)
+            val browser = NativeBrowser(engine, listener, normalizedProfile, bridgeDispatcher)
             val result = NativeEngine.onAwtEventDispatchThread {
                 NativeBindings.browserCreate(
                     engine.requireLiveHandle("browser-create"),
                     browser.sink,
-                    component,
+                    nativeParent,
                     normalizedProfile.toString(),
                     initialUrl,
                     0,

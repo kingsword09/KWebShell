@@ -1,7 +1,6 @@
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Optional
-import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.gradle.process.CommandLineArgumentProvider
 import java.util.Locale
 
@@ -15,8 +14,6 @@ private class CefCmakeArguments(
     val expectHardwareGpuUnavailable: Provider<String>,
     @get:Input
     val expectCustomExtensionRuntime: Provider<String>,
-    @get:Input
-    val javaHome: Provider<String>,
 ) : CommandLineArgumentProvider {
     override fun asArguments(): Iterable<String> {
         val cefRootValue = cefRoot.orNull ?: throw GradleException(
@@ -29,12 +26,6 @@ private class CefCmakeArguments(
         if (!cefRootFile.resolve("cmake/FindCEF.cmake").isFile) {
             throw GradleException(
                 "-PcefRoot does not contain cmake/FindCEF.cmake: '${cefRootFile.absolutePath}'.",
-            )
-        }
-        val javaHomeFile = File(javaHome.get())
-        if (!javaHomeFile.isAbsolute || !javaHomeFile.resolve("include/jni.h").isFile) {
-            throw GradleException(
-                "The JDK 21 JNI toolchain does not provide include/jni.h: '${javaHomeFile.absolutePath}'.",
             )
         }
         val expectUnavailable = when (expectHardwareGpuUnavailable.get().lowercase(Locale.ROOT)) {
@@ -56,20 +47,12 @@ private class CefCmakeArguments(
             "-DPROJECT_ARCH=${projectArchitecture.get()}",
             "-DKWEB_EXPECT_HARDWARE_GPU_UNAVAILABLE=$expectUnavailable",
             "-DKWEB_EXPECT_CUSTOM_EXTENSION_RUNTIME=$expectCustomRuntime",
-            "-DJAVA_HOME=${javaHomeFile.invariantSeparatorsPath}",
         )
     }
 }
 
 plugins {
     `java-base`
-}
-
-val jniJavaLauncher = javaToolchains.launcherFor {
-    languageVersion.set(JavaLanguageVersion.of(21))
-}
-val jniJavaHome = jniJavaLauncher.map { launcher ->
-    launcher.metadata.installationPath.asFile.absolutePath
 }
 
 val cefRoot = providers.gradleProperty("cefRoot")
@@ -84,13 +67,6 @@ val nativeUnitTestExecutable = providers.systemProperty("os.name").map { operati
         "kweb_host_unit_tests.exe"
     } else {
         "kweb_host_unit_tests"
-    }
-}
-val jniLibraryFileName = providers.systemProperty("os.name").map { operatingSystem ->
-    when {
-        operatingSystem.lowercase(Locale.ROOT).startsWith("windows") -> "kwebshell_jni.dll"
-        operatingSystem.lowercase(Locale.ROOT).startsWith("mac") -> "libkwebshell_jni.dylib"
-        else -> "libkwebshell_jni.so"
     }
 }
 val engineLibraryFileName = providers.systemProperty("os.name").map { operatingSystem ->
@@ -140,7 +116,6 @@ tasks.register<Exec>("configureNative") {
             projectArchitecture,
             expectHardwareGpuUnavailable,
             expectCustomExtensionRuntime,
-            jniJavaHome,
         ),
     )
 }
@@ -156,9 +131,6 @@ tasks.register<Exec>("buildNative") {
     inputs.dir(layout.projectDirectory.dir("resources"))
     inputs.dir(layout.projectDirectory.dir("tests"))
     outputs.dir(nativeBuildDirectory.map { it.dir("Release") })
-    outputs.file(nativeContractDirectory.zip(jniLibraryFileName) { directory, fileName ->
-        directory.file(fileName)
-    })
     outputs.file(nativeContractDirectory.zip(engineLibraryFileName) { directory, fileName ->
         directory.file(fileName)
     })

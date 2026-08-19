@@ -449,7 +449,7 @@ Acceptance:
 - Close flushes the Profile cookie store before requesting native destruction.
   Windows and Linux initiate close through `CefBrowserHost`. On Windows,
   `DoClose` accepts KWebShell's custom destruction path by returning `true` and
-  drains three CEF UI queue turns before destroying the direct Chromium child.
+  drains eight CEF UI queue turns before destroying the direct Chromium child.
   Returning `false` is prohibited because CEF 151 then sends `WM_CLOSE` to the
   top-level Compose ancestor. Destroying the child before acceptance or inline
   from `DoClose` is also prohibited because it races or re-enters Chromium/Aura

@@ -21,7 +21,7 @@ namespace {
 
 #if defined(OS_WIN)
 
-constexpr int kBrowserWindowDestructionQuiescenceTasks = 3;
+constexpr int kBrowserWindowDestructionQuiescenceTasks = 8;
 
 void DestroyBrowserWindowAfterQuiescence(HWND window, HWND parent,
                                          int remaining_tasks) {
@@ -141,12 +141,12 @@ class WindowsBrowserSurface final : public BrowserSurface {
     }
     // CEF has entered DoClose. Destroying the window is
     // required for a SetAsChild browser under a foreign parent: CEF's default
-    // destruction defers for roughly thirty seconds waiting for the window to
-    // disappear, destroying before acceptance races Aura's tracking, and
-    // destroying inline from DoClose re-enters CEF mid-dispatch (access
-    // violation). Drain the UI queue before destroying so concurrent
-    // navigation, focus and Widget callbacks cannot target the torn-down Aura
-    // hierarchy.
+    // notification targets the top-level Compose ancestor. Drain the UI queue
+    // before destroying the child so concurrent navigation, focus and Widget
+    // callbacks cannot target the torn-down Aura hierarchy. DoClose returns
+    // true because this is the application-owned destruction path; posting
+    // WM_CLOSE again would re-enter CEF's TryCloseBrowser while its destruction
+    // state has been reset to NONE.
     const HWND browser_window = browser_window_;
     if (browser_window == nullptr || !::IsWindow(browser_window) ||
         ::GetParent(browser_window) != parent_) {

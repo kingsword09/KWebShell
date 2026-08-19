@@ -426,10 +426,12 @@ JVM browser-process identity.
 The Windows 1,000-lifecycle contract requires every native child to initiate
 close through `CefBrowserHost`. Chromium is a direct child of the Compose
 `HWND`. `DoClose` returns `true` to accept KWebShell's custom destruction path,
-drains three CEF UI queue turns, and then destroys the Chromium child. Returning
-`false` would make CEF 151 send standard `WM_CLOSE` to the top-level Compose
-ancestor; destroying the child before acceptance or synchronously inside
-`DoClose` races or re-enters Aura destruction. After every lifecycle, the test
+drains eight CEF UI queue turns, and then destroys the Chromium child. Returning
+`false` would make CEF 151 send the notification to the top-level Compose
+ancestor; posting `WM_CLOSE` again after returning `true` re-enters
+`TryCloseBrowser` while CEF has reset its destruction state to `NONE`, so the
+application-owned path must destroy the child directly. After every lifecycle,
+the test
 checks the same Compose `HWND` is visible and receives an OS-generated click;
 an Aura destroyed-window diagnostic is fatal even if the child exits zero.
 

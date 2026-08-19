@@ -37,6 +37,27 @@ bool ReleaseBrowserWindowFocus(HWND window) {
   return !BrowserWindowOwnsFocus(window);
 }
 
+BOOL CALLBACK ReleaseBrowserWindowPointerState(HWND window, LPARAM) {
+  TRACKMOUSEEVENT tracking{};
+  tracking.cbSize = sizeof(tracking);
+  tracking.dwFlags = TME_CANCEL | TME_HOVER | TME_LEAVE;
+  tracking.hwndTrack = window;
+  ::TrackMouseEvent(&tracking);
+
+  const HWND capture = ::GetCapture();
+  if (capture == window) {
+    ::ReleaseCapture();
+  }
+  ::SendMessageW(window, WM_MOUSELEAVE, 0, 0);
+  ::SendMessageW(window, WM_CANCELMODE, 0, 0);
+  return TRUE;
+}
+
+void ReleaseBrowserWindowInputState(HWND window) {
+  ReleaseBrowserWindowPointerState(window, 0);
+  ::EnumChildWindows(window, ReleaseBrowserWindowPointerState, 0);
+}
+
 void DestroyBrowserWindowAfterQuiescence(HWND window, HWND parent,
                                          int remaining_tasks) {
   if (remaining_tasks == 0) {
@@ -166,11 +187,13 @@ class WindowsBrowserSurface final : public BrowserSurface {
         ::GetParent(browser_window) != parent_) {
       return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
     }
-    // CEF's inner Chrome_WidgetWin owns the UI-thread focus while the browser
-    // is open. Recursively destroying the outer CefBrowserWindow while that
-    // focus is live can deliver a late focus callback to an Aura Window after
-    // it has been marked destroyed. Block new input and synchronously complete
-    // focus loss before any native window in the browser subtree is destroyed.
+    // CEF's inner Chrome_WidgetWin owns the UI-thread pointer and focus state
+    // while the browser is open. Recursively destroying the outer
+    // CefBrowserWindow with that state live can leave Aura's tooltip or focus
+    // controller targeting a Window after it has been marked destroyed. Clear
+    // capture, hover tracking and focus synchronously before destroying any
+    // native window in the browser subtree.
+    ReleaseBrowserWindowInputState(browser_window);
     ::EnableWindow(browser_window, FALSE);
     ::ShowWindow(browser_window, SW_HIDE);
     if (!ReleaseBrowserWindowFocus(browser_window)) {

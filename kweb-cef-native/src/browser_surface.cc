@@ -23,6 +23,20 @@ namespace {
 
 constexpr int kBrowserWindowDestructionQuiescenceTasks = 8;
 
+bool BrowserWindowOwnsFocus(HWND window) {
+  const HWND focused = ::GetFocus();
+  return focused != nullptr &&
+         (focused == window || ::IsChild(window, focused));
+}
+
+bool ReleaseBrowserWindowFocus(HWND window) {
+  if (!BrowserWindowOwnsFocus(window)) {
+    return true;
+  }
+  ::SetFocus(nullptr);
+  return !BrowserWindowOwnsFocus(window);
+}
+
 void DestroyBrowserWindowAfterQuiescence(HWND window, HWND parent,
                                          int remaining_tasks) {
   if (remaining_tasks == 0) {
@@ -150,6 +164,16 @@ class WindowsBrowserSurface final : public BrowserSurface {
     const HWND browser_window = browser_window_;
     if (browser_window == nullptr || !::IsWindow(browser_window) ||
         ::GetParent(browser_window) != parent_) {
+      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    }
+    // CEF's inner Chrome_WidgetWin owns the UI-thread focus while the browser
+    // is open. Recursively destroying the outer CefBrowserWindow while that
+    // focus is live can deliver a late focus callback to an Aura Window after
+    // it has been marked destroyed. Block new input and synchronously complete
+    // focus loss before any native window in the browser subtree is destroyed.
+    ::EnableWindow(browser_window, FALSE);
+    ::ShowWindow(browser_window, SW_HIDE);
+    if (!ReleaseBrowserWindowFocus(browser_window)) {
       return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
     }
     if (!CefPostTask(TID_UI,

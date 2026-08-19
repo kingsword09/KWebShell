@@ -449,7 +449,9 @@ Acceptance:
 - Close flushes the Profile cookie store before requesting native destruction.
   Windows and Linux initiate close through `CefBrowserHost`. On Windows,
   `DoClose` accepts KWebShell's custom destruction path by returning `true` and
-  drains eight CEF UI queue turns before destroying the direct Chromium child.
+  disables and hides the direct Chromium child, synchronously confirms that
+  focus has left its `Chrome_WidgetWin` subtree, and drains eight CEF UI queue
+  turns before destroying the child.
   Returning `false` is prohibited because CEF 151 then sends `WM_CLOSE` to the
   top-level Compose ancestor. Destroying the child before acceptance or inline
   from `DoClose` is also prohibited because it races or re-enters Chromium/Aura
@@ -1335,8 +1337,9 @@ Acceptance:
   use-after-close for at least 1,000 complete browser lifecycles without a
   crash, callback after close, leaked native memory, or stale upcall target.
   Every Windows lifecycle starts through `CefBrowserHost`; `DoClose` returns
-  `true` for KWebShell's custom destruction path, drains three CEF UI queue
-  turns, and destroys only Chromium's direct child. It reaches `OnBeforeClose`
+  `true` for KWebShell's custom destruction path, blocks new input, confirms
+  focus loss from the Chromium subtree, drains eight CEF UI queue turns, and
+  destroys only Chromium's direct child. It reaches `OnBeforeClose`
   without CEF sending `WM_CLOSE` to Compose. After every close, the stress test
   must prove that the same Compose `HWND` remains visible and accepts a real
   mouse click; any Aura destroyed-window diagnostic fails the child even when

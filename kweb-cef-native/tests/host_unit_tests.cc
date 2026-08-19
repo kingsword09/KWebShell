@@ -2,6 +2,7 @@
 #include "kwebshell/native/host_configuration.h"
 #include "kwebshell/native/shutdown_watchdog.h"
 #include "mv3_core_test_fixture.h"
+#include "pending_waiters.h"
 
 #include <atomic>
 #include <chrono>
@@ -22,6 +23,43 @@ void Check(bool condition, const std::string &message) {
     std::cerr << "FAILED: " << message << std::endl;
     ++failures;
   }
+}
+
+class ProfileWaiterProbe final {
+public:
+  explicit ProfileWaiterProbe(int *notifications)
+      : notifications_(notifications) {}
+
+  void Notify() { ++*notifications_; }
+
+private:
+  int *const notifications_;
+};
+
+void TestPendingProfileWaitersDoNotRetainClosedSessions() {
+  kwebshell::PendingWaiters<ProfileWaiterProbe> waiters;
+  int closed_notifications = 0;
+  int live_notifications = 0;
+  auto closed = std::make_shared<ProfileWaiterProbe>(&closed_notifications);
+  auto live = std::make_shared<ProfileWaiterProbe>(&live_notifications);
+  waiters.Add(closed);
+  waiters.Add(live);
+  closed.reset();
+
+  for (const auto &waiter : waiters.TakeLive()) {
+    waiter->Notify();
+  }
+
+  Check(closed_notifications == 0,
+        "profile context failure must not notify a destroyed waiter");
+  Check(live_notifications == 1,
+        "profile context failure must notify each live waiter once");
+  Check(waiters.empty(), "profile waiter completion must drain the queue");
+
+  waiters.Add(live);
+  waiters.Remove(live.get());
+  Check(waiters.TakeLive().empty(),
+        "profile waiter close must cancel initialization completion");
 }
 
 std::string AbsoluteTestPath(const std::string &name) {
@@ -462,6 +500,7 @@ void TestShutdownWatchdogTimesOutExactlyOnce() {
 } // namespace
 
 int main() {
+  TestPendingProfileWaitersDoNotRetainClosedSessions();
   TestValidConfiguration();
   TestStrictConfigurationFailures();
   TestSelfTestConfigurationDoesNotRequireExternalUrl();

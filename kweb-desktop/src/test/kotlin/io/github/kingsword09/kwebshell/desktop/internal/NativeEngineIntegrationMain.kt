@@ -32,6 +32,13 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import java.awt.AWTEvent
+import java.awt.Point
+import java.awt.Robot
+import java.awt.Toolkit
+import java.awt.event.AWTEventListener
+import java.awt.event.InputEvent
+import java.awt.event.MouseEvent
 import java.io.BufferedWriter
 import java.net.InetSocketAddress
 import java.net.URI
@@ -51,6 +58,7 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import javax.swing.SwingUtilities
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
@@ -93,6 +101,7 @@ private enum class IntegrationMode(val argument: String) {
     COORDINATOR("coordinator"),
     SUCCESS("success"),
     CALLBACK_FAILURE("callback-failure"),
+    PROFILE_CONTEXT_WAITERS("profile-context-waiters"),
     LISTENER_FAILURE("listener-failure"),
     FFM_STRESS("ffm-stress"),
     HOLDER("holder"),
@@ -119,6 +128,7 @@ fun main(arguments: Array<String>) {
             IntegrationMode.COORDINATOR -> runCoordinator()
             IntegrationMode.SUCCESS -> runSuccessfulLifecycle()
             IntegrationMode.CALLBACK_FAILURE -> runCallbackFailureLifecycle()
+            IntegrationMode.PROFILE_CONTEXT_WAITERS -> runProfileContextWaiterLifecycle()
             IntegrationMode.LISTENER_FAILURE -> runListenerFailureLifecycle()
             IntegrationMode.FFM_STRESS -> runFfmStressLifecycle()
             IntegrationMode.HOLDER -> runHolderLifecycle()
@@ -144,6 +154,7 @@ private fun runCoordinator() {
     runChildAndRequireSuccess(IntegrationMode.CDP_DISABLED, root.resolve("cdp-disabled"))
     runChildAndRequireSuccess(IntegrationMode.PORT_COLLISION, root.resolve("port-collision"))
     runChildAndRequireSuccess(IntegrationMode.CALLBACK_FAILURE, root.resolve("callback-failure"))
+    runChildAndRequireSuccess(IntegrationMode.PROFILE_CONTEXT_WAITERS, root.resolve("profile-context-waiters"))
     runChildAndRequireSuccess(IntegrationMode.LISTENER_FAILURE, root.resolve("listener-failure"))
     runChildAndRequireSuccess(IntegrationMode.FFM_STRESS, root.resolve("ffm-stress"))
 
@@ -1408,10 +1419,107 @@ private fun runCallbackFailureLifecycle() {
     println("KWebShell engine FFM callback failure contract passed.")
 }
 
+private fun runProfileContextWaiterLifecycle() {
+    val configuration = runtimeConfiguration()
+    val engine = NativeEngine.open(configuration)
+    val surface = NativeEngine.onAwtEventDispatchThread { ComposeBrowserSurface.create(320, 240) }
+    val profile = configuration.rootCache.resolve("pending-profile")
+    Files.createDirectories(profile)
+    val alias = if (isWindows()) {
+        configuration.rootCache.resolve("PENDING-PROFILE")
+    } else {
+        Files.createSymbolicLink(
+            configuration.rootCache.resolve("pending-profile-alias"),
+            profile.fileName,
+        )
+    }
+    val closed = List(8) { CountDownLatch(1) }
+    val fatalEvents = List(8) { CopyOnWriteArrayList<String>() }
+    val handles = mutableListOf<Long>()
+    try {
+        repeat(closed.size) { index ->
+            val handle = NativeBindings.browserCreate(
+                engine.requireLiveHandle("profile-context-waiter-create"),
+                NativeBrowserEventSink { _, _, _, type, _, text, _, _, _ ->
+                    when (NativeBrowserEventType.fromValue(type)) {
+                        NativeBrowserEventType.FATAL_ERROR -> fatalEvents[index] += text
+                        NativeBrowserEventType.CLOSED -> closed[index].countDown()
+                        else -> Unit
+                    }
+                },
+                surface.nativeParent,
+                (if (index % 2 == 0) profile else alias).toString(),
+                "about:blank#pending-$index",
+                0,
+                0,
+                320,
+                240,
+                "",
+                null,
+            )
+            require(handle > 0L) { "Pending Profile browser $index failed to create: $handle" }
+            handles += handle
+        }
+        handles.forEachIndexed { index, handle ->
+            val status = NativeBindings.browserClose(handle)
+            require(status == NativeStatus.OK.value || status == NativeStatus.BROWSER_CLOSING.value) {
+                "Pending Profile browser $index close returned $status."
+            }
+        }
+        handles.forEachIndexed { index, handle ->
+            require(closed[index].await(30, TimeUnit.SECONDS)) {
+                "Pending Profile browser $index did not close."
+            }
+            require(fatalEvents[index].isEmpty()) {
+                "Pending Profile browser $index reported ${fatalEvents[index]}."
+            }
+            require(NativeBindings.releaseBrowserOwner(handle) == null) {
+                "Pending Profile browser $index recorded an FFM callback failure."
+            }
+        }
+        handles.clear()
+
+        NativeBrowser.open(
+            engine = engine,
+            nativeParent = surface.nativeParent,
+            profilePath = profile,
+            initialUrl = "about:blank#survivor",
+            width = 320,
+            height = 240,
+        ).use { survivor ->
+            require(survivor.lifecycle.value == KWebLifecycleState.OPEN)
+        }
+        NativeBrowser.open(
+            engine = engine,
+            nativeParent = surface.nativeParent,
+            profilePath = alias,
+            initialUrl = "about:blank#physical-alias",
+            width = 320,
+            height = 240,
+        ).use { aliasBrowser ->
+            require(aliasBrowser.lifecycle.value == KWebLifecycleState.OPEN)
+        }
+        require(NativeBrowser.liveNativeBrowserCount() == 0L)
+        require(NativeBindings.liveCallbackOwnerCount() == 1)
+    } finally {
+        handles.forEachIndexed { index, handle ->
+            runCatching { NativeBindings.browserClose(handle) }
+            if (closed[index].await(30, TimeUnit.SECONDS)) {
+                runCatching { NativeBindings.releaseBrowserOwner(handle) }
+            }
+        }
+        NativeEngine.onAwtEventDispatchThread(surface::close)
+        NativeEngine.onAwtEventDispatchThread(engine::close)
+    }
+    require(NativeBindings.liveCallbackOwnerCount() == 0)
+    println("KWebShell Profile context waiter cancellation contract passed.")
+}
+
 private fun runFfmStressLifecycle() {
     val configuration = runtimeConfiguration()
     val engine = NativeEngine.open(configuration)
     val surface = NativeEngine.onAwtEventDispatchThread { ComposeBrowserSurface.create(320, 240) }
+    val hostInteractionRobot = if (isWindows()) Robot() else null
     val executor = Executors.newFixedThreadPool(2) { task ->
         Thread(task, "KWebShell-ffm-stress-race").also { it.isDaemon = true }
     }
@@ -1467,6 +1575,9 @@ private fun runFfmStressLifecycle() {
             require(events.size == callbackCount) {
                 "A browser callback arrived after lifecycle $index closed."
             }
+            if (hostInteractionRobot != null) {
+                requireWindowsHostWindowInteractive(surface, index + 1, hostInteractionRobot)
+            }
             require(NativeBrowser.liveNativeBrowserCount() == 0L)
             require(NativeExtensionRuntime.liveNativeOperationCount() == 0L)
             require(NativeBindings.liveCallbackOwnerCount() == 1) {
@@ -1501,6 +1612,60 @@ private fun runFfmStressLifecycle() {
     require(NativeExtensionRuntime.liveNativeOperationCount() == 0L)
     require(NativeBindings.liveCallbackOwnerCount() == 0)
     println("KWebShell FFM completed $FFM_BROWSER_STRESS_LIFECYCLES real browser lifecycles.")
+}
+
+private fun requireWindowsHostWindowInteractive(
+    surface: ComposeBrowserSurface,
+    lifecycle: Int,
+    robot: Robot,
+) {
+    val clickObserved = CountDownLatch(1)
+    lateinit var listener: AWTEventListener
+    val clickPoint = NativeEngine.onAwtEventDispatchThread {
+        val window = surface.window
+        require(window.isDisplayable && window.isShowing && window.isEnabled) {
+            "The ComposeWindow stopped showing after Windows browser lifecycle $lifecycle."
+        }
+        require(window.windowHandle == surface.nativeParent) {
+            "The ComposeWindow HWND changed after Windows browser lifecycle $lifecycle."
+        }
+        val content = window.contentPane
+        require(content.isShowing && content.width > 0 && content.height > 0) {
+            "The ComposeWindow content stopped showing after Windows browser lifecycle $lifecycle."
+        }
+        listener = AWTEventListener { event ->
+            if (event is MouseEvent &&
+                event.id == MouseEvent.MOUSE_PRESSED &&
+                SwingUtilities.getWindowAncestor(event.component) === window
+            ) {
+                clickObserved.countDown()
+            }
+        }
+        Toolkit.getDefaultToolkit().addAWTEventListener(listener, AWTEvent.MOUSE_EVENT_MASK)
+        window.toFront()
+        val location = content.locationOnScreen
+        Point(location.x + content.width / 2, location.y + content.height / 2)
+    }
+    try {
+        robot.mouseMove(clickPoint.x, clickPoint.y)
+        robot.mousePress(InputEvent.BUTTON1_DOWN_MASK)
+        robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK)
+        require(clickObserved.await(5, TimeUnit.SECONDS)) {
+            "The ComposeWindow did not receive a real mouse click after Windows browser lifecycle $lifecycle."
+        }
+        NativeEngine.onAwtEventDispatchThread {
+            val marker = "KWebShell host interaction $lifecycle"
+            surface.window.title = marker
+            Toolkit.getDefaultToolkit().sync()
+            require(surface.window.isShowing && surface.window.title == marker) {
+                "The ComposeWindow stopped responding after Windows browser lifecycle $lifecycle."
+            }
+        }
+    } finally {
+        NativeEngine.onAwtEventDispatchThread {
+            Toolkit.getDefaultToolkit().removeAWTEventListener(listener)
+        }
+    }
 }
 
 private fun runListenerFailureLifecycle() {
@@ -1886,6 +2051,16 @@ private fun runChildAndRequireSuccess(mode: IntegrationMode, root: Path) {
     child.reader.join(5000)
     require(child.process.exitValue() == 0) {
         "Native engine child '${mode.argument}' exited with ${child.process.exitValue()}.\n${child.output()}"
+    }
+    if (mode == IntegrationMode.FFM_STRESS && isWindows()) {
+        val auraDestructionDiagnostics = child.lines.filter { line ->
+            line.contains("Check failed: !is_destroyed_", ignoreCase = true) ||
+                line.contains("ui/aura/window.cc", ignoreCase = true) &&
+                line.contains("destroy", ignoreCase = true)
+        }
+        require(auraDestructionDiagnostics.isEmpty()) {
+            "Windows FFM stress reported Aura double-destruction diagnostics.\n${child.output()}"
+        }
     }
     if (mode == IntegrationMode.SUCCESS && isMacOs()) {
         val policyIndexes = listOf(

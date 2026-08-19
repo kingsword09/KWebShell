@@ -351,9 +351,14 @@ public:
       engine = engine_;
     }
 
-    // Release the shared per-profile request contexts while still on the
-    // CEF UI thread and before CefShutdown destroys the CEF runtime.
-    ReleaseEngineProfileContexts();
+    // Release the shared per-profile request contexts on the CEF UI thread and
+    // wait for its quiescence barrier before CefShutdown destroys the runtime.
+    const kweb_status context_release_status = ReleaseEngineProfileContexts();
+    if (context_release_status != KWEB_STATUS_OK) {
+      std::lock_guard lock(mutex_);
+      state_ = RegistryState::kRunning;
+      return context_release_status;
+    }
 
     return engine->Shutdown(
         [this, handle, keep_alive = engine](kweb_status status) {

@@ -424,15 +424,14 @@ signing remains outside the native compiler task because it does not change the
 JVM browser-process identity.
 
 The Windows 1,000-lifecycle contract requires every native child to initiate
-close through `CefBrowserHost`. KWebShell owns an intermediate child container;
-in `DoClose` it hides and moves the complete container beneath a dedicated
-invisible top-level shutdown root while Chromium keeps the same immediate
-container parent. `DoClose` validates the prepared hierarchy and returns
-`false`, so CEF retains its accepted destruction state and posts standard
-`WM_CLOSE` to the isolated root. The root WndProc destroys the hierarchy and
-recursively delivers the browser child's `WM_NCDESTROY` without closing
-Compose. Moving or directly closing the Chromium HWND, forwarding `WM_CLOSE`
-to it, or synchronously destroying it inside `DoClose` races Aura destruction.
+close through `CefBrowserHost`. Chromium is a direct child of the Compose
+`HWND`. `DoClose` returns `true` to accept KWebShell's custom destruction path,
+drains three CEF UI queue turns, and then destroys the Chromium child. Returning
+`false` would make CEF 151 send standard `WM_CLOSE` to the top-level Compose
+ancestor; destroying the child before acceptance or synchronously inside
+`DoClose` races or re-enters Aura destruction. After every lifecycle, the test
+checks the same Compose `HWND` is visible and receives an OS-generated click;
+an Aura destroyed-window diagnostic is fatal even if the child exits zero.
 
 `OnBeforeClose` is CEF's last client callback, but CEF still completes browser
 observer, `browser_info`, platform delegate, and browser-host destruction after
@@ -441,6 +440,12 @@ that callback returns. KWebShell therefore waits for CEF to release its final
 quiescence tasks. It releases the surface, removes the registry entry, and
 publishes `CLOSED` only after that barrier. Kotlin cannot begin the next lifecycle until
 the post-callback quiescence barrier has completed.
+
+Profile context initialization is also part of the upcall lifetime boundary.
+The shared context cache holds weak, cancellable waiters; a browser closed while
+waiting is removed before `CLOSED`, and later context success or failure visits
+only live sessions. The Windows real-CEF suite closes a concurrent waiter burst,
+releases every FFM owner, and then completes the shared context with a survivor.
 
 ## Verification matrix
 

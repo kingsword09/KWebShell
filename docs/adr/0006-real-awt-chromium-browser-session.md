@@ -21,13 +21,11 @@ immediately.
 The browser is always windowed Alloy with windowless rendering disabled:
 
 - Windows consumes the public `ComposeWindow.windowHandle` as the top-level
-  `HWND`, creates a KWebShell-owned child container for Chromium, and initiates
-  forced close through `CefBrowserHost`. In `DoClose`, it hides and moves the
-  complete container beneath a dedicated invisible top-level shutdown root
-  while Chromium keeps the same immediate parent, then returns `false`. CEF
-  posts `WM_CLOSE` to the isolated root, whose WndProc destroys the root and
-  lets Win32 recursively deliver the browser child's `WM_NCDESTROY` without
-  closing Compose.
+  `HWND`, parents Chromium directly beneath it, and initiates forced close
+  through `CefBrowserHost`. In `DoClose`, KWebShell returns `true` to accept its
+  custom destruction path, drains three CEF UI queue turns, and then destroys
+  the Chromium child. Returning `false` is forbidden because CEF 151 sends the
+  standard `WM_CLOSE` notification to the top-level Compose ancestor.
 - Linux consumes the same property as the top-level X11 `Window` and requests
   forced CEF close for the child browser.
 - macOS consumes the property as the exact AppKit `NSWindow`, inserts a
@@ -42,12 +40,12 @@ UI quiescence tasks have run after CEF releases its final `SessionClient`
 owner, which follows browser-host and platform-delegate teardown. Registry
 removal and the terminal callback are published after that barrier. A command
 re-entered from that callback therefore receives `invalid-handle`, never `browser-closing`.
-On Windows, `DoClose` moves the complete container to the shutdown root while
-preserving Chromium's immediate parent, then returns `false` so CEF sends its
-standard root-close notification. The root WndProc, not the callback stack,
-destroys the hierarchy. Only after CEF reaches `OnBeforeClose` and releases the
-final client owner may the now-empty surface be released; direct Chromium-child
-reparenting or destruction is forbidden.
+On Windows, `DoClose` returns `true` and drains three CEF UI queue turns before
+child destruction instead of destroying it on the callback stack. Only after
+CEF reaches `OnBeforeClose` and releases the final client owner may the now-empty
+surface be released. The real Windows stress test checks after every close that
+the same Compose `HWND` remains visible and accepts an OS-generated mouse click,
+and rejects Aura destroyed-window diagnostics even when the child exits zero.
 The deferred registry removal and `CLOSED` upcall form the terminal barrier, so
 a subsequent lifecycle cannot race Chromium/Aura destruction from the prior one.
 After the callback returns, the JVM closes the FFM callback owner and its

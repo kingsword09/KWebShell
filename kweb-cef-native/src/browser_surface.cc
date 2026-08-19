@@ -21,6 +21,30 @@ namespace {
 
 #if defined(OS_WIN)
 
+constexpr int kBrowserWindowDestructionQuiescenceTasks = 3;
+
+void DestroyBrowserWindowAfterQuiescence(HWND window, HWND parent,
+                                         int remaining_tasks) {
+  if (remaining_tasks == 0) {
+    if (::IsWindow(window) && ::GetParent(window) == parent) {
+      ::DestroyWindow(window);
+    }
+    return;
+  }
+  if (!CefPostTask(
+          TID_UI,
+          base::BindOnce(DestroyBrowserWindowAfterQuiescence, window, parent,
+                         remaining_tasks - 1))) {
+    std::fprintf(stderr,
+                 "KWEBSHELL_CLOSE_ERROR stage=destruction-quiescence-post "
+                 "browser_window=%p remaining_tasks=%d\n",
+                 static_cast<void *>(window), remaining_tasks);
+    if (::IsWindow(window) && ::GetParent(window) == parent) {
+      ::DestroyWindow(window);
+    }
+  }
+}
+
 // Windowing model proven on the Windows matrix: the CEF browser window is a
 // direct child of the embedding-owned parent and every member and Win32 call
 // happens on the CEF UI thread. A session close destroys the browser window
@@ -109,31 +133,33 @@ class WindowsBrowserSurface final : public BrowserSurface {
     if (handled_out == nullptr) {
       return KWEB_STATUS_INVALID_ARGUMENT;
     }
-    *handled_out = false;
+    // KWebShell owns this destruction path. Returning false makes CEF 151
+    // forward WM_CLOSE to the top-level Compose ancestor for windowed browsers.
+    *handled_out = true;
     if (close_accepted_) {
       return KWEB_STATUS_OK;
     }
-    // CEF has accepted the close (DoClose returned). Destroying the window is
+    // CEF has entered DoClose. Destroying the window is
     // required for a SetAsChild browser under a foreign parent: CEF's default
     // destruction defers for roughly thirty seconds waiting for the window to
     // disappear, destroying before acceptance races Aura's tracking, and
     // destroying inline from DoClose re-enters CEF mid-dispatch (access
-    // violation). Post the destruction as the next UI task instead.
-    close_accepted_ = true;
+    // violation). Drain the UI queue before destroying so concurrent
+    // navigation, focus and Widget callbacks cannot target the torn-down Aura
+    // hierarchy.
     const HWND browser_window = browser_window_;
-    if (browser_window != nullptr && ::IsWindow(browser_window) &&
-        ::GetParent(browser_window) == parent_ &&
-        !CefPostTask(
-            TID_UI,
-            base::BindOnce(
-                [](HWND window) {
-                  if (::IsWindow(window)) {
-                    ::DestroyWindow(window);
-                  }
-                },
-                browser_window))) {
+    if (browser_window == nullptr || !::IsWindow(browser_window) ||
+        ::GetParent(browser_window) != parent_) {
+      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    }
+    if (!CefPostTask(TID_UI,
+                     base::BindOnce(DestroyBrowserWindowAfterQuiescence,
+                                    browser_window, parent_,
+                                    kBrowserWindowDestructionQuiescenceTasks -
+                                        1))) {
       return KWEB_STATUS_CEF_UI_TASK_FAILED;
     }
+    close_accepted_ = true;
     return KWEB_STATUS_OK;
   }
 

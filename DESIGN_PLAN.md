@@ -390,6 +390,12 @@ Acceptance:
   failure, stale handle, and post-close operations return declared typed
   errors. Reinitialization after terminal shutdown is rejected because CEF
   supports one lifecycle per process.
+- Engine shutdown releases every cached Profile request context on `TID_UI`.
+  Windows and Linux wait on the initialization thread until the clear operation
+  and three subsequent CEF UI queue turns complete; only then may they call
+  `CefShutdown`. A post or barrier failure is typed and leaves shutdown
+  unaccepted. The single-threaded macOS UI path releases directly and its
+  external message pump performs the existing pre-shutdown drain.
 - A dedicated JVM integration process loads the real native libraries and
   pinned CEF runtime, opens the engine, observes the real context callback,
   closes it cleanly directly from the AWT event-dispatch thread, and leaves the
@@ -426,9 +432,8 @@ Acceptance:
   initialization, and verifies that the created browser owns that exact
   context.
 - The embedded browser is a windowed, hardware-accelerated native child with
-  explicit Alloy runtime style. Windows owns a dedicated child-container
-  `HWND` beneath the Compose window and parents Chromium to that container,
-  Linux uses the Canvas X11 drawable, and macOS resolves the AWT top-level peer
+  explicit Alloy runtime style. Windows parents Chromium directly beneath the
+  exact Compose window `HWND`, Linux uses the Canvas X11 drawable, and macOS resolves the AWT top-level peer
   to its AppKit `NSWindow` and owns a dedicated intermediate `NSView`. An unavailable or
   incompatible native peer fails with a typed status; OSR or a hidden top-level
   Chromium window is never substituted.
@@ -442,15 +447,13 @@ Acceptance:
   applied size. Commands racing with close return only declared terminal or
   closing statuses and never target a released browser.
 - Close flushes the Profile cookie store before requesting native destruction.
-  Windows and Linux initiate close through `CefBrowserHost`. Windows moves
-  KWebShell's complete child container beneath a dedicated hidden top-level
-  shutdown root from `DoClose` while Chromium remains beneath the same
-  immediate container, then returns `false`; CEF retains its accepted
-  destruction state and posts `WM_CLOSE` to the isolated root, whose WndProc
-  destroys the root and lets Win32 recursively deliver the browser child's
-  `WM_NCDESTROY`. Moving or directly closing the Chromium HWND, forwarding
-  `WM_CLOSE` to that child, and synchronously destroying it from `DoClose` are
-  prohibited because they race Chromium/Aura teardown. macOS removes the CEF `NSView` from its
+  Windows and Linux initiate close through `CefBrowserHost`. On Windows,
+  `DoClose` accepts KWebShell's custom destruction path by returning `true` and
+  drains three CEF UI queue turns before destroying the direct Chromium child.
+  Returning `false` is prohibited because CEF 151 then sends `WM_CLOSE` to the
+  top-level Compose ancestor. Destroying the child before acceptance or inline
+  from `DoClose` is also prohibited because it races or re-enters Chromium/Aura
+  teardown. macOS removes the CEF `NSView` from its
   AppKit hierarchy, which causes CEF to deliver `OnBeforeClose`. The callback
   clears browser ownership. The three-task quiescence barrier starts only after
   CEF releases its final `SessionClient` owner, which occurs after browser-host
@@ -462,12 +465,24 @@ Acceptance:
   while any browser is live; the Kotlin engine retains its handle and remains OPEN so the
   caller can close the browser and retry. Clean browser then engine shutdown
   leaves both live counts at zero.
+- Sessions waiting for a shared Profile context are weak, cancellable waiters.
+  Closing before context initialization removes the waiter on the CEF UI thread
+  before `CLOSED`; a later success or failure can notify only sessions that are
+  still live. A terminal session is never retained by the Profile cache and no
+  native callback can target its released FFM Arena.
+- Profile cache identity is the canonical physical directory, not the caller's
+  lexical spelling. Existing directories resolve symlinks and filesystem case
+  aliases before CEF settings and cache lookup; lookup also uses filesystem
+  equivalence so one physical Profile cannot acquire two request contexts.
 - A dedicated JVM integration process creates a real visible AWT host and real
   CEF browser, loads a controlled page, observes navigation and load callbacks,
   navigates to a second non-ASCII URL, resizes the native child, closes it, and
   then shuts down CEF. The test rejects callback reordering, Profile mismatch,
   non-Alloy/windowless rendering, missing native parentage, post-close callback,
-  leaked handles, and persistence artifacts missing after shutdown.
+  leaked handles, and persistence artifacts missing after shutdown. Every
+  Windows stress lifecycle also proves that the same Compose window remains
+  visible with the same `HWND` and receives a real OS mouse click after the
+  browser closes.
 - The real integration contract passes locally on macOS with the pinned
   Temurin and CEF artifacts and runs as mandatory GitHub Actions acceptance on
   macOS arm64, Windows x64, and Linux x64 under Xvfb. C header conformance,
@@ -1319,11 +1334,18 @@ Acceptance:
   concurrent command/close races, terminal-event ordering, arena closure, and
   use-after-close for at least 1,000 complete browser lifecycles without a
   crash, callback after close, leaked native memory, or stale upcall target.
-  Every Windows lifecycle starts through `CefBrowserHost`, completes native
-  hierarchy destruction through CEF's accepted standard-close path after the
-  complete intermediate container moves beneath its shutdown root. It reaches
-  `OnBeforeClose` without changing Chromium's immediate parent or closing
-  Compose.
+  Every Windows lifecycle starts through `CefBrowserHost`; `DoClose` returns
+  `true` for KWebShell's custom destruction path, drains three CEF UI queue
+  turns, and destroys only Chromium's direct child. It reaches `OnBeforeClose`
+  without CEF sending `WM_CLOSE` to Compose. After every close, the stress test
+  must prove that the same Compose `HWND` remains visible and accepts a real
+  mouse click; any Aura destroyed-window diagnostic fails the child even when
+  its exit code is zero.
+  A separate real-CEF burst queues concurrent browsers on one new Profile,
+  closes the waiting sessions, releases their terminal FFM owners, and then
+  completes initialization through a surviving browser without a late upcall.
+  Windows repeats the Profile through a case alias, while macOS/Linux repeat it
+  through a directory symlink; both must reuse the same physical context.
   After `OnBeforeClose`, CEF must release its final `SessionClient` owner before
   registry removal and the `CLOSED` upcall can occur across three CEF UI
   quiescence tasks; directly destroying a live window is not an accepted

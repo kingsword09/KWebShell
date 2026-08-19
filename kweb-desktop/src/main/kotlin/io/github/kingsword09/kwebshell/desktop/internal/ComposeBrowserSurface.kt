@@ -5,7 +5,7 @@ import io.github.kingsword09.kwebshell.core.KWebNativeException
 import java.awt.EventQueue
 
 internal class ComposeBrowserSurface private constructor(
-    private val window: ComposeWindow,
+    internal val window: ComposeWindow,
     internal val nativeParent: Long,
 ) : AutoCloseable {
     override fun close() {

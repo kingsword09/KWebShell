@@ -351,6 +351,10 @@ public:
       engine = engine_;
     }
 
+    // Release the shared per-profile request contexts while still on the
+    // CEF UI thread and before CefShutdown destroys the CEF runtime.
+    ReleaseEngineProfileContexts();
+
     return engine->Shutdown(
         [this, handle, keep_alive = engine](kweb_status status) {
           (void)keep_alive;

@@ -21,6 +21,9 @@ kweb_status RespondToBridgeSession(kweb_browser_handle browser,
                                    const char *response_utf8,
                                    size_t response_size, bool success);
 uint64_t LiveBrowserSessionCount();
+// Releases the shared per-profile request contexts on the CEF UI thread.
+// Must run after the last browser session completed and before CefShutdown.
+void ReleaseEngineProfileContexts();
 kweb_status GetBrowserExtensionContext(kweb_browser_handle browser,
                                        kweb_engine_handle *engine_out,
                                        std::filesystem::path *profile_path_out);

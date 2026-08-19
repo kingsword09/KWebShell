@@ -32,6 +32,18 @@ primary Profile, and macOS and Windows commonly use case-insensitive filesystems
   the Profile outside the declared root.
 - Each Profile uses `CefRequestContext::CreateContext` with its own cache path
   and `persist_session_cookies = true`.
+- One request context exists per Profile cache path and is shared by every
+  browser created on that Profile for the lifetime of the engine. Rebuilding a
+  context per browser session forced Chromium to re-initialize and re-tear
+  down the same profile storage on every open, and that initialization can
+  stall for tens of seconds under churn, which is observable as a browser
+  creation timeout. The shared context is cached on the CEF UI thread,
+  browser sessions that request a Profile while its context is still
+  initializing queue until `OnRequestContextInitialized` fires, a failed
+  initialization fails the queued sessions with a typed error and allows the
+  next session to retry, and the contexts are released after the last browser
+  session completed and before `CefShutdown`. Profiles remain isolated from
+  each other; only the global request context is rejected.
 - Browser creation waits for
   `CefRequestContextHandler::OnRequestContextInitialized`. A null or global
   context, a cache-path mismatch, or context creation failure is fatal.

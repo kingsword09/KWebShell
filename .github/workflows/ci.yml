@@ -20,10 +20,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - target: linux-x64
+            os: ubuntu-24.04
+            gpu-contract: GPU unavailable contract
+            expect-hardware-gpu-unavailable: true
           - target: windows-x64
             os: windows-2022
             gpu-contract: GPU unavailable contract
             expect-hardware-gpu-unavailable: true
+          - target: macos-arm64
+            os: macos-15
+            gpu-contract: GPU required
+            expect-hardware-gpu-unavailable: false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
 
@@ -112,11 +120,9 @@ jobs:
           tar -xjf ".cef-ci/archives/$CEF_ARCHIVE" \
             -C .cef-ci/source
 
-      - name: Run focused Windows engine integration
+      - name: Run complete verification
         shell: bash
-        env:
-          KWEBSHELL_TRACE_CLOSE: "1"
         run: |
-          ./gradlew --no-daemon :kweb-desktop:engineIntegrationTest \
+          ./gradlew --no-daemon check \
             -PcefRoot="$PWD/.cef-ci/source/$CEF_DIRECTORY" \
             -PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}

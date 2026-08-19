@@ -426,7 +426,8 @@ JVM browser-process identity.
 The Windows 1,000-lifecycle contract requires every native child to initiate
 close through `CefBrowserHost`. Chromium is a direct child of the Compose
 `HWND`. `DoClose` returns `true` to accept KWebShell's custom destruction path,
-clears pointer capture and hover tracking, disables and hides the child,
+clears pointer capture and hover tracking, drains queued pointer messages from
+the child subtree, disables and hides the child,
 synchronously confirms focus has left the inner `Chrome_WidgetWin`, drains
 eight CEF UI queue turns, and then destroys the Chromium child. Returning
 `false` would make CEF 151 send the notification to

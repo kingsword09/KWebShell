@@ -53,6 +53,38 @@ BOOL CALLBACK ReleaseBrowserWindowPointerState(HWND window, LPARAM) {
   return TRUE;
 }
 
+void DrainBrowserWindowPointerMessages(HWND window) {
+  if (window == nullptr || !::IsWindow(window)) {
+    return;
+  }
+  MSG message{};
+  while (::PeekMessageW(&message, window, WM_MOUSEFIRST, WM_MOUSELAST,
+                        PM_REMOVE)) {
+  }
+  while (::PeekMessageW(&message, window, WM_NCMOUSEMOVE, WM_NCXBUTTONDBLCLK,
+                        PM_REMOVE)) {
+  }
+  while (::PeekMessageW(&message, window, WM_SETCURSOR, WM_SETCURSOR,
+                        PM_REMOVE)) {
+  }
+  while (::PeekMessageW(&message, window, WM_MOUSEACTIVATE, WM_MOUSEACTIVATE,
+                        PM_REMOVE)) {
+  }
+  while (::PeekMessageW(&message, window, WM_CAPTURECHANGED, WM_CAPTURECHANGED,
+                        PM_REMOVE)) {
+  }
+}
+
+BOOL CALLBACK DrainBrowserWindowPointerMessagesCallback(HWND window, LPARAM) {
+  DrainBrowserWindowPointerMessages(window);
+  return TRUE;
+}
+
+void DrainBrowserWindowPointerMessagesInSubtree(HWND window) {
+  DrainBrowserWindowPointerMessages(window);
+  ::EnumChildWindows(window, DrainBrowserWindowPointerMessagesCallback, 0);
+}
+
 void ReleaseBrowserWindowInputState(HWND window) {
   ReleaseBrowserWindowPointerState(window, 0);
   ::EnumChildWindows(window, ReleaseBrowserWindowPointerState, 0);
@@ -60,6 +92,7 @@ void ReleaseBrowserWindowInputState(HWND window) {
 
 void DestroyBrowserWindowAfterQuiescence(HWND window, HWND parent,
                                          int remaining_tasks) {
+  DrainBrowserWindowPointerMessagesInSubtree(window);
   if (remaining_tasks == 0) {
     if (::IsWindow(window) && ::GetParent(window) == parent) {
       ::DestroyWindow(window);
@@ -199,6 +232,7 @@ class WindowsBrowserSurface final : public BrowserSurface {
     if (!ReleaseBrowserWindowFocus(browser_window)) {
       return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
     }
+    DrainBrowserWindowPointerMessagesInSubtree(browser_window);
     if (!CefPostTask(TID_UI,
                      base::BindOnce(DestroyBrowserWindowAfterQuiescence,
                                     browser_window, parent_,

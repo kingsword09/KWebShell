@@ -1411,6 +1411,35 @@ Acceptance:
   identity and parent validation; a real CEF integration process exercises the
   public facade on every hosted target and leaves zero native handles.
 
+### Phase 10: Evidence applications and performance benchmarks
+
+Phase 10 adds two runnable clients of the public facade. They are deliberately
+separate objectives so capability discovery and application-scale performance
+can be validated without turning either one into a hidden fallback backend.
+The complete source, acceptance criteria, artifact rules, and metric schema are
+defined in [Example Applications And Benchmark Plan](docs/example-benchmark-plan.md).
+
+#### Objective 10.1: Build the HTML5 Capability Lab
+
+Create `kweb-example-html5-lab`, a locally packaged and versioned HTML5 test
+origin that reports real evidence for language/runtime, DOM/CSS, graphics,
+network, storage, workers, service workers, media, permissions, and lifecycle
+features. It must use only the public Engine/Profile/Page API, distinguish
+required from optional capabilities, export JSON plus a rendered report, and
+fail on missing required evidence. No browser or OS WebView fallback is
+allowed.
+
+#### Objective 10.2: Build the application-scale workload benchmark
+
+Create `kweb-example-app-benchmark`, which loads a digest-pinned LobeHub-class
+workload and measures cold/warm startup, navigation, streamed rendering,
+virtualization, storage, workers, WebSocket activity, DevTools/CDP overhead,
+native frame pacing, memory, CPU, and shutdown. Raw samples, median/p95
+statistics, runtime provenance, and locked workload artifacts are mandatory;
+missing samples must fail rather than be filled or estimated. macOS is the
+first gate, followed by identical Windows/Linux runs before cross-platform
+publication.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.
@@ -1456,6 +1485,8 @@ extensions: add extension UI surfaces
 release: add signed runtime packs and cross-platform packaging
 interop: replace JNI with JDK 25 FFM bindings
 api: publish the verified Compose desktop lifecycle facade
+examples: add the HTML5 capability lab
+benchmark: add the application-scale workload harness
 ```
 
 Do not create a commit for a partial objective. Do not move a failing test to a later phase. Each commit must include the verification command or CI result in its body.

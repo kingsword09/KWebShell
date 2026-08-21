@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-21T11:22:23Z",
+  "title": "Design System: KWebShell Proof Desk",
+  "extensions": {
+    "colorMeta": {
+      "coated-paper": { "role": "neutral", "displayName": "Coated Paper", "canonical": "#f5f3ec", "tonalRamp": ["#242825", "#3b3f3a", "#5e635d", "#8d9188", "#c7c5ba", "#d8d4c7", "#e9e6da", "#f5f3ec"] },
+      "graphite": { "role": "primary", "displayName": "Graphite Ink", "canonical": "#242825", "tonalRamp": ["#151715", "#1c1e1b", "#242825", "#3b3f3a", "#5e635d", "#8d9188", "#c7c5ba", "#f5f3ec"] },
+      "process-cyan": { "role": "primary", "displayName": "Process Cyan", "canonical": "#008eaa", "tonalRamp": ["#00323d", "#005467", "#00758d", "#008eaa", "#32a9bd", "#68c3d0", "#a2dce4", "#d8f1f3"] },
+      "process-magenta": { "role": "secondary", "displayName": "Process Magenta", "canonical": "#ba356f", "tonalRamp": ["#421027", "#68193d", "#8d2855", "#ba356f", "#ca5b88", "#da83a4", "#e9adc2", "#f7d8e2"] },
+      "process-yellow": { "role": "secondary", "displayName": "Process Yellow", "canonical": "#d5a900", "tonalRamp": ["#493a00", "#725900", "#9c7c00", "#d5a900", "#dfbd3d", "#e8cf72", "#f1e2a7", "#faf5d9"] },
+      "proof-green": { "role": "tertiary", "displayName": "Proof Green", "canonical": "#2e765a", "tonalRamp": ["#10291f", "#19432f", "#235d46", "#2e765a", "#5a997d", "#83b7a0", "#afd4c1", "#d9eee3"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Galley Serif", "purpose": "Primary proof question and editorial route headings." },
+      "body": { "displayName": "Proof Sans", "purpose": "Operational copy, controls, and streamed workload text." },
+      "label": { "displayName": "Evidence Mono", "purpose": "Machine state, identifiers, timing, and measurement labels." }
+    },
+    "shadows": [],
+    "motion": [
+      { "name": "timeline-fill", "value": "transform .35s ease-out", "purpose": "Show proof progress along the measuring ruler." },
+      { "name": "status-pulse", "value": "1s ease-out", "purpose": "Indicate an active run without obscuring evidence." }
+    ],
+    "breakpoints": [
+      { "name": "ledger", "value": "1080px" },
+      { "name": "single-column", "value": "720px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Run Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Starts the deterministic proof and becomes terminal after evidence is recorded.",
+      "html": "<button class=\"ds-run\" type=\"button\"><span aria-hidden=\"true\">&#9654;</span><span>Run proof</span></button>",
+      "css": ".ds-run { display:inline-flex; align-items:center; gap:9px; min-height:44px; padding:9px 11px; border:1px solid #242825; border-radius:3px; background:#242825; color:#f5f3ec; font:700 12px/1.45 'Proof Sans','Avenir Next','Segoe UI',sans-serif; cursor:pointer; } .ds-run:hover { background:#343a34; } .ds-run:focus-visible { outline:2px solid #008eaa; outline-offset:3px; } .ds-run:disabled { opacity:.62; cursor:wait; }"
+    },
+    {
+      "name": "Proof Tag",
+      "kind": "chip",
+      "refersTo": "proof-tag",
+      "description": "Labels a requested capability without pretending to be a selectable pill.",
+      "html": "<span class=\"ds-tag\">persistent profile</span>",
+      "css": ".ds-tag { display:inline-block; padding:4px 6px; border:1px solid #c7c5ba; color:#5e635d; font:500 10px/1.45 'SFMono-Regular',Consolas,monospace; }"
+    },
+    {
+      "name": "Active Ticket",
+      "kind": "nav",
+      "refersTo": "navigation-active",
+      "description": "Marks the current workload route as a paper job ticket.",
+      "html": "<a class=\"ds-ticket\" href=\"#/proof\" aria-current=\"page\"><span>01</span><strong>Live proof</strong></a>",
+      "css": ".ds-ticket { display:grid; grid-template-columns:24px 1fr; align-items:center; gap:7px; min-height:56px; padding:7px 8px; border:1px solid #242825; background:#f5f3ec; color:#242825; text-decoration:none; font:700 12px/1.45 'Proof Sans','Avenir Next','Segoe UI',sans-serif; } .ds-ticket:focus-visible { outline:2px solid #008eaa; outline-offset:3px; } .ds-ticket span { font:500 10px/1.45 'SFMono-Regular',Consolas,monospace; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Prepress Proofing Desk",
+    "overview": "KWebShell presents technical evidence like a physical press proof: coated paper, graphite rules, CMYK registration marks, job-ticket navigation, and measuring ledgers. The surface is calm and information-dense, with visual character coming from production artifacts rather than generic dashboard cards or decorative effects.\n\nThe interface must make correctness observable. Progress travels through the registration ruler, measured values remain textual, and unavailable evidence stays visibly unavailable. Expressive details support inspection; they never turn benchmark fixtures into product or performance claims.",
+    "keyCharacteristics": ["Coated-paper fields divided by precise graphite rules.", "Editorial serif headings paired with utilitarian sans and mono evidence.", "CMYK accents reserved for registration, progress, focus, and measurement.", "Flat, native-feeling controls with explicit state text.", "Desktop information density that collapses into a usable single-column proof."],
+    "rules": [
+      { "name": "The Process-Ink Rule", "body": "CMYK color marks process, focus, or measured state; it is never decorative fill for large surfaces.", "section": "colors" },
+      { "name": "The Evidence-State Rule", "body": "Green means a completed proof only. Missing data uses text and neutral graphite instead of a reassuring success color.", "section": "colors" },
+      { "name": "The Three-Face Rule", "body": "Serif is editorial, sans is operational, and mono is evidence. Do not swap their responsibilities for decoration.", "section": "typography" },
+      { "name": "The Flat-Proof Rule", "body": "A resting surface has no shadow. Use material color and rules to express ownership; reserve motion for a state transition.", "section": "elevation" }
+    ],
+    "dos": ["Do keep raw measurements, unavailable states, and synthetic-fixture labels explicit.", "Do use paper tone, rules, and typography to establish hierarchy before adding color.", "Do preserve keyboard focus, 44px controls, semantic regions, and reduced-motion behavior.", "Do let streamed text and the registration ruler carry the principal motion."],
+    "donts": ["Don't replace the proofing language with generic AI chat cards or dashboard tiles.", "Don't use gradients, glassmorphism, ambient shadows, or large decorative color fields.", "Don't communicate pass, progress, or availability through color alone.", "Don't imply that the synthetic workload is LobeHub or third-party performance evidence."]
+  }
+}

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="352" height="224" viewBox="0 0 352 224" role="img" aria-labelledby="title desc">
+  <title id="title">KWebShell registration proof</title>
+  <desc id="desc">Layered cyan, magenta, yellow, and graphite application panels aligned to measuring marks.</desc>
+  <rect width="352" height="224" fill="#fbfaf6"/>
+  <g fill="none" stroke-width="2">
+    <rect x="58" y="45" width="194" height="120" stroke="#008eaa" transform="translate(-5 2)"/>
+    <rect x="58" y="45" width="194" height="120" stroke="#ba356f" transform="translate(5 -2)"/>
+    <rect x="58" y="45" width="194" height="120" stroke="#d5a900" transform="translate(0 5)"/>
+    <rect x="58" y="45" width="194" height="120" stroke="#242825"/>
+  </g>
+  <g stroke="#242825" stroke-width="1">
+    <path d="M18 30h28M32 16v28M278 30h28M292 16v28M18 192h28M32 178v28M278 192h28M292 178v28"/>
+    <circle cx="32" cy="30" r="8" fill="none"/><circle cx="292" cy="30" r="8" fill="none"/><circle cx="32" cy="192" r="8" fill="none"/><circle cx="292" cy="192" r="8" fill="none"/>
+  </g>
+  <g fill="#242825">
+    <rect x="76" y="63" width="64" height="7"/><rect x="76" y="78" width="150" height="3" opacity=".45"/><rect x="76" y="88" width="126" height="3" opacity=".35"/>
+    <rect x="76" y="108" width="70" height="38" opacity=".08"/><rect x="154" y="108" width="72" height="38" opacity=".13"/>
+  </g>
+  <g font-family="monospace" font-size="9" fill="#5e635d"><text x="58" y="185">KWS / PROOF 01</text><text x="212" y="185">151.0</text></g>
+  <g transform="translate(273 70)"><circle cx="18" cy="18" r="17" fill="#008eaa"/><circle cx="38" cy="18" r="17" fill="#ba356f" fill-opacity=".75"/><circle cx="28" cy="36" r="17" fill="#d5a900" fill-opacity=".75"/><circle cx="28" cy="24" r="5" fill="#242825"/></g>
+</svg>

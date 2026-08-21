@@ -24,14 +24,17 @@ jobs:
             os: ubuntu-24.04
             gpu-contract: GPU unavailable contract
             expect-hardware-gpu-unavailable: true
+            benchmark-machine-class: github-hosted-ubuntu-24.04-x64
           - target: windows-x64
             os: windows-2022
             gpu-contract: GPU unavailable contract
             expect-hardware-gpu-unavailable: true
+            benchmark-machine-class: github-hosted-windows-2022-x64
           - target: macos-arm64
             os: macos-15
             gpu-contract: GPU required
             expect-hardware-gpu-unavailable: false
+            benchmark-machine-class: github-hosted-macos-15-arm64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
 
@@ -126,3 +129,18 @@ jobs:
           ./gradlew --no-daemon check \
             -PcefRoot="$PWD/.cef-ci/source/$CEF_DIRECTORY" \
             -PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}
+
+      - name: Run application workload benchmark
+        shell: bash
+        run: |
+          ./gradlew --no-daemon :kweb-example-app-benchmark:applicationBenchmarkIntegrationTest \
+            -PcefRoot="$PWD/.cef-ci/source/$CEF_DIRECTORY" \
+            -PkwebBenchmarkMachineClass=${{ matrix.benchmark-machine-class }}
+
+      - name: Upload application benchmark evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: application-benchmark-${{ matrix.target }}-${{ github.sha }}
+          path: kweb-example-app-benchmark/build/reports/application-benchmark/
+          if-no-files-found: error
+          retention-days: 14

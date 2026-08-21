@@ -26,4 +26,6 @@ tasks.named("check") {
     dependsOn(":kweb-runtime-pack:verifyCefSourcePatchManifest")
     dependsOn(":kweb-runtime-pack:verifyHostRuntimePayload")
     dependsOn(":kweb-example-html5-lab:check")
+    dependsOn(":kweb-example-support:check")
+    dependsOn(":kweb-example-app-benchmark:check")
 }

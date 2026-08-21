@@ -1,8 +1,8 @@
+import java.util.Locale
 import org.gradle.api.tasks.Delete
 import org.gradle.api.tasks.Exec
-import org.gradle.jvm.toolchain.JavaLanguageVersion
+import org.gradle.api.tasks.JavaExec
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import java.util.Locale
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -22,12 +22,12 @@ dependencies {
         System.getProperty("os.name").lowercase(Locale.ROOT).startsWith("windows") -> "windows"
         System.getProperty("os.name").lowercase(Locale.ROOT).startsWith("mac") -> "macos"
         System.getProperty("os.name").lowercase(Locale.ROOT).startsWith("linux") -> "linux"
-        else -> throw GradleException("Unsupported desktop operating system for the HTML5 lab.")
+        else -> throw GradleException("Unsupported desktop operating system for the application benchmark.")
     }
     val skikoArchitecture = when (System.getProperty("os.arch").lowercase(Locale.ROOT)) {
         "x86_64", "amd64" -> "x64"
         "aarch64", "arm64" -> "arm64"
-        else -> throw GradleException("Unsupported desktop architecture for the HTML5 lab.")
+        else -> throw GradleException("Unsupported desktop architecture for the application benchmark.")
     }
     implementation(project(":kweb-desktop"))
     implementation(project(":kweb-example-support"))
@@ -46,7 +46,7 @@ tasks.test {
 
 val operatingSystem = providers.systemProperty("os.name")
 val nativeReleaseDirectory = rootProject.layout.projectDirectory.dir("kweb-cef-native/build/native/Release")
-val nativeEngineLibrary = providers.systemProperty("os.name").map { name ->
+val nativeEngineLibrary = operatingSystem.map { name ->
     val fileName = when {
         name.lowercase(Locale.ROOT).startsWith("windows") -> "kwebshell_engine.dll"
         name.lowercase(Locale.ROOT).startsWith("mac") -> "libkwebshell_engine.dylib"
@@ -58,8 +58,7 @@ val nativeCefRuntime = operatingSystem.map { name ->
     when {
         name.lowercase(Locale.ROOT).startsWith("windows") -> nativeReleaseDirectory.file("libcef.dll").asFile
         name.lowercase(Locale.ROOT).startsWith("mac") -> nativeReleaseDirectory.file(
-            "KWebShell.app/Contents/Frameworks/Chromium Embedded Framework.framework/" +
-                "Chromium Embedded Framework",
+            "KWebShell.app/Contents/Frameworks/Chromium Embedded Framework.framework/Chromium Embedded Framework",
         ).asFile
         else -> nativeReleaseDirectory.file("libcef.so").asFile
     }
@@ -83,19 +82,15 @@ val nativeResources = operatingSystem.map { name ->
     }
 }
 val nativeLocales = operatingSystem.map { name ->
-    if (name.lowercase(Locale.ROOT).startsWith("mac")) {
-        nativeResources.get()
-    } else {
-        nativeReleaseDirectory.dir("locales").asFile
-    }
+    if (name.lowercase(Locale.ROOT).startsWith("mac")) nativeResources.get()
+    else nativeReleaseDirectory.dir("locales").asFile
 }
-val integrationRoot = layout.buildDirectory.dir("capability-lab-integration")
-val integrationOutput = layout.buildDirectory.dir("reports/capability-lab")
-val javaLauncher = javaToolchains.launcherFor {
-    languageVersion.set(JavaLanguageVersion.of(25))
-}
+val javaLauncher = javaToolchains.launcherFor { languageVersion.set(org.gradle.jvm.toolchain.JavaLanguageVersion.of(25)) }
+val integrationRoot = layout.buildDirectory.dir("application-benchmark-integration")
+val integrationOutput = layout.buildDirectory.dir("reports/application-benchmark")
 val integrationClasspath = sourceSets.main.get().runtimeClasspath
-val cleanIntegration = tasks.register<Delete>("cleanCapabilityLabIntegration") {
+val benchmarkMachineClass = providers.gradleProperty("kwebBenchmarkMachineClass").orElse("unspecified")
+val cleanIntegration = tasks.register<Delete>("cleanApplicationBenchmarkIntegration") {
     delete(integrationRoot, integrationOutput)
 }
 val integrationCommand = providers.provider {
@@ -104,44 +99,47 @@ val integrationCommand = providers.provider {
         add("--enable-native-access=ALL-UNNAMED")
         add("-Djava.awt.headless=false")
         add("-Dkweb.native.library.path=${nativeEngineLibrary.get().absolutePath}")
-        add("-Dkweb.capability.lab.root=${integrationRoot.get().asFile.absolutePath}")
-        add("-Dkweb.capability.lab.output=${integrationOutput.get().asFile.absolutePath}")
         add("-Dkweb.engine.cef.runtime.path=${nativeCefRuntime.get().absolutePath}")
         add("-Dkweb.engine.subprocess.path=${nativeBrowserSubprocess.get().absolutePath}")
         add("-Dkweb.engine.resources.path=${nativeResources.get().absolutePath}")
         add("-Dkweb.engine.locales.path=${nativeLocales.get().absolutePath}")
+        add("-Dkweb.benchmark.root=${integrationRoot.get().asFile.absolutePath}/profiles")
+        add("-Dkweb.benchmark.output=${integrationOutput.get().asFile.absolutePath}")
+        add("-Dkweb.benchmark.workload.root=${layout.projectDirectory.dir("src/main/resources/workload").asFile.absolutePath}")
+        add("-Dkweb.benchmark.workload.lock=${layout.projectDirectory.file("src/main/resources/workload.lock.json").asFile.absolutePath}")
+        add("-Dkweb.benchmark.baseline.catalog=${layout.projectDirectory.file("src/main/resources/benchmark-baselines.json").asFile.absolutePath}")
+        add("-Dkweb.benchmark.machine-class=${benchmarkMachineClass.get()}")
+        add("-Dkweb.benchmark.git-revision=${System.getProperty("kweb.benchmark.git-revision") ?: "working-tree"}")
         add("-cp")
         add(integrationClasspath.asPath)
-        add("io.github.kingsword09.kwebshell.example.html5.MainKt")
+        add("io.github.kingsword09.kwebshell.example.benchmark.MainKt")
         add("integration")
     }
 }
-val capabilityLabIntegrationTest = tasks.register<Exec>("capabilityLabIntegrationTest") {
+val applicationBenchmarkIntegrationTest = tasks.register<Exec>("applicationBenchmarkIntegrationTest") {
     group = "verification"
-    description = "Runs the HTML5 capability lab against the real CEF runtime twice for Profile persistence."
+    description = "Runs the locked application workload benchmark against real CEF with one warmup and ten measured pairs."
     dependsOn(cleanIntegration, tasks.test, ":kweb-cef-native:buildNative")
-    inputs.dir(layout.projectDirectory.dir("src/main/resources"))
+    inputs.dir(layout.projectDirectory.dir("src/main/resources/workload"))
+    inputs.file(layout.projectDirectory.file("src/main/resources/workload.lock.json"))
+    inputs.file(layout.projectDirectory.file("src/main/resources/benchmark-baselines.json"))
     inputs.file(nativeEngineLibrary)
     inputs.file(nativeCefRuntime)
     inputs.file(nativeBrowserSubprocess)
-    inputs.file(nativeResources.map { it.resolve("resources.pak") })
-    inputs.file(nativeLocales.map { directory ->
-        if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("mac")) {
-            directory.resolve("en.lproj/locale.pak")
-        } else {
-            directory.resolve("en-US.pak")
-        }
-    })
     if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("linux")) {
-        commandLine(
-            listOf("xvfb-run", "--auto-servernum", "--server-args=-screen 0 1440x1000x24") +
-                integrationCommand.get(),
-        )
+        commandLine(listOf("xvfb-run", "--auto-servernum", "--server-args=-screen 0 1600x1200x24") + integrationCommand.get())
     } else {
         commandLine(integrationCommand.get())
     }
 }
 
-tasks.named("check") {
-    dependsOn(capabilityLabIntegrationTest)
+val applicationBenchmarkPreview = tasks.register<JavaExec>("applicationBenchmarkPreview") {
+    group = "application"
+    description = "Serves the locked application workload for visual and browser inspection."
+    dependsOn(tasks.classes)
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.kingsword09.kwebshell.example.benchmark.MainKt")
+    args("preview")
+    systemProperty("kweb.benchmark.workload.root", layout.projectDirectory.dir("src/main/resources/workload").asFile.absolutePath)
+    systemProperty("kweb.benchmark.workload.lock", layout.projectDirectory.file("src/main/resources/workload.lock.json").asFile.absolutePath)
 }

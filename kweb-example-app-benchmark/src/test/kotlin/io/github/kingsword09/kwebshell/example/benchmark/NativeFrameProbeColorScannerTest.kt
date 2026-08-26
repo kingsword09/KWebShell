@@ -1,6 +1,7 @@
 package io.github.kingsword09.kwebshell.example.benchmark
 
 import java.awt.image.BufferedImage
+import java.awt.Rectangle
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -50,6 +51,21 @@ class NativeFrameProbeColorScannerTest {
         val bounds = NativeFrameProbeColorScanner.locateCaptureBounds(image)
 
         assertTrue(bounds?.contains(223, 91) == true)
+    }
+
+    @Test
+    fun ignoresMatchingThemeColorsOutsideExpectedProbeBounds() {
+        val image = BufferedImage(300, 220, BufferedImage.TYPE_INT_ARGB)
+        for (y in 10 until 58) {
+            for (x in 190 until 280) image.setRGB(x, y, 0xFF20231F.toInt())
+        }
+
+        val bounds = NativeFrameProbeColorScanner.locateCaptureBounds(
+            image = image,
+            expected = Rectangle(266, 82, 18, 18),
+        )
+
+        assertTrue(bounds == null)
     }
 
     private fun image(color: Int): BufferedImage = BufferedImage(12, 12, BufferedImage.TYPE_INT_ARGB).also { image ->

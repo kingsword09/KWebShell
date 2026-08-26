@@ -30,6 +30,7 @@ internal object NativeFrameMetricsSampler {
         val probe = session.evaluate("window.kwebBenchmark.startPresentProbe()")
             .value?.jsonObject
             ?: throw BenchmarkException("frame.probe-result-missing", "The page returned no present-probe bounds.")
+        session.evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
         val width = probe.requiredPositive("width")
         val height = probe.requiredPositive("height")
         val bounds = AtomicReference<Rectangle>()
@@ -134,10 +135,12 @@ internal object NativeFrameProbeColorScanner {
         require(scaleX > 0.0 && scaleY > 0.0)
         val centerX = expected?.let { ((it.x + it.width / 2) * scaleX).toInt() }
         val centerY = expected?.let { ((it.y + it.height / 2) * scaleY).toInt() }
-        val searchLeft = (centerX?.minus(80) ?: (image.width - 180)).coerceAtLeast(0)
-        val searchTop = (centerY?.minus(80) ?: 0).coerceAtLeast(0)
-        val searchRight = (centerX?.plus(80) ?: image.width).coerceAtMost(image.width)
-        val searchBottom = (centerY?.plus(80) ?: image.height.coerceAtMost(190)).coerceAtMost(image.height)
+        val radiusX = expected?.let { (it.width * scaleX).toInt() + SEARCH_PADDING }
+        val radiusY = expected?.let { (it.height * scaleY).toInt() + SEARCH_PADDING }
+        val searchLeft = (centerX?.minus(radiusX ?: 80) ?: (image.width - 180)).coerceAtLeast(0)
+        val searchTop = (centerY?.minus(radiusY ?: 80) ?: 0).coerceAtLeast(0)
+        val searchRight = (centerX?.plus(radiusX ?: 80) ?: image.width).coerceAtMost(image.width)
+        val searchBottom = (centerY?.plus(radiusY ?: 80) ?: image.height.coerceAtMost(190)).coerceAtMost(image.height)
         var minX = image.width
         var minY = image.height
         var maxX = -1
@@ -179,4 +182,5 @@ internal object NativeFrameProbeColorScanner {
 
     private const val MINIMUM_COLOR_DELTA: Int = 64
     private const val COLOR_TOLERANCE: Int = 24
+    private const val SEARCH_PADDING: Int = 8
 }

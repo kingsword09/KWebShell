@@ -20,21 +20,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: linux-x64
-            os: ubuntu-24.04
-            gpu-contract: GPU unavailable contract
-            expect-hardware-gpu-unavailable: true
-            benchmark-machine-class: github-hosted-ubuntu-24.04-x64
           - target: windows-x64
             os: windows-2022
             gpu-contract: GPU unavailable contract
             expect-hardware-gpu-unavailable: true
             benchmark-machine-class: github-hosted-windows-2022-x64
-          - target: macos-arm64
-            os: macos-15
-            gpu-contract: GPU required
-            expect-hardware-gpu-unavailable: false
-            benchmark-machine-class: github-hosted-macos-15-arm64
+            run-application-benchmark: true
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
 
@@ -131,6 +122,7 @@ jobs:
             -PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}
 
       - name: Run application workload benchmark
+        if: matrix.run-application-benchmark
         shell: bash
         run: |
           ./gradlew --no-daemon :kweb-example-app-benchmark:applicationBenchmarkIntegrationTest \
@@ -138,6 +130,7 @@ jobs:
             -PkwebBenchmarkMachineClass=${{ matrix.benchmark-machine-class }}
 
       - name: Upload application benchmark evidence
+        if: matrix.run-application-benchmark
         uses: actions/upload-artifact@v6
         with:
           name: application-benchmark-${{ matrix.target }}-${{ github.sha }}

@@ -119,12 +119,7 @@ internal object NativeFrameProbeColorScanner {
         val counts = IntArray(probeColors.size)
         for (y in 0 until image.height) {
             for (x in 0 until image.width) {
-                when (image.getRGB(x, y)) {
-                    probeColors[0] -> counts[0] += 1
-                    probeColors[1] -> counts[1] += 1
-                    probeColors[2] -> counts[2] += 1
-                    probeColors[3] -> counts[3] += 1
-                }
+                colorIndex(image.getRGB(x, y))?.let { index -> counts[index] += 1 }
             }
         }
         return counts
@@ -149,7 +144,7 @@ internal object NativeFrameProbeColorScanner {
         var maxY = -1
         for (y in searchTop until searchBottom) {
             for (x in searchLeft until searchRight) {
-                if (isProbeColor(image.getRGB(x, y))) {
+                if (colorIndex(image.getRGB(x, y)) != null) {
                     minX = minOf(minX, x)
                     minY = minOf(minY, y)
                     maxX = maxOf(maxX, x)
@@ -170,7 +165,7 @@ internal object NativeFrameProbeColorScanner {
         return previous.indices.sumOf { index -> kotlin.math.abs(previous[index] - current[index]) } >= MINIMUM_COLOR_DELTA
     }
 
-    private fun isProbeColor(pixel: Int): Boolean = probeColors.any { expected ->
+    private fun colorIndex(pixel: Int): Int? = probeColors.indexOfFirst { expected ->
         val red = (pixel ushr 16) and 0xff
         val green = (pixel ushr 8) and 0xff
         val blue = pixel and 0xff
@@ -180,7 +175,7 @@ internal object NativeFrameProbeColorScanner {
         kotlin.math.abs(red - expectedRed) <= COLOR_TOLERANCE &&
             kotlin.math.abs(green - expectedGreen) <= COLOR_TOLERANCE &&
             kotlin.math.abs(blue - expectedBlue) <= COLOR_TOLERANCE
-    }
+    }.takeIf { it >= 0 }
 
     private const val MINIMUM_COLOR_DELTA: Int = 64
     private const val COLOR_TOLERANCE: Int = 24

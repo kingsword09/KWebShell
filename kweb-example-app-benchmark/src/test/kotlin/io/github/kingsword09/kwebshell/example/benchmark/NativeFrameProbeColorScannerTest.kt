@@ -28,6 +28,19 @@ class NativeFrameProbeColorScannerTest {
     }
 
     @Test
+    fun detectsACompositorAdjustedProbeColorTransition() {
+        val adjustedCyan = image(0xFF0C99B3.toInt())
+        val adjustedMagenta = image(0xFFB54178.toInt())
+
+        assertTrue(
+            NativeFrameProbeColorScanner.hasTransition(
+                NativeFrameProbeColorScanner.signature(adjustedCyan),
+                NativeFrameProbeColorScanner.signature(adjustedMagenta),
+            ),
+        )
+    }
+
+    @Test
     fun locatesProbeInWindowHeader() {
         val image = BufferedImage(240, 220, BufferedImage.TYPE_INT_ARGB)
         for (y in 82 until 100) {

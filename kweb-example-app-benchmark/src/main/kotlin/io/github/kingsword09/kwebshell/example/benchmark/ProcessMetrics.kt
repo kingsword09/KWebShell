@@ -16,7 +16,7 @@ internal data class ProcessMetrics(
 internal object ProcessMetricsSampler {
     fun sample(rootPid: Long = ProcessHandle.current().pid()): ProcessMetrics {
         val pids = processTree(rootPid)
-        val samples = pids.map { pid -> sampleOne(pid) }
+        val samples = if (isWindows()) sampleWindowsTree(rootPid, pids) else pids.map { pid -> sampleOne(pid) }
         return ProcessMetrics(
             residentBytes = samples.sumOf { it.residentBytes },
             privateBytes = samples.sumOf { it.privateBytes },
@@ -35,7 +35,6 @@ internal object ProcessMetricsSampler {
 
     private fun sampleOne(pid: Long): ProcessMetrics = when {
         isMac() -> sampleMac(pid)
-        isWindows() -> sampleWindows(pid)
         isLinux() -> sampleLinux(pid)
         else -> throw BenchmarkException("process.platform-unsupported", "Process metrics are unsupported on '${System.getProperty("os.name")}'.")
     }
@@ -64,21 +63,32 @@ internal object ProcessMetricsSampler {
         return ProcessMetrics(resident, privateBytes, cpu, threadCount)
     }
 
-    private fun sampleWindows(pid: Long): ProcessMetrics {
+    private fun sampleWindowsTree(rootPid: Long, pids: List<Long>): List<ProcessMetrics> {
         val dollar = '$'
-        val script = "$" + "process = Get-Process -Id $pid -ErrorAction Stop; " +
-            "[pscustomobject]@{WorkingSet=[double]" + dollar + "process.WorkingSet64;" +
-            "Private=[double]" + dollar + "process.PrivateMemorySize64;" +
-            "CpuMs=[double]" + dollar + "process.TotalProcessorTime.TotalMilliseconds;" +
-            "Threads=[double]" + dollar + "process.Threads.Count} | ConvertTo-Csv -NoTypeInformation"
+        val script = dollar + "processes = Get-Process -Id ${pids.joinToString(",")} -ErrorAction SilentlyContinue; " +
+            dollar + "processes | ForEach-Object { [pscustomobject]@{" +
+            "Id=[double]" + dollar + "_.Id;" +
+            "WorkingSet=[double]" + dollar + "_.WorkingSet64;" +
+            "Private=[double]" + dollar + "_.PrivateMemorySize64;" +
+            "CpuMs=[double]" + dollar + "_.TotalProcessorTime.TotalMilliseconds;" +
+            "Threads=[double]" + dollar + "_.Threads.Count} } | ConvertTo-Csv -NoTypeInformation"
         val output = runCommand(listOf("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script), "process.windows.powershell")
         val rows = output.lineSequence().filter(String::isNotBlank).toList()
-        if (rows.size != 2) throw BenchmarkException("process.windows.output-invalid", "PowerShell returned no unique row for PID $pid.")
-        val values = parseCsvLine(rows[1]).map { value ->
-            value.toDoubleOrNull() ?: throw BenchmarkException("process.windows.value-invalid", "PowerShell value '$value' is invalid.")
+        if (rows.size < 2) throw BenchmarkException("process.windows.output-invalid", "PowerShell returned no process rows.")
+        val samples = rows.drop(1).map { row ->
+            val values = parseCsvLine(row).map { value ->
+                value.toDoubleOrNull() ?: throw BenchmarkException("process.windows.value-invalid", "PowerShell value '$value' is invalid.")
+            }
+            if (values.size != 5) throw BenchmarkException("process.windows.column-count", "PowerShell returned ${values.size} process metrics.")
+            WindowsProcessSample(
+                pid = values[0].toLong(),
+                metrics = ProcessMetrics(values[1], values[2], values[3], values[4]),
+            )
         }
-        if (values.size != 4) throw BenchmarkException("process.windows.column-count", "PowerShell returned ${values.size} process metrics.")
-        return ProcessMetrics(values[0], values[1], values[2], values[3])
+        if (samples.none { it.pid == rootPid }) {
+            throw BenchmarkException("process.windows.root-missing", "PowerShell returned no row for root PID $rootPid.")
+        }
+        return samples.map(WindowsProcessSample::metrics)
     }
 
     private fun sampleLinux(pid: Long): ProcessMetrics {
@@ -127,6 +137,7 @@ internal object ProcessMetricsSampler {
     }
 
     private fun parseCsvLine(line: String): List<String> = line.trim().removePrefix("\"").removeSuffix("\"").split("\",\"")
+    private data class WindowsProcessSample(val pid: Long, val metrics: ProcessMetrics)
     private fun isMac() = System.getProperty("os.name").lowercase(Locale.ROOT).startsWith("mac")
     private fun isWindows() = System.getProperty("os.name").lowercase(Locale.ROOT).startsWith("windows")
     private fun isLinux() = System.getProperty("os.name").lowercase(Locale.ROOT).startsWith("linux")

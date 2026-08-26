@@ -42,8 +42,10 @@ class KWebExampleCdpClientTest {
                 val evaluation = session.evaluate("Promise.resolve({marker: 'ready'})")
                 assertEquals("object", evaluation.type)
                 assertEquals("ready", evaluation.value?.jsonObject?.get("marker")?.jsonPrimitive?.contentOrNull)
+                session.command("Tracing.end")
+                assertEquals("stream-1", session.awaitEvent("Tracing.tracingComplete")["stream"]?.jsonPrimitive?.contentOrNull)
             }
-            assertEquals(listOf(1L, 1L, 2L, 3L), server.commandIds.toList())
+            assertEquals(listOf(1L, 1L, 2L, 3L, 4L), server.commandIds.toList())
         }
     }
 
@@ -168,6 +170,13 @@ private class FakeCdpServer(
                     put("result", result)
                 }.toString().toByteArray(StandardCharsets.UTF_8)
                 writeTextFrame(output, response)
+                if (method == "Tracing.end") {
+                    writeTextFrame(
+                        output,
+                        """{"method":"Tracing.tracingComplete","params":{"stream":"stream-1"}}"""
+                            .toByteArray(StandardCharsets.UTF_8),
+                    )
+                }
             }
         }
     }

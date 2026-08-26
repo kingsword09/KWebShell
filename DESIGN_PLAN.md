@@ -1421,13 +1421,21 @@ defined in [Example Applications And Benchmark Plan](docs/example-benchmark-plan
 
 #### Objective 10.1: Build the HTML5 Capability Lab
 
-Create `kweb-example-html5-lab`, a locally packaged and versioned HTML5 test
-origin that reports real evidence for language/runtime, DOM/CSS, graphics,
-network, storage, workers, service workers, media, permissions, and lifecycle
-features. It must use only the public Engine/Profile/Page API, distinguish
-required from optional capabilities, export JSON plus a rendered report, and
-fail on missing required evidence. No browser or OS WebView fallback is
-allowed.
+`kweb-example-html5-lab` is a locally packaged and versioned HTML5 test origin
+that reports real evidence for language/runtime, DOM/CSS, graphics, network,
+storage, workers, service workers, media, permissions, accessibility, input,
+and lifecycle features. It uses only the public Engine/Profile/Page API.
+The coordinator retains one origin while cold and warm runs execute in
+separate JDK 25 processes against one persistent Profile, matching the
+single-lifecycle native Engine contract. The runner enables a fixed loopback
+CDP endpoint, verifies Chrome/CDP identity and an AX tree marker, dispatches a
+trusted input event, checks continuous public page events, and confirms that
+the endpoint disappears after shutdown. Strict JSON, rendered HTML, and two
+real window screenshots are emitted atomically. Missing required evidence,
+optional execution failures, schema drift, and persistence failures are
+terminal; no browser or OS WebView fallback is allowed. macOS arm64 is the
+local implementation gate, while Windows x64 and Linux x64 use the identical
+Gradle task in hosted CI before cross-platform publication.
 
 #### Objective 10.2: Build the application-scale workload benchmark
 

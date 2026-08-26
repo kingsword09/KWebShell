@@ -3,6 +3,13 @@ package io.github.kingsword09.kwebshell.desktop.internal
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeException
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebNativeException
+import io.github.kingsword09.kwebshell.core.KWebConfigurationException
+import io.github.kingsword09.kwebshell.core.KWebBounds
+import io.github.kingsword09.kwebshell.core.KWebCapability
+import io.github.kingsword09.kwebshell.core.KWebPageEventType
+import io.github.kingsword09.kwebshell.desktop.KWebComposeWindowHost
+import io.github.kingsword09.kwebshell.desktop.KWebDesktop
+import io.github.kingsword09.kwebshell.desktop.KWebDesktopEngineConfiguration
 import io.github.kingsword09.kwebshell.extensions.KWebExtensionLifecycleResolution
 import io.github.kingsword09.kwebshell.extensions.JvmKWebExtensionLifecycleCoordinator
 import io.github.kingsword09.kwebshell.extensions.KWebExtensionRuntime
@@ -32,6 +39,15 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
+import androidx.compose.ui.awt.ComposeWindow
 import java.awt.AWTEvent
 import java.awt.Point
 import java.awt.Robot
@@ -104,6 +120,7 @@ private enum class IntegrationMode(val argument: String) {
     PROFILE_CONTEXT_WAITERS("profile-context-waiters"),
     LISTENER_FAILURE("listener-failure"),
     FFM_STRESS("ffm-stress"),
+    PUBLIC_FACADE("public-facade"),
     HOLDER("holder"),
     INITIALIZATION_FAILURE("initialization-failure"),
     PORT_COLLISION("port-collision"),
@@ -131,6 +148,7 @@ fun main(arguments: Array<String>) {
             IntegrationMode.PROFILE_CONTEXT_WAITERS -> runProfileContextWaiterLifecycle()
             IntegrationMode.LISTENER_FAILURE -> runListenerFailureLifecycle()
             IntegrationMode.FFM_STRESS -> runFfmStressLifecycle()
+            IntegrationMode.PUBLIC_FACADE -> runPublicFacadeLifecycle()
             IntegrationMode.HOLDER -> runHolderLifecycle()
             IntegrationMode.INITIALIZATION_FAILURE -> runInitializationFailureLifecycle()
             IntegrationMode.PORT_COLLISION -> runPortCollisionLifecycle()
@@ -157,6 +175,7 @@ private fun runCoordinator() {
     runChildAndRequireSuccess(IntegrationMode.PROFILE_CONTEXT_WAITERS, root.resolve("profile-context-waiters"))
     runChildAndRequireSuccess(IntegrationMode.LISTENER_FAILURE, root.resolve("listener-failure"))
     runChildAndRequireSuccess(IntegrationMode.FFM_STRESS, root.resolve("ffm-stress"))
+    runChildAndRequireSuccess(IntegrationMode.PUBLIC_FACADE, root.resolve("public-facade"))
 
     val sharedRoot = root.resolve("initialization-failure")
     val holder = startChild(IntegrationMode.HOLDER, sharedRoot)
@@ -485,6 +504,169 @@ private fun runSuccessfulLifecycle() {
     requireCreateFailure(restart, NativeStatus.ENGINE_RESTART_FORBIDDEN)
     reportStage("main_complete")
     println("KWebShell engine success lifecycle passed.")
+}
+
+private fun runPublicFacadeLifecycle() {
+    val configuration = runtimeConfiguration()
+    val engine = KWebDesktop.openEngine(
+        KWebDesktopEngineConfiguration(
+            cefRuntime = configuration.cefRuntime,
+            browserSubprocess = configuration.browserSubprocess,
+            resources = configuration.resources,
+            locales = configuration.locales,
+            rootCache = configuration.rootCache,
+            log = configuration.log,
+            remoteDebuggingPort = configuration.remoteDebuggingPort,
+        ),
+    )
+    var surface: ComposeBrowserSurface? = null
+    var profile: io.github.kingsword09.kwebshell.core.KWebProfile? = null
+    var page: io.github.kingsword09.kwebshell.core.KWebPage? = null
+    try {
+        require(KWebCapability.NATIVE_CHILD in engine.capabilities)
+        require(KWebCapability.PERSISTENT_PROFILE in engine.capabilities)
+        require(KWebCapability.NAVIGATION in engine.capabilities)
+        require(KWebCapability.RESIZE in engine.capabilities)
+        require(KWebCapability.DEVTOOLS in engine.capabilities)
+        if (configuration.remoteDebuggingPort != 0) {
+            require(KWebCapability.CDP in engine.capabilities)
+        }
+
+        profile = kotlinx.coroutines.runBlocking { engine.openProfile("public-facade") }
+        val duplicate = try {
+            kotlinx.coroutines.runBlocking { engine.openProfile("public-facade") }
+            null
+        } catch (error: KWebConfigurationException) {
+            error
+        }
+        require(duplicate?.code == "profile.duplicate-physical-identity") {
+            "The public facade allowed a duplicate physical Profile: $duplicate"
+        }
+
+        BrowserOrigin().use { origin ->
+            val invalidWindow = NativeEngine.onAwtEventDispatchThread { ComposeWindow() }
+            try {
+                val beforeInvalidParent = NativeBrowser.liveNativeBrowserCount()
+                val invalidParent = try {
+                    kotlinx.coroutines.runBlocking {
+                        profile!!.openPage(
+                            KWebDesktop.composeWindowHost(invalidWindow),
+                            origin.firstUrl,
+                            KWebBounds(800, 600),
+                        )
+                    }
+                    null
+                } catch (error: KWebConfigurationException) {
+                    error
+                }
+                require(invalidParent?.code == "desktop.page.parent-not-visible") {
+                    "The public facade created a page for a non-visible ComposeWindow: $invalidParent"
+                }
+                require(NativeBrowser.liveNativeBrowserCount() == beforeInvalidParent) {
+                    "Invalid ComposeWindow validation created a native browser."
+                }
+            } finally {
+                NativeEngine.onAwtEventDispatchThread(invalidWindow::dispose)
+            }
+            surface = NativeEngine.onAwtEventDispatchThread { ComposeBrowserSurface.create(800, 600) }
+            val nativeParent = surface!!.nativeParent
+            val host: KWebComposeWindowHost = KWebDesktop.composeWindowHost(surface!!.window)
+            page = kotlinx.coroutines.runBlocking {
+                profile!!.openPage(host, origin.firstUrl, KWebBounds(800, 600))
+            }
+            val publicEvents = CopyOnWriteArrayList<io.github.kingsword09.kwebshell.core.KWebPageEvent>()
+            val eventScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val eventJob = eventScope.launch {
+                page!!.events.collect { publicEvents += it }
+            }
+            try {
+                kotlinx.coroutines.runBlocking {
+                    withTimeout(30_000) {
+                        page!!.events.first { it.type == KWebPageEventType.CREATED }
+                    }
+                }
+                kotlinx.coroutines.runBlocking { page!!.navigate(origin.secondUrl) }
+                kotlinx.coroutines.runBlocking {
+                    withTimeout(30_000) {
+                        page!!.events.first {
+                            it.type == KWebPageEventType.ADDRESS_CHANGED && it.text == origin.secondUrl
+                        }
+                    }
+                }
+                kotlinx.coroutines.runBlocking { page!!.resize(KWebBounds(960, 640)) }
+                kotlinx.coroutines.runBlocking {
+                    withTimeout(30_000) {
+                        page!!.events.first {
+                            val eventBounds = it.bounds
+                            it.type == KWebPageEventType.RESIZED &&
+                                eventBounds?.width == 960 && eventBounds?.height == 640
+                        }
+                    }
+                }
+                kotlinx.coroutines.runBlocking { page!!.openDevTools() }
+                kotlinx.coroutines.runBlocking { page!!.closeDevTools() }
+
+                val profileClose = try {
+                    profile!!.close()
+                    null
+                } catch (error: KWebNativeException) {
+                    error
+                }
+                require(profileClose?.code == "desktop.profile.live-pages") {
+                    "The public Profile closed with a live page: $profileClose"
+                }
+                val engineClose = try {
+                    engine.close()
+                    null
+                } catch (error: KWebNativeException) {
+                    error
+                }
+                require(engineClose?.code == "native.abi.engine-has-live-browsers") {
+                    "The public Engine did not reject a live page: $engineClose"
+                }
+
+                page!!.close()
+                kotlinx.coroutines.runBlocking {
+                    withTimeout(30_000) {
+                        page!!.events.first { it.type == KWebPageEventType.CLOSED }
+                    }
+                }
+                require(
+                    NativeEngine.onAwtEventDispatchThread {
+                        surface!!.window.isShowing && surface!!.window.windowHandle == nativeParent
+                    },
+                ) {
+                    "The ComposeWindow parent changed or stopped showing after public page close."
+                }
+                profile!!.close()
+                engine.close()
+            } finally {
+                kotlinx.coroutines.runBlocking { eventJob.cancelAndJoin() }
+                eventScope.cancel()
+            }
+            require(publicEvents.firstOrNull()?.type == KWebPageEventType.CREATED)
+            require(publicEvents.lastOrNull()?.type == KWebPageEventType.CLOSED)
+            require(publicEvents.map { it.sequence } == (1L..publicEvents.size.toLong()).toList()) {
+                "The public facade reordered page events: $publicEvents"
+            }
+            require(NativeBrowser.liveNativeBrowserCount() == 0L)
+        }
+    } finally {
+        if (page?.lifecycle?.value != KWebLifecycleState.CLOSED) {
+            page?.close()
+        }
+        if (profile?.lifecycle?.value != KWebLifecycleState.CLOSED) {
+            profile?.close()
+        }
+        if (engine.lifecycle.value != KWebLifecycleState.CLOSED) {
+            engine.close()
+        }
+        surface?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
+    }
+    require(NativeBrowser.liveNativeBrowserCount() == 0L)
+    require(NativeEngine.liveNativeEngineCount() == 0L)
+    awaitFfmCallbackOwnerCount(0)
+    println("KWebShell public desktop facade lifecycle passed.")
 }
 
 private fun runExtensionLifecycleStage1() = withExtensionLifecycleBrowsers { engine, alpha, beta, _, origin, cdp, root ->

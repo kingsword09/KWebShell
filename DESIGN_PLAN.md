@@ -1374,6 +1374,43 @@ contract on all three hosted targets. This remains a hard requirement: a future
 platform without an equivalent supported handle is rejected rather than given
 a hidden JNI fragment or a different rendering contract.
 
+### Phase 9: Public desktop lifecycle API
+
+#### Objective 9.1: Publish the verified native-child engine facade
+
+This objective exposes the already-tested native-child browser contract through
+typed Kotlin APIs without exposing CEF, FFM, or native handles. It is a desktop
+facade over the single production FFM engine; it does not add a second backend,
+an OS WebView, an OSR renderer, or a synthetic extension runtime.
+
+Acceptance:
+
+- `kweb-core` publishes immutable page bounds, lifecycle/event contracts,
+  capability identifiers, and suspendable Engine/Profile/Page ownership APIs
+  backed by `StateFlow` and `Flow`.
+- `kweb-desktop` publishes an explicit JDK 25 configuration and a
+  `ComposeWindow`-parented Engine/Profile/Page facade. The parent must be a
+  displayable, showing `ComposeWindow` with a non-zero documented
+  `windowHandle`; invalid or disposed parents fail with a typed configuration
+  error before native creation.
+- Profile names resolve to one canonical direct child of the configured root
+  cache. Empty, traversal, `Default`, symlink-escaping, and duplicate physical
+  Profile identities fail immediately; no alternate Profile or temporary path
+  is selected.
+- Page navigation, resize, DevTools open/close, event ordering, terminal close,
+  and engine shutdown delegate to the existing real CEF/FFM contract. A page
+  cannot outlive its Profile, a Profile cannot outlive its Engine, and Engine
+  close rejects live pages with a typed error rather than silently closing or
+  leaking them.
+- The public capability set contains only implemented native-child,
+  persistent-profile, navigation, resize, and DevTools capabilities, plus CDP
+  when explicitly configured. The typed bridge and MV3 package lifecycle remain
+  unpublished until their public ownership and cross-platform custom-runtime
+  gates pass.
+- Core unit tests cover value/error/state contracts; desktop tests cover Profile
+  identity and parent validation; a real CEF integration process exercises the
+  public facade on every hosted target and leaves zero native handles.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.
@@ -1418,6 +1455,7 @@ extensions: add MV3 Service Worker and core API host
 extensions: add extension UI surfaces
 release: add signed runtime packs and cross-platform packaging
 interop: replace JNI with JDK 25 FFM bindings
+api: publish the verified Compose desktop lifecycle facade
 ```
 
 Do not create a commit for a partial objective. Do not move a failing test to a later phase. Each commit must include the verification command or CI result in its body.

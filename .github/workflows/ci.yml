@@ -114,13 +114,6 @@ jobs:
           tar -xjf ".cef-ci/archives/$CEF_ARCHIVE" \
             -C .cef-ci/source
 
-      - name: Run complete verification
-        shell: bash
-        run: |
-          ./gradlew --no-daemon check \
-            -PcefRoot="$PWD/.cef-ci/source/$CEF_DIRECTORY" \
-            -PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}
-
       - name: Run application workload benchmark
         if: matrix.run-application-benchmark
         shell: bash
@@ -137,3 +130,10 @@ jobs:
           path: kweb-example-app-benchmark/build/reports/application-benchmark/
           if-no-files-found: error
           retention-days: 14
+
+      - name: Run complete verification
+        shell: bash
+        run: |
+          ./gradlew --no-daemon check \
+            -PcefRoot="$PWD/.cef-ci/source/$CEF_DIRECTORY" \
+            -PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}

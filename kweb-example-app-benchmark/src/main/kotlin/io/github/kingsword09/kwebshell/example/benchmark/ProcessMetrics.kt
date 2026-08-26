@@ -66,11 +66,11 @@ internal object ProcessMetricsSampler {
 
     private fun sampleWindows(pid: Long): ProcessMetrics {
         val dollar = '$'
-        val script = "Get-CimInstance Win32_Process -Filter \"ProcessId=$pid\" | ForEach-Object { " +
-            dollar + "working = [double]" + dollar + "_.WorkingSetSize; " +
-            dollar + "private = [double]" + dollar + "_.PrivatePageCount; " +
-            dollar + "cpu = ([double]" + dollar + "_.KernelModeTime + [double]" + dollar + "_.UserModeTime) / 10000; " +
-            "[pscustomobject]@{WorkingSet=" + dollar + "working;Private=" + dollar + "private;CpuMs=" + dollar + "cpu;Threads=(Get-Process -Id $pid).Threads.Count} } | ConvertTo-Csv -NoTypeInformation"
+        val script = "$" + "process = Get-Process -Id $pid -ErrorAction Stop; " +
+            "[pscustomobject]@{WorkingSet=[double]" + dollar + "process.WorkingSet64;" +
+            "Private=[double]" + dollar + "process.PrivateMemorySize64;" +
+            "CpuMs=[double]" + dollar + "process.TotalProcessorTime.TotalMilliseconds;" +
+            "Threads=[double]" + dollar + "process.Threads.Count} | ConvertTo-Csv -NoTypeInformation"
         val output = runCommand(listOf("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script), "process.windows.powershell")
         val rows = output.lineSequence().filter(String::isNotBlank).toList()
         if (rows.size != 2) throw BenchmarkException("process.windows.output-invalid", "PowerShell returned no unique row for PID $pid.")

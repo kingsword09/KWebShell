@@ -43,6 +43,7 @@ import javax.swing.SwingUtilities
 
 private const val PRESENTATION_PREFLIGHT_MS: Long = 750L
 private const val PRESENTATION_MINIMUM_FRAMES: Double = 3.0
+private const val PRESENTATION_PREFLIGHT_ATTEMPTS: Int = 3
 
 internal class BenchmarkPhaseRunner(
     private val configuration: BenchmarkConfiguration,
@@ -361,43 +362,38 @@ internal class BenchmarkPhaseRunner(
 
     private fun prepareScenarioPresentation(window: ComposeWindow, session: KWebExampleCdpSession) {
         try {
-            SwingUtilities.invokeAndWait {
-                if (!window.isShowing || !window.isDisplayable) {
-                    throw BenchmarkException(
-                        "phase.presentation-window-invalid",
-                        "The benchmark window is not visible before the scenario starts.",
-                    )
-                }
-                window.toFront()
-                window.requestFocus()
-            }
-            session.evaluate("window.kwebBenchmark.startPresentProbe()")
-            var stopped = false
-            val frameCount = try {
-                Thread.sleep(PRESENTATION_PREFLIGHT_MS)
-                session.evaluate("window.kwebBenchmark.stopPresentProbe()").also { stopped = true }
-                    .value?.jsonPrimitive?.doubleOrNull
-                    ?: throw BenchmarkException(
-                        "phase.presentation-evidence-missing",
-                        "The renderer returned no presentation preflight frame count.",
-                    )
-            } catch (error: Throwable) {
-                if (!stopped) {
-                    try {
-                        session.evaluate("window.kwebBenchmark.stopPresentProbe()")
-                    } catch (cleanup: Throwable) {
-                        error.addSuppressed(cleanup)
+            var lastFrameCount = 0.0
+            repeat(PRESENTATION_PREFLIGHT_ATTEMPTS) { attempt ->
+                activateBenchmarkWindow(window)
+                session.evaluate("window.kwebBenchmark.startPresentProbe()")
+                var stopped = false
+                val frameCount = try {
+                    Thread.sleep(PRESENTATION_PREFLIGHT_MS)
+                    session.evaluate("window.kwebBenchmark.stopPresentProbe()").also { stopped = true }
+                        .value?.jsonPrimitive?.doubleOrNull
+                        ?: throw BenchmarkException(
+                            "phase.presentation-evidence-missing",
+                            "The renderer returned no presentation preflight frame count.",
+                        )
+                } catch (error: Throwable) {
+                    if (!stopped) {
+                        try {
+                            session.evaluate("window.kwebBenchmark.stopPresentProbe()")
+                        } catch (cleanup: Throwable) {
+                            error.addSuppressed(cleanup)
+                        }
                     }
+                    throw error
                 }
-                throw error
+                lastFrameCount = frameCount
+                if (frameCount >= PRESENTATION_MINIMUM_FRAMES) return
+                if (attempt + 1 < PRESENTATION_PREFLIGHT_ATTEMPTS) Thread.sleep(100L)
             }
-            if (frameCount < PRESENTATION_MINIMUM_FRAMES) {
-                throw BenchmarkException(
-                    "phase.presentation-evidence-invalid",
-                    "The visible renderer produced only $frameCount frame(s) during the " +
-                        "$PRESENTATION_PREFLIGHT_MS ms presentation preflight.",
-                )
-            }
+            throw BenchmarkException(
+                "phase.presentation-evidence-invalid",
+                "The visible renderer produced only $lastFrameCount frame(s) during the " +
+                    "$PRESENTATION_PREFLIGHT_MS ms presentation preflight after $PRESENTATION_PREFLIGHT_ATTEMPTS attempts.",
+            )
         } catch (error: BenchmarkException) {
             throw error
         } catch (error: Throwable) {
@@ -407,6 +403,24 @@ internal class BenchmarkPhaseRunner(
                 "The renderer presentation preflight did not complete.",
                 error,
             )
+        }
+    }
+
+    private fun activateBenchmarkWindow(window: ComposeWindow) {
+        SwingUtilities.invokeAndWait {
+            if (!window.isShowing || !window.isDisplayable) {
+                throw BenchmarkException(
+                    "phase.presentation-window-invalid",
+                    "The benchmark window is not visible before the scenario starts.",
+                )
+            }
+            // Toggling always-on-top gives AWT a reliable activation path on macOS and Windows.
+            window.isAlwaysOnTop = true
+            window.toFront()
+            window.requestFocus()
+            window.isAlwaysOnTop = false
+            window.toFront()
+            window.requestFocus()
         }
     }
 

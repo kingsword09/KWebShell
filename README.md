@@ -2,9 +2,32 @@
 
 KWebShell is a Kotlin Multiplatform browser shell for Compose and Chromium. The project targets native, hardware-accelerated browser surfaces, persistent profiles, DevTools/CDP, typed host bridges, and Manifest V3 extensions on Windows, macOS, and Linux.
 
+## Product Model
+
+KWebShell is designed as three independent layers: the CEF-backed Compose
+WebView, explicitly installed KMP native services, and an optional Electron
+migration kit. The core API targets Electron-class application capability but
+does not clone Electron names or bundle Node.js. Common Kotlin contracts may use
+JDK 25 FFM and exact Win32, Cocoa, or Linux desktop APIs internally; Kotlin still
+owns the public API and lifecycle.
+
+A migrated Electron application replaces its main process with Kotlin/Compose.
+Its renderer or application-specific preload surface can remain substantially
+unchanged only when every exposed method is mapped to a generated, exact-origin
+typed service operation. Arbitrary IPC channels, synchronous IPC, Node-enabled
+renderers, and native Node addons require explicit rewrites rather than hidden
+compatibility behavior. See [KMP Native Services And Electron
+Migration](docs/kmp-native-services-and-electron-migration.md) for the planned
+service model, migration matrix, first vertical slice, and acceptance gates.
+
 ## Current Status
 
 The repository contains the multiplatform build foundation, a native CEF host vertical slice, the verified CEF runtime catalog, persistent Chromium Profiles, and an in-process JVM/CEF browser session. The host uses the Chrome bootstrap with an explicit Alloy, windowed native child and reports fatal capability errors instead of selecting a fallback backend. Each browser receives an explicitly initialized disk-backed request context; Profile paths that are not direct children of the CEF root cache are rejected because Chromium would otherwise create an OffTheRecord Profile. The CEF browser process runs inside the JVM so a real native child belongs to the public `ComposeWindow.windowHandle` hierarchy. Objective 3.3 intentionally deletes the Phase 2 echo session and its request-only events; this is a breaking internal contract change, not a compatibility layer. Phase 9.1 now exposes the verified lifecycle facade; capabilities remain unpublished until their complete implementation is tested.
+
+The final `KWebView` composable, KMP native services, and Electron migration
+adapters are planned Phase 11 work. The current facade already embeds the real
+native child under `ComposeWindow`, but no composable component, native-service
+API, or Electron-compatibility API is currently published.
 
 Current verification evidence is intentionally platform-specific:
 

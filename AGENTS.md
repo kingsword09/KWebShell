@@ -2,9 +2,9 @@
 
 ## Project Objective
 
-KWebShell is a Kotlin Multiplatform browser shell for Compose and Chromium. It is intended to provide a native, hardware-accelerated desktop browser surface with DevTools/CDP, persistent profiles, typed host bridges, custom protocols, and a real Manifest V3 extension runtime on Windows, macOS, and Linux.
+KWebShell is a Kotlin Multiplatform browser shell for Compose and Chromium. It is intended to provide a native, hardware-accelerated desktop browser surface with DevTools/CDP, persistent profiles, typed host bridges, custom protocols, a real Manifest V3 extension runtime, and extensible KMP native services on Windows, macOS, and Linux. An optional migration kit may make Electron applications easier to port without making Electron the core API.
 
-The browser engine is a product boundary, not an implementation detail. The desktop Chromium backend, native window host, Kotlin API, Compose integration, and extension runtime must be designed and tested as separate layers with explicit contracts.
+The browser engine is a product boundary, not an implementation detail. The desktop Chromium backend, native window host, Kotlin API, Compose integration, extension runtime, KMP native services, and optional migration adapters must be designed and tested as separate layers with explicit contracts.
 
 ## Non-Negotiable Delivery Rules
 
@@ -56,6 +56,8 @@ The browser engine is a product boundary, not an implementation detail. The desk
 - `kweb-compose`: Compose UI and native-surface composition only; it must not own Chromium internals.
 - `kweb-desktop`: desktop session, window, page, DevTools, CDP, and profile orchestration.
 - `kweb-bridge`: typed Kotlin/JavaScript RPC and generated bindings. Keep the transport independent of CEF.
+- `kweb-services-core` and `kweb-service-*`: explicitly installed KMP native-service contracts, policy, lifecycle, and complete platform providers. Do not create a service module before its first real vertical slice.
+- `kweb-electron-migration`: optional generated preload/channel adapters and a versioned migration matrix. Core WebView and service modules must never depend on it.
 - `kweb-cef-native`: C++ CEF/Chromium host, C ABI, native window integration, and extension adapter.
 - `kweb-extensions`: Manifest V3 package validation, permission policy, lifecycle model, and capability reporting.
 - Keep CEF C++ types behind the opaque C ABI. Do not leak `CefRefPtr`, CEF callbacks, or Chromium classes into common Kotlin code.
@@ -65,6 +67,8 @@ The browser engine is a product boundary, not an implementation detail. The desk
 - The primary embedded page uses the Chrome bootstrap with explicit Alloy runtime style on every desktop platform. Chrome-style top-level surfaces are separate contracts, not a substitute for the Compose native child.
 - Manifest V3 support for the embedded Alloy `WebContents` requires the pinned Chromium extension-service patch series. Never use the removed CEF Alloy extension API or emulate `chrome.*` in Kotlin/JavaScript.
 - DevTools and CDP are first-class contracts. Remote debugging must be explicitly configured and secured, not enabled accidentally.
+- Keep the public WebView and native-service APIs independent of Electron, Node.js, and arbitrary string IPC. Electron-shaped adapters may map only declared, tested operations to typed KMP services.
+- KMP defines the common Kotlin contract; desktop implementations may use JDK 25 FFM and exact platform APIs. Do not add Kotlin/Native, Java, or native helper layers without a concrete service requirement.
 
 ## Manifest V3 Requirements
 

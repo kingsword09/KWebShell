@@ -11,8 +11,18 @@ KWebShell is a Kotlin Multiplatform browser shell for Compose and Chromium. It i
 - DevTools and CDP for inspection and automation.
 - A typed Kotlin/JavaScript bridge.
 - A real Manifest V3 extension runtime with explicit capability reporting.
+- Explicitly installed KMP native services for OS capabilities that web content
+  cannot provide.
+- An optional Electron migration kit that preserves declared renderer contracts
+  without coupling the core API to Electron.
 
 The public product name is **KWebShell**. The implementation must not expose CEF as the public API because the engine is an implementation boundary and may evolve independently.
+
+KWebShell targets Electron-class application capability, not Electron API or
+binary identity. The browser, native services, and migration adapters are
+separate product layers. Electron compatibility may depend on core contracts;
+core contracts must never depend on Electron names, Node.js, or arbitrary IPC
+channels.
 
 ## 2. Hard Product Decisions
 
@@ -36,6 +46,20 @@ The project is pre-1.0. Breaking changes are preferred over compatibility shims 
 
 A capability is absent from the public API until its native implementation, Kotlin API, packaging, and tests are complete on every platform that advertises it. No stub, fake success, placeholder callback, or deferred implementation is acceptable.
 
+### 2.5 Native services and Electron migration
+
+KMP native services expose common Kotlin contracts while allowing the desktop
+implementation to use Kotlin/JVM, JDK 25 FFM, and exact platform SDKs. KMP does
+not require all native implementation code to use Kotlin/Native. Services are
+installed and versioned explicitly, scoped to application/Profile/Page owners,
+and exposed to JavaScript only through exact-origin operation grants.
+
+Electron migration is an optional adapter boundary. It may map a declared
+preload surface or IPC channel to a typed service, but it must not add a general
+`ipcRenderer`, Node.js runtime, synchronous IPC, or Electron types to the core
+API. The full contract is defined in [KMP Native Services And Electron
+Migration](docs/kmp-native-services-and-electron-migration.md).
+
 ## 3. Layered Architecture
 
 ```text
@@ -43,7 +67,8 @@ Compose Desktop JVM
         |
         v
  kweb-compose / kweb-desktop
-        |
+        |                   +-- kweb-services-core / kweb-service-<name>
+        |                   +-- optional kweb-electron-migration
         v
   kweb-core contracts
         |
@@ -71,6 +96,12 @@ Compose Desktop JVM
 | `kweb-extensions` | Manifest parsing, package model, policy model, capability matrix, conformance fixtures | Reimplementing Chromium's extension runtime |
 | `kweb-cef-native` | CEF initialization, browser hosts, native surfaces, C ABI, extension adapter | Kotlin business state |
 | `kweb-runtime-pack` | Reproducible CEF binaries, resources, locales, licenses, and platform packaging | Runtime version selection at application startup |
+| `kweb-services-core` | Planned KMP service descriptors, registry, scopes, policy, and shared errors | Concrete OS APIs or Electron compatibility |
+| `kweb-service-<name>` | One complete native service contract and its advertised platform providers | Unrelated service families or partial providers |
+| `kweb-electron-migration` | Planned optional typed preload/channel adapters and compatibility matrix | Browser, service, Node.js, or arbitrary IPC ownership |
+
+Planned modules are created only when their first complete vertical slice lands;
+the table does not authorize empty Gradle modules or placeholder APIs.
 
 ## 4. Public Contracts
 
@@ -161,6 +192,12 @@ The bridge is a versioned RPC protocol between page JavaScript and Kotlin. It mu
 - Deterministic behavior when a page navigates or a bridge owner closes.
 
 The bridge must not be used as a substitute for `chrome.*` extension APIs. Extensions run through Chromium's extension runtime and permissions.
+
+Phase 11 reuses this transport for generated native-service clients. Service
+dispatch remains a separate policy layer: a service must be installed, its
+contract version must match, and the exact operation must be granted to the
+current Page origin. A generic string channel or Electron-shaped dispatcher is
+not part of `KWebBridge`.
 
 ## 9. Manifest V3 Extension System
 
@@ -1448,6 +1485,43 @@ missing samples must fail rather than be filled or estimated. macOS is the
 first gate, followed by identical Windows/Linux runs before cross-platform
 publication.
 
+### Phase 11: Compose WebView, KMP native services, and Electron migration
+
+Phase 11 completes the ergonomic Compose host and adds an extensible
+host-capability layer without turning the browser API into an Electron clone.
+Common Kotlin contracts are implemented by explicit desktop providers and may
+be exposed to one Page origin through generated typed clients. An optional
+migration kit maps only declared Electron/preload surfaces onto those services.
+See [KMP Native Services And Electron
+Migration](docs/kmp-native-services-and-electron-migration.md) for ownership,
+security, compatibility statuses, and the staged migration workflow.
+
+#### Objective 11.1: Publish the Compose `KWebView` component
+
+Publish one composable over the verified Engine/Profile/Page and native-child
+contract. It tracks axis-aligned component geometry, density, visibility, focus,
+and disposal without recreating the Page on ordinary recomposition. Engine,
+Profile, Page, and composition ownership remain explicit. Unsupported transforms
+or clipping fail with a typed placement error; OSR, a system WebView, and a
+tracked overlay window are not substitutes. Real UI tests cover multiple views,
+recomposition, focus/input, clipping, and terminal teardown on all three desktop
+targets.
+
+#### Objective 11.2: Publish the first native service vertical slice
+
+Deliver the minimum service registry, descriptor, version, scope, permission,
+and typed failure contracts together with the complete `KWebAppPaths` service.
+The service resolves only published application/Profile path kinds through the
+declared macOS Foundation, Windows Known Folder, and Linux XDG contracts. Direct
+Kotlin calls and the exact-origin generated TypeScript client must return the
+same normalized result. No other service API or empty module is created.
+
+Acceptance is defined by Section 13 of the native-services design. It includes
+real platform API, C ABI/FFM, generated-client, origin isolation, cancellation,
+lifecycle, packaging, and compatibility-matrix evidence on macOS, Windows, and
+Linux. Missing platform definitions return typed failures; guessed directory
+conventions and alternate providers are prohibited.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.
@@ -1462,6 +1536,8 @@ Required layers:
 - Cross-platform UI tests for native surface, DPI, focus, input, popup, and shutdown.
 - Performance tests for startup, first contentful paint, navigation, GPU frame pacing, memory, and OSR comparison.
 - Security tests for CRX3 signatures, path traversal, permissions, origins, remote debugging, and native messaging.
+- Native-service contract, generated-client, permission, lifecycle, platform SDK,
+  and optional Electron-adapter conformance tests.
 
 The MV3 conformance suite must include at least:
 
@@ -1495,6 +1571,8 @@ interop: replace JNI with JDK 25 FFM bindings
 api: publish the verified Compose desktop lifecycle facade
 examples: add the HTML5 capability lab
 benchmark: add the application-scale workload harness
+compose: publish the native-child KWebView component
+services: publish verified application paths
 ```
 
 Do not create a commit for a partial objective. Do not move a failing test to a later phase. Each commit must include the verification command or CI result in its body.
@@ -1507,6 +1585,8 @@ Do not create a commit for a partial objective. Do not move a failing test to a 
 - [CEF Alloy/OSR extension limitation, Issue #3859](https://github.com/chromiumembedded/cef/issues/3859)
 - [Chrome Manifest V3](https://developer.chrome.com/docs/extensions/develop/migrate/what-is-mv3)
 - [Electron extension support limitations](https://www.electronjs.org/docs/latest/api/extensions)
+- [Electron process model](https://www.electronjs.org/docs/latest/tutorial/process-model)
+- [Electron context isolation](https://www.electronjs.org/docs/latest/tutorial/context-isolation)
 - [JxBrowser extension guide](https://teamdev.com/jxbrowser/docs/guides/extensions/)
 - [Kotlin Toolchain](https://github.com/JetBrains/kotlin-toolchain)
 - [Kotlin Toolchain native interop](https://kotlin-toolchain.org/dev/user-guide/advanced/native-interop/)

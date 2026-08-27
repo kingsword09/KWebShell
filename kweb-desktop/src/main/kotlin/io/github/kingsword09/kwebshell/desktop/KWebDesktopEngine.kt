@@ -2,6 +2,7 @@ package io.github.kingsword09.kwebshell.desktop
 
 import androidx.compose.ui.awt.ComposeWindow
 import io.github.kingsword09.kwebshell.core.KWebBounds
+import io.github.kingsword09.kwebshell.core.KWebRect
 import io.github.kingsword09.kwebshell.core.KWebCapability
 import io.github.kingsword09.kwebshell.core.KWebConfigurationException
 import io.github.kingsword09.kwebshell.core.KWebEngine
@@ -140,7 +141,7 @@ internal class KWebDesktopProfile(
     override suspend fun openPage(
         host: KWebPageHost,
         initialUrl: String,
-        bounds: KWebBounds,
+        bounds: KWebRect,
     ): KWebPage = withContext(Dispatchers.IO) {
         engine.withEngineLock {
             synchronized(lock) {
@@ -158,6 +159,8 @@ internal class KWebDesktopProfile(
                     nativeParent = nativeParent,
                     profilePath = path,
                     initialUrl = initialUrl,
+                    x = bounds.x,
+                    y = bounds.y,
                     width = bounds.width,
                     height = bounds.height,
                     listener = eventStream::accept,
@@ -271,10 +274,17 @@ internal class KWebDesktopPage(
         }
     }
 
-    override suspend fun resize(bounds: KWebBounds) {
+    override suspend fun setBounds(bounds: KWebRect) {
         withContext(Dispatchers.IO) {
-            requireOpen("resize")
-            native.resize(bounds.width, bounds.height)
+            requireOpen("set-bounds")
+            native.setBounds(bounds.x, bounds.y, bounds.width, bounds.height)
+        }
+    }
+
+    override suspend fun setSurfaceState(visible: Boolean, focused: Boolean) {
+        withContext(Dispatchers.IO) {
+            requireOpen("set-surface-state")
+            native.setSurfaceState(visible, focused)
         }
     }
 

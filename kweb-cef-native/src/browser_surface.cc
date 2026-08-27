@@ -216,10 +216,11 @@ class WindowsBrowserSurface final : public BrowserSurface {
     }
   }
 
-  kweb_status Resize(int32_t width, int32_t height, int32_t *actual_width,
-                     int32_t *actual_height) override {
+  kweb_status SetBounds(int32_t x, int32_t y, int32_t width, int32_t height,
+                        int32_t *actual_width,
+                        int32_t *actual_height) override {
     if (browser_window_ == nullptr || !::IsWindow(browser_window_) ||
-        !::SetWindowPos(browser_window_, nullptr, x_, y_, width, height,
+        !::SetWindowPos(browser_window_, nullptr, x, y, width, height,
                         SWP_NOACTIVATE | SWP_NOZORDER)) {
       return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
     }
@@ -229,11 +230,35 @@ class WindowsBrowserSurface final : public BrowserSurface {
     }
     *actual_width = bounds.right - bounds.left;
     *actual_height = bounds.bottom - bounds.top;
+    x_ = x;
+    y_ = y;
     if (browser_) {
       browser_->GetHost()->NotifyMoveOrResizeStarted();
       browser_->GetHost()->NotifyScreenInfoChanged();
     }
     return *actual_width == width && *actual_height == height
+               ? KWEB_STATUS_OK
+               : KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+  }
+
+  kweb_status SetSurfaceState(bool visible, bool focused) override {
+    if (browser_window_ == nullptr || !::IsWindow(browser_window_)) {
+      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    }
+    ::ShowWindow(browser_window_, visible ? SW_SHOWNOACTIVATE : SW_HIDE);
+    if (browser_) {
+      browser_->GetHost()->SetFocus(visible && focused);
+    }
+    if (visible && focused) {
+      if (::SetFocus(browser_window_) == nullptr &&
+          !BrowserWindowOwnsFocus(browser_window_)) {
+        return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+      }
+    } else if (BrowserWindowOwnsFocus(browser_window_) &&
+               !ReleaseBrowserWindowFocus(browser_window_)) {
+      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    }
+    return ::IsWindowVisible(browser_window_) == (visible ? TRUE : FALSE)
                ? KWEB_STATUS_OK
                : KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
   }
@@ -323,8 +348,8 @@ class WindowsBrowserSurface final : public BrowserSurface {
 
  private:
   const HWND parent_;
-  const int32_t x_;
-  const int32_t y_;
+  int32_t x_;
+  int32_t y_;
   HWND browser_window_ = nullptr;
   bool close_accepted_ = false;
   CefRefPtr<CefBrowser> browser_;
@@ -348,12 +373,13 @@ public:
     }
   }
 
-  kweb_status Resize(int32_t width, int32_t height, int32_t *actual_width,
-                     int32_t *actual_height) override {
+  kweb_status SetBounds(int32_t x, int32_t y, int32_t width, int32_t height,
+                        int32_t *actual_width,
+                        int32_t *actual_height) override {
     if (display_ == nullptr || browser_window_ == None) {
       return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
     }
-    XMoveResizeWindow(display_, browser_window_, x_, y_,
+    XMoveResizeWindow(display_, browser_window_, x, y,
                       static_cast<unsigned int>(width),
                       static_cast<unsigned int>(height));
     XSync(display_, False);
@@ -363,11 +389,38 @@ public:
     }
     *actual_width = attributes.width;
     *actual_height = attributes.height;
+    x_ = x;
+    y_ = y;
     if (browser_) {
       browser_->GetHost()->NotifyMoveOrResizeStarted();
       browser_->GetHost()->NotifyScreenInfoChanged();
     }
     return *actual_width == width && *actual_height == height
+               ? KWEB_STATUS_OK
+               : KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+  }
+
+  kweb_status SetSurfaceState(bool visible, bool focused) override {
+    if (display_ == nullptr || browser_window_ == None) {
+      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    }
+    if (visible) {
+      XMapWindow(display_, browser_window_);
+    } else {
+      XUnmapWindow(display_, browser_window_);
+    }
+    if (browser_) {
+      browser_->GetHost()->SetFocus(visible && focused);
+    }
+    if (visible && focused) {
+      XSetInputFocus(display_, browser_window_, RevertToParent, CurrentTime);
+    }
+    XSync(display_, False);
+    XWindowAttributes attributes{};
+    if (XGetWindowAttributes(display_, browser_window_, &attributes) == 0) {
+      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    }
+    return (attributes.map_state != IsUnmapped) == visible
                ? KWEB_STATUS_OK
                : KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
   }
@@ -413,8 +466,8 @@ public:
 private:
   Display *const display_;
   const Window parent_;
-  const int32_t x_;
-  const int32_t y_;
+  int32_t x_;
+  int32_t y_;
   Window browser_window_ = None;
   CefRefPtr<CefBrowser> browser_;
 };

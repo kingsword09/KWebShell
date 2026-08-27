@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 public final class FfmAbi {
-    public static final int VERSION = 6;
+    public static final int VERSION = 7;
 
     public static final FunctionDescriptor ENGINE_CALLBACK = FunctionDescriptor.ofVoid(
         FfmLayouts.POINTER,
@@ -73,7 +73,18 @@ public final class FfmAbi {
             )
         ),
         function(
-            "kweb_browser_resize",
+            "kweb_browser_set_bounds",
+            FunctionDescriptor.of(
+                FfmLayouts.UINT32,
+                FfmLayouts.UINT64,
+                FfmLayouts.INT32,
+                FfmLayouts.INT32,
+                FfmLayouts.INT32,
+                FfmLayouts.INT32
+            )
+        ),
+        function(
+            "kweb_browser_set_surface_state",
             FunctionDescriptor.of(
                 FfmLayouts.UINT32,
                 FfmLayouts.UINT64,
@@ -121,8 +132,8 @@ public final class FfmAbi {
     private static final Map<String, FunctionDescriptor> DESCRIPTORS = descriptorsByName();
 
     static {
-        if (FUNCTIONS.size() != 18 || DESCRIPTORS.size() != 18) {
-            throw new ExceptionInInitializerError("The KWebShell ABI must contain exactly 18 exports.");
+        if (FUNCTIONS.size() != 19 || DESCRIPTORS.size() != 19) {
+            throw new ExceptionInInitializerError("The KWebShell ABI must contain exactly 19 exports.");
         }
     }
 

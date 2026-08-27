@@ -1,7 +1,8 @@
 _kweb_browser_close
 _kweb_browser_create
 _kweb_browser_navigate
-_kweb_browser_resize
+_kweb_browser_set_bounds
+_kweb_browser_set_surface_state
 _kweb_browser_open_devtools
 _kweb_browser_close_devtools
 _kweb_browser_bridge_respond

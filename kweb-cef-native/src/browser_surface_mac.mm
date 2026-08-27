@@ -37,14 +37,19 @@ public:
         CAST_CEF_WINDOW_HANDLE_TO_NSVIEW(browser->GetHost()->GetWindowHandle());
   }
 
-  kweb_status Resize(int32_t width, int32_t height, int32_t *actual_width,
-                     int32_t *actual_height) override {
+  kweb_status SetBounds(int32_t x, int32_t y, int32_t width, int32_t height,
+                        int32_t *actual_width,
+                        int32_t *actual_height) override {
     if (container_ == nil || browser_view_ == nil) {
       return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
     }
-    NSRect container_frame = [container_ frame];
-    container_frame.origin.y += container_frame.size.height - height;
-    container_frame.size = NSMakeSize(width, height);
+    NSView *root = [parent_ contentView];
+    if (root == nil) {
+      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    }
+    const CGFloat translated_y =
+        NSHeight([root bounds]) - static_cast<CGFloat>(y + height);
+    NSRect container_frame = NSMakeRect(x, translated_y, width, height);
     [container_ setFrame:container_frame];
     [browser_view_ setFrame:NSMakeRect(0, 0, width, height)];
     [container_ layoutSubtreeIfNeeded];
@@ -59,6 +64,25 @@ public:
     return *actual_width == width && *actual_height == height
                ? KWEB_STATUS_OK
                : KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+  }
+
+  kweb_status SetSurfaceState(bool visible, bool focused) override {
+    if (container_ == nil || browser_view_ == nil) {
+      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    }
+    container_.hidden = !visible;
+    if (browser_) {
+      browser_->GetHost()->SetFocus(visible && focused);
+    }
+    if (visible && focused) {
+      if (![parent_ makeFirstResponder:browser_view_]) {
+        return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+      }
+    } else if (parent_.firstResponder == browser_view_) {
+      [parent_ makeFirstResponder:nil];
+    }
+    return container_.hidden == !visible ? KWEB_STATUS_OK
+                                         : KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
   }
 
   bool ValidateParentage() const override {

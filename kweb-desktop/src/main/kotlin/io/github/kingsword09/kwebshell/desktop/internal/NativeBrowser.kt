@@ -134,9 +134,22 @@ internal class NativeBrowser private constructor(
         requireNativeSuccess("browser-navigate", NativeBindings.browserNavigate(handle, url), handle)
     }
 
-    internal fun resize(width: Int, height: Int) {
-        val handle = requireOpenHandle("resize")
-        requireNativeSuccess("browser-resize", NativeBindings.browserResize(handle, width, height), handle)
+    internal fun setBounds(x: Int, y: Int, width: Int, height: Int) {
+        val handle = requireOpenHandle("set-bounds")
+        requireNativeSuccess(
+            "browser-set-bounds",
+            NativeBindings.browserSetBounds(handle, x, y, width, height),
+            handle,
+        )
+    }
+
+    internal fun setSurfaceState(visible: Boolean, focused: Boolean) {
+        val handle = requireOpenHandle("set-surface-state")
+        requireNativeSuccess(
+            "browser-set-surface-state",
+            NativeBindings.browserSetSurfaceState(handle, visible, focused),
+            handle,
+        )
     }
 
     internal fun requireLiveHandle(operation: String): Long =
@@ -700,6 +713,8 @@ internal class NativeBrowser private constructor(
             nativeParent: Long,
             profilePath: Path,
             initialUrl: String,
+            x: Int = 0,
+            y: Int = 0,
             width: Int,
             height: Int,
             bridgeOrigin: String = "",
@@ -756,8 +771,8 @@ internal class NativeBrowser private constructor(
                     nativeParent,
                     normalizedProfile.toString(),
                     initialUrl,
-                    0,
-                    0,
+                    x,
+                    y,
                     width,
                     height,
                     bridgeOrigin,

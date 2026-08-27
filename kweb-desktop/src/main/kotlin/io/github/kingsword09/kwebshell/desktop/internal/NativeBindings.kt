@@ -146,8 +146,11 @@ internal object NativeBindings {
 
     internal fun browserNavigate(handle: Long, url: String): Int = FfmBindings.browserNavigate(handle, url)
 
-    internal fun browserResize(handle: Long, width: Int, height: Int): Int =
-        FfmBindings.browserResize(handle, width, height)
+    internal fun browserSetBounds(handle: Long, x: Int, y: Int, width: Int, height: Int): Int =
+        FfmBindings.browserSetBounds(handle, x, y, width, height)
+
+    internal fun browserSetSurfaceState(handle: Long, visible: Boolean, focused: Boolean): Int =
+        FfmBindings.browserSetSurfaceState(handle, visible, focused)
 
     internal fun browserClose(handle: Long): Int = FfmBindings.browserClose(handle)
 

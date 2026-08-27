@@ -104,7 +104,9 @@ final class FfmBrowserCallbackOwner extends FfmCallbackOwner {
                 || engine <= 0
                 || browser <= 0
                 || sequence <= 0) {
-                throw new IllegalArgumentException("The native browser event violates ABI version 6.");
+                throw new IllegalArgumentException(
+                    "The native browser event violates ABI version " + FfmAbi.VERSION + "."
+                );
             }
             if (!owner.bindHandle(browser)) {
                 return;
@@ -171,7 +173,9 @@ final class FfmBrowserCallbackOwner extends FfmCallbackOwner {
                 || browser <= 0
                 || requestId <= 0
                 || !owner.bindHandle(browser)) {
-                throw new IllegalArgumentException("The native bridge event violates ABI version 6.");
+                throw new IllegalArgumentException(
+                    "The native bridge event violates ABI version " + FfmAbi.VERSION + "."
+                );
             }
             owner.registrar.accept(browser, owner);
             String payload = FfmMemory.readStringView(

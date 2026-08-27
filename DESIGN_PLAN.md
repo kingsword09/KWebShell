@@ -1305,6 +1305,10 @@ a runtime property, shipped in parallel, or used as fallbacks for each other.
 
 #### Objective 8.1: Freeze and prove the FFM boundary
 
+The ABI counts in this historical objective describe the version 6 feasibility
+snapshot. Objective 11.1 deliberately bumps the production ABI to version 7 to
+carry native-child placement and surface-state operations.
+
 This objective changes no production backend. It freezes the post-Phase-7 C
 ABI and produces executable evidence that Objective 8.2 can replace JNI
 without changing the native-child rendering contract.

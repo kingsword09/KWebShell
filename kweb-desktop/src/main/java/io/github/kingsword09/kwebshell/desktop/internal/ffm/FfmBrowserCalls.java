@@ -88,9 +88,19 @@ final class FfmBrowserCalls {
         return invokeUtf8("kweb_browser_navigate", handle, 0, url, false);
     }
 
-    static int resize(long handle, int width, int height) {
+    static int setBounds(long handle, int x, int y, int width, int height) {
         try {
-            return (int) library().handle("kweb_browser_resize").invokeExact(handle, width, height);
+            return (int) library().handle("kweb_browser_set_bounds")
+                .invokeExact(handle, x, y, width, height);
+        } catch (Throwable error) {
+            return FfmStatus.INTERNAL_ERROR;
+        }
+    }
+
+    static int setSurfaceState(long handle, boolean visible, boolean focused) {
+        try {
+            return (int) library().handle("kweb_browser_set_surface_state")
+                .invokeExact(handle, visible ? 1 : 0, focused ? 1 : 0);
         } catch (Throwable error) {
             return FfmStatus.INTERNAL_ERROR;
         }

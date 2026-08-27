@@ -1,7 +1,7 @@
 package io.github.kingsword09.kwebshell.example.html5
 
 import androidx.compose.ui.awt.ComposeWindow
-import io.github.kingsword09.kwebshell.core.KWebBounds
+import io.github.kingsword09.kwebshell.core.KWebRect
 import io.github.kingsword09.kwebshell.core.KWebCapability
 import io.github.kingsword09.kwebshell.core.KWebEngine
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
@@ -359,7 +359,7 @@ internal class CapabilityLabPhaseRunner(
                 profile.openPage(
                     KWebDesktop.composeWindowHost(window),
                     pageUrl,
-                    KWebBounds(configuration.width, configuration.height),
+                    KWebRect(0, 0, configuration.width, configuration.height),
                 )
             }
             reportStage(phase, "page-open")

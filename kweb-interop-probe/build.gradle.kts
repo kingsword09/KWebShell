@@ -95,7 +95,7 @@ val verifyFfmProbe = tasks.register<JavaExec>("verifyFfmProbe") {
 
 val verifyFfmEngineAbi = tasks.register<JavaExec>("verifyFfmEngineAbi") {
     group = "verification"
-    description = "Binds all 18 frozen engine ABI exports and exercises safe calls through JDK 25 FFM."
+    description = "Binds all 19 frozen engine ABI exports and exercises safe calls through JDK 25 FFM."
     dependsOn(tasks.classes, ":kweb-cef-native:buildNative")
     javaLauncher.set(jdk25Launcher)
     jvmArgs("--enable-native-access=ALL-UNNAMED")

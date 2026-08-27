@@ -218,7 +218,12 @@ KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL kweb_browser_navigate(
     kweb_browser_handle browser, const char *url_utf8, size_t url_size);
 
 KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
-kweb_browser_resize(kweb_browser_handle browser, int32_t width, int32_t height);
+kweb_browser_set_bounds(kweb_browser_handle browser, int32_t x, int32_t y,
+                        int32_t width, int32_t height);
+
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
+kweb_browser_set_surface_state(kweb_browser_handle browser, int32_t visible,
+                               int32_t focused);
 
 KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
 kweb_browser_close(kweb_browser_handle browser);

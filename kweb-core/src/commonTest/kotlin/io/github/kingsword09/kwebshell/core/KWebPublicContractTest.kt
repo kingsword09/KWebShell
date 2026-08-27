@@ -8,11 +8,22 @@ class KWebPublicContractTest {
     @Test
     fun boundsRejectInvalidDimensionsWithTypedError() {
         val error = assertFailsWith<KWebConfigurationException> {
-            KWebBounds(0, 480)
+            KWebRect(12, 24, 0, 480)
         }
 
         assertEquals("page.bounds.invalid", error.code)
+        assertEquals("12", error.details["x"])
         assertEquals("0", error.details["width"])
+    }
+
+    @Test
+    fun boundsRejectNegativeOriginWithTypedError() {
+        val error = assertFailsWith<KWebConfigurationException> {
+            KWebRect(-1, 24, 640, 480)
+        }
+
+        assertEquals("page.bounds.invalid", error.code)
+        assertEquals("-1", error.details["x"])
     }
 
     @Test

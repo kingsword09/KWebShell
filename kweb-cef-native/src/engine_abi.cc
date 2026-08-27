@@ -598,9 +598,20 @@ kweb_status KWEB_ABI_CALL kweb_browser_navigate(kweb_browser_handle browser,
   return kwebshell::NavigateBrowserSession(browser, url_utf8, url_size);
 }
 
-kweb_status KWEB_ABI_CALL kweb_browser_resize(kweb_browser_handle browser,
-                                              int32_t width, int32_t height) {
-  return kwebshell::ResizeBrowserSession(browser, width, height);
+kweb_status KWEB_ABI_CALL kweb_browser_set_bounds(kweb_browser_handle browser,
+                                                  int32_t x, int32_t y,
+                                                  int32_t width,
+                                                  int32_t height) {
+  return kwebshell::SetBoundsBrowserSession(browser, x, y, width, height);
+}
+
+kweb_status KWEB_ABI_CALL kweb_browser_set_surface_state(
+    kweb_browser_handle browser, int32_t visible, int32_t focused) {
+  if ((visible != 0 && visible != 1) || (focused != 0 && focused != 1)) {
+    return KWEB_STATUS_INVALID_ARGUMENT;
+  }
+  return kwebshell::SetSurfaceStateBrowserSession(browser, visible != 0,
+                                                   focused != 0);
 }
 
 kweb_status KWEB_ABI_CALL kweb_browser_close(kweb_browser_handle browser) {

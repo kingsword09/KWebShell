@@ -51,6 +51,14 @@ public final class EngineInventoryMain {
                 EngineAbi.downcall(linker, engine, "kweb_browser_close"),
                 0
             ) == INVALID_HANDLE, "Browser close accepted an invalid handle.");
+            require(invokeSetBounds(
+                EngineAbi.downcall(linker, engine, "kweb_browser_set_bounds"),
+                0, 0, 0, 800, 600
+            ) == INVALID_HANDLE, "Browser bounds accepted an invalid handle.");
+            require(invokeSurfaceState(
+                EngineAbi.downcall(linker, engine, "kweb_browser_set_surface_state"),
+                0, 1, 0
+            ) == INVALID_HANDLE, "Browser surface state accepted an invalid handle.");
             require(invokeStatus(
                 EngineAbi.downcall(linker, engine, "kweb_extension_cancel"),
                 0
@@ -58,7 +66,7 @@ public final class EngineInventoryMain {
                 "Extension cancel did not report a missing operation.");
         }
         System.out.println(
-            "JDK 25 FFM resolved and bound all 18 frozen engine ABI symbols and exercised " +
+            "JDK 25 FFM resolved and bound all 19 frozen engine ABI symbols and exercised " +
                 "safe pre-initialization calls."
         );
     }
@@ -94,6 +102,29 @@ public final class EngineInventoryMain {
             return (int) handle.invokeExact(value);
         } catch (Throwable error) {
             throw new IllegalStateException("Engine status downcall failed.", error);
+        }
+    }
+
+    private static int invokeSetBounds(
+        MethodHandle handle,
+        long browser,
+        int x,
+        int y,
+        int width,
+        int height
+    ) {
+        try {
+            return (int) handle.invokeExact(browser, x, y, width, height);
+        } catch (Throwable error) {
+            throw new IllegalStateException("Engine bounds downcall failed.", error);
+        }
+    }
+
+    private static int invokeSurfaceState(MethodHandle handle, long browser, int visible, int focused) {
+        try {
+            return (int) handle.invokeExact(browser, visible, focused);
+        } catch (Throwable error) {
+            throw new IllegalStateException("Engine surface-state downcall failed.", error);
         }
     }
 

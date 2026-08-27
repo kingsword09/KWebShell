@@ -71,7 +71,9 @@ final class FfmEngineCallbackOwner extends FfmCallbackOwner {
                 || engine <= 0
                 || sequence <= 0
                 || (type != 1 && type != CLOSED_EVENT)) {
-                throw new IllegalArgumentException("The native engine event violates ABI version 6.");
+                throw new IllegalArgumentException(
+                    "The native engine event violates ABI version " + FfmAbi.VERSION + "."
+                );
             }
             if (!owner.bindHandle(engine)) {
                 return;

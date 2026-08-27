@@ -102,7 +102,7 @@ JAVA_HOME=/absolute/path/to/jdk-25 ./gradlew :kweb-interop-probe:check \
   -PcefRoot=/absolute/path/to/extracted/cef_binary
 ```
 
-The gate verifies native layouts/calling conventions, all 18 engine symbols,
+The gate verifies native layouts/calling conventions, all 19 engine symbols,
 strict 1 MiB and malformed Unicode boundaries, shared-Arena native-thread
 upcalls, callback containment, the public Compose native parent, and the real
 production FFM browser lifecycle. The interop probe is test-only; there is one

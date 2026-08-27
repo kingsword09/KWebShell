@@ -15,9 +15,10 @@ public:
 
   virtual CefWindowHandle parent_handle() const = 0;
   virtual void BrowserCreated(CefRefPtr<CefBrowser> browser) = 0;
-  virtual kweb_status Resize(int32_t width, int32_t height,
-                             int32_t *actual_width,
-                             int32_t *actual_height) = 0;
+  virtual kweb_status SetBounds(int32_t x, int32_t y, int32_t width,
+                                int32_t height, int32_t *actual_width,
+                                int32_t *actual_height) = 0;
+  virtual kweb_status SetSurfaceState(bool visible, bool focused) = 0;
   virtual bool ValidateParentage() const = 0;
   virtual kweb_status RequestBrowserClose() = 0;
   virtual kweb_status CompleteBrowserClose(bool *handled_out) = 0;

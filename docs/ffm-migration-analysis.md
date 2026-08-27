@@ -1,5 +1,13 @@
 # JNI to FFM Migration Feasibility Analysis
 
+The Objective 8 feasibility and replacement evidence below records the ABI 6
+snapshot that was intentionally frozen at that stage. Objective 11.1 makes a
+breaking placement-contract update: the current production ABI is version 7,
+with `kweb_browser_set_bounds` replacing `kweb_browser_resize` and
+`kweb_browser_set_surface_state` adding explicit visibility/focus control.
+The historical ABI 6 counts and measurements remain valid evidence for the
+Objective 8 decision and are not claims about the current export set.
+
 - Status: Objective 8.1 evidence complete; Objective 8.2 production replacement
   passes local macOS arm64 acceptance and awaits hosted merge gates
 - Date: 2026-08-18

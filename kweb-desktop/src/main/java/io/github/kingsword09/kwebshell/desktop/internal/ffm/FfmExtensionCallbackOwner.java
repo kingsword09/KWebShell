@@ -82,7 +82,9 @@ final class FfmExtensionCallbackOwner extends FfmCallbackOwner {
                 || engine <= 0
                 || browser <= 0
                 || !owner.bindHandle(operationHandle)) {
-                throw new IllegalArgumentException("The native extension result violates ABI version 6.");
+                throw new IllegalArgumentException(
+                    "The native extension result violates ABI version " + FfmAbi.VERSION + "."
+                );
             }
             owner.registrar.accept(operationHandle, owner);
             owner.sink.onResult(

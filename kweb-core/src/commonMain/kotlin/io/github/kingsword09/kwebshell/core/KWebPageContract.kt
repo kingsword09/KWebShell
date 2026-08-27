@@ -54,7 +54,7 @@ public interface KWebProfile : AutoCloseable {
     public suspend fun openPage(
         host: KWebPageHost,
         initialUrl: String,
-        bounds: KWebBounds,
+        bounds: KWebRect,
     ): KWebPage
 
     override fun close()
@@ -67,7 +67,9 @@ public interface KWebPage : AutoCloseable {
 
     public suspend fun navigate(url: String)
 
-    public suspend fun resize(bounds: KWebBounds)
+    public suspend fun setBounds(bounds: KWebRect)
+
+    public suspend fun setSurfaceState(visible: Boolean, focused: Boolean)
 
     public suspend fun openDevTools()
 

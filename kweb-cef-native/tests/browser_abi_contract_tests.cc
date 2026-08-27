@@ -79,9 +79,21 @@ int main() {
   Check(kweb_browser_navigate(KWEB_INVALID_BROWSER_HANDLE, nullptr, 0) ==
             KWEB_STATUS_NAVIGATION_INVALID,
         "empty browser URL must fail before handle lookup");
-  Check(kweb_browser_resize(KWEB_INVALID_BROWSER_HANDLE, 0, 600) ==
+  Check(kweb_browser_set_bounds(KWEB_INVALID_BROWSER_HANDLE, 0, 0, 0, 600) ==
             KWEB_STATUS_INVALID_DIMENSIONS,
         "invalid browser dimensions must fail before handle lookup");
+  Check(kweb_browser_set_bounds(KWEB_INVALID_BROWSER_HANDLE, -1, 0, 800, 600) ==
+            KWEB_STATUS_INVALID_DIMENSIONS,
+        "invalid browser coordinates must fail before handle lookup");
+  Check(kweb_browser_set_surface_state(KWEB_INVALID_BROWSER_HANDLE, 2, 0) ==
+            KWEB_STATUS_INVALID_ARGUMENT,
+        "invalid browser visibility must fail before handle lookup");
+  Check(kweb_browser_set_bounds(KWEB_INVALID_BROWSER_HANDLE, 0, 0, 800, 600) ==
+            KWEB_STATUS_INVALID_HANDLE,
+        "valid browser bounds must reject a stale handle");
+  Check(kweb_browser_set_surface_state(KWEB_INVALID_BROWSER_HANDLE, 1, 0) ==
+            KWEB_STATUS_INVALID_HANDLE,
+        "valid browser surface state must reject a stale handle");
   Check(kweb_browser_close(KWEB_INVALID_BROWSER_HANDLE) ==
             KWEB_STATUS_INVALID_HANDLE,
         "stale browser close must return invalid handle");

@@ -10,9 +10,9 @@ import kotlin.test.assertTrue
 
 class FfmBindingContractTest {
     @Test
-    fun productionInventoryMatchesAbiVersionSix() {
-        assertEquals(6, FfmAbi.VERSION)
-        assertEquals(18, FfmAbi.FUNCTIONS.size)
+    fun productionInventoryMatchesAbiVersionSeven() {
+        assertEquals(7, FfmAbi.VERSION)
+        assertEquals(19, FfmAbi.FUNCTIONS.size)
         assertEquals(16, FfmLayouts.STRING_VIEW.byteSize())
         assertEquals(32, FfmLayouts.ENGINE_EVENT.byteSize())
         assertEquals(128, FfmLayouts.ENGINE_CONFIG.byteSize())

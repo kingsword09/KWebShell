@@ -188,7 +188,10 @@ public:
   kweb_status Create(const kweb_browser_config *config,
                      kweb_browser_handle *browser_out);
   kweb_status Navigate(kweb_browser_handle handle, std::string url);
-  kweb_status Resize(kweb_browser_handle handle, int32_t width, int32_t height);
+  kweb_status SetBounds(kweb_browser_handle handle, int32_t x, int32_t y,
+                        int32_t width, int32_t height);
+  kweb_status SetSurfaceState(kweb_browser_handle handle, bool visible,
+                              bool focused);
   kweb_status Close(kweb_browser_handle handle);
   kweb_status OpenDevTools(kweb_browser_handle handle);
   kweb_status CloseDevTools(kweb_browser_handle handle);
@@ -407,7 +410,7 @@ public:
                : KWEB_STATUS_CEF_UI_TASK_FAILED;
   }
 
-  kweb_status Resize(int32_t width, int32_t height) {
+  kweb_status SetBounds(int32_t x, int32_t y, int32_t width, int32_t height) {
     if (closing_.load(std::memory_order_acquire)) {
       return KWEB_STATUS_BROWSER_CLOSING;
     }
@@ -418,13 +421,36 @@ public:
     return CefPostTask(
                TID_UI,
                base::BindOnce(
-                   [](std::shared_ptr<BrowserSession> session, int32_t new_width,
-                      int32_t new_height) {
+                   [](std::shared_ptr<BrowserSession> session, int32_t new_x,
+                      int32_t new_y, int32_t new_width, int32_t new_height) {
                      if (!session->closing_.load(std::memory_order_acquire)) {
-                       session->ApplyResize(new_width, new_height);
+                       session->ApplySetBounds(new_x, new_y, new_width,
+                                               new_height);
                      }
                    },
-                   std::move(self), width, height))
+                   std::move(self), x, y, width, height))
+               ? KWEB_STATUS_OK
+               : KWEB_STATUS_CEF_UI_TASK_FAILED;
+  }
+
+  kweb_status SetSurfaceState(bool visible, bool focused) {
+    if (closing_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_BROWSER_CLOSING;
+    }
+    if (!ready_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_BROWSER_NOT_READY;
+    }
+    auto self = shared_from_this();
+    return CefPostTask(
+               TID_UI,
+               base::BindOnce(
+                   [](std::shared_ptr<BrowserSession> session, bool next_visible,
+                      bool next_focused) {
+                     if (!session->closing_.load(std::memory_order_acquire)) {
+                       session->ApplySetSurfaceState(next_visible, next_focused);
+                     }
+                   },
+                   std::move(self), visible, focused))
                ? KWEB_STATUS_OK
                : KWEB_STATUS_CEF_UI_TASK_FAILED;
   }
@@ -1003,23 +1029,38 @@ private:
     entry->pending.Add(shared_from_this());
   }
 
-  void ApplyResize(int32_t width, int32_t height) {
+  void ApplySetBounds(int32_t x, int32_t y, int32_t width, int32_t height) {
     CEF_REQUIRE_UI_THREAD();
     if (!surface_) {
-      Fatal(KWEB_STATUS_PARENT_SURFACE_INVALID, "surface-missing-on-resize");
+      Fatal(KWEB_STATUS_PARENT_SURFACE_INVALID, "surface-missing-on-set-bounds");
       return;
     }
     int32_t actual_width = 0;
     int32_t actual_height = 0;
     const kweb_status status =
-        surface_->Resize(width, height, &actual_width, &actual_height);
+        surface_->SetBounds(x, y, width, height, &actual_width, &actual_height);
     if (status != KWEB_STATUS_OK) {
-      Fatal(status, "native-resize-verification-failed");
+      Fatal(status, "native-set-bounds-verification-failed");
       return;
     }
+    x_ = x;
+    y_ = y;
     width_ = actual_width;
     height_ = actual_height;
     Emit(KWEB_BROWSER_EVENT_RESIZED, 0, {}, 0, actual_width, actual_height);
+  }
+
+  void ApplySetSurfaceState(bool visible, bool focused) {
+    CEF_REQUIRE_UI_THREAD();
+    if (!surface_) {
+      Fatal(KWEB_STATUS_PARENT_SURFACE_INVALID,
+            "surface-missing-on-set-surface-state");
+      return;
+    }
+    const kweb_status status = surface_->SetSurfaceState(visible, focused);
+    if (status != KWEB_STATUS_OK) {
+      Fatal(status, "native-set-surface-state-verification-failed");
+    }
   }
 
   void BeginClose() {
@@ -1184,8 +1225,8 @@ private:
   const kweb_engine_handle engine_;
   const kweb_browser_handle handle_;
   const uintptr_t native_parent_;
-  const int32_t x_;
-  const int32_t y_;
+  int32_t x_;
+  int32_t y_;
   int32_t width_;
   int32_t height_;
   std::filesystem::path profile_path_;
@@ -1432,7 +1473,8 @@ kweb_status SessionRegistry::Create(const kweb_browser_config *config,
                          config->bridge_origin.size != 0)) {
     return KWEB_STATUS_INVALID_ARGUMENT;
   }
-  if (config->width <= 0 || config->height <= 0 ||
+  if (config->x < 0 || config->y < 0 || config->width <= 0 ||
+      config->height <= 0 ||
       config->width > kMaximumViewportDimension ||
       config->height > kMaximumViewportDimension) {
     return KWEB_STATUS_INVALID_DIMENSIONS;
@@ -1566,10 +1608,19 @@ kweb_status SessionRegistry::Navigate(kweb_browser_handle handle,
                  : KWEB_STATUS_INVALID_HANDLE;
 }
 
-kweb_status SessionRegistry::Resize(kweb_browser_handle handle, int32_t width,
-                                    int32_t height) {
+kweb_status SessionRegistry::SetBounds(kweb_browser_handle handle, int32_t x,
+                                      int32_t y, int32_t width,
+                                      int32_t height) {
   auto session = Lookup(handle);
-  return session ? session->Resize(width, height) : KWEB_STATUS_INVALID_HANDLE;
+  return session ? session->SetBounds(x, y, width, height)
+                 : KWEB_STATUS_INVALID_HANDLE;
+}
+
+kweb_status SessionRegistry::SetSurfaceState(kweb_browser_handle handle,
+                                             bool visible, bool focused) {
+  auto session = Lookup(handle);
+  return session ? session->SetSurfaceState(visible, focused)
+                 : KWEB_STATUS_INVALID_HANDLE;
 }
 
 kweb_status SessionRegistry::Close(kweb_browser_handle handle) {
@@ -1668,13 +1719,20 @@ kweb_status NavigateBrowserSession(kweb_browser_handle browser,
   return GuardStatus([&] { return Registry().Navigate(browser, *url); });
 }
 
-kweb_status ResizeBrowserSession(kweb_browser_handle browser, int32_t width,
-                                 int32_t height) {
-  if (width <= 0 || height <= 0 || width > kMaximumViewportDimension ||
-      height > kMaximumViewportDimension) {
+kweb_status SetBoundsBrowserSession(kweb_browser_handle browser, int32_t x,
+                                    int32_t y, int32_t width, int32_t height) {
+  if (x < 0 || y < 0 || width <= 0 || height <= 0 ||
+      width > kMaximumViewportDimension || height > kMaximumViewportDimension) {
     return KWEB_STATUS_INVALID_DIMENSIONS;
   }
-  return GuardStatus([&] { return Registry().Resize(browser, width, height); });
+  return GuardStatus(
+      [&] { return Registry().SetBounds(browser, x, y, width, height); });
+}
+
+kweb_status SetSurfaceStateBrowserSession(kweb_browser_handle browser,
+                                          bool visible, bool focused) {
+  return GuardStatus(
+      [&] { return Registry().SetSurfaceState(browser, visible, focused); });
 }
 
 kweb_status CloseBrowserSession(kweb_browser_handle browser) {

@@ -4,7 +4,7 @@ import io.github.kingsword09.kwebshell.bridge.KWebBridgeException
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 import io.github.kingsword09.kwebshell.core.KWebConfigurationException
-import io.github.kingsword09.kwebshell.core.KWebBounds
+import io.github.kingsword09.kwebshell.core.KWebRect
 import io.github.kingsword09.kwebshell.core.KWebCapability
 import io.github.kingsword09.kwebshell.core.KWebPageEventType
 import io.github.kingsword09.kwebshell.desktop.KWebComposeWindowHost
@@ -279,7 +279,7 @@ private fun runSuccessfulLifecycle() {
             runRawBridgeAbiConformance(engine, surface.nativeParent, configuration.rootCache, origin, cdp)
             requireStatus(
                 NativeEngine.onAwtEventDispatchThread {
-                    NativeBindings.browserResize(0L, 0, 600)
+                    NativeBindings.browserSetBounds(0L, 0, 0, 0, 600)
                 },
                 NativeStatus.INVALID_DIMENSIONS,
                 "invalid browser dimensions",
@@ -290,6 +290,8 @@ private fun runSuccessfulLifecycle() {
                 nativeParent = surface.nativeParent,
                 profilePath = profile,
                 initialUrl = origin.firstUrl,
+                x = 0,
+                y = 0,
                 width = 800,
                 height = 600,
                 bridgeOrigin = origin.origin,
@@ -419,7 +421,7 @@ private fun runSuccessfulLifecycle() {
                 "The second real Chromium navigation did not complete: $browserEvents"
             }
             cdp.awaitBridge()
-            browser.resize(960, 640)
+            browser.setBounds(24, 32, 960, 640)
             require(resized.await(30, TimeUnit.SECONDS)) {
                 "The native Chromium child did not confirm the requested size: $browserEvents"
             }
@@ -552,7 +554,7 @@ private fun runPublicFacadeLifecycle() {
                         profile!!.openPage(
                             KWebDesktop.composeWindowHost(invalidWindow),
                             origin.firstUrl,
-                            KWebBounds(800, 600),
+                            KWebRect(0, 0, 800, 600),
                         )
                     }
                     null
@@ -572,7 +574,7 @@ private fun runPublicFacadeLifecycle() {
             val nativeParent = surface!!.nativeParent
             val host: KWebComposeWindowHost = KWebDesktop.composeWindowHost(surface!!.window)
             page = kotlinx.coroutines.runBlocking {
-                profile!!.openPage(host, origin.firstUrl, KWebBounds(800, 600))
+                profile!!.openPage(host, origin.firstUrl, KWebRect(0, 0, 800, 600))
             }
             val publicEvents = CopyOnWriteArrayList<io.github.kingsword09.kwebshell.core.KWebPageEvent>()
             val eventScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -593,7 +595,7 @@ private fun runPublicFacadeLifecycle() {
                         }
                     }
                 }
-                kotlinx.coroutines.runBlocking { page!!.resize(KWebBounds(960, 640)) }
+                kotlinx.coroutines.runBlocking { page!!.setBounds(KWebRect(24, 32, 960, 640)) }
                 kotlinx.coroutines.runBlocking {
                     withTimeout(30_000) {
                         page!!.events.first {
@@ -603,6 +605,8 @@ private fun runPublicFacadeLifecycle() {
                         }
                     }
                 }
+                kotlinx.coroutines.runBlocking { page!!.setSurfaceState(false, false) }
+                kotlinx.coroutines.runBlocking { page!!.setSurfaceState(true, true) }
                 kotlinx.coroutines.runBlocking { page!!.openDevTools() }
                 kotlinx.coroutines.runBlocking { page!!.closeDevTools() }
 
@@ -963,6 +967,8 @@ private fun withExtensionLifecycleBrowsers(
                     nativeParent = alphaSurface.nativeParent,
                     profilePath = configuration.rootCache.resolve("alpha"),
                     initialUrl = "about:blank",
+                    x = 0,
+                    y = 0,
                     width = 800,
                     height = 600,
                 )
@@ -972,6 +978,8 @@ private fun withExtensionLifecycleBrowsers(
                     nativeParent = betaSurface.nativeParent,
                     profilePath = configuration.rootCache.resolve("beta"),
                     initialUrl = "about:blank",
+                    x = 0,
+                    y = 0,
                     width = 800,
                     height = 600,
                 )
@@ -981,6 +989,8 @@ private fun withExtensionLifecycleBrowsers(
                     nativeParent = crashSurface.nativeParent,
                     profilePath = configuration.rootCache.resolve("crash"),
                     initialUrl = "about:blank",
+                    x = 0,
+                    y = 0,
                     width = 800,
                     height = 600,
                 )
@@ -1216,7 +1226,7 @@ private fun runRawBridgeAbiConformance(
             NativeBrowserEventType.CLOSED -> {
                 terminalHandleStatus.compareAndSet(
                     Int.MIN_VALUE,
-                    NativeBindings.browserResize(browser, 800, 600),
+                    NativeBindings.browserSetBounds(browser, 0, 0, 800, 600),
                 )
                 closed.countDown()
             }
@@ -1666,6 +1676,8 @@ private fun runProfileContextWaiterLifecycle() {
             nativeParent = surface.nativeParent,
             profilePath = profile,
             initialUrl = "about:blank#survivor",
+            x = 0,
+            y = 0,
             width = 320,
             height = 240,
         ).use { survivor ->
@@ -1676,6 +1688,8 @@ private fun runProfileContextWaiterLifecycle() {
             nativeParent = surface.nativeParent,
             profilePath = alias,
             initialUrl = "about:blank#physical-alias",
+            x = 0,
+            y = 0,
             width = 320,
             height = 240,
         ).use { aliasBrowser ->
@@ -1716,6 +1730,8 @@ private fun runFfmStressLifecycle() {
                 nativeParent = surface.nativeParent,
                 profilePath = configuration.rootCache.resolve("stress-profile"),
                 initialUrl = "about:blank",
+                x = 0,
+                y = 0,
                 width = 320,
                 height = 240,
                 listener = events::add,
@@ -1750,7 +1766,7 @@ private fun runFfmStressLifecycle() {
             require(events.map(NativeBrowserEvent::sequence) == (1L..events.size.toLong()).toList())
             val callbackCount = events.size
             requireStatus(
-                NativeBindings.browserResize(staleHandle, 320, 240),
+                NativeBindings.browserSetBounds(staleHandle, 0, 0, 320, 240),
                 NativeStatus.INVALID_HANDLE,
                 "FFM stress stale browser resize",
             )

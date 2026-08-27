@@ -83,8 +83,12 @@ public final class FfmBindings {
         return FfmBrowserCalls.navigate(handle, url);
     }
 
-    public static int browserResize(long handle, int width, int height) {
-        return FfmBrowserCalls.resize(handle, width, height);
+    public static int browserSetBounds(long handle, int x, int y, int width, int height) {
+        return FfmBrowserCalls.setBounds(handle, x, y, width, height);
+    }
+
+    public static int browserSetSurfaceState(long handle, boolean visible, boolean focused) {
+        return FfmBrowserCalls.setSurfaceState(handle, visible, focused);
     }
 
     public static int browserClose(long handle) {

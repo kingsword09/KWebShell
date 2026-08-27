@@ -1456,23 +1456,32 @@ can be validated without turning either one into a hidden fallback backend.
 The complete source, acceptance criteria, artifact rules, and metric schema are
 defined in [Example Applications And Benchmark Plan](docs/example-benchmark-plan.md).
 
-#### Objective 10.1: Build the HTML5 Capability Lab
+#### Objective 10.1: Build the HTML5test example and capability probe
 
-`kweb-example-html5-lab` is a locally packaged and versioned HTML5 test origin
-that reports real evidence for language/runtime, DOM/CSS, graphics, network,
-storage, workers, service workers, media, permissions, accessibility, input,
-and lifecycle features. It uses only the public Engine/Profile/Page API.
-The coordinator retains one origin while cold and warm runs execute in
+`kweb-example-html5-lab` exposes a live example that loads exactly
+`https://html5test.com/` through the public Engine/Profile/Page API. It verifies
+the canonical HTTPS URL and title, HTTP 200 public event, current score DOM,
+Chromium/CDP identity, and a nonblank `cdp-page-target` screenshot from the
+verified visible windowed native child. The screenshot is target evidence, not
+OS display scanout. HTML5test describes
+itself as an archived test last updated in 2016, so the report does not present
+its score as complete or current Web-platform conformance. A network failure or
+DOM change is terminal; no local or alternate-site fallback is permitted.
+
+The same module keeps a separately named, locally packaged conformance probe
+for language/runtime, DOM/CSS, graphics, network, storage, workers, service
+workers, media, permissions, accessibility, input, and lifecycle features.
+The coordinator retains one origin while cold and warm probe runs execute in
 separate JDK 25 processes against one persistent Profile, matching the
 single-lifecycle native Engine contract. The runner enables a fixed loopback
 CDP endpoint, verifies Chrome/CDP identity and an AX tree marker, dispatches a
 trusted input event, checks continuous public page events, and confirms that
 the endpoint disappears after shutdown. Strict JSON, rendered HTML, and two
-real window screenshots are emitted atomically. Missing required evidence,
+real window screenshots are emitted atomically. Missing required probe evidence,
 optional execution failures, schema drift, and persistence failures are
-terminal; no browser or OS WebView fallback is allowed. macOS arm64 is the
-local implementation gate, while Windows x64 and Linux x64 use the identical
-Gradle task in hosted CI before cross-platform publication.
+terminal; the local probe is never substituted for the live HTML5test example.
+macOS arm64 is the local implementation gate, while Windows x64 and Linux x64
+use the identical tasks in hosted CI before cross-platform publication.
 
 #### Objective 10.2: Build the application-scale workload benchmark
 
@@ -1576,6 +1585,7 @@ release: add signed runtime packs and cross-platform packaging
 interop: replace JNI with JDK 25 FFM bindings
 api: publish the verified Compose desktop lifecycle facade
 examples: add the HTML5 capability lab
+examples: load the live HTML5test page
 benchmark: add the application-scale workload harness
 compose: publish the native-child KWebView component
 services: publish verified application paths

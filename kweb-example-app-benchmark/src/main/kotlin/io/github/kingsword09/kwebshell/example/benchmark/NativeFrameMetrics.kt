@@ -2,15 +2,17 @@ package io.github.kingsword09.kwebshell.example.benchmark
 
 import androidx.compose.ui.awt.ComposeWindow
 import io.github.kingsword09.kwebshell.example.support.KWebExampleCdpSession
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import java.awt.GraphicsConfiguration
-import java.awt.Point
-import java.awt.Rectangle
-import java.awt.Robot
-import java.awt.image.BufferedImage
-import java.util.concurrent.atomic.AtomicReference
+import kotlinx.serialization.json.put
+import java.util.Base64
+import java.util.concurrent.atomic.AtomicLong
 import javax.swing.SwingUtilities
 
 internal data class NativeFrameMetrics(
@@ -20,6 +22,11 @@ internal data class NativeFrameMetrics(
     val worstIntervalMs: Double,
 )
 
+internal data class NativeCompositorFrame(
+    val sessionId: Int,
+    val timestampMs: Double,
+)
+
 internal object NativeFrameMetricsSampler {
     fun sample(
         window: ComposeWindow,
@@ -27,160 +34,127 @@ internal object NativeFrameMetricsSampler {
         durationMs: Long = 450L,
     ): NativeFrameMetrics {
         require(durationMs >= 250L) { "Native frame sampling requires at least 250 ms." }
-        val probe = session.evaluate("window.kwebBenchmark.startPresentProbe()")
-            .value?.jsonObject
-            ?: throw BenchmarkException("frame.probe-result-missing", "The page returned no present-probe bounds.")
-        session.evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
-        val width = probe.requiredPositive("width")
-        val height = probe.requiredPositive("height")
-        val bounds = AtomicReference<Rectangle>()
-        val contentOrigin = AtomicReference<Point>()
-        val graphics = AtomicReference<GraphicsConfiguration>()
+        requireVisibleNativeWindow(window)
+        session.command(
+            "Page.startScreencast",
+            buildJsonObject {
+                put("format", "jpeg")
+                put("quality", 35)
+                put("maxWidth", 256)
+                put("maxHeight", 256)
+                put("everyNthFrame", 1)
+            },
+        )
+        var probeRunning = false
+        var samplingFailure: Throwable? = null
+        try {
+            val probe = session.evaluate("window.kwebBenchmark.startPresentProbe()")
+                .value?.jsonObject
+                ?: throw BenchmarkException("frame.probe-result-missing", "The page returned no present-probe bounds.")
+            probe.requiredPositive("width")
+            probe.requiredPositive("height")
+            probeRunning = true
+            session.evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+
+            val timestamps = mutableListOf<Double>()
+            val deadline = System.nanoTime() + durationMs * 1_000_000L
+            while (System.nanoTime() < deadline) {
+                val remainingMs = ((deadline - System.nanoTime()) / 1_000_000L).coerceAtLeast(1L)
+                val event = session.pollEvent("Page.screencastFrame", minOf(remainingMs, EVENT_POLL_MS)) ?: continue
+                val frame = NativeCompositorFrameParser.parse(event)
+                session.command(
+                    "Page.screencastFrameAck",
+                    buildJsonObject { put("sessionId", frame.sessionId) },
+                )
+                if (timestamps.isNotEmpty() && frame.timestampMs <= timestamps.last()) {
+                    throw BenchmarkException(
+                        "frame.timestamp-not-monotonic",
+                        "Chromium compositor frame timestamps are not strictly increasing.",
+                    )
+                }
+                timestamps += frame.timestampMs
+            }
+            if (timestamps.size < MINIMUM_FRAME_COUNT) {
+                throw BenchmarkException(
+                    "frame.presented-count-low",
+                    "The visible native child produced only ${timestamps.size} Chromium compositor frame events.",
+                )
+            }
+            val intervals = timestamps.zipWithNext { first, second -> second - first }
+            return NativeFrameMetrics(
+                frameCount = timestamps.size.toDouble(),
+                medianIntervalMs = percentile(intervals, 0.5),
+                p95IntervalMs = percentile(intervals, 0.95),
+                worstIntervalMs = intervals.max(),
+            )
+        } catch (error: Throwable) {
+            samplingFailure = error
+            throw error
+        } finally {
+            val cleanupFailures = mutableListOf<Throwable>()
+            if (probeRunning) runCleanup(cleanupFailures) { session.evaluate("window.kwebBenchmark.stopPresentProbe()") }
+            runCleanup(cleanupFailures) { session.command("Page.stopScreencast") }
+            if (samplingFailure != null) {
+                cleanupFailures.forEach(samplingFailure::addSuppressed)
+            } else if (cleanupFailures.isNotEmpty()) {
+                val first = cleanupFailures.first()
+                cleanupFailures.drop(1).forEach(first::addSuppressed)
+                throw first
+            }
+        }
+    }
+
+    private fun requireVisibleNativeWindow(window: ComposeWindow) {
+        val handle = AtomicLong(0L)
         SwingUtilities.invokeAndWait {
-            window.toFront()
-            window.requestFocus()
             if (!window.isShowing || !window.isDisplayable) {
                 throw BenchmarkException("frame.window-not-visible", "The benchmark window is not visible for frame sampling.")
             }
-            bounds.set(Rectangle(window.locationOnScreen, window.size))
-            contentOrigin.set(window.contentPane.locationOnScreen)
-            graphics.set(window.graphicsConfiguration)
+            window.toFront()
+            window.requestFocus()
+            handle.set(window.windowHandle)
         }
-        if (width <= 0.0 || height <= 0.0) {
-            throw BenchmarkException("frame.probe-bounds-invalid", "Present-probe bounds are not positive.")
+        if (handle.get() == 0L) {
+            throw BenchmarkException("frame.native-handle-missing", "The visible benchmark window has no native handle.")
         }
-        val captureBounds = bounds.get()
-            ?: throw BenchmarkException("frame.window-bounds-missing", "The benchmark window bounds are missing.")
-        if (captureBounds.width <= 0 || captureBounds.height <= 0) {
-            throw BenchmarkException("frame.window-bounds-invalid", "The benchmark window bounds are not positive.")
-        }
-        val device = graphics.get()?.device
-            ?: throw BenchmarkException("frame.graphics-device-missing", "The benchmark graphics device is missing.")
-        val robot = Robot(device)
-        val initialCapture = robot.createScreenCapture(captureBounds)
-        val content = contentOrigin.get()
-            ?: throw BenchmarkException("frame.content-origin-missing", "The benchmark content origin is missing.")
-        val expectedProbe = Rectangle(
-            content.x - captureBounds.x + probe.requiredPositive("x").toInt(),
-            content.y - captureBounds.y + probe.requiredPositive("y").toInt(),
-            width.toInt().coerceAtLeast(1),
-            height.toInt().coerceAtLeast(1),
-        )
-        val probeCaptureBounds = NativeFrameProbeColorScanner.locateCaptureBounds(
-            initialCapture,
-            expectedProbe,
-            captureBounds.width.takeIf { it > 0 }?.let { initialCapture.width.toDouble() / it } ?: 1.0,
-            captureBounds.height.takeIf { it > 0 }?.let { initialCapture.height.toDouble() / it } ?: 1.0,
-        )?.let { local ->
-            Rectangle(captureBounds.x + local.x, captureBounds.y + local.y, local.width, local.height)
-        }
-            ?: throw BenchmarkException(
-                "frame.probe-not-visible",
-                "The visible native child did not expose the present probe in the screen capture.",
-            )
-        val transitions = mutableListOf<Long>()
-        var previous = NativeFrameProbeColorScanner.signature(robot.createScreenCapture(probeCaptureBounds))
-        val deadline = System.nanoTime() + durationMs * 1_000_000L
-        try {
-            while (System.nanoTime() < deadline) {
-                val current = NativeFrameProbeColorScanner.signature(robot.createScreenCapture(probeCaptureBounds))
-                if (NativeFrameProbeColorScanner.hasTransition(previous, current)) {
-                    transitions += System.nanoTime()
-                }
-                previous = current
-                Thread.sleep(2L)
-            }
-        } finally {
-            session.evaluate("window.kwebBenchmark.stopPresentProbe()")
-        }
-        if (transitions.size < 8) {
-            throw BenchmarkException(
-                "frame.presented-count-low",
-                "The visible native child produced only ${transitions.size} sampled probe-color transitions.",
-            )
-        }
-        val intervals = transitions.zipWithNext { first, second -> (second - first) / 1_000_000.0 }
-        return NativeFrameMetrics(
-            frameCount = transitions.size.toDouble(),
-            medianIntervalMs = percentile(intervals, 0.5),
-            p95IntervalMs = percentile(intervals, 0.95),
-            worstIntervalMs = intervals.max(),
-        )
     }
 
-    private fun kotlinx.serialization.json.JsonObject.requiredPositive(name: String): Double =
-        get(name)?.jsonPrimitive?.doubleOrNull?.takeIf { it >= 0.0 }
+    private fun JsonObject.requiredPositive(name: String): Double =
+        get(name)?.jsonPrimitive?.doubleOrNull?.takeIf { it > 0.0 }
             ?: throw BenchmarkException("frame.probe-bounds-invalid", "Present-probe bound '$name' is invalid.")
+
+    private fun runCleanup(target: MutableList<Throwable>, action: () -> Unit) {
+        try {
+            action()
+        } catch (error: Throwable) {
+            target += error
+        }
+    }
+
+    private const val EVENT_POLL_MS: Long = 100L
+    private const val MINIMUM_FRAME_COUNT: Int = 8
 }
 
-internal object NativeFrameProbeColorScanner {
-    private val probeColors = intArrayOf(0xFF008EAA.toInt(), 0xFFBA356F.toInt(), 0xFFD5A900.toInt(), 0xFF20231F.toInt())
-
-    fun signature(image: java.awt.image.BufferedImage): IntArray {
-        val counts = IntArray(probeColors.size)
-        for (y in 0 until image.height) {
-            for (x in 0 until image.width) {
-                colorIndex(image.getRGB(x, y))?.let { index -> counts[index] += 1 }
-            }
+internal object NativeCompositorFrameParser {
+    fun parse(event: JsonObject): NativeCompositorFrame {
+        val sessionId = (event["sessionId"] as? JsonPrimitive)?.intOrNull?.takeIf { it >= 0 }
+            ?: throw BenchmarkException("frame.session-id-invalid", "Chromium compositor frame sessionId is invalid.")
+        val timestampMs = ((event["metadata"] as? JsonObject)?.get("timestamp") as? JsonPrimitive)
+            ?.doubleOrNull
+            ?.takeIf { it.isFinite() && it > 0.0 }
+            ?.times(1000.0)
+            ?.takeIf(Double::isFinite)
+            ?: throw BenchmarkException("frame.timestamp-invalid", "Chromium compositor frame timestamp is invalid.")
+        val encoded = (event["data"] as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank)
+            ?: throw BenchmarkException("frame.data-missing", "Chromium compositor frame data is missing.")
+        val bytes = try {
+            Base64.getDecoder().decode(encoded)
+        } catch (error: IllegalArgumentException) {
+            throw BenchmarkException("frame.data-invalid", "Chromium compositor frame data is not valid Base64.", error)
         }
-        return counts
-    }
-
-    fun locateCaptureBounds(
-        image: BufferedImage,
-        expected: Rectangle? = null,
-        scaleX: Double = 1.0,
-        scaleY: Double = 1.0,
-    ): Rectangle? {
-        require(scaleX > 0.0 && scaleY > 0.0)
-        val centerX = expected?.let { ((it.x + it.width / 2) * scaleX).toInt() }
-        val centerY = expected?.let { ((it.y + it.height / 2) * scaleY).toInt() }
-        val radiusX = expected?.let { (it.width * scaleX).toInt() + SEARCH_PADDING }
-        val radiusY = expected?.let { (it.height * scaleY).toInt() + SEARCH_PADDING }
-        val searchLeft = (centerX?.minus(radiusX ?: 80) ?: (image.width - 180)).coerceAtLeast(0)
-        val searchTop = (centerY?.minus(radiusY ?: 80) ?: 0).coerceAtLeast(0)
-        val searchRight = (centerX?.plus(radiusX ?: 80) ?: image.width).coerceAtMost(image.width)
-        val searchBottom = (centerY?.plus(radiusY ?: 80) ?: image.height.coerceAtMost(190)).coerceAtMost(image.height)
-        var minX = image.width
-        var minY = image.height
-        var maxX = -1
-        var maxY = -1
-        for (y in searchTop until searchBottom) {
-            for (x in searchLeft until searchRight) {
-                if (colorIndex(image.getRGB(x, y)) != null) {
-                    minX = minOf(minX, x)
-                    minY = minOf(minY, y)
-                    maxX = maxOf(maxX, x)
-                    maxY = maxOf(maxY, y)
-                }
-            }
+        if (bytes.size < 3 || bytes[0] != 0xFF.toByte() || bytes[1] != 0xD8.toByte() || bytes[2] != 0xFF.toByte()) {
+            throw BenchmarkException("frame.jpeg-invalid", "Chromium compositor frame data is not a JPEG image.")
         }
-        if (maxX < minX || maxY < minY) return null
-        val left = (minX - 2).coerceAtLeast(0)
-        val top = (minY - 2).coerceAtLeast(0)
-        val right = (maxX + 3).coerceAtMost(image.width)
-        val bottom = (maxY + 3).coerceAtMost(image.height)
-        return Rectangle(left, top, right - left, bottom - top)
+        return NativeCompositorFrame(sessionId, timestampMs)
     }
-
-    fun hasTransition(previous: IntArray, current: IntArray): Boolean {
-        require(previous.size == probeColors.size && current.size == probeColors.size)
-        return previous.indices.sumOf { index -> kotlin.math.abs(previous[index] - current[index]) } >= MINIMUM_COLOR_DELTA
-    }
-
-    private fun colorIndex(pixel: Int): Int? = probeColors.indexOfFirst { expected ->
-        val red = (pixel ushr 16) and 0xff
-        val green = (pixel ushr 8) and 0xff
-        val blue = pixel and 0xff
-        val expectedRed = (expected ushr 16) and 0xff
-        val expectedGreen = (expected ushr 8) and 0xff
-        val expectedBlue = expected and 0xff
-        kotlin.math.abs(red - expectedRed) <= COLOR_TOLERANCE &&
-            kotlin.math.abs(green - expectedGreen) <= COLOR_TOLERANCE &&
-            kotlin.math.abs(blue - expectedBlue) <= COLOR_TOLERANCE
-    }.takeIf { it >= 0 }
-
-    private const val MINIMUM_COLOR_DELTA: Int = 64
-    private const val COLOR_TOLERANCE: Int = 24
-    private const val SEARCH_PADDING: Int = 8
 }

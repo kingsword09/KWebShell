@@ -45,6 +45,22 @@ private const val PRESENTATION_PREFLIGHT_MS: Long = 750L
 private const val PRESENTATION_MINIMUM_FRAMES: Double = 3.0
 private const val PRESENTATION_PREFLIGHT_ATTEMPTS: Int = 3
 
+private val REQUIRED_BENCHMARK_CAPABILITIES = setOf(
+    KWebCapability.NATIVE_CHILD,
+    KWebCapability.CDP,
+)
+
+internal fun requireBenchmarkCapabilities(capabilities: Set<KWebCapability>) {
+    val missing = REQUIRED_BENCHMARK_CAPABILITIES.filterNot(capabilities::contains)
+    if (missing.isNotEmpty()) {
+        throw BenchmarkException(
+            "phase.capability-missing",
+            "The application benchmark requires explicit Engine capabilities " +
+                "${REQUIRED_BENCHMARK_CAPABILITIES.map(KWebCapability::id)}; missing ${missing.map(KWebCapability::id)}.",
+        )
+    }
+}
+
 internal class BenchmarkPhaseRunner(
     private val configuration: BenchmarkConfiguration,
 ) {
@@ -117,9 +133,7 @@ internal class BenchmarkPhaseRunner(
                 ),
             )
             engineStartupMs = elapsedMs(engineStartedNs)
-            if (KWebCapability.CDP !in engine.capabilities) {
-                throw BenchmarkException("phase.cdp-capability-missing", "The benchmark requires the explicit CDP capability.")
-            }
+            requireBenchmarkCapabilities(engine.capabilities)
             profile = runBlocking { engine.openProfile(profileName) }
             val pageOpenedNs = System.nanoTime()
             page = runBlocking {

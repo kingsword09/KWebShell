@@ -91,8 +91,11 @@ The benchmark runs a fixed scenario set:
 Every run writes raw samples before aggregation. Browser-side measurements use
 `PerformanceObserver` and the Navigation/Resource/Long Task/Element Timing
 APIs. Host-side measurements record engine startup, page events, CDP command
-latency, process RSS/private memory, CPU time, thread count, native child
-frame pacing, GPU renderer evidence, Profile disk growth, and shutdown time.
+latency, process RSS/private memory, CPU time, thread count, and target-specific
+Chromium compositor frame pacing from the verified visible windowed native
+child. The compositor timestamps do not claim operating-system display scanout.
+Host evidence also records GPU renderer identity, Profile disk growth, and
+shutdown time.
 The report includes median, p95, and worst-case values for each scenario,
 sample count, warmup count, runtime digest, OS, architecture, display scale,
 GPU identity, and benchmark git revision. A single composite score is not

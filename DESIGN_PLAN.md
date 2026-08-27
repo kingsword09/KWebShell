@@ -1479,8 +1479,10 @@ Gradle task in hosted CI before cross-platform publication.
 `kweb-example-app-benchmark` serves a digest-pinned synthetic LobeHub-class
 workload and measures cold/warm startup, navigation, streamed rendering,
 virtualization, storage, workers, WebSocket activity, media decode,
-DevTools/CDP overhead, visible native-frame pacing, process-tree memory/CPU,
-Profile continuity, and shutdown. One warmup and ten measured cold/warm pairs
+DevTools/CDP overhead, target-specific Chromium compositor frame pacing from a
+verified visible windowed native child, process-tree memory/CPU, Profile
+continuity, and shutdown. This frame evidence is not OS display scanout. One
+warmup and ten measured cold/warm pairs
 produce 22 retained raw samples plus median, p95, and worst summaries; the
 first measured pair retains verified screenshots. The baseline catalog binds
 runtime and workload digests to platform, architecture, and machine class, so

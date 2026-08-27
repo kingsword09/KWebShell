@@ -15,7 +15,9 @@ The page is served from a loopback origin and exercises one coherent workflow:
 - image, font, and generated WAV audio decoding;
 - PerformanceObserver paint, layout-shift, long-task, and interaction data;
 - DevTools open/close, CDP command latency, native public events, screenshots,
-  process-tree resource metrics, Profile growth, and shutdown timing.
+  process-tree resource metrics, Profile growth, and shutdown timing;
+- target-specific Chromium compositor frame pacing from the verified visible,
+  windowed native child.
 
 Every cold/warm pair runs in isolated JDK 25 and CEF processes. One warmup pair
 is discarded from aggregates; ten measured cold/warm pairs are required. Raw
@@ -24,6 +26,10 @@ report contains median, p95, and worst values without a composite score.
 Missing required evidence, a changed resource digest, an incomplete pair, or
 an unavailable required API fails the run. Optional INP evidence is represented
 as an explicit unavailable reason when the runtime does not expose it.
+The `host.native-frame.*` metrics require `native-child` and `cdp`, a visible
+and displayable `ComposeWindow`, a non-zero native handle, non-empty JPEG frame
+data, and strictly increasing `Page.screencastFrame` timestamps. They measure
+the target's Chromium compositor output, not operating-system display scanout.
 
 ## Local command
 

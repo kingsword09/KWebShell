@@ -1,11 +1,13 @@
 package io.github.kingsword09.kwebshell.example.benchmark
 
+import io.github.kingsword09.kwebshell.core.KWebCapability
 import org.junit.jupiter.api.Test
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
@@ -46,6 +48,18 @@ class BenchmarkContractTest {
         assertEquals(3.0, percentile(listOf(1.0, 2.0, 3.0, 4.0, 5.0), 0.5))
         assertEquals(5.0, percentile(listOf(1.0, 2.0, 3.0, 4.0, 5.0), 0.95))
         assertFailsWith<IllegalArgumentException> { percentile(emptyList(), 0.5) }
+    }
+
+    @Test
+    fun requiresNativeChildAndCdpCapabilities() {
+        requireBenchmarkCapabilities(setOf(KWebCapability.NATIVE_CHILD, KWebCapability.CDP))
+
+        val error = assertFailsWith<BenchmarkException> {
+            requireBenchmarkCapabilities(setOf(KWebCapability.CDP))
+        }
+
+        assertEquals("phase.capability-missing", error.code)
+        assertContains(error.message.orEmpty(), "native-child")
     }
 
     private fun copyTree(source: Path, target: Path) {

@@ -2,9 +2,9 @@
 
 ## Project Objective
 
-KWebShell is a Kotlin Multiplatform browser shell for Compose and Chromium. It is intended to provide a native, hardware-accelerated desktop browser surface with DevTools/CDP, persistent profiles, typed host bridges, custom protocols, a real Manifest V3 extension runtime, and extensible KMP native services on Windows, macOS, and Linux. An optional migration kit may make Electron applications easier to port without making Electron the core API.
+KWebShell is a Kotlin Multiplatform browser shell for Compose and Chromium. It is intended to provide a native, hardware-accelerated desktop browser surface with DevTools/CDP, persistent profiles, typed host bridges, custom protocols, a real Manifest V3 extension runtime, and extensible KMP native services on Windows, macOS, and Linux. The project must also deliver an opt-in Electron migration kit that makes declared renderer contracts practical to port without making Electron the core API.
 
-The browser engine is a product boundary, not an implementation detail. The desktop Chromium backend, native window host, Kotlin API, Compose integration, extension runtime, KMP native services, and optional migration adapters must be designed and tested as separate layers with explicit contracts.
+The browser engine is a product boundary, not an implementation detail. The desktop Chromium backend, native window host, Kotlin API, Compose integration, extension runtime, KMP native services, and opt-in migration adapters must be designed and tested as separate layers with explicit contracts.
 
 ## Non-Negotiable Delivery Rules
 
@@ -57,7 +57,7 @@ The browser engine is a product boundary, not an implementation detail. The desk
 - `kweb-desktop`: desktop session, window, page, DevTools, CDP, and profile orchestration.
 - `kweb-bridge`: typed Kotlin/JavaScript RPC and generated bindings. Keep the transport independent of CEF.
 - `kweb-services-core` and `kweb-service-*`: explicitly installed KMP native-service contracts, policy, lifecycle, and complete platform providers. Do not create a service module before its first real vertical slice.
-- `kweb-electron-migration`: optional generated preload/channel adapters and a versioned migration matrix. Core WebView and service modules must never depend on it.
+- `kweb-electron-migration`: an opt-in application dependency, but a required project deliverable, containing generated preload/channel adapters and a versioned migration matrix. Core WebView and service modules must never depend on it.
 - `kweb-cef-native`: C++ CEF/Chromium host, C ABI, native window integration, and extension adapter.
 - `kweb-extensions`: Manifest V3 package validation, permission policy, lifecycle model, and capability reporting.
 - Keep CEF C++ types behind the opaque C ABI. Do not leak `CefRefPtr`, CEF callbacks, or Chromium classes into common Kotlin code.

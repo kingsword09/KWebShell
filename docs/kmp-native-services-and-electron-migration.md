@@ -10,12 +10,14 @@ claims:
    and the Manifest V3 runtime.
 2. **KMP Native Services** expose explicitly installed host capabilities through
    typed common Kotlin contracts and generated TypeScript clients.
-3. **Electron Migration Kit** is an optional adapter that maps a declared
-   Electron or application-specific preload surface onto those services.
+3. **Electron Migration Kit** is an opt-in application dependency and a required
+   project deliverable. It maps a declared Electron or application-specific
+   preload surface onto those services.
 
-The first two layers define the product. The migration kit depends on them; they
-must never depend on Electron names, channel conventions, Node.js types, or
-Electron lifecycle objects.
+The WebView and native-service layers define the runtime product. The migration
+kit is a required project deliverable that depends on them; they must never
+depend on Electron names, channel conventions, Node.js types, or Electron
+lifecycle objects.
 
 This architecture targets Electron-class application capability, not API
 identity. A migrated application may preserve much of its renderer and its
@@ -383,6 +385,34 @@ An application migration proceeds in explicit stages:
 This allows incremental source migration without creating an unbounded runtime
 compatibility layer.
 
+### 9.5 Definition of easy migration
+
+"Easy migration" has a measurable meaning in KWebShell. It does not mean that
+an arbitrary Electron package runs unchanged. A migration is considered ready
+when:
+
+- Renderer calls covered by `DIRECT` or `ADAPTER` rows remain source-compatible
+  with the generated preload facade.
+- Main-process ownership, Profile/Page creation, permissions, and native service
+  installation are explicit Kotlin/Compose code rather than hidden runtime
+  behavior.
+- One versioned schema is the source for the Kotlin dispatcher, TypeScript
+  client, preload facade, and compatibility report.
+- The build fails before packaging when an Electron import, Node dependency,
+  preload export, or IPC request is unclassified or `UNSUPPORTED`.
+- The KWebShell package contains no Electron binary, Node runtime, unrestricted
+  IPC endpoint, or compatibility shim that pretends an unsupported operation
+  succeeded.
+- A pinned renderer digest, migration-manifest digest, service versions,
+  Chromium/CEF identity, and target-specific test evidence are retained for
+  review.
+
+The first real application proof should use a pinned Electron application such
+as the LobeHub desktop product after its startup-path services have complete
+conformance. Until then, a report is explicitly migration-blocked; a synthetic
+workload or a partial host surface cannot be presented as an application
+migration or a performance result.
+
 ## 10. Manifest V3 Is Independent
 
 Electron migration and Chrome extension compatibility solve different problems.
@@ -472,9 +502,11 @@ Acceptance criteria:
    frame, cross-origin navigation, unconfigured Page, malformed request, closed
    owner, and undeclared path kind each produce the exact typed failure and no
    native call.
-6. The optional migration adapter maps only the proven Electron `app.getPath`
-   names. Every other Electron application method is absent from the adapter and
-   marked `UNSUPPORTED` in the first compatibility matrix.
+6. The project-supplied migration adapter maps only the proven Electron
+   `app.getPath` names. Every other Electron application method is absent from
+   the adapter and marked `UNSUPPORTED` in the first compatibility matrix. An
+   application may omit the adapter module, but the project cannot omit its
+   implementation and conformance tests.
 7. Common unit tests, generator determinism tests, TypeScript strict compilation,
    C ABI/FFM layout tests, real OS path integration, real CEF bridge isolation,
    repeated lifecycle tests, and runtime packaging verification pass on macOS,

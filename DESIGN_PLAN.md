@@ -13,8 +13,9 @@ KWebShell is a Kotlin Multiplatform browser shell for Compose and Chromium. It i
 - A real Manifest V3 extension runtime with explicit capability reporting.
 - Explicitly installed KMP native services for OS capabilities that web content
   cannot provide.
-- An optional Electron migration kit that preserves declared renderer contracts
-  without coupling the core API to Electron.
+- An opt-in Electron migration kit, required as a project deliverable, that
+  preserves declared renderer contracts without coupling the core API to
+  Electron.
 
 The public product name is **KWebShell**. The implementation must not expose CEF as the public API because the engine is an implementation boundary and may evolve independently.
 
@@ -54,7 +55,8 @@ not require all native implementation code to use Kotlin/Native. Services are
 installed and versioned explicitly, scoped to application/Profile/Page owners,
 and exposed to JavaScript only through exact-origin operation grants.
 
-Electron migration is an optional adapter boundary. It may map a declared
+Electron migration is an opt-in adapter boundary and a required product
+deliverable. It may map a declared
 preload surface or IPC channel to a typed service, but it must not add a general
 `ipcRenderer`, Node.js runtime, synchronous IPC, or Electron types to the core
 API. The full contract is defined in [KMP Native Services And Electron
@@ -68,7 +70,7 @@ Compose Desktop JVM
         v
  kweb-compose / kweb-desktop
         |                   +-- kweb-services-core / kweb-service-<name>
-        |                   +-- optional kweb-electron-migration
+        |                   +-- opt-in kweb-electron-migration
         v
   kweb-core contracts
         |
@@ -98,7 +100,7 @@ Compose Desktop JVM
 | `kweb-runtime-pack` | Reproducible CEF binaries, resources, locales, licenses, and platform packaging | Runtime version selection at application startup |
 | `kweb-services-core` | Planned KMP service descriptors, registry, scopes, policy, and shared errors | Concrete OS APIs or Electron compatibility |
 | `kweb-service-<name>` | One complete native service contract and its advertised platform providers | Unrelated service families or partial providers |
-| `kweb-electron-migration` | Planned optional typed preload/channel adapters and compatibility matrix | Browser, service, Node.js, or arbitrary IPC ownership |
+| `kweb-electron-migration` | Planned opt-in typed preload/channel adapters and compatibility matrix | Browser, service, Node.js, or arbitrary IPC ownership |
 
 Planned modules are created only when their first complete vertical slice lands;
 the table does not authorize empty Gradle modules or placeholder APIs.
@@ -1505,8 +1507,10 @@ published.
 Phase 11 completes the ergonomic Compose host and adds an extensible
 host-capability layer without turning the browser API into an Electron clone.
 Common Kotlin contracts are implemented by explicit desktop providers and may
-be exposed to one Page origin through generated typed clients. An optional
-migration kit maps only declared Electron/preload surfaces onto those services.
+be exposed to one Page origin through generated typed clients. The project
+delivers an opt-in migration kit; an application may omit that module, but the
+kit itself is not an optional implementation obligation. It maps only declared
+Electron/preload surfaces onto those services.
 See [KMP Native Services And Electron
 Migration](docs/kmp-native-services-and-electron-migration.md) for ownership,
 security, compatibility statuses, and the staged migration workflow.
@@ -1537,6 +1541,42 @@ lifecycle, packaging, and compatibility-matrix evidence on macOS, Windows, and
 Linux. Missing platform definitions return typed failures; guessed directory
 conventions and alternate providers are prohibited.
 
+#### Objective 11.3: Publish the typed Electron migration kit
+
+Publish the opt-in `kweb-electron-migration` module as a complete source-
+migration tool over the bridge and native-service contracts. The first release
+does not attempt to execute an Electron main process, bundle Node.js, or install
+a universal `ipcRenderer`. It instead makes a declared, typed renderer surface
+portable and makes every missing mapping visible before packaging.
+
+Acceptance criteria:
+
+1. A versioned migration manifest records the source Electron imports, preload
+   exports, IPC channel/request schemas, required KWebShell services, and the
+   `DIRECT`/`ADAPTER`/`REWRITE`/`UNSUPPORTED` status for each item. Unknown
+   fields, undeclared channels, and incompatible schema revisions fail the
+   manifest task; they are never ignored.
+2. One manifest deterministically generates a TypeScript preload facade and
+   strict declarations that preserve the declared application method shape
+   while dispatching only to generated exact-origin KWebShell operations.
+   Generation is reproducible and has no arbitrary string-channel escape hatch.
+3. The kit supplies a migration-inventory command that reports every Electron
+   or Node dependency it finds, maps it to the versioned matrix, and exits with
+   a typed blocking result for `UNSUPPORTED` or unclassified usage. It never
+   claims that a source tree is migratable merely because it compiles.
+4. A complete fixture keeps its renderer-facing preload calls unchanged while
+   its host startup, Profile, Page, and native service ownership are written in
+   Kotlin/Compose. The fixture proves request IDs, timeout, cancellation,
+   navigation cancellation, owner close, origin isolation, and typed failures.
+5. The compatibility report includes the renderer digest, manifest digest,
+   generated-output digest, service-contract versions, Chromium/CEF identity,
+   and platform target. A report with an unresolved mapping is migration-
+   blocked and contains no performance comparison.
+6. Common tests, deterministic generator tests, strict TypeScript compilation,
+   real CEF bridge integration, and macOS, Windows, and Linux migration-fixture
+   gates pass before the module is published. The application remains free to
+   omit the module; omission is not a hidden fallback implementation.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.
@@ -1552,7 +1592,8 @@ Required layers:
 - Performance tests for startup, first contentful paint, navigation, GPU frame pacing, memory, and OSR comparison.
 - Security tests for CRX3 signatures, path traversal, permissions, origins, remote debugging, and native messaging.
 - Native-service contract, generated-client, permission, lifecycle, platform SDK,
-  and optional Electron-adapter conformance tests.
+  and Electron-adapter conformance tests for every compatibility-matrix row that
+  the objective changes.
 
 The MV3 conformance suite must include at least:
 
@@ -1589,6 +1630,7 @@ examples: load the live HTML5test page
 benchmark: add the application-scale workload harness
 compose: publish the native-child KWebView component
 services: publish verified application paths
+migration: publish the typed Electron migration kit
 ```
 
 Do not create a commit for a partial objective. Do not move a failing test to a later phase. Each commit must include the verification command or CI result in its body.

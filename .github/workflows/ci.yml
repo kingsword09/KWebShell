@@ -131,6 +131,20 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Run live HTML5test example
+        shell: bash
+        run: |
+          ./gradlew --no-daemon :kweb-example-html5-lab:html5TestSiteRun \
+            -PcefRoot="$PWD/.cef-ci/source/$CEF_DIRECTORY"
+
+      - name: Upload live HTML5test evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: html5test-${{ matrix.target }}-${{ github.sha }}
+          path: kweb-example-html5-lab/build/reports/html5test-site/
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Run complete verification
         shell: bash
         run: |

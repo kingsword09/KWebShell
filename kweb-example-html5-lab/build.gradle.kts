@@ -1,5 +1,6 @@
 import org.gradle.api.tasks.Delete
 import org.gradle.api.tasks.Exec
+import org.gradle.api.provider.Provider
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Locale
@@ -91,21 +92,38 @@ val nativeLocales = operatingSystem.map { name ->
 }
 val integrationRoot = layout.buildDirectory.dir("capability-lab-integration")
 val integrationOutput = layout.buildDirectory.dir("reports/capability-lab")
+val liveSiteRoot = layout.buildDirectory.dir("html5test-site")
+val liveSiteOutput = layout.buildDirectory.dir("reports/html5test-site")
+val liveSiteStaging = layout.buildDirectory.dir("reports/.html5test-site.staging")
 val javaLauncher = javaToolchains.launcherFor {
     languageVersion.set(JavaLanguageVersion.of(25))
 }
 val integrationClasspath = sourceSets.main.get().runtimeClasspath
+fun Provider<java.io.File>.requiredLocaleFile(): Provider<java.io.File> = map { directory ->
+    if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("mac")) {
+        directory.resolve("en.lproj/locale.pak")
+    } else {
+        directory.resolve("en-US.pak")
+    }
+}
 val cleanIntegration = tasks.register<Delete>("cleanCapabilityLabIntegration") {
     delete(integrationRoot, integrationOutput)
 }
-val integrationCommand = providers.provider {
+val cleanLiveSite = tasks.register<Delete>("cleanHtml5TestSite") {
+    delete(liveSiteRoot, liveSiteOutput, liveSiteStaging)
+}
+fun runtimeCommand(
+    root: Provider<org.gradle.api.file.Directory>,
+    output: Provider<org.gradle.api.file.Directory>,
+    mode: String,
+): Provider<List<String>> = providers.provider {
     buildList {
         add(javaLauncher.get().executablePath.asFile.absolutePath)
         add("--enable-native-access=ALL-UNNAMED")
         add("-Djava.awt.headless=false")
         add("-Dkweb.native.library.path=${nativeEngineLibrary.get().absolutePath}")
-        add("-Dkweb.capability.lab.root=${integrationRoot.get().asFile.absolutePath}")
-        add("-Dkweb.capability.lab.output=${integrationOutput.get().asFile.absolutePath}")
+        add("-Dkweb.capability.lab.root=${root.get().asFile.absolutePath}")
+        add("-Dkweb.capability.lab.output=${output.get().asFile.absolutePath}")
         add("-Dkweb.engine.cef.runtime.path=${nativeCefRuntime.get().absolutePath}")
         add("-Dkweb.engine.subprocess.path=${nativeBrowserSubprocess.get().absolutePath}")
         add("-Dkweb.engine.resources.path=${nativeResources.get().absolutePath}")
@@ -113,9 +131,10 @@ val integrationCommand = providers.provider {
         add("-cp")
         add(integrationClasspath.asPath)
         add("io.github.kingsword09.kwebshell.example.html5.MainKt")
-        add("integration")
+        add(mode)
     }
 }
+val integrationCommand = runtimeCommand(integrationRoot, integrationOutput, "integration")
 val capabilityLabIntegrationTest = tasks.register<Exec>("capabilityLabIntegrationTest") {
     group = "verification"
     description = "Runs the HTML5 capability lab against the real CEF runtime twice for Profile persistence."
@@ -125,13 +144,7 @@ val capabilityLabIntegrationTest = tasks.register<Exec>("capabilityLabIntegratio
     inputs.file(nativeCefRuntime)
     inputs.file(nativeBrowserSubprocess)
     inputs.file(nativeResources.map { it.resolve("resources.pak") })
-    inputs.file(nativeLocales.map { directory ->
-        if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("mac")) {
-            directory.resolve("en.lproj/locale.pak")
-        } else {
-            directory.resolve("en-US.pak")
-        }
-    })
+    inputs.file(nativeLocales.requiredLocaleFile())
     if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("linux")) {
         commandLine(
             listOf("xvfb-run", "--auto-servernum", "--server-args=-screen 0 1440x1000x24") +
@@ -140,6 +153,32 @@ val capabilityLabIntegrationTest = tasks.register<Exec>("capabilityLabIntegratio
     } else {
         commandLine(integrationCommand.get())
     }
+}
+
+val liveSiteCommand = runtimeCommand(liveSiteRoot, liveSiteOutput, "html5test")
+val html5TestSiteRun = tasks.register<Exec>("html5TestSiteRun") {
+    group = "application"
+    description = "Loads https://html5test.com/ in real CEF and captures strict score, CDP, event, and screenshot evidence."
+    dependsOn(cleanLiveSite, tasks.test, ":kweb-cef-native:buildNative")
+    inputs.file(nativeEngineLibrary)
+    inputs.file(nativeCefRuntime)
+    inputs.file(nativeBrowserSubprocess)
+    inputs.file(nativeResources.map { it.resolve("resources.pak") })
+    inputs.file(nativeLocales.requiredLocaleFile())
+    outputs.dir(liveSiteOutput)
+    if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("linux")) {
+        commandLine(
+            listOf("xvfb-run", "--auto-servernum", "--server-args=-screen 0 1440x1000x24") +
+                liveSiteCommand.get(),
+        )
+    } else {
+        commandLine(liveSiteCommand.get())
+    }
+}
+tasks.register("html5TestSiteSmokeTest") {
+    group = "verification"
+    description = "Verifies the live HTML5test example and its evidence artifacts."
+    dependsOn(html5TestSiteRun)
 }
 
 tasks.named("check") {

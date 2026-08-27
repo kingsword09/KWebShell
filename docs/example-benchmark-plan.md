@@ -6,16 +6,23 @@ backends and not demo-only mock pages. Both applications must use the public
 `kweb-core` and `kweb-desktop` contracts; they must not reach into CEF, FFM, or
 private native handles.
 
-## Example 1: HTML5 Capability Lab
+## Example 1: HTML5test Example and Capability Probe
 
 Planned module: `kweb-example-html5-lab`
 
-The lab loads a versioned, locally packaged test page and produces a
-machine-readable report. The page must be served from a deterministic local
-origin so that service workers, storage, workers, and fetch behavior are tested
-under the same origin rules as a real application. A missing asset, failed
-test, or unavailable required API is a test failure; the runner must never
-replace it with a browser-specific fallback or a synthetic success.
+The example entry loads the real `https://html5test.com/` page and produces a
+machine-readable score, Chromium/CDP identity, public-event evidence, and a
+visible screenshot. The canonical HTTPS URL, title, HTTP 200 load, and current
+score DOM are strict contracts. The site is an archived 2016-era test, so its
+score is reported as evidence for that page rather than a claim of current,
+complete Web-platform conformance. Network or DOM failure is terminal and must
+never switch to a local page or alternate site.
+
+A separate versioned local conformance probe tests service workers, storage,
+workers, fetch, permission policy, trusted input, and persistence under a
+deterministic origin. A missing asset, failed test, or unavailable required API
+is a test failure. The probe is never presented as HTML5test and is never used
+as fallback for the live example.
 
 The test manifest classifies each probe as `required`, `optional`, or
 `diagnostic` for the pinned CEF/Chromium version. Optional capabilities are
@@ -46,9 +53,11 @@ Chromium version, the CEF runtime digest, and the host platform/architecture.
 
 Acceptance criteria:
 
-1. The example starts with a documented command on macOS, Windows, and Linux,
-   creates a real native child under a visible `ComposeWindow`, and uses a
-   persistent Profile.
+1. The live example starts with a documented command on macOS, Windows, and
+   Linux, creates a real native child under a visible `ComposeWindow`, loads
+   exactly `https://html5test.com/`, and records its score and a nonblank
+   `cdp-page-target` screenshot. The screenshot is Chromium target evidence,
+   not operating-system display scanout.
 2. A real CEF integration test runs the complete required manifest, verifies
    the report schema and origin, and fails when a required probe is missing or
    the report contains fabricated/empty evidence.

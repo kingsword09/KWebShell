@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "name": "KWebShell LobeHub-class workload fixture",
+  "classification": "repository-local-synthetic-workload",
+  "source": "kweb-example-app-benchmark/src/main/resources/workload",
+  "revision": "kwebshell-workload-2026-08-20-r01",
+  "licenseNotice": "Original KWebShell synthetic fixture; repository license applies; no LobeHub source or asset is included.",
+  "entryPoint": "index.html",
+  "aggregateSha256": "b0b0260ecfcd9fc395389e89576fe01696f119cece13c442e3260662bdad91ed",
+  "files": [
+    { "path": "PROOF_FONT_NOTICE.txt", "size": 685, "sha256": "d1d3feca196b6117f5fcf13c7739c5a6563d798f55d2976b15ef2477a750742d" },
+    { "path": "app.js", "size": 23015, "sha256": "187bebf37c06a462345c6ac5cef49c711621f2d67d214e4fed5a5635a5d66bbf" },
+    { "path": "index.html", "size": 10908, "sha256": "5f283bd884eb4621170decdfc0a57369a3608342bdc002dbacb325387af591f4" },
+    { "path": "proof-font.woff2", "size": 63416, "sha256": "2502a30fa706cc07970092549043afe53049faed19a6d4ba56a7d773ee39d341" },
+    { "path": "proof-sheet.svg", "size": 1800, "sha256": "4ef978f224edd26aeb3ab9de9d85531c9f9e85ebbeccc938657ec05a8c87b77b" },
+    { "path": "styles.css", "size": 16136, "sha256": "72c62bf583f64bcdfcdf166f7879c1a617f11dec1f733dcd7fef7f4f4ab05c26" },
+    { "path": "worker.js", "size": 395, "sha256": "aeaf97cb683405c3ea4d77c50ef601433c6e371fae6e1b568f26cbea6cb07661" }
+  ]
+}

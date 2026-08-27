@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "baselines": [
+    {
+      "runtimeSha256": "1d67f3d8a4c84d2f86899d5c1de086ff481cd81274bd03f5a30ea21a82e20f97",
+      "workloadAggregateSha256": "b0b0260ecfcd9fc395389e89576fe01696f119cece13c442e3260662bdad91ed",
+      "platform": "macos",
+      "architecture": "arm64",
+      "machineClass": "mac14-3-m2-16gb",
+      "thresholds": [
+        { "phase": "cold", "metric": "navigation.fcp.ms", "statistic": "worst", "direction": "maximum", "limit": 2500.0 },
+        { "phase": "cold", "metric": "navigation.lcp.ms", "statistic": "worst", "direction": "maximum", "limit": 2500.0 },
+        { "phase": "cold", "metric": "scenario.duration.ms", "statistic": "worst", "direction": "maximum", "limit": 2500.0 },
+        { "phase": "cold", "metric": "host.engine-startup.ms", "statistic": "worst", "direction": "maximum", "limit": 750.0 },
+        { "phase": "cold", "metric": "host.page-usable.ms", "statistic": "worst", "direction": "maximum", "limit": 2500.0 },
+        { "phase": "cold", "metric": "host.process.resident.bytes", "statistic": "worst", "direction": "maximum", "limit": 1800000000.0 },
+        { "phase": "cold", "metric": "host.shutdown.ms", "statistic": "worst", "direction": "maximum", "limit": 3000.0 },
+        { "phase": "cold", "metric": "host.native-frame.count", "statistic": "median", "direction": "minimum", "limit": 12.0 },
+        { "phase": "cold", "metric": "host.native-frame.interval.p95.ms", "statistic": "p95", "direction": "maximum", "limit": 80.0 },
+        { "phase": "warm", "metric": "navigation.fcp.ms", "statistic": "worst", "direction": "maximum", "limit": 1000.0 },
+        { "phase": "warm", "metric": "scenario.duration.ms", "statistic": "worst", "direction": "maximum", "limit": 1500.0 },
+        { "phase": "warm", "metric": "host.page-usable.ms", "statistic": "worst", "direction": "maximum", "limit": 1000.0 },
+        { "phase": "warm", "metric": "host.shutdown.ms", "statistic": "worst", "direction": "maximum", "limit": 3000.0 },
+        { "phase": "warm", "metric": "host.native-frame.count", "statistic": "median", "direction": "minimum", "limit": 12.0 },
+        { "phase": "warm", "metric": "host.native-frame.interval.p95.ms", "statistic": "p95", "direction": "maximum", "limit": 80.0 }
+      ]
+    },
+    {
+      "runtimeSha256": "1d67f3d8a4c84d2f86899d5c1de086ff481cd81274bd03f5a30ea21a82e20f97",
+      "workloadAggregateSha256": "b0b0260ecfcd9fc395389e89576fe01696f119cece13c442e3260662bdad91ed",
+      "platform": "macos",
+      "architecture": "arm64",
+      "machineClass": "github-hosted-macos-15-arm64",
+      "thresholds": [
+        { "phase": "cold", "metric": "navigation.fcp.ms", "statistic": "worst", "direction": "maximum", "limit": 8000.0 },
+        { "phase": "cold", "metric": "navigation.lcp.ms", "statistic": "worst", "direction": "maximum", "limit": 8000.0 },
+        { "phase": "cold", "metric": "scenario.duration.ms", "statistic": "worst", "direction": "maximum", "limit": 8000.0 },
+        { "phase": "cold", "metric": "host.engine-startup.ms", "statistic": "worst", "direction": "maximum", "limit": 5000.0 },
+        { "phase": "cold", "metric": "host.page-usable.ms", "statistic": "worst", "direction": "maximum", "limit": 10000.0 },
+        { "phase": "cold", "metric": "host.process.resident.bytes", "statistic": "worst", "direction": "maximum", "limit": 3500000000.0 },
+        { "phase": "cold", "metric": "host.shutdown.ms", "statistic": "worst", "direction": "maximum", "limit": 10000.0 },
+        { "phase": "cold", "metric": "host.native-frame.count", "statistic": "median", "direction": "minimum", "limit": 8.0 },
+        { "phase": "cold", "metric": "host.native-frame.interval.p95.ms", "statistic": "p95", "direction": "maximum", "limit": 500.0 },
+        { "phase": "warm", "metric": "navigation.fcp.ms", "statistic": "worst", "direction": "maximum", "limit": 5000.0 },
+        { "phase": "warm", "metric": "scenario.duration.ms", "statistic": "worst", "direction": "maximum", "limit": 5000.0 },
+        { "phase": "warm", "metric": "host.page-usable.ms", "statistic": "worst", "direction": "maximum", "limit": 5000.0 },
+        { "phase": "warm", "metric": "host.shutdown.ms", "statistic": "worst", "direction": "maximum", "limit": 10000.0 },
+        { "phase": "warm", "metric": "host.native-frame.count", "statistic": "median", "direction": "minimum", "limit": 8.0 },
+        { "phase": "warm", "metric": "host.native-frame.interval.p95.ms", "statistic": "p95", "direction": "maximum", "limit": 500.0 }
+      ]
+    },
+    {
+      "runtimeSha256": "77cdba04321927f3b6be56c1d843e900c7d95dcda16e4acc750830eadaca6082",
+      "workloadAggregateSha256": "b0b0260ecfcd9fc395389e89576fe01696f119cece13c442e3260662bdad91ed",
+      "platform": "windows",
+      "architecture": "x64",
+      "machineClass": "github-hosted-windows-2022-x64",
+      "thresholds": [
+        { "phase": "cold", "metric": "navigation.fcp.ms", "statistic": "worst", "direction": "maximum", "limit": 8000.0 },
+        { "phase": "cold", "metric": "navigation.lcp.ms", "statistic": "worst", "direction": "maximum", "limit": 8000.0 },
+        { "phase": "cold", "metric": "scenario.duration.ms", "statistic": "worst", "direction": "maximum", "limit": 8000.0 },
+        { "phase": "cold", "metric": "host.engine-startup.ms", "statistic": "worst", "direction": "maximum", "limit": 5000.0 },
+        { "phase": "cold", "metric": "host.page-usable.ms", "statistic": "worst", "direction": "maximum", "limit": 10000.0 },
+        { "phase": "cold", "metric": "host.process.resident.bytes", "statistic": "worst", "direction": "maximum", "limit": 3500000000.0 },
+        { "phase": "cold", "metric": "host.shutdown.ms", "statistic": "worst", "direction": "maximum", "limit": 10000.0 },
+        { "phase": "cold", "metric": "host.native-frame.count", "statistic": "median", "direction": "minimum", "limit": 8.0 },
+        { "phase": "cold", "metric": "host.native-frame.interval.p95.ms", "statistic": "p95", "direction": "maximum", "limit": 500.0 },
+        { "phase": "warm", "metric": "navigation.fcp.ms", "statistic": "worst", "direction": "maximum", "limit": 5000.0 },
+        { "phase": "warm", "metric": "scenario.duration.ms", "statistic": "worst", "direction": "maximum", "limit": 5000.0 },
+        { "phase": "warm", "metric": "host.page-usable.ms", "statistic": "worst", "direction": "maximum", "limit": 5000.0 },
+        { "phase": "warm", "metric": "host.shutdown.ms", "statistic": "worst", "direction": "maximum", "limit": 10000.0 },
+        { "phase": "warm", "metric": "host.native-frame.count", "statistic": "median", "direction": "minimum", "limit": 8.0 },
+        { "phase": "warm", "metric": "host.native-frame.interval.p95.ms", "statistic": "p95", "direction": "maximum", "limit": 500.0 }
+      ]
+    },
+    {
+      "runtimeSha256": "397f58d2419669d2332b33be40a586d3a24aada58a183d6e0121cab5d230f338",
+      "workloadAggregateSha256": "b0b0260ecfcd9fc395389e89576fe01696f119cece13c442e3260662bdad91ed",
+      "platform": "linux",
+      "architecture": "x64",
+      "machineClass": "github-hosted-ubuntu-24.04-x64",
+      "thresholds": [
+        { "phase": "cold", "metric": "navigation.fcp.ms", "statistic": "worst", "direction": "maximum", "limit": 8000.0 },
+        { "phase": "cold", "metric": "navigation.lcp.ms", "statistic": "worst", "direction": "maximum", "limit": 8000.0 },
+        { "phase": "cold", "metric": "scenario.duration.ms", "statistic": "worst", "direction": "maximum", "limit": 8000.0 },
+        { "phase": "cold", "metric": "host.engine-startup.ms", "statistic": "worst", "direction": "maximum", "limit": 5000.0 },
+        { "phase": "cold", "metric": "host.page-usable.ms", "statistic": "worst", "direction": "maximum", "limit": 10000.0 },
+        { "phase": "cold", "metric": "host.process.resident.bytes", "statistic": "worst", "direction": "maximum", "limit": 3500000000.0 },
+        { "phase": "cold", "metric": "host.shutdown.ms", "statistic": "worst", "direction": "maximum", "limit": 10000.0 },
+        { "phase": "cold", "metric": "host.native-frame.count", "statistic": "median", "direction": "minimum", "limit": 8.0 },
+        { "phase": "cold", "metric": "host.native-frame.interval.p95.ms", "statistic": "p95", "direction": "maximum", "limit": 500.0 },
+        { "phase": "warm", "metric": "navigation.fcp.ms", "statistic": "worst", "direction": "maximum", "limit": 5000.0 },
+        { "phase": "warm", "metric": "scenario.duration.ms", "statistic": "worst", "direction": "maximum", "limit": 5000.0 },
+        { "phase": "warm", "metric": "host.page-usable.ms", "statistic": "worst", "direction": "maximum", "limit": 5000.0 },
+        { "phase": "warm", "metric": "host.shutdown.ms", "statistic": "worst", "direction": "maximum", "limit": 10000.0 },
+        { "phase": "warm", "metric": "host.native-frame.count", "statistic": "median", "direction": "minimum", "limit": 8.0 },
+        { "phase": "warm", "metric": "host.native-frame.interval.p95.ms", "statistic": "p95", "direction": "maximum", "limit": 500.0 }
+      ]
+    }
+  ]
+}

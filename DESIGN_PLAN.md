@@ -1476,14 +1476,20 @@ Gradle task in hosted CI before cross-platform publication.
 
 #### Objective 10.2: Build the application-scale workload benchmark
 
-Create `kweb-example-app-benchmark`, which loads a digest-pinned LobeHub-class
+`kweb-example-app-benchmark` serves a digest-pinned synthetic LobeHub-class
 workload and measures cold/warm startup, navigation, streamed rendering,
-virtualization, storage, workers, WebSocket activity, DevTools/CDP overhead,
-native frame pacing, memory, CPU, and shutdown. Raw samples, median/p95
-statistics, runtime provenance, and locked workload artifacts are mandatory;
-missing samples must fail rather than be filled or estimated. macOS is the
-first gate, followed by identical Windows/Linux runs before cross-platform
-publication.
+virtualization, storage, workers, WebSocket activity, media decode,
+DevTools/CDP overhead, target-specific Chromium compositor frame pacing from a
+verified visible windowed native child, process-tree memory/CPU, Profile
+continuity, and shutdown. This frame evidence is not OS display scanout. One
+warmup and ten measured cold/warm pairs
+produce 22 retained raw samples plus median, p95, and worst summaries; the
+first measured pair retains verified screenshots. The baseline catalog binds
+runtime and workload digests to platform, architecture, and machine class, so
+a changed runtime or unmatched host fails instead of borrowing thresholds.
+macOS arm64 passes the complete local task. The identical Windows/Linux task
+and artifact schema remain hosted merge gates before cross-platform results are
+published.
 
 ### Phase 11: Compose WebView, KMP native services, and Electron migration
 

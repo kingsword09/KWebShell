@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>KWebShell Proof Desk</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="preload" href="/proof-font.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/proof-sheet.svg" as="image" type="image/svg+xml">
+  <script type="module" src="/app.js"></script>
+</head>
+<body><!--
+THESIS: An AI workload is inspected like a press proof, refusing the generic chat-card dashboard.
+OWN-WORLD: Coated stock, graphite rules, CMYK registration, job tickets, galley text, and measured ledgers.
+STORY: Maintainers see a synthetic prompt become a streamed, routed, persisted, decoded, and measured proof.
+FIRST VIEWPORT: Ticket rail left, proof galley center, inspection ledger right, registration header above, timeline ruler below; Run proof sits upper right.
+FORM: Prepress proofing desk, sixth assigned direction, seed 061646a2; streaming copy advances the registration ruler.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->
+  <svg class="icon-sprite" aria-hidden="true">
+    <symbol id="icon-run" viewBox="0 0 24 24"><path d="M8 5.5 18 12 8 18.5Z"/></symbol>
+    <symbol id="icon-proof" viewBox="0 0 24 24"><path d="M7 3.5h8l3 3v14H7zM15 3.5v4h3M10 11h5M10 15h5"/></symbol>
+    <symbol id="icon-history" viewBox="0 0 24 24"><path d="M5 8V4m0 4h4M5.8 7.2A7.5 7.5 0 1 1 4.7 14M12 8v4l3 2"/></symbol>
+    <symbol id="icon-data" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></symbol>
+    <symbol id="icon-inspect" viewBox="0 0 24 24"><circle cx="10" cy="10" r="5.5"/><path d="m14 14 5 5M10 7v6M7 10h6"/></symbol>
+  </svg>
+
+  <div class="press-shell">
+    <header class="press-header">
+      <a class="wordmark" href="#/proof" data-route="proof" aria-label="KWebShell Proof Desk home">
+        <span class="registration-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span>KWebShell</span><small>proof desk</small>
+      </a>
+      <div class="job-identity">
+        <span>JOB KWS–151</span>
+        <strong>APPLICATION WORKLOAD / REV. 01</strong>
+      </div>
+      <div class="header-status" role="status" aria-live="polite">
+        <span class="status-mark" aria-hidden="true"></span>
+        <span id="run-status">Ready for proof</span>
+      </div>
+      <button class="run-button" id="run-proof" type="button">
+        <svg aria-hidden="true"><use href="#icon-run"/></svg>
+        <span>Run proof</span>
+        <kbd id="run-shortcut">Ctrl+Enter</kbd>
+      </button>
+    </header>
+
+    <aside class="ticket-rail" aria-label="Workload routes">
+      <div class="ticket-heading"><span>JOB TICKET</span><b>04 / 04</b></div>
+      <nav>
+        <a href="#/proof" data-route="proof" aria-current="page"><svg aria-hidden="true"><use href="#icon-proof"/></svg><span>Live proof<small>stream + markdown</small></span><b>01</b></a>
+        <a href="#/history" data-route="history"><svg aria-hidden="true"><use href="#icon-history"/></svg><span>Revisions<small>history traversal</small></span><b>02</b></a>
+        <a href="#/library" data-route="library"><svg aria-hidden="true"><use href="#icon-data"/></svg><span>Source library<small>virtualized rows</small></span><b>03</b></a>
+        <a href="#/inspect" data-route="inspect"><svg aria-hidden="true"><use href="#icon-inspect"/></svg><span>Inspection<small>timing ledger</small></span><b>04</b></a>
+      </nav>
+      <dl class="ticket-facts">
+        <div><dt>Fixture</dt><dd>synthetic</dd></div>
+        <div><dt>Profile</dt><dd id="profile-state">unread</dd></div>
+        <div><dt>Socket</dt><dd id="socket-state">closed</dd></div>
+        <div><dt>Worker</dt><dd id="worker-state">idle</dd></div>
+      </dl>
+      <p class="fixture-notice">Original KWebShell test content. No LobeHub source, assets, or result is represented.</p>
+    </aside>
+
+    <main class="proof-stage" id="proof-stage">
+      <section class="proof-sheet" aria-labelledby="proof-title">
+        <div class="sheet-folio">
+          <span>PROOF 01</span><span>GALLEY / 1280 PX</span><span id="clock-mark">00:00.000</span>
+        </div>
+        <div class="proof-heading">
+          <div>
+            <h1 id="proof-title">Can a native Chromium surface hold an application-scale conversation?</h1>
+            <p>Deterministic synthetic workload · local origin · raw observations retained</p>
+          </div>
+          <img src="/proof-sheet.svg" alt="CMYK registration proof showing layered application surfaces" width="176" height="112" decoding="async" id="proof-image">
+        </div>
+
+        <article class="galley" aria-label="Synthetic AI workload conversation">
+          <section class="prompt-block">
+            <header><span>OPERATOR / SYNTHETIC INPUT</span><time datetime="2026-08-20T09:41:00+08:00">09:41</time></header>
+            <p>Review the embedded browser boundary. Trace startup, navigation, storage, streaming, rendering, worker activity, and shutdown without hiding a missing measurement.</p>
+            <ul class="prompt-tags" aria-label="Requested evidence">
+              <li>Chromium 151</li><li>persistent profile</li><li>CDP 1.3</li><li>native child</li>
+            </ul>
+          </section>
+
+          <section class="response-block" aria-labelledby="response-label">
+            <header><span id="response-label">PROOF COMPOSITOR / STREAMED OUTPUT</span><span class="response-state" id="response-state"><i aria-hidden="true"></i>awaiting run</span></header>
+            <div class="response-copy" id="response-copy">
+              <p>The proof is armed. Running it will compose deterministic Markdown, syntax tokens, routed views, decoded media, IndexedDB records, WebSocket chunks, and Worker results into this galley.</p>
+            </div>
+            <div class="code-proof" aria-label="Rendered Kotlin code sample">
+              <div class="code-ruler" aria-hidden="true"><span>01</span><span>02</span><span>03</span><span>04</span></div>
+              <pre><code id="code-output"><span class="tok-keyword">val</span> engine = KWebDesktop.openEngine(configuration)
+<span class="tok-keyword">val</span> profile = engine.openProfile(<span class="tok-string">"benchmark"</span>)
+<span class="tok-keyword">val</span> page = profile.openPage(host, workloadUrl, bounds)
+page.openDevTools()</code></pre>
+            </div>
+          </section>
+        </article>
+
+        <section class="source-library" aria-labelledby="library-title">
+          <header><div><h2 id="library-title">Source library</h2><p>5,000 deterministic records · windowed DOM</p></div><output id="row-window">rows 0000–0023</output></header>
+          <div class="virtual-viewport" id="virtual-viewport" tabindex="0" aria-label="Virtualized source records">
+            <div class="virtual-spacer" id="virtual-spacer"></div>
+            <ol id="virtual-list"></ol>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <aside class="inspection-ledger" aria-labelledby="ledger-title">
+      <header><div><span>INSPECTION LEDGER</span><h2 id="ledger-title">Live evidence</h2></div><span class="ledger-state" id="ledger-state">UNRUN</span></header>
+      <section class="measure-group" aria-labelledby="timing-title">
+        <h3 id="timing-title">Composition timing</h3>
+        <dl>
+          <div><dt>First contentful paint</dt><dd data-metric="fcp">—</dd></div>
+          <div><dt>Largest contentful paint</dt><dd data-metric="lcp">—</dd></div>
+          <div><dt>Layout shift</dt><dd data-metric="cls">—</dd></div>
+          <div><dt>Interaction latency</dt><dd data-metric="inp">—</dd></div>
+          <div><dt>Long tasks</dt><dd data-metric="longtask">—</dd></div>
+        </dl>
+      </section>
+      <section class="measure-group" aria-labelledby="runtime-title">
+        <h3 id="runtime-title">Runtime activity</h3>
+        <dl>
+          <div><dt>Stream chunks</dt><dd data-metric="socket">0</dd></div>
+          <div><dt>Worker replies</dt><dd data-metric="worker">0</dd></div>
+          <div><dt>Stored records</dt><dd data-metric="records">0</dd></div>
+          <div><dt>DOM row peak</dt><dd data-metric="rows">0</dd></div>
+        </dl>
+      </section>
+      <section class="separation-strip" aria-label="CMYK separations">
+        <h3>Separations</h3>
+        <div><span>C</span><i style="--coverage:82%"></i><b>82</b></div>
+        <div><span>M</span><i style="--coverage:37%"></i><b>37</b></div>
+        <div><span>Y</span><i style="--coverage:24%"></i><b>24</b></div>
+        <div><span>K</span><i style="--coverage:91%"></i><b>91</b></div>
+      </section>
+      <section class="evidence-region" role="region" aria-label="KWebShell benchmark evidence">
+        <h3>Conformance</h3>
+        <p id="conformance-copy">Run the proof to collect browser-side observations. Missing metrics remain explicit and never become zero.</p>
+      </section>
+    </aside>
+
+    <footer class="proof-timeline" aria-label="Workload progress">
+      <div class="timeline-label"><span>RUN LENGTH</span><output id="elapsed-time">0.000 s</output></div>
+      <div class="timeline-track" id="timeline-track">
+        <span class="tick" style="--x:0%">0</span><span class="tick" style="--x:20%">20</span><span class="tick" style="--x:40%">40</span><span class="tick" style="--x:60%">60</span><span class="tick" style="--x:80%">80</span><span class="tick" style="--x:100%">100</span>
+        <div class="timeline-fill" id="timeline-fill"><i></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="timeline-events" id="timeline-events"><span>route</span><span>stream</span><span>worker</span><span>decode</span><span>persist</span></div>
+    </footer>
+    <div class="present-probe" id="present-probe" aria-hidden="true"></div>
+  </div>
+
+  <template id="history-view">
+    <section class="route-sheet"><h1>Revision history</h1><p>The benchmark traverses this route with the History API, then returns through back and forward entries while preserving the same application shell.</p><ol><li><b>R01</b><span>Cold profile and uncached media</span><time>baseline</time></li><li><b>R02</b><span>Warm profile and persistent IndexedDB state</span><time>comparison</time></li><li><b>R03</b><span>DevTools observation window</span><time>instrumented</time></li></ol></section>
+  </template>
+  <template id="inspect-view">
+    <section class="route-sheet"><h1>Inspection notes</h1><p>All aggregate values are derived from retained raw JSON. Median, p95, and worst are reported independently; this workload does not produce a composite score.</p><blockquote>Unavailable is evidence. Estimated is not.</blockquote></section>
+  </template>
+</body>
+</html>

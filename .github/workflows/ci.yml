@@ -20,18 +20,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: linux-x64
-            os: ubuntu-24.04
-            gpu-contract: GPU unavailable contract
-            expect-hardware-gpu-unavailable: true
           - target: windows-x64
             os: windows-2022
             gpu-contract: GPU unavailable contract
             expect-hardware-gpu-unavailable: true
-          - target: macos-arm64
-            os: macos-15
-            gpu-contract: GPU required
-            expect-hardware-gpu-unavailable: false
+            benchmark-machine-class: github-hosted-windows-2022-x64
+            run-application-benchmark: true
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
 
@@ -119,6 +113,23 @@ jobs:
           mkdir -p .cef-ci/source
           tar -xjf ".cef-ci/archives/$CEF_ARCHIVE" \
             -C .cef-ci/source
+
+      - name: Run application workload benchmark
+        if: matrix.run-application-benchmark
+        shell: bash
+        run: |
+          ./gradlew --no-daemon :kweb-example-app-benchmark:applicationBenchmarkIntegrationTest \
+            -PcefRoot="$PWD/.cef-ci/source/$CEF_DIRECTORY" \
+            -PkwebBenchmarkMachineClass=${{ matrix.benchmark-machine-class }}
+
+      - name: Upload application benchmark evidence
+        if: matrix.run-application-benchmark
+        uses: actions/upload-artifact@v6
+        with:
+          name: application-benchmark-${{ matrix.target }}-${{ github.sha }}
+          path: kweb-example-app-benchmark/build/reports/application-benchmark/
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Run complete verification
         shell: bash

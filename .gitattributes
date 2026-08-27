@@ -6,6 +6,11 @@
 *.sh text eol=lf
 gradlew text eol=lf
 runtime/cef/patches/*.patch text eol=lf
+kweb-example-app-benchmark/src/main/resources/workload/*.css text eol=lf
+kweb-example-app-benchmark/src/main/resources/workload/*.html text eol=lf
+kweb-example-app-benchmark/src/main/resources/workload/*.js text eol=lf
+kweb-example-app-benchmark/src/main/resources/workload/*.svg text eol=lf
+kweb-example-app-benchmark/src/main/resources/workload/*.txt text eol=lf
 
 *.jar binary
 *.zip binary

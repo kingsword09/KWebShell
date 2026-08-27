@@ -5,8 +5,8 @@ KWebShell is a Kotlin Multiplatform browser shell for Compose and Chromium. The 
 ## Product Model
 
 KWebShell is designed as three independent layers: the CEF-backed Compose
-WebView, explicitly installed KMP native services, and an optional Electron
-migration kit. The core API targets Electron-class application capability but
+WebView, explicitly installed KMP native services, and an opt-in Electron
+migration kit that remains a required project deliverable. The core API targets Electron-class application capability but
 does not clone Electron names or bundle Node.js. Common Kotlin contracts may use
 JDK 25 FFM and exact Win32, Cocoa, or Linux desktop APIs internally; Kotlin still
 owns the public API and lifecycle.
@@ -16,7 +16,8 @@ Its renderer or application-specific preload surface can remain substantially
 unchanged only when every exposed method is mapped to a generated, exact-origin
 typed service operation. Arbitrary IPC channels, synchronous IPC, Node-enabled
 renderers, and native Node addons require explicit rewrites rather than hidden
-compatibility behavior. See [KMP Native Services And Electron
+compatibility behavior. The migration kit is an opt-in application dependency,
+but it is a required KWebShell project deliverable. See [KMP Native Services And Electron
 Migration](docs/kmp-native-services-and-electron-migration.md) for the planned
 service model, migration matrix, first vertical slice, and acceptance gates.
 

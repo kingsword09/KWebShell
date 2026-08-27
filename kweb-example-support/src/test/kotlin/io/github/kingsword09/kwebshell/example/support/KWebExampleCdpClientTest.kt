@@ -44,6 +44,7 @@ class KWebExampleCdpClientTest {
                 assertEquals("ready", evaluation.value?.jsonObject?.get("marker")?.jsonPrimitive?.contentOrNull)
                 session.command("Tracing.end")
                 assertEquals("stream-1", session.awaitEvent("Tracing.tracingComplete")["stream"]?.jsonPrimitive?.contentOrNull)
+                assertEquals("request-1", session.awaitEvent("Network.loadingFinished")["requestId"]?.jsonPrimitive?.contentOrNull)
             }
             assertEquals(listOf(1L, 1L, 2L, 3L, 4L), server.commandIds.toList())
         }
@@ -171,6 +172,11 @@ private class FakeCdpServer(
                 }.toString().toByteArray(StandardCharsets.UTF_8)
                 writeTextFrame(output, response)
                 if (method == "Tracing.end") {
+                    writeTextFrame(
+                        output,
+                        """{"method":"Network.loadingFinished","params":{"requestId":"request-1"}}"""
+                            .toByteArray(StandardCharsets.UTF_8),
+                    )
                     writeTextFrame(
                         output,
                         """{"method":"Tracing.tracingComplete","params":{"stream":"stream-1"}}"""

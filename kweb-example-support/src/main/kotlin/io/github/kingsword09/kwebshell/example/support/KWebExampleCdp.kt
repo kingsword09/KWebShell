@@ -253,7 +253,7 @@ public class KWebExampleCdpSession internal constructor(
     private val closed = AtomicBoolean(false)
     private val nextId = AtomicLong(1L)
     private val pending = ConcurrentHashMap<Long, CompletableFuture<JsonObject>>()
-    private val events = LinkedBlockingQueue<JsonObject>()
+    private val events = ConcurrentHashMap<String, LinkedBlockingQueue<JsonObject>>()
     private val fragments = StringBuilder()
     private val socket: WebSocket
 
@@ -345,6 +345,13 @@ public class KWebExampleCdpSession internal constructor(
     }
 
     public fun awaitEvent(method: String, eventTimeoutMs: Long = timeoutMs): JsonObject {
+        return pollEvent(method, eventTimeoutMs) ?: throw KWebExampleCdpException(
+            "cdp.event-timeout",
+            "CDP event '$method' did not arrive within $eventTimeoutMs ms.",
+        )
+    }
+
+    public fun pollEvent(method: String, eventTimeoutMs: Long): JsonObject? {
         if (method.isBlank()) {
             throw KWebExampleCdpException("cdp.event-method-empty", "The CDP event method is empty.")
         }
@@ -352,25 +359,14 @@ public class KWebExampleCdpSession internal constructor(
         if (closed.get()) {
             throw KWebExampleCdpException("cdp.session-closed", "The CDP session is closed.")
         }
-        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(eventTimeoutMs)
-        while (true) {
-            val remaining = deadline - System.nanoTime()
-            if (remaining <= 0L) {
-                throw KWebExampleCdpException(
-                    "cdp.event-timeout",
-                    "CDP event '$method' did not arrive within $eventTimeoutMs ms.",
-                )
-            }
-            val event = try {
-                events.poll(remaining, TimeUnit.NANOSECONDS)
-            } catch (error: InterruptedException) {
-                Thread.currentThread().interrupt()
-                throw KWebExampleCdpException("cdp.event-interrupted", "Waiting for CDP event '$method' was interrupted.", error)
-            } ?: continue
-            if (event["method"]?.jsonPrimitive?.contentOrNull == method) {
-                return event["params"]?.jsonObject ?: buildJsonObject {}
-            }
-        }
+        val event = try {
+            events.computeIfAbsent(method) { LinkedBlockingQueue() }
+                .poll(eventTimeoutMs, TimeUnit.MILLISECONDS)
+        } catch (error: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw KWebExampleCdpException("cdp.event-interrupted", "Waiting for CDP event '$method' was interrupted.", error)
+        } ?: return null
+        return event["params"]?.jsonObject ?: buildJsonObject {}
     }
 
     override fun close() {
@@ -378,6 +374,7 @@ public class KWebExampleCdpSession internal constructor(
         val failure = KWebExampleCdpException("cdp.session-closed", "The CDP session closed with a pending command.")
         pending.values.forEach { it.completeExceptionally(failure) }
         pending.clear()
+        events.clear()
         try {
             socket.sendClose(WebSocket.NORMAL_CLOSURE, "complete")
                 .orTimeout(10, TimeUnit.SECONDS)
@@ -420,7 +417,9 @@ public class KWebExampleCdpSession internal constructor(
             }
             val id = document["id"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
             if (id == null) {
-                if (document["method"]?.jsonPrimitive?.contentOrNull != null) events.offer(document)
+                document["method"]?.jsonPrimitive?.contentOrNull?.let { method ->
+                    events.computeIfAbsent(method) { LinkedBlockingQueue() }.offer(document)
+                }
             } else {
                 pending[id]?.complete(document)
             }

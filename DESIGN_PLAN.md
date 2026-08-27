@@ -1536,7 +1536,15 @@ explicit `KWebPage` and `KWebViewPageOwnership`, uses the official transparent
 `setBounds` plus `setSurfaceState`. The component rejects non-axis-aligned,
 scaled, clipped, empty, or out-of-window geometry with typed errors. Page
 creation remains in `kweb-desktop`; this keeps Engine/Profile/Page ownership
-explicit while the real UI integration gate is added in the next commit.
+explicit. The `:kweb-compose:composeIntegrationTest` task is the real UI gate:
+it creates one visible `ComposeWindow`, attaches two independent CEF pages,
+verifies ordinary recomposition does not recreate either page, observes layout
+updates after resize and window movement, exercises focus and minimize/restore,
+checks that no extra visible AWT top-level window appears, and proves
+`COMPONENT` versus `EXTERNAL` teardown semantics. macOS arm64 passed this gate
+against the pinned CEF 151 runtime on 2026-08-28; Windows and Linux use the same
+task contract in their platform CI jobs. The placement unit suite separately
+covers clipping, transforms, empty geometry, and out-of-window errors.
 
 #### Objective 11.2: Publish the first native service vertical slice
 
@@ -1640,7 +1648,7 @@ api: publish the verified Compose desktop lifecycle facade
 examples: add the HTML5 capability lab
 examples: load the live HTML5test page
 benchmark: add the application-scale workload harness
-compose: publish the native-child KWebView component
+compose: verify native child placement lifecycle
 services: publish verified application paths
 migration: publish the typed Electron migration kit
 ```

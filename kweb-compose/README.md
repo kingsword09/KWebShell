@@ -24,3 +24,13 @@ The component accepts axis-aligned, unscaled, fully visible rectangles. A
 rotation, scale, Compose clip, or placement outside the `ComposeWindow` content
 area is reported through `KWebViewController.placementError` as a typed error;
 there is no OSR, system WebView, overlay-window, or silent fallback path.
+
+The real runtime gate is `:kweb-compose:composeIntegrationTest`. It creates one
+visible `ComposeWindow`, opens two CEF pages under the same native parent, and
+drives them through Compose layout, ordinary recomposition, resize, move,
+focus, minimize/restore, and ownership disposal. The test also verifies that a
+component-owned page closes when removed while an externally owned page stays
+open, and that CEF does not create an extra visible AWT top-level window. The
+task uses the pinned native CEF artifact supplied through `-PcefRoot` and runs
+under JDK 25; Linux uses an explicit Xvfb display rather than a renderer
+fallback.

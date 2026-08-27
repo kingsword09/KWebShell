@@ -1530,6 +1530,14 @@ tracked overlay window are not substitutes. Real UI tests cover multiple views,
 recomposition, focus/input, clipping, and terminal teardown on all three desktop
 targets.
 
+Implementation boundary for the first vertical slice: `kweb-compose` accepts an
+explicit `KWebPage` and `KWebViewPageOwnership`, uses the official transparent
+`SwingPanel` as a layout anchor, and sends conflated placement updates through
+`setBounds` plus `setSurfaceState`. The component rejects non-axis-aligned,
+scaled, clipped, empty, or out-of-window geometry with typed errors. Page
+creation remains in `kweb-desktop`; this keeps Engine/Profile/Page ownership
+explicit while the real UI integration gate is added in the next commit.
+
 #### Objective 11.2: Publish the first native service vertical slice
 
 Deliver the minimum service registry, descriptor, version, scope, permission,

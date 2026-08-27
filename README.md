@@ -25,10 +25,12 @@ service model, migration matrix, first vertical slice, and acceptance gates.
 
 The repository contains the multiplatform build foundation, a native CEF host vertical slice, the verified CEF runtime catalog, persistent Chromium Profiles, and an in-process JVM/CEF browser session. The host uses the Chrome bootstrap with an explicit Alloy, windowed native child and reports fatal capability errors instead of selecting a fallback backend. Each browser receives an explicitly initialized disk-backed request context; Profile paths that are not direct children of the CEF root cache are rejected because Chromium would otherwise create an OffTheRecord Profile. The CEF browser process runs inside the JVM so a real native child belongs to the public `ComposeWindow.windowHandle` hierarchy. Objective 3.3 intentionally deletes the Phase 2 echo session and its request-only events; this is a breaking internal contract change, not a compatibility layer. Phase 9.1 now exposes the verified lifecycle facade; capabilities remain unpublished until their complete implementation is tested.
 
-The final `KWebView` composable, KMP native services, and Electron migration
-adapters are planned Phase 11 work. The current facade already embeds the real
-native child under `ComposeWindow`, but no composable component, native-service
-API, or Electron-compatibility API is currently published.
+The first Phase 11 slice now publishes the `kweb-compose` module and its
+`KWebView` composable over an existing `KWebPage`; it preserves the direct CEF
+native child and reports unsupported geometry through a typed placement error.
+KMP native services and Electron migration adapters remain later Phase 11
+objectives. The component API and ownership rules are documented in
+[`kweb-compose/README.md`](kweb-compose/README.md).
 
 Current verification evidence is intentionally platform-specific:
 

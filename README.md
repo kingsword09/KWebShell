@@ -18,19 +18,23 @@ typed service operation. Arbitrary IPC channels, synchronous IPC, Node-enabled
 renderers, and native Node addons require explicit rewrites rather than hidden
 compatibility behavior. The migration kit is an opt-in application dependency,
 but it is a required KWebShell project deliverable. See [KMP Native Services And Electron
-Migration](docs/kmp-native-services-and-electron-migration.md) for the planned
-service model, migration matrix, first vertical slice, and acceptance gates.
+Migration](docs/kmp-native-services-and-electron-migration.md) for the service
+model, migration matrix, first vertical slice, and acceptance gates.
 
 ## Current Status
 
 The repository contains the multiplatform build foundation, a native CEF host vertical slice, the verified CEF runtime catalog, persistent Chromium Profiles, and an in-process JVM/CEF browser session. The host uses the Chrome bootstrap with an explicit Alloy, windowed native child and reports fatal capability errors instead of selecting a fallback backend. Each browser receives an explicitly initialized disk-backed request context; Profile paths that are not direct children of the CEF root cache are rejected because Chromium would otherwise create an OffTheRecord Profile. The CEF browser process runs inside the JVM so a real native child belongs to the public `ComposeWindow.windowHandle` hierarchy. Objective 3.3 intentionally deletes the Phase 2 echo session and its request-only events; this is a breaking internal contract change, not a compatibility layer. Phase 9.1 now exposes the verified lifecycle facade; capabilities remain unpublished until their complete implementation is tested.
 
-The first Phase 11 slice now publishes the `kweb-compose` module and its
-`KWebView` composable over an existing `KWebPage`; it preserves the direct CEF
-native child and reports unsupported geometry through a typed placement error.
-KMP native services and Electron migration adapters remain later Phase 11
-objectives. The component API and ownership rules are documented in
-[`kweb-compose/README.md`](kweb-compose/README.md).
+Phase 11.1 publishes the `kweb-compose` module and its `KWebView` composable
+over an existing `KWebPage`; it preserves the direct CEF native child and
+reports unsupported geometry through a typed placement error. Phase 11.2 now
+publishes `kweb-services-core` and the first complete `KWebAppPaths` service,
+including the versioned native C ABI, JDK 25 FFM provider, generated
+exact-origin bridge, and explicit Engine service ownership. The macOS arm64
+service and CEF integration gates pass locally; Windows and Linux providers
+are implemented and remain subject to their hosted native-runtime gates. The
+Electron migration adapter is the next Phase 11 objective. Component API and
+ownership rules are documented in [`kweb-compose/README.md`](kweb-compose/README.md).
 
 Current verification evidence is intentionally platform-specific:
 
@@ -66,7 +70,7 @@ Objective 8.1 added a non-production JDK 25 FFM feasibility gate while leaving t
 
 Objective 8.2 performs the breaking replacement. Every JVM module targets JDK 25; the named `io.github.kingsword09.kwebshell.desktop` module owns all 18 FFM downcalls and four shared-Arena upcalls; launchers grant native access only to that module; and missing permission is a typed startup failure. Kotlin continues to own Compose, coroutines, state, Profiles, Bridge, DevTools, and MV3 behavior. The JNI/JAWT library, native methods, thread attachment, global references, conversion sources, and runtime payload entries are deleted rather than retained as a fallback. macOS rebuilds canonical CEF framework links and rejects recursive or malformed bundle links before runtime tests; distribution code signing remains a release operation. Windows parents Chromium directly beneath the Compose `HWND`; after cookie flush `DoClose` returns `true` for KWebShell's custom destruction path, clears pointer capture, hover tracking, queued pointer messages, and focus from the child subtree, closes and confirms destruction of CEF's inner Aura Widget, drains eight CEF UI queue turns, and then destroys only the outer Chromium child, preventing CEF from forwarding `WM_CLOSE` to Compose or delivering late input callbacks to a destroyed Aura window. Local macOS arm64 acceptance covers all 12 native CTests, the FFM ABI and Compose-parent probes, the isolated real-CEF suite, 1,000 complete browser navigation/close races, and the custom-runtime MV3 lifecycle across restart and Profiles; Windows and Linux remain mandatory hosted PR gates before merge.
 
-Phase 9.1 publishes the first stable desktop facade over that verified native-child path. `KWebEngine`, `KWebProfile`, and `KWebPage` expose only typed lifecycle, navigation, resize, DevTools, and persistent-profile behavior, with optional CDP capability; CEF/FFM handles remain internal. The typed host bridge remains an internal contract until its public ownership and origin configuration are complete. `ComposeWindow.windowHandle` is required and invalid parents fail before native creation. MV3 package lifecycle remains unpublished until the custom runtime passes all three platform gates.
+Phase 9.1 publishes the first stable desktop facade over that verified native-child path. `KWebEngine`, `KWebProfile`, and `KWebPage` expose only typed lifecycle, navigation, resize, DevTools, and persistent-profile behavior, with optional CDP capability; CEF/FFM handles remain internal. Generic bridge capability reporting remains internal, while Objective 11.2 adds an explicitly configured, service-specific bridge dispatcher for the published native service. `ComposeWindow.windowHandle` is required and invalid parents fail before native creation. MV3 package lifecycle remains unpublished until the custom runtime passes all three platform gates.
 
 Objective 10.1 adds the runnable [HTML5test example and deterministic capability probe](kweb-example-html5-lab/README.md). The example loads exactly `https://html5test.com/`, reads its real score through CDP, verifies the canonical HTTPS URL/title and HTTP 200 public event, and emits strict JSON, rendered HTML, and a nonblank `cdp-page-target` PNG from the verified visible windowed native child. The target screenshot is not OS display scanout. The site states that its test has not been updated since 2016, so the score is evidence for that exact archived page rather than a current completeness claim. A separate locked local origin validates 37 browser and host-policy probes across isolated cold/warm JDK 25 processes and one persistent Profile. Live-site failure never falls back to that local probe; required failures, schema drift, empty evidence, non-contiguous events, and missing persistence are terminal.
 

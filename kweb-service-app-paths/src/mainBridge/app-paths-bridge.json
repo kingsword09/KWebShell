@@ -1,0 +1,24 @@
+{
+  "namespace": "KWebAppPathsBridge",
+  "kotlinPackage": "io.github.kingsword09.kwebshell.service.apppaths.generated",
+  "version": 1,
+  "types": [
+    {
+      "name": "ResolveRequest",
+      "fields": [
+        { "name": "kind", "type": "string" }
+      ]
+    },
+    {
+      "name": "ResolveResponse",
+      "fields": [
+        { "name": "kind", "type": "string" },
+        { "name": "path", "type": "string" },
+        { "name": "source", "type": "string" }
+      ]
+    }
+  ],
+  "methods": [
+    { "name": "resolve", "request": "ResolveRequest", "response": "ResolveResponse" }
+  ]
+}

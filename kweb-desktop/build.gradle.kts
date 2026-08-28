@@ -45,11 +45,13 @@ val skikoTarget = providers.systemProperty("os.name").zip(
 
 dependencies {
     api(project(":kweb-core"))
-    implementation(project(":kweb-bridge"))
+    api(project(":kweb-services-core"))
+    api(project(":kweb-bridge"))
     implementation(project(":kweb-extensions"))
     implementation(libs.compose.ui.desktop)
     implementation(libs.kotlinx.coroutines.core)
     runtimeOnly("org.jetbrains.skiko:skiko-awt-runtime-${skikoTarget.get()}:${libs.versions.skiko.get()}")
+    testImplementation(project(":kweb-service-app-paths"))
     testImplementation(libs.kotlinx.serialization.json)
 
     testImplementation(kotlin("test-junit5"))
@@ -77,6 +79,20 @@ dependencies {
 }
 
 val conformanceBridgeSchema = layout.projectDirectory.file("src/testBridge/conformance-bridge.json")
+val appPathsBridgeJavascript = rootProject.layout.projectDirectory.file(
+    "kweb-service-app-paths/build/generated/kwebBridge/appPaths/AppPathsBridgeBridge.js",
+)
+val appPathsNativeLibrary = providers.systemProperty("os.name").map { operatingSystem ->
+    val fileName = when {
+        operatingSystem.lowercase(Locale.ROOT).startsWith("windows") -> "kwebshell_services.dll"
+        operatingSystem.lowercase(Locale.ROOT).startsWith("mac") -> "libkwebshell_services.dylib"
+        operatingSystem.lowercase(Locale.ROOT).startsWith("linux") -> "libkwebshell_services.so"
+        else -> throw GradleException("Unsupported desktop operating system '$operatingSystem'.")
+    }
+    rootProject.layout.projectDirectory
+        .file("kweb-service-app-paths/build/native/contract/$fileName")
+        .asFile
+}
 val extensionLifecycleFixture =
     rootProject.layout.projectDirectory.dir("kweb-cef-native/tests/fixtures/mv3-core")
 val mv3LifecycleFixture =
@@ -196,6 +212,8 @@ val expectCustomExtensionRuntime = providers.gradleProperty("kwebExpectCustomExt
         )
     }
     .orElse(false)
+val engineIntegrationMode = providers.gradleProperty("kwebEngineIntegrationMode")
+    .orElse("coordinator")
 val cleanEngineIntegration = tasks.register<Delete>("cleanEngineIntegration") {
     delete(engineIntegrationRoot)
 }
@@ -205,6 +223,7 @@ val engineIntegrationJavaCommand = buildList {
     add("--patch-module=$desktopModuleName=${desktopTestClasses.asPath}")
     add("--add-modules=$desktopModuleName,java.net.http,jdk.httpserver")
     add("--enable-native-access=$desktopModuleName")
+    add("--enable-native-access=ALL-UNNAMED")
     add("-Djava.awt.headless=false")
     add("-Dkweb.native.library.path=${nativeEngineLibrary.get().absolutePath}")
     add("-Dkweb.engine.integration.root=${engineIntegrationRoot.get().asFile.absolutePath}")
@@ -216,6 +235,8 @@ val engineIntegrationJavaCommand = buildList {
         "-Dkweb.engine.integration.bridge.javascript=" +
             generatedBridgeDirectory.get().file("ConformanceBridgeBridge.js").asFile.absolutePath,
     )
+    add("-Dkweb.engine.integration.app-paths.bridge.javascript=${appPathsBridgeJavascript.asFile.absolutePath}")
+    add("-Dkweb.services.native.library.path=${appPathsNativeLibrary.get().absolutePath}")
     add("-Dkweb.engine.integration.extension.path=${extensionLifecycleFixture.asFile.absolutePath}")
     add("-Dkweb.engine.integration.lifecycle.v1=${mv3LifecycleFixture.dir("v1").asFile.absolutePath}")
     add("-Dkweb.engine.integration.lifecycle.v2=${mv3LifecycleFixture.dir("v2").asFile.absolutePath}")
@@ -227,7 +248,7 @@ val engineIntegrationJavaCommand = buildList {
     add(engineIntegrationClasspath.asPath)
     add("-m")
     add("$desktopModuleName/io.github.kingsword09.kwebshell.desktop.internal.NativeEngineIntegrationMainKt")
-    add("coordinator")
+    add(engineIntegrationMode.get())
 }
 val extensionLifecycleIntegrationJavaCommand =
     engineIntegrationJavaCommand.dropLast(1) + "extension-lifecycle-coordinator"
@@ -241,6 +262,8 @@ val engineIntegrationTest = tasks.register<Exec>("engineIntegrationTest") {
         tasks.testClasses,
         desktopJar,
         ":kweb-cef-native:buildNative",
+        ":kweb-service-app-paths:buildNative",
+        ":kweb-service-app-paths:generateAppPathsBridge",
     )
     mustRunAfter(tasks.test, ":kweb-cef-native:nativeTest")
 
@@ -256,6 +279,8 @@ val engineIntegrationTest = tasks.register<Exec>("engineIntegrationTest") {
         }
     })
     inputs.file(generatedBridgeDirectory.map { it.file("ConformanceBridgeBridge.js") })
+    inputs.file(appPathsBridgeJavascript)
+    inputs.file(appPathsNativeLibrary)
     inputs.dir(extensionLifecycleFixture)
 
     if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("linux")) {
@@ -280,6 +305,8 @@ val extensionLifecycleIntegrationTest = tasks.register<Exec>("extensionLifecycle
         tasks.testClasses,
         desktopJar,
         ":kweb-cef-native:buildNative",
+        ":kweb-service-app-paths:buildNative",
+        ":kweb-service-app-paths:generateAppPathsBridge",
     )
     mustRunAfter(tasks.test, ":kweb-cef-native:nativeTest", engineIntegrationTest)
 
@@ -295,6 +322,8 @@ val extensionLifecycleIntegrationTest = tasks.register<Exec>("extensionLifecycle
         }
     })
     inputs.dir(mv3LifecycleFixture)
+    inputs.file(appPathsBridgeJavascript)
+    inputs.file(appPathsNativeLibrary)
 
     if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("linux")) {
         commandLine(

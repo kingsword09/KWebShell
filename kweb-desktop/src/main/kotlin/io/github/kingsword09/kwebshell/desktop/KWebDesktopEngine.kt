@@ -14,6 +14,7 @@ import io.github.kingsword09.kwebshell.core.KWebPageEventFlag
 import io.github.kingsword09.kwebshell.core.KWebPageEventType
 import io.github.kingsword09.kwebshell.core.KWebPageHost
 import io.github.kingsword09.kwebshell.core.KWebProfile
+import io.github.kingsword09.kwebshell.services.KWebNativeServiceRegistry
 import io.github.kingsword09.kwebshell.desktop.internal.NativeBrowser
 import io.github.kingsword09.kwebshell.desktop.internal.NativeBrowserEvent
 import io.github.kingsword09.kwebshell.desktop.internal.NativeBrowserEventType
@@ -40,6 +41,9 @@ public class KWebDesktopEngine private constructor(
     private val lock = Any()
     private val profiles = linkedMapOf<Path, KWebDesktopProfile>()
     private val closed = AtomicBoolean(false)
+    private var closeFailure: Throwable? = null
+
+    public val nativeServices: KWebNativeServiceRegistry = KWebNativeServiceRegistry()
 
     override val lifecycle: StateFlow<KWebLifecycleState> = native.lifecycle
     override val capabilities: Set<KWebCapability> = buildSet {
@@ -72,18 +76,47 @@ public class KWebDesktopEngine private constructor(
 
     override fun close() {
         synchronized(lock) {
-            if (closed.get() && lifecycle.value == KWebLifecycleState.CLOSED) {
+            if (closed.get()) {
+                closeFailure?.let { throw it }
+                if (nativeServices.lifecycle.value == KWebLifecycleState.FAILED) {
+                    try {
+                        nativeServices.close()
+                    } catch (error: Throwable) {
+                        closeFailure = error
+                        throw error
+                    }
+                }
                 return
             }
             requireEngineOpen("close-engine")
+            var nativeFailure: Throwable? = null
             try {
                 native.close()
             } catch (error: Throwable) {
-                throw error
+                nativeFailure = error
+                if (lifecycle.value == KWebLifecycleState.OPEN) {
+                    throw error
+                }
             }
-            closed.set(true)
-            profiles.values.toList().forEach { it.markClosedByEngine() }
-            profiles.clear()
+            var serviceFailure: Throwable? = null
+            try {
+                nativeServices.close()
+            } catch (error: Throwable) {
+                serviceFailure = error
+            } finally {
+                closed.set(true)
+                profiles.values.toList().forEach { it.markClosedByEngine() }
+                profiles.clear()
+            }
+            if (nativeFailure != null) {
+                serviceFailure?.let { nativeFailure.addSuppressed(it) }
+                closeFailure = nativeFailure
+                throw nativeFailure
+            }
+            serviceFailure?.let {
+                closeFailure = it
+                throw it
+            }
         }
     }
 
@@ -163,6 +196,8 @@ internal class KWebDesktopProfile(
                     y = bounds.y,
                     width = bounds.width,
                     height = bounds.height,
+                    bridgeOrigin = composeHost.bridgeOrigin.orEmpty(),
+                    bridgeDispatcher = composeHost.bridgeDispatcher,
                     listener = eventStream::accept,
                 )
                 val page = KWebDesktopPage(this@KWebDesktopProfile, nativePage, eventStream)

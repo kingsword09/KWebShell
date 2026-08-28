@@ -1,0 +1,9 @@
+KWEB_SERVICES_1 {
+  global:
+    kweb_app_paths_resolve;
+    kweb_app_paths_result_free;
+    kweb_services_abi_version;
+    kweb_services_status_name;
+  local:
+    *;
+};

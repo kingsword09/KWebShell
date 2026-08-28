@@ -98,7 +98,7 @@ Compose Desktop JVM
 | `kweb-extensions` | Manifest parsing, package model, policy model, capability matrix, conformance fixtures | Reimplementing Chromium's extension runtime |
 | `kweb-cef-native` | CEF initialization, browser hosts, native surfaces, C ABI, extension adapter | Kotlin business state |
 | `kweb-runtime-pack` | Reproducible CEF binaries, resources, locales, licenses, and platform packaging | Runtime version selection at application startup |
-| `kweb-services-core` | Planned KMP service descriptors, registry, scopes, policy, and shared errors | Concrete OS APIs or Electron compatibility |
+| `kweb-services-core` | KMP service descriptors, registry, scopes, policy, and shared errors | Concrete OS APIs or Electron compatibility |
 | `kweb-service-<name>` | One complete native service contract and its advertised platform providers | Unrelated service families or partial providers |
 | `kweb-electron-migration` | Planned opt-in typed preload/channel adapters and compatibility matrix | Browser, service, Node.js, or arbitrary IPC ownership |
 
@@ -1447,9 +1447,10 @@ Acceptance:
   leaking them.
 - The public capability set contains only implemented native-child,
   persistent-profile, navigation, resize, and DevTools capabilities, plus CDP
-  when explicitly configured. The typed bridge and MV3 package lifecycle remain
-  unpublished until their public ownership and cross-platform custom-runtime
-  gates pass.
+  when explicitly configured. Generic bridge capability reporting and the MV3
+  package lifecycle remain unpublished until their public ownership and
+  cross-platform custom-runtime gates pass; Objective 11.2 may expose only the
+  explicitly configured bridge dispatcher for its published service.
 - Core unit tests cover value/error/state contracts; desktop tests cover Profile
   identity and parent validation; a real CEF integration process exercises the
   public facade on every hosted target and leaves zero native handles.
@@ -1560,6 +1561,19 @@ real platform API, C ABI/FFM, generated-client, origin isolation, cancellation,
 lifecycle, packaging, and compatibility-matrix evidence on macOS, Windows, and
 Linux. Missing platform definitions return typed failures; guessed directory
 conventions and alternate providers are prohibited.
+
+Implementation status: this objective now contains the complete first vertical
+slice. `kweb-services-core` provides immutable descriptors, exact service keys,
+scope and permission policy, lifecycle state, reverse-order shutdown, and
+sticky typed close failures. `kweb-service-app-paths` provides the published
+path kinds through macOS Foundation, Windows Known Folder, and Linux XDG
+providers behind a versioned C ABI. The JVM provider binds that ABI with JDK 25
+FFM, while one bridge schema generates Kotlin dispatch types and a strict
+TypeScript/browser client. The macOS arm64 native, FFM, generated-client,
+origin-isolation, permission, and public-facade integration gates pass locally
+against the pinned CEF runtime. Windows and Linux source contracts are covered
+by the same build/test tasks but still require hosted native-runtime evidence
+before those targets are published as accepted.
 
 #### Objective 11.3: Publish the typed Electron migration kit
 

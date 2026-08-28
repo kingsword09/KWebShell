@@ -144,9 +144,9 @@ that range is unavailable.
 ### 4.1 Typed Kotlin API
 
 The common API uses dedicated service interfaces and immutable request/result
-types. A generic string-to-JSON map is not a public native API. The exact names
-remain unpublished until the first implementation objective, but the intended
-shape is:
+types. A generic string-to-JSON map is not a public native API. The first
+published service uses the following shape; additional service names remain
+unpublished until their own complete implementation objectives:
 
 ```kotlin
 public interface KWebAppPaths {
@@ -171,10 +171,13 @@ code, TypeScript declarations, and browser-ready JavaScript. This extends the
 existing deterministic bridge generator instead of creating a second RPC
 protocol.
 
-The generated client uses a KWebShell namespace by default, for example:
+The generated client uses a service-specific KWebShell namespace. The current
+`KWebAppPaths` output is `KWebAppPathsBridge`; an application migration facade
+may wrap that generated client in its own renderer-facing namespace, for
+example:
 
 ```ts
-const downloads = await kweb.native.appPaths.resolve("downloads");
+const downloads = await KWebAppPathsBridge.createClient().resolve({ kind: "downloads" });
 ```
 
 Only the operations granted in the page configuration are installed. The
@@ -479,6 +482,25 @@ service: `KWebAppPaths`. It is selected because Electron applications commonly
 depend on `app.getPath`, it exercises common Kotlin, generated JavaScript,
 Profile ownership, FFM/native status mapping, and three different desktop OS
 contracts without requiring destructive UI automation.
+
+The implementation is now present in `kweb-services-core` and
+`kweb-service-app-paths`. The service registry owns explicitly installed
+providers and closes them in reverse installation order. The app-paths provider
+uses one versioned C ABI with strict UTF-8 and structure validation, a JDK 25
+FFM binding, and a single generated bridge schema for Kotlin and TypeScript.
+Direct Kotlin resolution and the exact-origin renderer client are exercised by
+the real CEF integration. macOS arm64 passes the native ABI, FFM, lifecycle,
+permission, frame-isolation, and public-facade gates locally. Windows Known
+Folder and Linux XDG providers are implemented and compile-tested through the
+same contract, but no claim of hosted runtime acceptance is made here until
+those platform jobs complete.
+
+`KWebAppPathKind.APP_DATA` follows Electron's current platform contract on
+Linux (`$XDG_CONFIG_HOME` or `~/.config`), macOS (Foundation Application
+Support), and Windows (Roaming AppData). `APP_CACHE` is a KWebShell cache-root
+operation backed by the platform cache directory; Electron currently exposes
+cache through `sessionData` rather than a separate `cache` `app.getPath` name,
+so this operation has no direct migration alias.
 
 No other service interface or empty module is created by this objective.
 

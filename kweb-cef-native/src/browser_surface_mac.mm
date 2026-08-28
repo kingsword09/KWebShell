@@ -93,10 +93,7 @@ public:
 
   kweb_status RequestBrowserClose() override {
     if (browser_view_ != nil) {
-      [browser_view_ removeFromSuperview];
-      for (NSView *view in [browser_view_ subviews]) {
-        [view removeFromSuperview];
-      }
+      DetachBrowserView();
       return KWEB_STATUS_OK;
     }
     return KWEB_STATUS_BROWSER_NOT_READY;
@@ -120,6 +117,21 @@ public:
   }
 
 private:
+  void DetachBrowserView() {
+    NSView *view = browser_view_;
+    if (view == nil) {
+      return;
+    }
+    if (parent_.firstResponder == view) {
+      [parent_ makeFirstResponder:nil];
+    }
+    [view resignFirstResponder];
+    for (NSView *subview in [view subviews]) {
+      [subview removeFromSuperview];
+    }
+    [view removeFromSuperview];
+  }
+
   NSWindow *__strong parent_;
   NSView *__strong container_;
   NSView *__weak browser_view_ = nil;

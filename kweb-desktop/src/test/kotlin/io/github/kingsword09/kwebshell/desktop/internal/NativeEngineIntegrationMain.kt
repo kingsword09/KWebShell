@@ -1,6 +1,5 @@
 package io.github.kingsword09.kwebshell.desktop.internal
 
-import io.github.kingsword09.kwebshell.bridge.KWebBridgeException
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 import io.github.kingsword09.kwebshell.core.KWebConfigurationException
@@ -25,6 +24,16 @@ import io.github.kingsword09.kwebshell.desktop.generated.FailureRequest
 import io.github.kingsword09.kwebshell.desktop.generated.ProbeRequest
 import io.github.kingsword09.kwebshell.desktop.generated.ProbeResponse
 import io.github.kingsword09.kwebshell.desktop.generated.WaitRequest
+import io.github.kingsword09.kwebshell.service.apppaths.JvmKWebAppPaths
+import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPathKind
+import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPaths
+import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPathsConfiguration
+import io.github.kingsword09.kwebshell.service.apppaths.bridgeDispatcher
+import io.github.kingsword09.kwebshell.services.KWebServiceGrant
+import io.github.kingsword09.kwebshell.services.KWebServicePermissionPolicy
+import io.github.kingsword09.kwebshell.bridge.KWebBridgeDispatcher
+import io.github.kingsword09.kwebshell.bridge.KWebBridgeException
+import io.github.kingsword09.kwebshell.bridge.KWebBridgeProtocol
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import kotlinx.serialization.json.jsonArray
@@ -85,6 +94,9 @@ private const val RESOURCES_PROPERTY = "kweb.engine.resources.path"
 private const val LOCALES_PROPERTY = "kweb.engine.locales.path"
 private const val CDP_PORT_PROPERTY = "kweb.engine.integration.cdp.port"
 private const val BRIDGE_JAVASCRIPT_PROPERTY = "kweb.engine.integration.bridge.javascript"
+private const val APP_PATHS_BRIDGE_JAVASCRIPT_PROPERTY =
+    "kweb.engine.integration.app-paths.bridge.javascript"
+private const val APP_PATHS_NATIVE_LIBRARY_PROPERTY = "kweb.services.native.library.path"
 private const val EXTENSION_PATH_PROPERTY = "kweb.engine.integration.extension.path"
 private const val LIFECYCLE_V1_PROPERTY = "kweb.engine.integration.lifecycle.v1"
 private const val LIFECYCLE_V2_PROPERTY = "kweb.engine.integration.lifecycle.v2"
@@ -247,265 +259,326 @@ private fun runSuccessfulLifecycle() {
     val resized = CountDownLatch(1)
     val firstDevToolsClosed = CountDownLatch(1)
     val profile = configuration.rootCache.resolve("integration-profile")
-    BrowserOrigin().use { origin ->
-        val surface = NativeEngine.onAwtEventDispatchThread { ComposeBrowserSurface.create(800, 600) }
-        try {
-            requireCreateFailure(
-                NativeEngine.onAwtEventDispatchThread {
-                    rawBrowserCreate(
-                        engine,
-                        surface.nativeParent,
-                        configuration.rootCache.resolve("nested/profile"),
-                        origin.firstUrl,
-                        800,
-                        600,
+    val appPathsRoot = configuration.rootCache.resolve("app-paths-service")
+    val appPathsApplicationRoot = appPathsRoot.resolve("application-data")
+    val appPathsSessionRoot = appPathsRoot.resolve("session-data")
+    Files.createDirectories(appPathsApplicationRoot)
+    Files.createDirectories(appPathsSessionRoot)
+    val appPathsService = JvmKWebAppPaths.open(
+        requiredPathProperty(APP_PATHS_NATIVE_LIBRARY_PROPERTY),
+        KWebAppPathsConfiguration(
+            applicationId = "io.github.kwebshell.integration",
+            applicationDataRoot = appPathsApplicationRoot.toString(),
+            sessionDataRoot = appPathsSessionRoot.toString(),
+        ),
+    )
+    try {
+        val appPathsAllowPolicy = KWebServicePermissionPolicy.exact(
+            setOf(KWebServiceGrant(KWebAppPaths.DESCRIPTOR.id, "resolve")),
+        )
+        val appPathsDenyPolicy = KWebServicePermissionPolicy.exact(emptySet())
+        val directHome = kotlinx.coroutines.runBlocking {
+            appPathsService.resolve(KWebAppPathKind.HOME)
+        }
+        BrowserOrigin().use { origin ->
+            val surface = NativeEngine.onAwtEventDispatchThread { ComposeBrowserSurface.create(800, 600) }
+            try {
+                requireCreateFailure(
+                    NativeEngine.onAwtEventDispatchThread {
+                        rawBrowserCreate(
+                            engine,
+                            surface.nativeParent,
+                            configuration.rootCache.resolve("nested/profile"),
+                            origin.firstUrl,
+                            800,
+                            600,
+                        )
+                    },
+                    NativeStatus.PROFILE_PATH_INVALID,
+                )
+                requireCreateFailure(
+                    NativeEngine.onAwtEventDispatchThread {
+                        rawBrowserCreate(
+                            engine,
+                            surface.nativeParent,
+                            configuration.rootCache.resolve("invalid-url-profile"),
+                            "not-a-url",
+                            800,
+                            600,
+                        )
+                    },
+                    NativeStatus.NAVIGATION_INVALID,
+                )
+                runRawBridgeAbiConformance(engine, surface.nativeParent, configuration.rootCache, origin, cdp)
+                requireStatus(
+                    NativeEngine.onAwtEventDispatchThread {
+                        NativeBindings.browserSetBounds(0L, 0, 0, 0, 600)
+                    },
+                    NativeStatus.INVALID_DIMENSIONS,
+                    "invalid browser dimensions",
+                )
+                val bridgeHandler = ConformanceBridgeTestHandler()
+                val bridgeDispatcher = CompositeBridgeDispatcher(
+                    conformance = ConformanceBridgeDispatcher(bridgeHandler),
+                    appPaths = appPathsService.bridgeDispatcher(appPathsAllowPolicy),
+                )
+                val browser = NativeBrowser.open(
+                    engine = engine,
+                    nativeParent = surface.nativeParent,
+                    profilePath = profile,
+                    initialUrl = origin.firstUrl,
+                    x = 0,
+                    y = 0,
+                    width = 800,
+                    height = 600,
+                    bridgeOrigin = origin.origin,
+                    bridgeDispatcher = bridgeDispatcher,
+                ) { event ->
+                    browserEvents += event
+                    when {
+                        event.type == NativeBrowserEventType.TITLE_CHANGED && event.text == FIRST_TITLE -> {
+                            firstTitle.countDown()
+                        }
+                        event.type == NativeBrowserEventType.TITLE_CHANGED && event.text == SECOND_TITLE -> {
+                            secondTitle.countDown()
+                        }
+                        event.type == NativeBrowserEventType.LOAD_ENDED && event.text == origin.secondUrl -> {
+                            secondLoad.countDown()
+                        }
+                        event.type == NativeBrowserEventType.RESIZED && event.width == 960 && event.height == 640 -> {
+                            resized.countDown()
+                        }
+                        event.type == NativeBrowserEventType.DEVTOOLS_CLOSED -> {
+                            firstDevToolsClosed.countDown()
+                        }
+                    }
+                }
+                require(firstTitle.await(30, TimeUnit.SECONDS)) {
+                    "The first real Chromium page did not publish its Unicode title: $browserEvents"
+                }
+                if (requiredBooleanProperty(EXPECT_CUSTOM_EXTENSION_RUNTIME_PROPERTY)) {
+                    val customQuery = kotlinx.coroutines.runBlocking {
+                        browser.queryExtension(LIFECYCLE_EXTENSION_ID)
+                    }
+                    require(
+                        customQuery.operation == KWebExtensionRuntimeOperation.QUERY &&
+                            customQuery.outcome == KWebExtensionRuntimeOutcome.SUCCESS &&
+                            customQuery.state == KWebExtensionRuntimeState.ABSENT &&
+                            customQuery.version == null && customQuery.path == null,
+                    ) {
+                        "Custom CEF did not expose an initially absent Profile extension state: $customQuery"
+                    }
+                } else {
+                    val stockExtensionResult = kotlinx.coroutines.runBlocking {
+                        browser.installUnpackedExtension(requiredPathProperty(EXTENSION_PATH_PROPERTY))
+                    }
+                    require(stockExtensionResult.resolution == KWebExtensionLifecycleResolution.ABORTED) {
+                        "Stock CEF did not abort the undispatched extension transaction: $stockExtensionResult"
+                    }
+                    require(stockExtensionResult.failure?.code in setOf(
+                        "native.abi.extension-runtime-abi-missing",
+                        "native.abi.extension-runtime-abi-mismatch",
+                    )) {
+                        "CEF without the pinned extension adapter did not report an explicit ABI failure: $stockExtensionResult"
+                    }
+                    require(kotlinx.coroutines.runBlocking { browser.reconcileExtensions() }.isEmpty()) {
+                        "An undispatched stock CEF extension attempt left a pending journal."
+                    }
+                }
+                require(NativeExtensionRuntime.liveNativeOperationCount() == 0L) {
+                    "The engine integration extension contract leaked a native operation."
+                }
+                cdp.awaitPage(origin.firstUrl)
+                cdp.awaitBridge()
+                cdp.awaitAppPathsBridge()
+                require(cdp.evaluate("document.title") == FIRST_TITLE)
+                runBridgeConformance(cdp, bridgeHandler)
+                require(cdp.evaluate("typeof document.getElementById('bridge-frame').contentWindow.__kwebBridgeQuery") == "undefined")
+                require(cdp.evaluate("typeof document.getElementById('bridge-frame').contentWindow.KWebAppPathsBridge") == "undefined")
+                runAppPathsBridgeConformance(cdp, directHome)
+                require(cdp.evaluate("void ConformanceBridge.createClient().wait({delayMs:60000}); 'started'") == "started")
+                bridgeHandler.awaitStarted("navigation")
+                browser.navigate(origin.crossOriginUrl)
+                cdp.awaitPage(origin.crossOriginUrl)
+                bridgeHandler.awaitCancelled("navigation")
+                require(cdp.evaluate("typeof globalThis.__kwebBridgeQuery") == "undefined")
+                require(cdp.evaluate("typeof globalThis.ConformanceBridge") == "undefined")
+                require(cdp.evaluate("typeof globalThis.KWebAppPathsBridge") == "undefined")
+                browser.navigate(origin.firstUrl)
+                cdp.awaitPage(origin.firstUrl)
+                cdp.awaitBridge()
+                val deniedBrowser = NativeBrowser.open(
+                    engine = engine,
+                    nativeParent = surface.nativeParent,
+                    profilePath = profile,
+                    initialUrl = "${origin.firstUrl}?denied",
+                    x = 0,
+                    y = 0,
+                    width = 320,
+                    height = 240,
+                    bridgeOrigin = origin.origin,
+                    bridgeDispatcher = appPathsService.bridgeDispatcher(appPathsDenyPolicy),
+                )
+                try {
+                    cdp.awaitPage("${origin.firstUrl}?denied")
+                    cdp.awaitAppPathsBridge()
+                    val denied = bridgeFailure(
+                        cdp,
+                        "KWebAppPathsBridge.createClient().resolve({kind:'home'})",
                     )
-                },
-                NativeStatus.PROFILE_PATH_INVALID,
-            )
-            requireCreateFailure(
-                NativeEngine.onAwtEventDispatchThread {
-                    rawBrowserCreate(
-                        engine,
-                        surface.nativeParent,
-                        configuration.rootCache.resolve("invalid-url-profile"),
-                        "not-a-url",
-                        800,
-                        600,
-                    )
-                },
-                NativeStatus.NAVIGATION_INVALID,
-            )
-            runRawBridgeAbiConformance(engine, surface.nativeParent, configuration.rootCache, origin, cdp)
-            requireStatus(
-                NativeEngine.onAwtEventDispatchThread {
-                    NativeBindings.browserSetBounds(0L, 0, 0, 0, 600)
-                },
-                NativeStatus.INVALID_DIMENSIONS,
-                "invalid browser dimensions",
-            )
-            val bridgeHandler = ConformanceBridgeTestHandler()
-            val browser = NativeBrowser.open(
-                engine = engine,
-                nativeParent = surface.nativeParent,
-                profilePath = profile,
-                initialUrl = origin.firstUrl,
-                x = 0,
-                y = 0,
-                width = 800,
-                height = 600,
-                bridgeOrigin = origin.origin,
-                bridgeDispatcher = ConformanceBridgeDispatcher(bridgeHandler),
-            ) { event ->
-                browserEvents += event
-                when {
-                    event.type == NativeBrowserEventType.TITLE_CHANGED && event.text == FIRST_TITLE -> {
-                        firstTitle.countDown()
+                    require(denied["code"]?.jsonPrimitive?.content == "service.permission-denied") {
+                        "An ungranted app-path operation did not fail with service.permission-denied: $denied"
                     }
-                    event.type == NativeBrowserEventType.TITLE_CHANGED && event.text == SECOND_TITLE -> {
-                        secondTitle.countDown()
-                    }
-                    event.type == NativeBrowserEventType.LOAD_ENDED && event.text == origin.secondUrl -> {
-                        secondLoad.countDown()
-                    }
-                    event.type == NativeBrowserEventType.RESIZED && event.width == 960 && event.height == 640 -> {
-                        resized.countDown()
-                    }
-                    event.type == NativeBrowserEventType.DEVTOOLS_CLOSED -> {
-                        firstDevToolsClosed.countDown()
-                    }
+                } finally {
+                    deniedBrowser.close()
+                    cdp.awaitPage(origin.firstUrl)
+                    cdp.awaitBridge()
                 }
-            }
-            require(firstTitle.await(30, TimeUnit.SECONDS)) {
-                "The first real Chromium page did not publish its Unicode title: $browserEvents"
-            }
-            if (requiredBooleanProperty(EXPECT_CUSTOM_EXTENSION_RUNTIME_PROPERTY)) {
-                val customQuery = kotlinx.coroutines.runBlocking {
-                    browser.queryExtension(LIFECYCLE_EXTENSION_ID)
-                }
-                require(
-                    customQuery.operation == KWebExtensionRuntimeOperation.QUERY &&
-                        customQuery.outcome == KWebExtensionRuntimeOutcome.SUCCESS &&
-                        customQuery.state == KWebExtensionRuntimeState.ABSENT &&
-                        customQuery.version == null && customQuery.path == null,
-                ) {
-                    "Custom CEF did not expose an initially absent Profile extension state: $customQuery"
-                }
-            } else {
-                val stockExtensionResult = kotlinx.coroutines.runBlocking {
-                    browser.installUnpackedExtension(requiredPathProperty(EXTENSION_PATH_PROPERTY))
-                }
-                require(stockExtensionResult.resolution == KWebExtensionLifecycleResolution.ABORTED) {
-                    "Stock CEF did not abort the undispatched extension transaction: $stockExtensionResult"
-                }
-                require(stockExtensionResult.failure?.code == "native.abi.extension-runtime-abi-missing") {
-                    "Stock CEF did not report the missing pinned extension adapter: $stockExtensionResult"
-                }
-                require(kotlinx.coroutines.runBlocking { browser.reconcileExtensions() }.isEmpty()) {
-                    "An undispatched stock CEF extension attempt left a pending journal."
-                }
-            }
-            require(NativeExtensionRuntime.liveNativeOperationCount() == 0L) {
-                "The engine integration extension contract leaked a native operation."
-            }
-            cdp.awaitPage(origin.firstUrl)
-            cdp.awaitBridge()
-            require(cdp.evaluate("document.title") == FIRST_TITLE)
-            runBridgeConformance(cdp, bridgeHandler)
-            require(cdp.evaluate("typeof document.getElementById('bridge-frame').contentWindow.__kwebBridgeQuery") == "undefined")
-            require(cdp.evaluate("void ConformanceBridge.createClient().wait({delayMs:60000}); 'started'") == "started")
-            bridgeHandler.awaitStarted("navigation")
-            browser.navigate(origin.crossOriginUrl)
-            cdp.awaitPage(origin.crossOriginUrl)
-            bridgeHandler.awaitCancelled("navigation")
-            require(cdp.evaluate("typeof globalThis.__kwebBridgeQuery") == "undefined")
-            require(cdp.evaluate("typeof globalThis.ConformanceBridge") == "undefined")
-            browser.navigate(origin.firstUrl)
-            cdp.awaitPage(origin.firstUrl)
-            cdp.awaitBridge()
-            requireStatus(
-                NativeBindings.browserCloseDevTools(browser.requireLiveHandle("devtools-test")),
-                NativeStatus.DEVTOOLS_NOT_OPEN,
-                "close missing DevTools",
-            )
-            browser.openDevTools()
-            require(browserEvents.any { it.type == NativeBrowserEventType.DEVTOOLS_OPENED })
-            cdp.awaitDevToolsTarget()
-            val duplicateDevTools = try {
+                requireStatus(
+                    NativeBindings.browserCloseDevTools(browser.requireLiveHandle("devtools-test")),
+                    NativeStatus.DEVTOOLS_NOT_OPEN,
+                    "close missing DevTools",
+                )
                 browser.openDevTools()
-                null
-            } catch (error: KWebNativeException) {
-                error
-            }
-            require(duplicateDevTools?.code == "native.abi.devtools-already-open") {
-                "Duplicate DevTools open returned $duplicateDevTools"
-            }
-            val browserHandle = browser.requireLiveHandle("devtools-test")
-            requireStatus(
-                NativeBindings.browserCloseDevTools(browserHandle),
-                NativeStatus.OK,
-                "close open DevTools",
-            )
-            requireStatus(
-                NativeBindings.browserCloseDevTools(browserHandle),
-                NativeStatus.DEVTOOLS_CLOSING,
-                "close closing DevTools",
-            )
-            require(firstDevToolsClosed.await(30, TimeUnit.SECONDS)) {
-                "The explicitly closed DevTools window did not publish its terminal event."
-            }
-            require(browserEvents.any { it.type == NativeBrowserEventType.DEVTOOLS_CLOSED })
-            cdp.awaitNoDevToolsTarget()
-            browser.openDevTools()
-            cdp.awaitDevToolsTarget()
-            browser.closeDevTools()
-            cdp.awaitNoDevToolsTarget()
-            require(NativeBrowser.liveNativeBrowserCount() == 1L)
-            val rejectedEngineClose = try {
-                NativeEngine.onAwtEventDispatchThread { engine.close() }
-                null
-            } catch (error: KWebNativeException) {
-                error
-            }
-            require(rejectedEngineClose?.code == "native.abi.engine-has-live-browsers") {
-                "Engine close with a live browser returned $rejectedEngineClose."
-            }
-            requireEquals(KWebLifecycleState.OPEN, engine.lifecycle.value, "engine remains open after rejected close")
-            requireEquals(handle, engine.requireLiveHandle("browser-test"), "engine handle remains owned")
+                require(browserEvents.any { it.type == NativeBrowserEventType.DEVTOOLS_OPENED })
+                cdp.awaitDevToolsTarget()
+                val duplicateDevTools = try {
+                    browser.openDevTools()
+                    null
+                } catch (error: KWebNativeException) {
+                    error
+                }
+                require(duplicateDevTools?.code == "native.abi.devtools-already-open") {
+                    "Duplicate DevTools open returned $duplicateDevTools"
+                }
+                val browserHandle = browser.requireLiveHandle("devtools-test")
+                requireStatus(
+                    NativeBindings.browserCloseDevTools(browserHandle),
+                    NativeStatus.OK,
+                    "close open DevTools",
+                )
+                requireStatus(
+                    NativeBindings.browserCloseDevTools(browserHandle),
+                    NativeStatus.DEVTOOLS_CLOSING,
+                    "close closing DevTools",
+                )
+                require(firstDevToolsClosed.await(30, TimeUnit.SECONDS)) {
+                    "The explicitly closed DevTools window did not publish its terminal event."
+                }
+                require(browserEvents.any { it.type == NativeBrowserEventType.DEVTOOLS_CLOSED })
+                cdp.awaitNoDevToolsTarget()
+                browser.openDevTools()
+                cdp.awaitDevToolsTarget()
+                browser.closeDevTools()
+                cdp.awaitNoDevToolsTarget()
+                require(NativeBrowser.liveNativeBrowserCount() == 1L)
+                val rejectedEngineClose = try {
+                    NativeEngine.onAwtEventDispatchThread { engine.close() }
+                    null
+                } catch (error: KWebNativeException) {
+                    error
+                }
+                require(rejectedEngineClose?.code == "native.abi.engine-has-live-browsers") {
+                    "Engine close with a live browser returned $rejectedEngineClose."
+                }
+                requireEquals(KWebLifecycleState.OPEN, engine.lifecycle.value, "engine remains open after rejected close")
+                requireEquals(handle, engine.requireLiveHandle("browser-test"), "engine handle remains owned")
 
-            browser.navigate(origin.secondUrl)
-            require(secondTitle.await(30, TimeUnit.SECONDS)) {
-                "The second real Chromium page did not publish its Unicode title: $browserEvents"
-            }
-            require(secondLoad.await(30, TimeUnit.SECONDS)) {
-                "The second real Chromium navigation did not complete: $browserEvents"
-            }
-            cdp.awaitBridge()
-            browser.setBounds(24, 32, 960, 640)
-            require(resized.await(30, TimeUnit.SECONDS)) {
-                "The native Chromium child did not confirm the requested size: $browserEvents"
-            }
+                browser.navigate(origin.secondUrl)
+                require(secondTitle.await(30, TimeUnit.SECONDS)) {
+                    "The second real Chromium page did not publish its Unicode title: $browserEvents"
+                }
+                require(secondLoad.await(30, TimeUnit.SECONDS)) {
+                    "The second real Chromium navigation did not complete: $browserEvents"
+                }
+                cdp.awaitBridge()
+                browser.setBounds(24, 32, 960, 640)
+                require(resized.await(30, TimeUnit.SECONDS)) {
+                    "The native Chromium child did not confirm the requested size: $browserEvents"
+                }
 
-            browser.openDevTools()
-            cdp.awaitDevToolsTarget()
+                browser.openDevTools()
+                cdp.awaitDevToolsTarget()
 
-            require(cdp.evaluate("void ConformanceBridge.createClient().wait({delayMs:60000}); 'started'") == "started")
-            bridgeHandler.awaitStarted("browser close")
+                require(cdp.evaluate("void ConformanceBridge.createClient().wait({delayMs:60000}); 'started'") == "started")
+                bridgeHandler.awaitStarted("browser close")
 
-            browser.close()
-            bridgeHandler.awaitCancelled("browser close")
-            require(browserEvents.any { it.type == NativeBrowserEventType.DEVTOOLS_CLOSED }) {
-                "Closing the page did not close its native DevTools window."
+                browser.close()
+                bridgeHandler.awaitCancelled("browser close")
+                require(browserEvents.any { it.type == NativeBrowserEventType.DEVTOOLS_CLOSED }) {
+                    "Closing the page did not close its native DevTools window."
+                }
+                cdp.awaitNoDevToolsTarget()
+                val staleBrowserHandle = browserEvents.first().browser
+                val browserCallbackCountAfterClose = browserEvents.size
+                Thread.sleep(100)
+                browser.close()
+                require(browserEvents.size == browserCallbackCountAfterClose)
+                require(browser.lifecycle.value == KWebLifecycleState.CLOSED)
+                require(NativeBrowser.liveNativeBrowserCount() == 0L)
+                requireStatus(
+                    NativeEngine.onAwtEventDispatchThread { NativeBindings.browserClose(staleBrowserHandle) },
+                    NativeStatus.INVALID_HANDLE,
+                    "stale browser close",
+                )
+                require(browserEvents.first().type == NativeBrowserEventType.CREATED)
+                require(browserEvents.last().type == NativeBrowserEventType.CLOSED)
+                val devToolsClosedIndex = browserEvents.indexOfLast {
+                    it.type == NativeBrowserEventType.DEVTOOLS_CLOSED
+                }
+                val browserClosedIndex = browserEvents.indexOfLast {
+                    it.type == NativeBrowserEventType.CLOSED
+                }
+                require(devToolsClosedIndex in 0 until browserClosedIndex) {
+                    "The page closed before its native DevTools window."
+                }
+                require(browserEvents.map { it.sequence } == (1L..browserEvents.size.toLong()).toList())
+                require(browserEvents.any { it.type == NativeBrowserEventType.NAVIGATION_STARTED && it.text == origin.secondUrl })
+                require(browserEvents.any { it.type == NativeBrowserEventType.ADDRESS_CHANGED && it.text == origin.secondUrl })
+                require(browserEvents.none { it.type == NativeBrowserEventType.FATAL_ERROR })
+            } finally {
+                NativeEngine.onAwtEventDispatchThread(surface::close)
             }
-            cdp.awaitNoDevToolsTarget()
-            val staleBrowserHandle = browserEvents.first().browser
-            val browserCallbackCountAfterClose = browserEvents.size
-            Thread.sleep(100)
-            browser.close()
-            require(browserEvents.size == browserCallbackCountAfterClose)
-            require(browser.lifecycle.value == KWebLifecycleState.CLOSED)
-            require(NativeBrowser.liveNativeBrowserCount() == 0L)
-            requireStatus(
-                NativeEngine.onAwtEventDispatchThread { NativeBindings.browserClose(staleBrowserHandle) },
-                NativeStatus.INVALID_HANDLE,
-                "stale browser close",
-            )
-            require(browserEvents.first().type == NativeBrowserEventType.CREATED)
-            require(browserEvents.last().type == NativeBrowserEventType.CLOSED)
-            val devToolsClosedIndex = browserEvents.indexOfLast {
-                it.type == NativeBrowserEventType.DEVTOOLS_CLOSED
-            }
-            val browserClosedIndex = browserEvents.indexOfLast {
-                it.type == NativeBrowserEventType.CLOSED
-            }
-            require(devToolsClosedIndex in 0 until browserClosedIndex) {
-                "The page closed before its native DevTools window."
-            }
-            require(browserEvents.map { it.sequence } == (1L..browserEvents.size.toLong()).toList())
-            require(browserEvents.any { it.type == NativeBrowserEventType.NAVIGATION_STARTED && it.text == origin.secondUrl })
-            require(browserEvents.any { it.type == NativeBrowserEventType.ADDRESS_CHANGED && it.text == origin.secondUrl })
-            require(browserEvents.none { it.type == NativeBrowserEventType.FATAL_ERROR })
         }
-        finally {
-            NativeEngine.onAwtEventDispatchThread(surface::close)
+
+        val duplicateCreate = NativeEngine.onAwtEventDispatchThread {
+            rawCreate(configuration, NativeEngineEventSink { _, _, _ -> })
         }
+        requireCreateFailure(duplicateCreate, NativeStatus.ENGINE_ALREADY_EXISTS)
+
+        val wrongThreadStatus = NativeBindings.engineClose(handle)
+        requireStatus(wrongThreadStatus, NativeStatus.WRONG_THREAD, "wrong-thread close")
+        require(NativeEngine.liveNativeEngineCount() == 1L)
+
+        Thread.sleep(2_000)
+        reportStage("before_close")
+        NativeEngine.onAwtEventDispatchThread(engine::close)
+        reportStage("closed")
+        cdp.assertUnavailable()
+        val callbackCountAfterClose = events.size
+        Thread.sleep(100)
+        engine.close()
+
+        require(events.map { it.type } == listOf(NativeEngineEventType.OPENED, NativeEngineEventType.CLOSED))
+        require(events.map { it.sequence } == listOf(1L, 2L))
+        require(events.size == callbackCountAfterClose)
+        require(callbackThreads.toSet().size == 1)
+        require(callbackThreads.toSet().single().startsWith("KWebShell-engine-callback-"))
+        require(engine.lifecycle.value == KWebLifecycleState.CLOSED)
+        require(NativeEngine.liveNativeEngineCount() == 0L)
+        requireProfileDiskState(profile)
+
+        val staleClose = NativeEngine.onAwtEventDispatchThread { NativeBindings.engineClose(handle) }
+        requireStatus(staleClose, NativeStatus.INVALID_HANDLE, "stale engine close")
+        val restart = NativeEngine.onAwtEventDispatchThread {
+            rawCreate(configuration, NativeEngineEventSink { _, _, _ -> })
+        }
+        requireCreateFailure(restart, NativeStatus.ENGINE_RESTART_FORBIDDEN)
+        reportStage("main_complete")
+        println("KWebShell engine success lifecycle passed.")
+    } finally {
+        appPathsService.close()
     }
-
-    val duplicateCreate = NativeEngine.onAwtEventDispatchThread {
-        rawCreate(configuration, NativeEngineEventSink { _, _, _ -> })
-    }
-    requireCreateFailure(duplicateCreate, NativeStatus.ENGINE_ALREADY_EXISTS)
-
-    val wrongThreadStatus = NativeBindings.engineClose(handle)
-    requireStatus(wrongThreadStatus, NativeStatus.WRONG_THREAD, "wrong-thread close")
-    require(NativeEngine.liveNativeEngineCount() == 1L)
-
-    Thread.sleep(2_000)
-    reportStage("before_close")
-    NativeEngine.onAwtEventDispatchThread(engine::close)
-    reportStage("closed")
-    cdp.assertUnavailable()
-    val callbackCountAfterClose = events.size
-    Thread.sleep(100)
-    engine.close()
-
-    require(events.map { it.type } == listOf(NativeEngineEventType.OPENED, NativeEngineEventType.CLOSED))
-    require(events.map { it.sequence } == listOf(1L, 2L))
-    require(events.size == callbackCountAfterClose)
-    require(callbackThreads.toSet().size == 1)
-    require(callbackThreads.toSet().single().startsWith("KWebShell-engine-callback-"))
-    require(engine.lifecycle.value == KWebLifecycleState.CLOSED)
-    require(NativeEngine.liveNativeEngineCount() == 0L)
-    requireProfileDiskState(profile)
-
-    val staleClose = NativeEngine.onAwtEventDispatchThread { NativeBindings.engineClose(handle) }
-    requireStatus(staleClose, NativeStatus.INVALID_HANDLE, "stale engine close")
-    val restart = NativeEngine.onAwtEventDispatchThread {
-        rawCreate(configuration, NativeEngineEventSink { _, _, _ -> })
-    }
-    requireCreateFailure(restart, NativeStatus.ENGINE_RESTART_FORBIDDEN)
-    reportStage("main_complete")
-    println("KWebShell engine success lifecycle passed.")
 }
 
 private fun runPublicFacadeLifecycle() {
@@ -524,6 +597,16 @@ private fun runPublicFacadeLifecycle() {
     var surface: ComposeBrowserSurface? = null
     var profile: io.github.kingsword09.kwebshell.core.KWebProfile? = null
     var page: io.github.kingsword09.kwebshell.core.KWebPage? = null
+    val appPathsService = JvmKWebAppPaths.open(
+        requiredPathProperty(APP_PATHS_NATIVE_LIBRARY_PROPERTY),
+        KWebAppPathsConfiguration(
+            applicationId = "io.github.kwebshell.integration",
+            applicationDataRoot = configuration.rootCache.resolve("public-app-data").toString(),
+            sessionDataRoot = configuration.rootCache.resolve("public-session-data").toString(),
+        ),
+    )
+    engine.nativeServices.install(KWebAppPaths.Key, appPathsService)
+    require(engine.nativeServices.require(KWebAppPaths.Key) === appPathsService)
     try {
         require(KWebCapability.NATIVE_CHILD in engine.capabilities)
         require(KWebCapability.PERSISTENT_PROFILE in engine.capabilities)
@@ -544,14 +627,15 @@ private fun runPublicFacadeLifecycle() {
         require(duplicate?.code == "profile.duplicate-physical-identity") {
             "The public facade allowed a duplicate physical Profile: $duplicate"
         }
+        val publicProfile = requireNotNull(profile)
 
-        BrowserOrigin().use { origin ->
+        BrowserOrigin(includeAppPathsBridge = false).use { origin ->
             val invalidWindow = NativeEngine.onAwtEventDispatchThread { ComposeWindow() }
             try {
                 val beforeInvalidParent = NativeBrowser.liveNativeBrowserCount()
                 val invalidParent = try {
                     kotlinx.coroutines.runBlocking {
-                        profile!!.openPage(
+                        publicProfile.openPage(
                             KWebDesktop.composeWindowHost(invalidWindow),
                             origin.firstUrl,
                             KWebRect(0, 0, 800, 600),
@@ -571,47 +655,50 @@ private fun runPublicFacadeLifecycle() {
                 NativeEngine.onAwtEventDispatchThread(invalidWindow::dispose)
             }
             surface = NativeEngine.onAwtEventDispatchThread { ComposeBrowserSurface.create(800, 600) }
-            val nativeParent = surface!!.nativeParent
-            val host: KWebComposeWindowHost = KWebDesktop.composeWindowHost(surface!!.window)
-            page = kotlinx.coroutines.runBlocking {
-                profile!!.openPage(host, origin.firstUrl, KWebRect(0, 0, 800, 600))
+            val publicSurface = requireNotNull(surface)
+            val nativeParent = publicSurface.nativeParent
+            val host: KWebComposeWindowHost = KWebDesktop.composeWindowHost(publicSurface.window)
+            val publicPage = kotlinx.coroutines.runBlocking {
+                publicProfile.openPage(host, origin.firstUrl, KWebRect(0, 0, 800, 600))
             }
+            page = publicPage
             val publicEvents = CopyOnWriteArrayList<io.github.kingsword09.kwebshell.core.KWebPageEvent>()
             val eventScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             val eventJob = eventScope.launch {
-                page!!.events.collect { publicEvents += it }
+                publicPage.events.collect { publicEvents += it }
             }
             try {
                 kotlinx.coroutines.runBlocking {
                     withTimeout(30_000) {
-                        page!!.events.first { it.type == KWebPageEventType.CREATED }
+                        publicPage.events.first { it.type == KWebPageEventType.CREATED }
                     }
                 }
-                kotlinx.coroutines.runBlocking { page!!.navigate(origin.secondUrl) }
+                kotlinx.coroutines.runBlocking { publicPage.navigate(origin.secondUrl) }
                 kotlinx.coroutines.runBlocking {
                     withTimeout(30_000) {
-                        page!!.events.first {
+                        publicPage.events.first {
                             it.type == KWebPageEventType.ADDRESS_CHANGED && it.text == origin.secondUrl
                         }
                     }
                 }
-                kotlinx.coroutines.runBlocking { page!!.setBounds(KWebRect(24, 32, 960, 640)) }
+                kotlinx.coroutines.runBlocking { publicPage.setBounds(KWebRect(24, 32, 960, 640)) }
                 kotlinx.coroutines.runBlocking {
                     withTimeout(30_000) {
-                        page!!.events.first {
+                        publicPage.events.first {
                             val eventBounds = it.bounds
                             it.type == KWebPageEventType.RESIZED &&
-                                eventBounds?.width == 960 && eventBounds?.height == 640
+                                eventBounds != null &&
+                                eventBounds.width == 960 && eventBounds.height == 640
                         }
                     }
                 }
-                kotlinx.coroutines.runBlocking { page!!.setSurfaceState(false, false) }
-                kotlinx.coroutines.runBlocking { page!!.setSurfaceState(true, true) }
-                kotlinx.coroutines.runBlocking { page!!.openDevTools() }
-                kotlinx.coroutines.runBlocking { page!!.closeDevTools() }
+                kotlinx.coroutines.runBlocking { publicPage.setSurfaceState(false, false) }
+                kotlinx.coroutines.runBlocking { publicPage.setSurfaceState(true, true) }
+                kotlinx.coroutines.runBlocking { publicPage.openDevTools() }
+                kotlinx.coroutines.runBlocking { publicPage.closeDevTools() }
 
                 val profileClose = try {
-                    profile!!.close()
+                    publicProfile.close()
                     null
                 } catch (error: KWebNativeException) {
                     error
@@ -629,21 +716,27 @@ private fun runPublicFacadeLifecycle() {
                     "The public Engine did not reject a live page: $engineClose"
                 }
 
-                page!!.close()
+                publicPage.close()
                 kotlinx.coroutines.runBlocking {
                     withTimeout(30_000) {
-                        page!!.events.first { it.type == KWebPageEventType.CLOSED }
+                        publicPage.events.first { it.type == KWebPageEventType.CLOSED }
                     }
                 }
                 require(
                     NativeEngine.onAwtEventDispatchThread {
-                        surface!!.window.isShowing && surface!!.window.windowHandle == nativeParent
+                        publicSurface.window.isShowing && publicSurface.window.windowHandle == nativeParent
                     },
                 ) {
                     "The ComposeWindow parent changed or stopped showing after public page close."
                 }
-                profile!!.close()
+                publicProfile.close()
                 engine.close()
+                require(appPathsService.lifecycle.value == KWebLifecycleState.CLOSED) {
+                    "Engine close did not close its installed native services."
+                }
+                require(engine.nativeServices.lifecycle.value == KWebLifecycleState.CLOSED) {
+                    "Engine close did not close the native service registry."
+                }
             } finally {
                 kotlinx.coroutines.runBlocking { eventJob.cancelAndJoin() }
                 eventScope.cancel()
@@ -666,6 +759,9 @@ private fun runPublicFacadeLifecycle() {
             engine.close()
         }
         surface?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
+        if (appPathsService.lifecycle.value != KWebLifecycleState.CLOSED) {
+            appPathsService.close()
+        }
     }
     require(NativeBrowser.liveNativeBrowserCount() == 0L)
     require(NativeEngine.liveNativeEngineCount() == 0L)
@@ -1365,11 +1461,15 @@ private fun runRawBridgeAbiConformance(
     require(NativeBrowser.liveNativeBrowserCount() == 0L)
 }
 
-private class BrowserOrigin : AutoCloseable {
+private class BrowserOrigin(
+    private val includeAppPathsBridge: Boolean = true,
+) : AutoCloseable {
     private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
     private val crossOriginServer = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
     private val port: Int
     private val bridgeJavascript = Files.readString(requiredPathProperty(BRIDGE_JAVASCRIPT_PROPERTY))
+    private val appPathsBridgeJavascript =
+        Files.readString(requiredPathProperty(APP_PATHS_BRIDGE_JAVASCRIPT_PROPERTY))
 
     val origin: String
     val firstUrl: String
@@ -1421,7 +1521,9 @@ private class BrowserOrigin : AutoCloseable {
         val body = (
             "<!doctype html><meta charset=\"utf-8\">" +
                 "<iframe id=\"bridge-frame\" src=\"/frame\"></iframe>" +
-                "<script>$bridgeJavascript</script><script>$script</script>"
+                "<script>$bridgeJavascript</script>" +
+                (if (includeAppPathsBridge) "<script>$appPathsBridgeJavascript</script>" else "") +
+                "<script>$script</script>"
             ).toByteArray(StandardCharsets.UTF_8)
         exchange.responseHeaders.set("Content-Type", "text/html; charset=utf-8")
         exchange.responseHeaders.set("Cache-Control", "no-store")
@@ -1478,6 +1580,23 @@ private class ConformanceBridgeTestHandler : ConformanceBridgeHandler {
     fun awaitCancelled(operation: String) {
         require(cancelled.poll(30, TimeUnit.SECONDS) != null) {
             "The bridge handler was not cancelled for $operation."
+        }
+    }
+}
+
+private class CompositeBridgeDispatcher(
+    private val conformance: KWebBridgeDispatcher,
+    private val appPaths: KWebBridgeDispatcher,
+) : KWebBridgeDispatcher {
+    override suspend fun dispatch(requestJson: String): String {
+        val method = KWebBridgeProtocol.decodeRequest(requestJson).method
+        return when (method) {
+            "probe", "fail", "crash", "wait" -> conformance.dispatch(requestJson)
+            "resolve" -> appPaths.dispatch(requestJson)
+            else -> throw KWebBridgeException(
+                code = "bridge.method.unknown",
+                message = "Unknown bridge method.",
+            )
         }
     }
 }
@@ -1543,6 +1662,39 @@ private fun runBridgeConformance(cdp: CdpClient, handler: ConformanceBridgeTestH
     require(aborted["code"]!!.jsonPrimitive.content == "bridge.call.cancelled")
     handler.awaitStarted("AbortSignal")
     handler.awaitCancelled("AbortSignal")
+}
+
+private fun runAppPathsBridgeConformance(
+    cdp: CdpClient,
+    directHome: io.github.kingsword09.kwebshell.service.apppaths.KWebResolvedPath,
+) {
+    val rendererHomeResult = cdp.evaluate(
+        """
+        (async () => { try {
+          return JSON.stringify({ok:true,value:await KWebAppPathsBridge.createClient().resolve({kind:"home"})});
+        } catch (error) {
+          return JSON.stringify({ok:false,code:error.code,message:error.message});
+        }})()
+        """.trimIndent(),
+    )
+    val rendererHomeEnvelope = kotlinx.serialization.json.Json.parseToJsonElement(rendererHomeResult).jsonObject
+    require(rendererHomeEnvelope["ok"]?.jsonPrimitive?.content == "true") {
+        "KWebAppPaths renderer call failed: $rendererHomeEnvelope"
+    }
+    val rendererHome = rendererHomeEnvelope["value"]!!.jsonObject
+    require(rendererHome["kind"]?.jsonPrimitive?.content == directHome.kind.id)
+    require(rendererHome["path"]?.jsonPrimitive?.content == directHome.path) {
+        "Renderer and direct KWebAppPaths results differ: renderer=$rendererHome direct=$directHome"
+    }
+    require(rendererHome["source"]?.jsonPrimitive?.content == directHome.source)
+
+    val invalid = bridgeFailure(
+        cdp,
+        "KWebAppPathsBridge.createClient().resolve({kind:'not-published'})",
+    )
+    require(invalid["code"]?.jsonPrimitive?.content == "service.request-invalid") {
+        "An undeclared app-path kind did not fail with service.request-invalid: $invalid"
+    }
 }
 
 private fun bridgeFailure(cdp: CdpClient, call: String): kotlinx.serialization.json.JsonObject =
@@ -2065,6 +2217,13 @@ private class CdpClient(private val port: Int) {
         )
     }
 
+    fun awaitAppPathsBridge() {
+        awaitExpression(
+            "typeof globalThis.KWebAppPathsBridge === 'object' && " +
+                "typeof globalThis.__kwebBridgeQuery === 'function'",
+        )
+    }
+
     fun awaitDevToolsTarget() {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
         while (System.nanoTime() < deadline) {
@@ -2359,6 +2518,8 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
         RESOURCES_PROPERTY,
         LOCALES_PROPERTY,
         BRIDGE_JAVASCRIPT_PROPERTY,
+        APP_PATHS_BRIDGE_JAVASCRIPT_PROPERTY,
+        APP_PATHS_NATIVE_LIBRARY_PROPERTY,
         EXTENSION_PATH_PROPERTY,
         LIFECYCLE_V1_PROPERTY,
         LIFECYCLE_V2_PROPERTY,
@@ -2370,6 +2531,7 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
         add("--patch-module=$DESKTOP_MODULE_NAME=${System.getProperty(DESKTOP_TEST_CLASSES_PROPERTY)}")
         add("--add-modules=$DESKTOP_MODULE_NAME,java.net.http,jdk.httpserver")
         add("--enable-native-access=$DESKTOP_MODULE_NAME")
+        add("--enable-native-access=ALL-UNNAMED")
         add("-Djava.awt.headless=false")
         inheritedProperties.forEach { name ->
             add("-D$name=${System.getProperty(name) ?: error("Missing '$name'.")}")

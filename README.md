@@ -32,9 +32,14 @@ publishes `kweb-services-core` and the first complete `KWebAppPaths` service,
 including the versioned native C ABI, JDK 25 FFM provider, generated
 exact-origin bridge, and explicit Engine service ownership. The macOS arm64
 service and CEF integration gates pass locally; Windows and Linux providers
-are implemented and remain subject to their hosted native-runtime gates. The
-Electron migration adapter is the next Phase 11 objective. Component API and
-ownership rules are documented in [`kweb-compose/README.md`](kweb-compose/README.md).
+are implemented and remain subject to their hosted native-runtime gates. Phase
+11.3 now publishes the opt-in `kweb-electron-migration` kit: strict manifest
+validation, generated `window.desktop` preload facades, source inventory,
+digest-bound compatibility reports, and a real CEF migration fixture. The
+macOS arm64 migration gate passes locally; Windows/Linux run the same hosted
+task before target publication. Component API and ownership rules are
+documented in [`kweb-compose/README.md`](kweb-compose/README.md), with migration
+details in [`docs/kmp-native-services-and-electron-migration.md`](docs/kmp-native-services-and-electron-migration.md).
 
 Current verification evidence is intentionally platform-specific:
 

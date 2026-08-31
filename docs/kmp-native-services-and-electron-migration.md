@@ -416,6 +416,44 @@ conformance. Until then, a report is explicitly migration-blocked; a synthetic
 workload or a partial host surface cannot be presented as an application
 migration or a performance result.
 
+### 9.6 Migration kit commands
+
+Objective 11.3 publishes the first runnable migration kit in
+`kweb-electron-migration`. Its fixture can be checked with:
+
+```shell
+npm ci
+./gradlew :kweb-electron-migration:check \
+  -PcefRoot=/absolute/path/to/extracted/cef_binary_151.3.16+gbe1e15d+chromium-151.0.7922.109_macosarm64_minimal
+```
+
+The module validates `src/jvmTest/resources/migration-fixture/migration-manifest.json`,
+generates a typed preload facade, compiles it and the unchanged renderer calls
+with strict TypeScript, executes the browser JavaScript under Node, scans the
+fixture for Electron/Node usage, and writes a digest-bound compatibility report
+under `build/reports/electron-migration/`. The real CEF fixture then installs
+`KWebAppPaths` from Kotlin/Compose and proves the generated `window.desktop`
+surface over the exact-origin bridge, including concurrent responses,
+timeout/abort/navigation/owner cancellation, frame and origin isolation,
+permission denial, and unconfigured pages. A non-ready report is written for
+diagnostics but the command exits non-zero and contains no performance result.
+
+The CLI entry point is
+`io.github.kingsword09.kwebshell.electron.migration.KWebElectronMigrationCli`:
+
+```text
+manifest <manifest.json>
+generate <manifest.json> <output-directory>
+inventory <application-root> <manifest.json> <output.json>
+report <manifest.json> <generated-directory> <inventory.json> <output.json>
+```
+
+`report` requires `kweb.migration.cef.version`,
+`kweb.migration.chromium.version`, and `kweb.migration.target` system
+properties. It rejects an unresolved matrix row, a renderer digest mismatch,
+missing generated output, or invalid runtime identity before a migration can be
+presented as ready.
+
 ## 10. Manifest V3 Is Independent
 
 Electron migration and Chrome extension compatibility solve different problems.

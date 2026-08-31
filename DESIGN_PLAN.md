@@ -100,7 +100,7 @@ Compose Desktop JVM
 | `kweb-runtime-pack` | Reproducible CEF binaries, resources, locales, licenses, and platform packaging | Runtime version selection at application startup |
 | `kweb-services-core` | KMP service descriptors, registry, scopes, policy, and shared errors | Concrete OS APIs or Electron compatibility |
 | `kweb-service-<name>` | One complete native service contract and its advertised platform providers | Unrelated service families or partial providers |
-| `kweb-electron-migration` | Planned opt-in typed preload/channel adapters and compatibility matrix | Browser, service, Node.js, or arbitrary IPC ownership |
+| `kweb-electron-migration` | Opt-in typed preload/channel adapters, inventory, and compatibility matrix | Browser, service, Node.js, or arbitrary IPC ownership |
 
 Planned modules are created only when their first complete vertical slice lands;
 the table does not authorize empty Gradle modules or placeholder APIs.
@@ -1610,6 +1610,25 @@ Acceptance criteria:
    real CEF bridge integration, and macOS, Windows, and Linux migration-fixture
    gates pass before the module is published. The application remains free to
    omit the module; omission is not a hidden fallback implementation.
+
+Implementation status: the first complete migration vertical slice is present
+in `kweb-electron-migration`. A strict version-1 manifest binds Electron imports,
+preload methods, channel schemas, exact KWebShell service versions, renderer
+digest, and the four-state capability matrix. The generator emits a typed
+TypeScript facade, declarations, and browser JavaScript for the proven
+`app.getPath` adapter only; unresolved mappings fail generation. The inventory
+scanner reads JavaScript/TypeScript source and package manifests, reports every
+Electron/Node use with file and line evidence, and exits with a structured
+blocking error for unclassified, rewrite, unsupported, or undeclared usage.
+Compatibility reports bind renderer, manifest, generated-output, and inventory
+SHA-256 values to service versions, CEF/Chromium identity, and target; blocked
+reports cannot contain a performance comparison. The fixture keeps the
+renderer-facing `window.desktop.getPath` shape, moves host ownership to
+Kotlin/Compose, and runs the real app-path service through the exact-origin CEF
+bridge. macOS arm64 passes the manifest, deterministic generator, strict
+TypeScript, Node runtime, digest report, and CEF fixture gates locally. The
+Windows/Linux hosted jobs use the same task and remain required before those
+targets are published as accepted.
 
 ## 12. Test Strategy
 

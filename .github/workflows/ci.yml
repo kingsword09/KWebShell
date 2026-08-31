@@ -151,3 +151,11 @@ jobs:
           ./gradlew --no-daemon check \
             -PcefRoot="$PWD/.cef-ci/source/$CEF_DIRECTORY" \
             -PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}
+
+      - name: Upload Electron migration evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: electron-migration-${{ matrix.target }}-${{ github.sha }}
+          path: kweb-electron-migration/build/reports/electron-migration/
+          if-no-files-found: error
+          retention-days: 14

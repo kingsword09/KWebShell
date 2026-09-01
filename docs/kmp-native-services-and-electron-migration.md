@@ -454,6 +454,16 @@ properties. It rejects an unresolved matrix row, a renderer digest mismatch,
 missing generated output, or invalid runtime identity before a migration can be
 presented as ready.
 
+Objective 11.4 publishes `kweb-service-window-controls`. It exposes the
+caller-owned Compose window's typed state and basic BrowserWindow-like controls
+through the same registry and exact-origin bridge. Direct Kotlin and renderer
+tests cover title, bounds, visibility, focus, minimize/restore,
+maximize/restore, always-on-top, resizable state, ordered events, permissions,
+frame/origin isolation, and Engine shutdown without disposing the application
+window. It does not expose fullscreen, menus, tray objects, custom title-bar
+hit testing, or a hidden window factory; those require separate complete
+objectives and matrix evidence.
+
 ## 10. Manifest V3 Is Independent
 
 Electron migration and Chrome extension compatibility solve different problems.
@@ -575,16 +585,16 @@ Acceptance criteria:
 
 ## 14. Later Objective Order
 
-After Objective 11.2, priorities come from real migration inventories rather
-than an Electron API checklist. Each item remains a separate complete objective:
+After the window-controls objective, priorities come from real migration
+inventories rather than an Electron API checklist. Each item remains a separate
+complete objective:
 
-1. Window state and controls needed by a migrated Compose/Page host.
-2. Native open/save dialogs and scoped file handles.
-3. Clipboard text/image formats with explicit renderer permissions.
-4. External URL/file reveal operations with scheme and path policy.
-5. Notifications, theme/screen observation, menus/tray, and shortcuts.
-6. Policy-controlled process execution and native messaging.
-7. Signed update discovery, installation, and recovery.
+1. Native open/save dialogs and scoped file handles.
+2. Clipboard text/image formats with explicit renderer permissions.
+3. External URL/file reveal operations with scheme and path policy.
+4. Notifications, theme/screen observation, menus/tray, and shortcuts.
+5. Policy-controlled process execution and native messaging.
+6. Signed update discovery, installation, and recovery.
 
 The order may change when a pinned application migration provides stronger
 evidence. It cannot be changed by adding partial public APIs to several services

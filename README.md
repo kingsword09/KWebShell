@@ -41,6 +41,14 @@ task before target publication. Component API and ownership rules are
 documented in [`kweb-compose/README.md`](kweb-compose/README.md), with migration
 details in [`docs/kmp-native-services-and-electron-migration.md`](docs/kmp-native-services-and-electron-migration.md).
 
+Objective 11.4 adds `kweb-service-window-controls` for one caller-owned
+`ComposeWindow`. It publishes typed state, bounds, title, visibility, focus,
+minimize/restore, maximize/restore, always-on-top, and resizable controls
+without creating or disposing the application window. The macOS arm64 direct
+and exact-origin CEF fixture passes locally; Windows/Linux use the same hosted
+gate. Fullscreen control, menus, tray objects, and custom title bars remain
+unpublished rather than emulated.
+
 Current verification evidence is intentionally platform-specific:
 
 - macOS arm64: local Apple M2 and hosted Apple Paravirtual ANGLE/Metal WebGL runs pass the real CEF, Alloy child, focus, mouse, native wheel, keyboard, resize, renderer/GPU failure, lifecycle, and bounded shutdown tests.

@@ -17,6 +17,7 @@ tasks.named("check") {
     dependsOn(":kweb-core:check")
     dependsOn(":kweb-services-core:check")
     dependsOn(":kweb-service-app-paths:check")
+    dependsOn(":kweb-service-window-controls:check")
     dependsOn(":kweb-electron-migration:check")
     dependsOn(":kweb-bridge:check")
     dependsOn(":kweb-bridge-codegen:check")

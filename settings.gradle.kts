@@ -20,6 +20,7 @@ rootProject.name = "KWebShell"
 include(":kweb-core")
 include(":kweb-services-core")
 include(":kweb-service-app-paths")
+include(":kweb-service-window-controls")
 include(":kweb-electron-migration")
 include(":kweb-bridge")
 include(":kweb-bridge-codegen")

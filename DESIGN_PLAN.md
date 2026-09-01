@@ -1630,6 +1630,53 @@ TypeScript, Node runtime, digest report, and CEF fixture gates locally. The
 Windows/Linux hosted jobs use the same task and remain required before those
 targets are published as accepted.
 
+#### Objective 11.4: Publish typed window state and controls
+
+Publish one complete `kweb-service-window-controls` vertical slice for an
+existing Compose Desktop `ComposeWindow`. The common KMP contract exposes only
+typed state and controls required by a migrated renderer host: title, screen
+bounds, visibility, focus, minimize/restore, maximize/restore, always-on-top,
+and resizable state. The service never creates or disposes the caller's
+window, never opens a second top-level window, and never silently substitutes a
+different window backend. Fullscreen, native menus, tray ownership, and
+undecorated custom hit testing remain outside this objective until their own
+complete contracts exist.
+
+Acceptance criteria:
+
+1. `kweb-service-window-controls` publishes a versioned service descriptor,
+   typed key, lifecycle, state snapshot, ordered state events, exact permission
+   grants, and typed failures. The provider binds one caller-owned
+   `ComposeWindow`; operations are marshalled to the AWT event thread and
+   never mutate the window from a worker thread.
+2. `setBounds`, `setTitle`, `setVisible`, `focus`, `minimize`, `restore`,
+   `setMaximized`, `setAlwaysOnTop`, and `setResizable` have deterministic
+   behavior and report the resulting state. Invalid dimensions, disposed
+   windows, unsupported fullscreen requests, and owner-close races fail with
+   typed errors; no operation is silently ignored.
+3. One bridge schema generates Kotlin dispatch types, strict TypeScript, and
+   browser JavaScript for the published operations. A Page receives the bridge
+   only for its exact origin and explicitly granted operation set; child
+   frames, cross-origin pages, unconfigured pages, and denied operations have
+   no access.
+4. Common policy/lifecycle tests, real ComposeWindow AWT-thread tests, bridge
+   cancellation/permission tests, and macOS, Windows, and Linux hosted UI
+   gates pass. The tests prove that the service does not dispose the external
+   window, does not create a second top-level window, preserves state across
+   minimize/restore and maximize/restore, and closes cleanly with the Engine.
+
+Implementation status: `kweb-service-window-controls` now publishes the common
+KMP contract, caller-owned ComposeWindow provider, ordered state flow, strict
+operation grants, generated Kotlin/TypeScript/browser bridge, and real UI/CEF
+fixture. Window mutation is dispatched to the AWT event thread; asynchronous
+minimize/restore and maximize/restore transitions use bounded state polling
+instead of fixed sleeps. The fixture exercises direct Kotlin and exact-origin
+renderer calls, child-frame transport isolation with an actively loaded client,
+cross-origin and unconfigured Pages, denied permissions, Engine-owned service
+shutdown, CDP shutdown, external window survival, and absence of extra AWT
+top-level windows. macOS arm64 passes the full local task against CEF 151;
+Windows and Linux use the same hosted task before target acceptance is claimed.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.
@@ -1684,6 +1731,7 @@ benchmark: add the application-scale workload harness
 compose: verify native child placement lifecycle
 services: publish verified application paths
 migration: publish the typed Electron migration kit
+services: publish typed window controls
 ```
 
 Do not create a commit for a partial objective. Do not move a failing test to a later phase. Each commit must include the verification command or CI result in its body.

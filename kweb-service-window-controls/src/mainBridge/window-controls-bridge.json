@@ -1,0 +1,47 @@
+{
+  "namespace": "WindowControlsBridge",
+  "kotlinPackage": "io.github.kingsword09.kwebshell.service.windowcontrols.generated",
+  "version": 1,
+  "types": [
+    { "name": "StateRequest", "fields": [{ "name": "enabled", "type": "boolean" }] },
+    { "name": "TitleRequest", "fields": [{ "name": "title", "type": "string" }] },
+    {
+      "name": "BoundsRequest",
+      "fields": [
+        { "name": "x", "type": "int32" },
+        { "name": "y", "type": "int32" },
+        { "name": "width", "type": "int32" },
+        { "name": "height", "type": "int32" }
+      ]
+    },
+    { "name": "FlagRequest", "fields": [{ "name": "enabled", "type": "boolean" }] },
+    {
+      "name": "WindowStateResponse",
+      "fields": [
+        { "name": "title", "type": "string" },
+        { "name": "x", "type": "int32" },
+        { "name": "y", "type": "int32" },
+        { "name": "width", "type": "int32" },
+        { "name": "height", "type": "int32" },
+        { "name": "visible", "type": "boolean" },
+        { "name": "focused", "type": "boolean" },
+        { "name": "minimized", "type": "boolean" },
+        { "name": "placement", "type": "string" },
+        { "name": "alwaysOnTop", "type": "boolean" },
+        { "name": "resizable", "type": "boolean" }
+      ]
+    }
+  ],
+  "methods": [
+    { "name": "getState", "request": "StateRequest", "response": "WindowStateResponse" },
+    { "name": "setTitle", "request": "TitleRequest", "response": "WindowStateResponse" },
+    { "name": "setBounds", "request": "BoundsRequest", "response": "WindowStateResponse" },
+    { "name": "setVisible", "request": "FlagRequest", "response": "WindowStateResponse" },
+    { "name": "focus", "request": "FlagRequest", "response": "WindowStateResponse" },
+    { "name": "minimize", "request": "FlagRequest", "response": "WindowStateResponse" },
+    { "name": "restore", "request": "FlagRequest", "response": "WindowStateResponse" },
+    { "name": "setMaximized", "request": "FlagRequest", "response": "WindowStateResponse" },
+    { "name": "setAlwaysOnTop", "request": "FlagRequest", "response": "WindowStateResponse" },
+    { "name": "setResizable", "request": "FlagRequest", "response": "WindowStateResponse" }
+  ]
+}

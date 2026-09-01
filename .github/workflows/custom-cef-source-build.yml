@@ -132,6 +132,9 @@ jobs:
             -PkwebMigrationTarget=${{ matrix.target }} \
             -PkwebMigrationCefVersion=151.3.16 \
             -PkwebMigrationChromiumVersion=151.0.7922.109
+          ./gradlew --no-daemon :kweb-service-window-controls:windowControlsIntegrationTest \
+            -PcefRoot="$KWEB_CUSTOM_CEF_ROOT" \
+            -PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}
 
       - name: Upload verified runtime and provenance
         uses: actions/upload-artifact@v6

@@ -464,6 +464,14 @@ window. It does not expose fullscreen, menus, tray objects, custom title-bar
 hit testing, or a hidden window factory; those require separate complete
 objectives and matrix evidence.
 
+Objective 11.5 publishes the transport-only exact bridge composition layer.
+`KWebBridgeDispatchers.exact` combines complete generated service dispatchers by
+immutable, case-sensitive method ownership. Duplicate or undeclared methods
+fail explicitly, and selected-handler cancellation is preserved. It does not
+add wildcard routing, a generic IPC channel, or service policy; origin,
+permission, lifecycle, and request validation remain in the existing browser
+and service layers.
+
 ## 10. Manifest V3 Is Independent
 
 Electron migration and Chrome extension compatibility solve different problems.

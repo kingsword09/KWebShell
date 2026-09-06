@@ -1677,6 +1677,40 @@ shutdown, CDP shutdown, external window survival, and absence of extra AWT
 top-level windows. macOS arm64 passes the full local task against CEF 151;
 Windows and Linux use the same hosted task before target acceptance is claimed.
 
+#### Objective 11.5: Publish composable exact bridge dispatch
+
+Make one browser's explicitly configured bridge able to host multiple complete
+typed service dispatchers without a handwritten string switch. The composition
+layer remains transport-only: each route declares its exact method set, routes
+are immutable after construction, and a method can have one owner only. It does
+not add wildcard routing, prefix matching, a second IPC transport, or a service
+registry hidden inside the bridge.
+
+Acceptance criteria:
+
+1. `kweb-bridge` publishes a validated `KWebBridgeRoute` and an exact
+   `KWebBridgeDispatchers` factory. Empty routes, invalid method identifiers,
+   duplicate method ownership, and an empty composition fail immediately with
+   actionable `IllegalArgumentException`s.
+2. Dispatch decodes the closed request envelope once, selects only the exact
+   declared method owner, returns the existing typed unknown-method failure for
+   undeclared methods, and passes the original request JSON unchanged to the
+   selected dispatcher. Handler failures and coroutine cancellation retain the
+   existing bridge semantics.
+3. The real desktop CEF integration composes the conformance bridge and the
+   `KWebAppPaths` bridge through this API. Both method families, unknown methods,
+   timeout/navigation cancellation, origin isolation, and service permission
+   failures remain covered by the same native integration process.
+4. Common tests cover defensive copying, case-sensitive exact matching,
+   duplicate/invalid definitions, unknown methods, delegation, and cancellation.
+   The module check and the desktop native integration task are run on each
+   advertised platform; target evidence is recorded without claiming a hosted
+   platform that was not executed.
+
+Implementation status: the exact route table and common contract tests are in
+`kweb-bridge`; the desktop conformance fixture now uses it to combine the two
+typed dispatchers. The design and ownership boundary are recorded in ADR 0013.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.
@@ -1732,6 +1766,7 @@ compose: verify native child placement lifecycle
 services: publish verified application paths
 migration: publish the typed Electron migration kit
 services: publish typed window controls
+bridge: publish composable exact dispatch
 ```
 
 Do not create a commit for a partial objective. Do not move a failing test to a later phase. Each commit must include the verification command or CI result in its body.

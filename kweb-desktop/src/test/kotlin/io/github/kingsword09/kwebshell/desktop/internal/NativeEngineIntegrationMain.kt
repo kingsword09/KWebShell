@@ -31,9 +31,9 @@ import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPathsConfiguratio
 import io.github.kingsword09.kwebshell.service.apppaths.bridgeDispatcher
 import io.github.kingsword09.kwebshell.services.KWebServiceGrant
 import io.github.kingsword09.kwebshell.services.KWebServicePermissionPolicy
-import io.github.kingsword09.kwebshell.bridge.KWebBridgeDispatcher
+import io.github.kingsword09.kwebshell.bridge.KWebBridgeDispatchers
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeException
-import io.github.kingsword09.kwebshell.bridge.KWebBridgeProtocol
+import io.github.kingsword09.kwebshell.bridge.KWebBridgeRoute
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import kotlinx.serialization.json.jsonArray
@@ -318,9 +318,15 @@ private fun runSuccessfulLifecycle() {
                     "invalid browser dimensions",
                 )
                 val bridgeHandler = ConformanceBridgeTestHandler()
-                val bridgeDispatcher = CompositeBridgeDispatcher(
-                    conformance = ConformanceBridgeDispatcher(bridgeHandler),
-                    appPaths = appPathsService.bridgeDispatcher(appPathsAllowPolicy),
+                val bridgeDispatcher = KWebBridgeDispatchers.exact(
+                    KWebBridgeRoute(
+                        methods = setOf("probe", "fail", "crash", "wait"),
+                        dispatcher = ConformanceBridgeDispatcher(bridgeHandler),
+                    ),
+                    KWebBridgeRoute(
+                        methods = setOf("resolve"),
+                        dispatcher = appPathsService.bridgeDispatcher(appPathsAllowPolicy),
+                    ),
                 )
                 val browser = NativeBrowser.open(
                     engine = engine,
@@ -1580,23 +1586,6 @@ private class ConformanceBridgeTestHandler : ConformanceBridgeHandler {
     fun awaitCancelled(operation: String) {
         require(cancelled.poll(30, TimeUnit.SECONDS) != null) {
             "The bridge handler was not cancelled for $operation."
-        }
-    }
-}
-
-private class CompositeBridgeDispatcher(
-    private val conformance: KWebBridgeDispatcher,
-    private val appPaths: KWebBridgeDispatcher,
-) : KWebBridgeDispatcher {
-    override suspend fun dispatch(requestJson: String): String {
-        val method = KWebBridgeProtocol.decodeRequest(requestJson).method
-        return when (method) {
-            "probe", "fail", "crash", "wait" -> conformance.dispatch(requestJson)
-            "resolve" -> appPaths.dispatch(requestJson)
-            else -> throw KWebBridgeException(
-                code = "bridge.method.unknown",
-                message = "Unknown bridge method.",
-            )
         }
     }
 }

@@ -49,6 +49,14 @@ and exact-origin CEF fixture passes locally; Windows/Linux use the same hosted
 gate. Fullscreen control, menus, tray objects, and custom title bars remain
 unpublished rather than emulated.
 
+Objective 11.5 publishes the composable exact bridge dispatcher. A configured
+browser can combine multiple complete typed service dispatchers through
+immutable method-owned routes; duplicate or undeclared methods fail explicitly,
+and cancellation continues to reach the selected handler. The desktop CEF
+conformance fixture uses this route table for its conformance and app-paths
+services. The common contract and native integration gate are required before
+the objective is committed.
+
 Current verification evidence is intentionally platform-specific:
 
 - macOS arm64: local Apple M2 and hosted Apple Paravirtual ANGLE/Metal WebGL runs pass the real CEF, Alloy child, focus, mouse, native wheel, keyboard, resize, renderer/GPU failure, lifecycle, and bounded shutdown tests.
@@ -89,7 +97,7 @@ Objective 10.1 adds the runnable [HTML5test example and deterministic capability
 
 Objective 10.2 adds the [application-scale workload benchmark](kweb-example-app-benchmark/README.md). Its digest-pinned synthetic workload exercises application routing, streamed Markdown and code, a 5,000-row virtual list, Worker/WebSocket/IndexedDB activity, image/font/audio decode, DevTools/CDP, target-specific Chromium compositor frame sampling, process-tree resource use, Profile continuity, and shutdown. The frame metrics require the verified visible windowed native child and non-empty CDP screencast frames; they are not described as operating-system display scanout. One warmup and ten measured cold/warm pairs retain 22 raw JSON samples, median/p95/worst summaries, and verified screenshots. Baselines bind the exact runtime and workload digests to a platform, architecture, and machine class; missing evidence and unmatched baselines are terminal. macOS arm64 passes the complete local run. The PR matrix is temporarily Windows x64-only while the Windows benchmark gate is repaired; Linux and macOS complete verification remain explicit follow-up gates.
 
-See [DESIGN_PLAN.md](DESIGN_PLAN.md) for architecture and delivery phases, the [Manifest V3 capability matrix](docs/mv3-capability-matrix.md) for the exact runtime surface, [ADR 0003](docs/adr/0003-versioned-native-session-contract.md) for the native ownership contract, [ADR 0004](docs/adr/0004-persistent-chromium-profile-context.md) for the Profile path and persistence contract, [ADR 0005](docs/adr/0005-in-process-jvm-cef-engine.md) for the JVM/CEF engine lifecycle, [ADR 0006](docs/adr/0006-real-awt-chromium-browser-session.md) for the real Alloy browser surface, [ADR 0007](docs/adr/0007-explicit-loopback-cdp-endpoint.md) for the secured CDP endpoint, [ADR 0008](docs/adr/0008-native-devtools-window-host.md) for the native DevTools lifecycle, [ADR 0009](docs/adr/0009-origin-scoped-generated-typed-bridge.md) for bridge isolation and cancellation, [ADR 0010](docs/adr/0010-manifest-v3-package-verification.md) for extension package security, [ADR 0011](docs/adr/0011-profile-scoped-extension-package-store.md) for managed extension objects and journals, [ADR 0012](docs/adr/0012-version-pinned-chromium-extension-lifecycle-adapter.md) for the custom CEF lifecycle boundary, and [AGENTS.md](AGENTS.md) for the non-fallback implementation rules.
+See [DESIGN_PLAN.md](DESIGN_PLAN.md) for architecture and delivery phases, the [Manifest V3 capability matrix](docs/mv3-capability-matrix.md) for the exact runtime surface, [ADR 0003](docs/adr/0003-versioned-native-session-contract.md) for the native ownership contract, [ADR 0004](docs/adr/0004-persistent-chromium-profile-context.md) for the Profile path and persistence contract, [ADR 0005](docs/adr/0005-in-process-jvm-cef-engine.md) for the JVM/CEF engine lifecycle, [ADR 0006](docs/adr/0006-real-awt-chromium-browser-session.md) for the real Alloy browser surface, [ADR 0007](docs/adr/0007-explicit-loopback-cdp-endpoint.md) for the secured CDP endpoint, [ADR 0008](docs/adr/0008-native-devtools-window-host.md) for the native DevTools lifecycle, [ADR 0009](docs/adr/0009-origin-scoped-generated-typed-bridge.md) for bridge isolation and cancellation, [ADR 0010](docs/adr/0010-manifest-v3-package-verification.md) for extension package security, [ADR 0011](docs/adr/0011-profile-scoped-extension-package-store.md) for managed extension objects and journals, [ADR 0012](docs/adr/0012-version-pinned-chromium-extension-lifecycle-adapter.md) for the custom CEF lifecycle boundary, [ADR 0013](docs/adr/0013-composable-exact-bridge-dispatch.md) for exact bridge composition, and [AGENTS.md](AGENTS.md) for the non-fallback implementation rules.
 
 ## Requirements
 

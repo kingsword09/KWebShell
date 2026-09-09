@@ -7,7 +7,6 @@ import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 import io.github.kingsword09.kwebshell.services.KWebServiceErrorCode
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,21 +33,16 @@ public object JvmKWebDialogs {
         ComposeKWebDialogs(owner, NativeFileDialogSelector(owner, libraryPath))
     }
 
-    internal fun openForTesting(
-        owner: ComposeWindow,
-        selector: KWebFileDialogSelector,
-        ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    ): KWebDialogs =
+    internal fun openForTesting(owner: ComposeWindow, selector: KWebFileDialogSelector): KWebDialogs =
         onDialogsAwtThread {
             requireVisibleOwner(owner)
-            ComposeKWebDialogs(owner, selector, ioDispatcher)
+            ComposeKWebDialogs(owner, selector)
         }
 }
 
 private class ComposeKWebDialogs(
     private val owner: ComposeWindow,
     private val selector: KWebFileDialogSelector,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : KWebDialogs {
     // Selection publication, all channel operations, and close share one order.
     private val lock = Any()
@@ -87,9 +81,9 @@ private class ComposeKWebDialogs(
         var opened: OpenFileHandle? = null
         var delivered = false
         try {
-            withContext(ioDispatcher) { validateDirectory(request.defaultDirectory) }
+            withContext(Dispatchers.IO) { validateDirectory(request.defaultDirectory) }
             val selected = selector.select(request) ?: return null
-            val result = withContext(ioDispatcher) {
+            val result = withContext(Dispatchers.IO) {
                 synchronized(lock) {
                     coroutineContext.ensureActive()
                     requireOpen("select-file")
@@ -204,7 +198,7 @@ private class ComposeKWebDialogs(
         closeFailure?.let { throw it }
     }
 
-    private suspend fun <T> io(operation: String, action: () -> T): T = withContext(ioDispatcher) {
+    private suspend fun <T> io(operation: String, action: () -> T): T = withContext(Dispatchers.IO) {
         synchronized(lock) {
             coroutineContext.ensureActive()
             requireOpen(operation)

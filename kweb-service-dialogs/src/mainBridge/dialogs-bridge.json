@@ -1,0 +1,94 @@
+{
+  "namespace": "DialogsBridge",
+  "kotlinPackage": "io.github.kingsword09.kwebshell.service.dialogs.generated",
+  "version": 1,
+  "types": [
+    {
+      "name": "FileFilter",
+      "fields": [
+        { "name": "description", "type": "string" },
+        { "name": "extensions", "type": "string", "list": true }
+      ]
+    },
+    {
+      "name": "SelectFileRequest",
+      "fields": [
+        { "name": "mode", "type": "string" },
+        { "name": "title", "type": "string" },
+        { "name": "defaultName", "type": "string", "nullable": true },
+        { "name": "filters", "type": "FileFilter", "list": true }
+      ]
+    },
+    {
+      "name": "SelectFileResponse",
+      "fields": [
+        { "name": "selected", "type": "boolean" },
+        { "name": "handle", "type": "string", "nullable": true },
+        { "name": "name", "type": "string", "nullable": true },
+        { "name": "sizeBytes", "type": "string", "nullable": true },
+        { "name": "mode", "type": "string", "nullable": true }
+      ]
+    },
+    {
+      "name": "ReadFileRequest",
+      "fields": [
+        { "name": "handle", "type": "string" },
+        { "name": "offset", "type": "string" },
+        { "name": "length", "type": "int32" }
+      ]
+    },
+    {
+      "name": "ReadFileResponse",
+      "fields": [
+        { "name": "bytes", "type": "int32", "list": true },
+        { "name": "eof", "type": "boolean" }
+      ]
+    },
+    {
+      "name": "WriteFileRequest",
+      "fields": [
+        { "name": "handle", "type": "string" },
+        { "name": "offset", "type": "string" },
+        { "name": "bytes", "type": "int32", "list": true }
+      ]
+    },
+    {
+      "name": "WriteFileResponse",
+      "fields": [
+        { "name": "written", "type": "int32" }
+      ]
+    },
+    {
+      "name": "TruncateFileRequest",
+      "fields": [
+        { "name": "handle", "type": "string" },
+        { "name": "sizeBytes", "type": "string" }
+      ]
+    },
+    {
+      "name": "TruncateFileResponse",
+      "fields": [
+        { "name": "sizeBytes", "type": "string" }
+      ]
+    },
+    {
+      "name": "CloseFileRequest",
+      "fields": [
+        { "name": "handle", "type": "string" }
+      ]
+    },
+    {
+      "name": "CloseFileResponse",
+      "fields": [
+        { "name": "closed", "type": "boolean" }
+      ]
+    }
+  ],
+  "methods": [
+    { "name": "selectFile", "request": "SelectFileRequest", "response": "SelectFileResponse" },
+    { "name": "readFile", "request": "ReadFileRequest", "response": "ReadFileResponse" },
+    { "name": "writeFile", "request": "WriteFileRequest", "response": "WriteFileResponse" },
+    { "name": "truncateFile", "request": "TruncateFileRequest", "response": "TruncateFileResponse" },
+    { "name": "closeFile", "request": "CloseFileRequest", "response": "CloseFileResponse" }
+  ]
+}

@@ -358,7 +358,8 @@ The initial mapping direction is:
 | `protocol.handle` | Profile-scoped verified `app://` protocol origins. |
 | `ipcMain.handle` + `ipcRenderer.invoke` | Typed service implementation plus generated exact-origin client. |
 | `contextBridge.exposeInMainWorld` | Optional generated application-specific preload facade. |
-| `dialog`, `clipboard`, `shell`, `nativeTheme` | Separate native service families after conformance publication. |
+| `dialog.showOpenDialog`, `dialog.showSaveDialog` | Rewrite path results to `KWebDialogs` scoped handles and generated bounded-I/O clients. |
+| `clipboard`, `shell`, `nativeTheme` | Separate native service families after conformance publication. |
 | `screen`, `globalShortcut`, `Menu`, `Tray`, notifications | Separate UI/system service families after native lifecycle tests. |
 | `utilityProcess`, `child_process` | Explicit policy-controlled process service; never implicit Node execution. |
 | `autoUpdater` | Future signed update service built on verified KWebShell release metadata. |
@@ -471,6 +472,14 @@ fail explicitly, and selected-handler cancellation is preserved. It does not
 add wildcard routing, a generic IPC channel, or service policy; origin,
 permission, lifecycle, and request validation remain in the existing browser
 and service layers.
+
+The following service objective is `kweb-service-dialogs`. It maps a native
+open/save picker owned by one Compose window to opaque, bounded file handles.
+The renderer receives handle metadata and explicit read/write/truncate/close
+operations; it never receives a host path or unrestricted filesystem access.
+The service uses Cocoa sheets, Windows COM `IFileDialog`, or the Linux XDG
+Desktop Portal through a separately packaged C ABI and fails with typed errors
+when the owner, dialog, provider, or handle is unavailable.
 
 ## 10. Manifest V3 Is Independent
 
@@ -597,12 +606,11 @@ After the window-controls objective, priorities come from real migration
 inventories rather than an Electron API checklist. Each item remains a separate
 complete objective:
 
-1. Native open/save dialogs and scoped file handles.
-2. Clipboard text/image formats with explicit renderer permissions.
-3. External URL/file reveal operations with scheme and path policy.
-4. Notifications, theme/screen observation, menus/tray, and shortcuts.
-5. Policy-controlled process execution and native messaging.
-6. Signed update discovery, installation, and recovery.
+1. Clipboard text/image formats with explicit renderer permissions.
+2. External URL/file reveal operations with scheme and path policy.
+3. Notifications, theme/screen observation, menus/tray, and shortcuts.
+4. Policy-controlled process execution and native messaging.
+5. Signed update discovery, installation, and recovery.
 
 The order may change when a pinned application migration provides stronger
 evidence. It cannot be changed by adding partial public APIs to several services

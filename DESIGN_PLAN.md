@@ -1711,6 +1711,56 @@ Implementation status: the exact route table and common contract tests are in
 `kweb-bridge`; the desktop conformance fixture now uses it to combine the two
 typed dispatchers. The design and ownership boundary are recorded in ADR 0013.
 
+#### Objective 11.6: Publish native file dialogs and scoped handles
+
+Deliver one complete `kweb-service-dialogs` vertical slice for native open/save
+selection and bounded file access. The provider binds one caller-owned
+`ComposeWindow` to Cocoa sheets, Windows COM `IFileDialog`, or the Linux XDG
+Desktop Portal through a versioned C ABI and JDK 25 FFM. A selection never
+returns a renderer path; it returns an opaque, owner-scoped handle with explicit
+read/write mode. Handle operations are bounded, cancellable, and closed with
+the service. No unrestricted filesystem API, path string bridge, hidden dialog
+window, or alternate WebView/backend is exposed.
+
+Acceptance criteria:
+
+1. The common KMP contract publishes a versioned `KWebDialogs` descriptor,
+   typed open/save request, filter, selection, read/write/truncate/close
+   results, lifecycle, and exact operation grants. Requests reject NULs,
+   invalid names, unsafe filter extensions, negative offsets, oversized reads
+   or writes, and unsupported modes with typed failures.
+2. The JVM provider uses the caller's `ComposeWindow` as the native dialog
+   owner, reads its native handle on the AWT event thread, presents the picker
+   on the platform's required event loop, and opens selected
+   files only after the native result, and keeps channels behind random opaque
+   tokens. Open handles are read-only; save handles are write-only. Canonical
+   parent validation rejects directories, missing open files, symlink targets,
+   and owner-close races. Service close closes every handle and cancels an
+   active dialog without disposing the caller window.
+3. One bridge schema generates strict Kotlin/TypeScript/browser clients for
+   selection and handle operations. The bridge exposes only token and metadata,
+   enforces exact operation grants, preserves cancellation, and returns typed
+   failures for unknown handles, invalid byte values, closed owners, and
+   unavailable native dialogs.
+4. Common contract, provider, bridge, deterministic generation, strict
+   TypeScript, native dialog smoke, and exact-origin CEF integration tests cover
+   open/save selection, cancellation, owner shutdown, handle isolation, bounded
+   I/O, path non-disclosure, child-frame/cross-origin isolation, and the
+   caller-owned window surviving service and Engine shutdown on macOS, Windows,
+   and Linux. A target is not marked accepted without its hosted native dialog
+   run.
+5. The optional native provider is packaged separately from CEF in a
+   target-labelled archive containing its versioned C header and shared
+   library. Native smoke and CEF tests load the library extracted from this
+   archive. C ABI tests reject malformed UTF-8, incompatible structure
+   versions, invalid filters, and invalid ownership without starting a picker.
+
+Implementation status: in progress. Common contracts, generated clients, and
+file I/O tests exist. AWT FileDialog was rejected because its macOS peer does
+not cancel the native panel on dispose. Native picker cancellation, selection,
+and platform acceptance remain required; transport-only CEF tests do not
+establish picker support.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.
@@ -1767,6 +1817,7 @@ services: publish verified application paths
 migration: publish the typed Electron migration kit
 services: publish typed window controls
 bridge: publish composable exact dispatch
+services: publish native file dialogs and scoped handles
 ```
 
 Do not create a commit for a partial objective. Do not move a failing test to a later phase. Each commit must include the verification command or CI result in its body.

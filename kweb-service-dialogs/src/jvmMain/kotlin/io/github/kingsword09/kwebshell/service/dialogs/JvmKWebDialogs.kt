@@ -33,16 +33,21 @@ public object JvmKWebDialogs {
         ComposeKWebDialogs(owner, NativeFileDialogSelector(owner, libraryPath))
     }
 
-    internal fun openForTesting(owner: ComposeWindow, selector: KWebFileDialogSelector): KWebDialogs =
+    internal fun openForTesting(
+        owner: ComposeWindow,
+        selector: KWebFileDialogSelector,
+        beforeSelectionDelivery: (suspend () -> Unit)? = null,
+    ): KWebDialogs =
         onDialogsAwtThread {
             requireVisibleOwner(owner)
-            ComposeKWebDialogs(owner, selector)
+            ComposeKWebDialogs(owner, selector, beforeSelectionDelivery)
         }
 }
 
 private class ComposeKWebDialogs(
     private val owner: ComposeWindow,
     private val selector: KWebFileDialogSelector,
+    private val beforeSelectionDelivery: (suspend () -> Unit)? = null,
 ) : KWebDialogs {
     // Selection publication, all channel operations, and close share one order.
     private val lock = Any()
@@ -93,6 +98,7 @@ private class ComposeKWebDialogs(
                     }.selection
                 }
             }
+            beforeSelectionDelivery?.invoke()
             delivered = true
             return result
         } catch (error: CancellationException) {

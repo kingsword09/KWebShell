@@ -1,32 +1,29 @@
 package io.github.kingsword09.kwebshell.service.dialogs
 
 import androidx.compose.ui.awt.ComposeWindow
-import io.github.kingsword09.kwebshell.core.KWebNativeException
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
+import io.github.kingsword09.kwebshell.core.KWebNativeException
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import java.awt.EventQueue
 import java.nio.file.Files
 import java.nio.file.Path
-import java.awt.EventQueue
 import java.util.concurrent.atomic.AtomicReference
-import java.util.concurrent.LinkedBlockingQueue
-import java.util.concurrent.TimeUnit
-import kotlin.coroutines.CoroutineContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 class JvmKWebDialogsTest {
     @Test
@@ -120,20 +117,25 @@ class JvmKWebDialogsTest {
         val root = Files.createTempDirectory("kweb-dialog-cancel")
         val input = Files.write(root.resolve("input.txt"), byteArrayOf(1))
         val owner = composeWindow()
-        val service = JvmKWebDialogs.openForTesting(owner, FixedSelector(input, input))
-        val dispatcher = QueuedDispatcher()
-        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val deliveryEntered = AtomicReference<CompletableDeferred<Unit>?>(null)
+        val service = JvmKWebDialogs.openForTesting(owner, FixedSelector(input, input)) {
+            deliveryEntered.get()?.let { entered ->
+                entered.complete(Unit)
+                awaitCancellation()
+            }
+        }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
             repeat(70) {
+                val entered = CompletableDeferred<Unit>()
+                deliveryEntered.set(entered)
                 val selected = scope.async { service.selectFile(KWebFileDialogRequest(KWebFileDialogMode.OPEN, "Pick")) }
-                dispatcher.next().run() // Start validation on IO.
-                dispatcher.next().run() // Select, then open the actual file on IO.
-                val delivery = dispatcher.next() // The channel is open; caller has not received it.
+                runBlocking { withTimeout(5_000) { entered.await() } }
                 selected.cancel()
-                delivery.run()
                 runBlocking { withTimeout(5_000) { selected.join() } }
                 assertTrue(selected.isCancelled)
             }
+            deliveryEntered.set(null)
             runBlocking {
                 val handles = List(64) {
                     requireNotNull(service.selectFile(KWebFileDialogRequest(KWebFileDialogMode.OPEN, "Pick"))).handle
@@ -283,14 +285,6 @@ class JvmKWebDialogsTest {
             dispose(owner)
             Files.delete(input)
             Files.delete(root)
-        }
-    }
-
-    private class QueuedDispatcher : CoroutineDispatcher() {
-        private val queue = LinkedBlockingQueue<Runnable>()
-        override fun dispatch(context: CoroutineContext, block: Runnable) { queue.add(block) }
-        fun next(): Runnable = requireNotNull(queue.poll(30, TimeUnit.SECONDS)) {
-            "Coroutine did not reach the next IO boundary."
         }
     }
 

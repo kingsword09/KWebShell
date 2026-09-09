@@ -45,7 +45,7 @@ internal suspend fun chooseNativeFile(
     } else if (os.startsWith("Windows")) {
         // IFileDialog receives the exact folder and file name through the native request.
         // Confirming its default button verifies those ABI fields without focus-sensitive accelerators.
-        robot.chord(KeyEvent.VK_ENTER)
+        robot.chord(KeyEvent.VK_ALT, KeyEvent.VK_O)
     } else {
         robot.chord(KeyEvent.VK_CONTROL, KeyEvent.VK_L)
         delay(400)
@@ -61,10 +61,12 @@ internal suspend fun chooseNativeFile(
     println("Native picker received the file selection keys.")
     try {
         withTimeout(15_000) {
-            // macOS loads Go To results asynchronously before enabling Open/Save.
-            while (os.startsWith("Mac") && !pending.isCompleted && selector.isVisible()) {
+            // Native panels can load or validate a target asynchronously before enabling Open/Save.
+            while ((os.startsWith("Mac") || os.startsWith("Windows")) &&
+                !pending.isCompleted && selector.isVisible()) {
                 if (withTimeoutOrNull(750) { pending.await(); true } == null && selector.isVisible()) {
-                    robot.chord(KeyEvent.VK_ENTER)
+                    if (os.startsWith("Windows")) robot.chord(KeyEvent.VK_ALT, KeyEvent.VK_O)
+                    else robot.chord(KeyEvent.VK_ENTER)
                 }
             }
             pending.await()

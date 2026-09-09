@@ -72,6 +72,8 @@ void RunDialog(Operation &op) {
         if (FAILED(status) || FAILED(dialog->SetFolder(folder.Get()))) return;
       }
       if (!op.name.empty() && FAILED(dialog->SetFileName(Wide(op.name).c_str()))) return;
+      if (!op.extensions.empty() &&
+          FAILED(dialog->SetDefaultExtension(Wide(op.extensions.front()).c_str()))) return;
       std::wstring pattern;
       for (const auto &extension : op.extensions) {
         if (!pattern.empty()) pattern += L";";

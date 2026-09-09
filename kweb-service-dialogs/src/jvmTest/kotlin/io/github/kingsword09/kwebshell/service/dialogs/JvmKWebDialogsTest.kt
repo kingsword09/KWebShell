@@ -120,15 +120,18 @@ class JvmKWebDialogsTest {
         val root = Files.createTempDirectory("kweb-dialog-cancel")
         val input = Files.write(root.resolve("input.txt"), byteArrayOf(1))
         val owner = composeWindow()
-        val service = JvmKWebDialogs.openForTesting(owner, FixedSelector(input, input))
-        val dispatcher = QueuedDispatcher()
-        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val callerDispatcher = QueuedDispatcher()
+        val ioDispatcher = QueuedDispatcher()
+        val service = JvmKWebDialogs.openForTesting(owner, FixedSelector(input, input), ioDispatcher)
+        val scope = CoroutineScope(SupervisorJob() + callerDispatcher)
         try {
             repeat(70) {
                 val selected = scope.async { service.selectFile(KWebFileDialogRequest(KWebFileDialogMode.OPEN, "Pick")) }
-                dispatcher.next().run() // Start validation on IO.
-                dispatcher.next().run() // Select, then open the actual file on IO.
-                val delivery = dispatcher.next() // The channel is open; caller has not received it.
+                callerDispatcher.next().run()
+                ioDispatcher.next().run() // Validate, then resume selection on the caller.
+                callerDispatcher.next().run()
+                ioDispatcher.next().run() // Open the file, then enqueue delivery to the caller.
+                val delivery = callerDispatcher.next() // The channel is open; caller has not received it.
                 selected.cancel()
                 delivery.run()
                 runBlocking { withTimeout(5_000) { selected.join() } }

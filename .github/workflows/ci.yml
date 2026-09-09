@@ -85,7 +85,9 @@ jobs:
             x11-utils \
             xdg-desktop-portal \
             xdg-desktop-portal-gtk \
+            xdg-user-dirs \
             xvfb
+          xdg-user-dirs-update
 
       - name: Verify native build prerequisites
         shell: bash
@@ -182,7 +184,7 @@ jobs:
             "-PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}"
           )
           if [[ "${{ runner.os }}" == "Linux" ]]; then
-            XDG_CURRENT_DESKTOP=GNOME dbus-run-session -- xvfb-run -a \
+            XDG_CURRENT_DESKTOP=GNOME xvfb-run -a dbus-run-session -- \
               bash .github/scripts/run-linux-ui-verification.sh ./gradlew "${arguments[@]}"
           else
             ./gradlew "${arguments[@]}"

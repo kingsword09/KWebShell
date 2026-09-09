@@ -42,9 +42,12 @@ internal suspend fun chooseNativeFile(
         robot.chord(KeyEvent.VK_ENTER)
         delay(600)
         robot.chord(KeyEvent.VK_ENTER)
+    } else if (os.startsWith("Windows")) {
+        // IFileDialog receives the exact folder and file name through the native request.
+        // Confirming its default button verifies those ABI fields without focus-sensitive accelerators.
+        robot.chord(KeyEvent.VK_ENTER)
     } else {
-        if (os.startsWith("Windows")) robot.chord(KeyEvent.VK_ALT, KeyEvent.VK_N)
-        else robot.chord(KeyEvent.VK_CONTROL, KeyEvent.VK_L)
+        robot.chord(KeyEvent.VK_CONTROL, KeyEvent.VK_L)
         delay(400)
         robot.evidence("location")
         robot.chord(KeyEvent.VK_CONTROL, KeyEvent.VK_A)

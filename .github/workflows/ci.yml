@@ -191,6 +191,7 @@ jobs:
           fi
 
       - name: Upload native dialog evidence
+        if: always()
         uses: actions/upload-artifact@v6
         with:
           name: native-dialogs-${{ matrix.target }}-${{ github.sha }}
@@ -202,6 +203,7 @@ jobs:
           retention-days: 14
 
       - name: Upload Electron migration evidence
+        if: always()
         uses: actions/upload-artifact@v6
         with:
           name: electron-migration-${{ matrix.target }}-${{ github.sha }}

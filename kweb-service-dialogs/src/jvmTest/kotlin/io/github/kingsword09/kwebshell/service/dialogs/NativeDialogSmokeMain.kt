@@ -33,6 +33,7 @@ public fun main(): Unit = runBlocking {
             mapOf(KWebFileDialogMode.OPEN to input.fileName.toString(), KWebFileDialogMode.SAVE to output.fileName.toString()),
         )
         val service = JvmKWebDialogs.openForTesting(window, selector)
+        var serviceFailure: Throwable? = null
         try {
             for ((mode, path) in listOf(KWebFileDialogMode.OPEN to input, KWebFileDialogMode.SAVE to output)) {
                 val pending = async(Dispatchers.Default) {
@@ -71,8 +72,15 @@ public fun main(): Unit = runBlocking {
             aborted.cancelAndJoin()
             check(!selector.isVisible())
             println("Native user cancellation and coroutine abort released the active picker.")
+        } catch (error: Throwable) {
+            serviceFailure = error
+            throw error
         } finally {
-            service.close()
+            try {
+                service.close()
+            } catch (closeError: Throwable) {
+                serviceFailure?.addSuppressed(closeError) ?: throw closeError
+            }
         }
         for (mode in KWebFileDialogMode.entries) {
             val selector = NativeFileDialogSelector(

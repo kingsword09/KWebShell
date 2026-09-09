@@ -11,13 +11,19 @@ openbox >"$openbox_log" 2>&1 &
 openbox_pid=$!
 trap 'kill "$openbox_pid" 2>/dev/null || true; wait "$openbox_pid" 2>/dev/null || true' EXIT
 
-for _ in {1..50}; do
+for _ in {1..300}; do
   if [[ "$(xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null)" == *"window id"* ]]; then
     "$@"
     exit
   fi
+  if ! kill -0 "$openbox_pid" 2>/dev/null; then
+    echo "Openbox exited before publishing its root window:" >&2
+    cat "$openbox_log" >&2
+    exit 1
+  fi
   sleep 0.1
 done
 
-echo "Openbox did not publish its root window before verification. See $openbox_log." >&2
+echo "Openbox did not publish its root window before verification:" >&2
+cat "$openbox_log" >&2
 exit 1

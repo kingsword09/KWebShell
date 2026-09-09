@@ -136,9 +136,17 @@ public fun main() {
                 ) == "migration.path-name.unsupported",
             )
 
+            require(
+                session.evaluateString(
+                    """
+                    (()=>{globalThis.__musicAbortController=new AbortController();globalThis.__musicCall=window.desktop.getPath('music',{signal:globalThis.__musicAbortController.signal});return 'started'})()
+                    """.trimIndent(),
+                ) == "started",
+            )
+            slowDispatcher.awaitStarted("music")
             val abortCode = session.evaluateString(
                 """
-                (async()=>{const controller=new AbortController();const call=window.desktop.getPath('music',{signal:controller.signal});controller.abort();try{await call;return 'unexpected'}catch(e){return e.code}})()
+                (async()=>{globalThis.__musicAbortController.abort();try{await globalThis.__musicCall;return 'unexpected'}catch(e){return e.code}finally{delete globalThis.__musicAbortController;delete globalThis.__musicCall}})()
                 """.trimIndent(),
             )
             require(abortCode == "bridge.call.cancelled") { "AbortSignal returned '$abortCode'." }

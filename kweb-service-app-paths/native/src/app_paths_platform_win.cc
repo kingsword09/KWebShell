@@ -1,8 +1,8 @@
 #include "app_paths_platform.h"
 
+#include <windows.h>
 #include <knownfolders.h>
 #include <shlobj.h>
-#include <windows.h>
 
 #include <string>
 #include <utility>

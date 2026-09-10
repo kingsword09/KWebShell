@@ -600,21 +600,32 @@ Acceptance criteria:
    Windows, and Linux. macOS is the first local implementation gate; hosted
    Windows and Linux run the same contract before cross-platform publication.
 
-## 14. Later Objective Order
+## 14. Electron-Class Capability RFC Program
 
-After the window-controls objective, priorities come from real migration
-inventories rather than an Electron API checklist. Each item remains a separate
-complete objective:
+The complete post-Phase-11 capability backlog is maintained as numbered,
+dependency-ordered documents in the
+[`docs/rfcs` catalog](rfcs/README.md). The catalog accounts for the stable
+Electron surface while designing KMP-first contracts for application lifecycle,
+browser/Profile ownership, common native services, privileged capabilities,
+packaging, platform-specific features, and a real reference migration.
 
-1. Clipboard text/image formats with explicit renderer permissions.
-2. External URL/file reveal operations with scheme and path policy.
-3. Notifications, theme/screen observation, menus/tray, and shortcuts.
-4. Policy-controlled process execution and native messaging.
-5. Signed update discovery, installation, and recovery.
+Delivery is split into four executable waves after the provider, permission,
+streaming, and migration-manifest foundations:
 
-The order may change when a pinned application migration provides stronger
-evidence. It cannot be changed by adding partial public APIs to several services
-at once.
+1. Application, window, Page, Profile, network, TLS, and download ownership.
+2. Reusable desktop services including scoped files, clipboard, shell,
+   notifications, menus, tray, theme, display, shortcuts, power, secrets,
+   prompts, images, and drag/drop.
+3. Privileged processes, capture, printing, Page utilities, device permissions,
+   credentials, window decoration, and content protection.
+4. Platform integration, signed updates, diagnostics, platform-only services,
+   and the reference application migration.
+
+Each RFC is one complete implementation objective. Its dependencies must already
+be implemented, and its own acceptance criteria inherit the catalog's universal
+KMP, native-provider, renderer, migration, security, packaging, and
+three-platform evidence gates. A Proposed RFC is planning only and does not add a
+compatibility-matrix support claim.
 
 ## 15. Verification Rules
 

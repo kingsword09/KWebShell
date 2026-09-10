@@ -368,7 +368,23 @@ public:
     browser_ = browser;
     browser_window_ = browser->GetHost()->GetWindowHandle();
     if (display_ != nullptr && browser_window_ != None) {
-      XMoveWindow(display_, browser_window_, x_, y_);
+      Window root = None;
+      Window actual_parent = None;
+      Window *children = nullptr;
+      unsigned int child_count = 0;
+      const Status queried = XQueryTree(display_, browser_window_, &root,
+                                        &actual_parent, &children, &child_count);
+      if (children != nullptr) {
+        XFree(children);
+      }
+      if (queried != 0 && actual_parent != parent_) {
+        // A reparenting window manager may claim CEF's newly mapped host before
+        // the creation callback. Restore the declared Compose native child
+        // relationship rather than accepting a detached top-level surface.
+        XReparentWindow(display_, browser_window_, parent_, x_, y_);
+      } else {
+        XMoveWindow(display_, browser_window_, x_, y_);
+      }
       XSync(display_, False);
     }
   }

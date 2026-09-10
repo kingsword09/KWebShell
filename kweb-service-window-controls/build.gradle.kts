@@ -193,7 +193,9 @@ val windowControlsIntegrationTest = tasks.register<Exec>("windowControlsIntegrat
         }
     })
     inputs.file(generatedBridgeDirectory.get().file("WindowControlsBridgeBridge.js"))
-    if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("linux")) {
+    if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("linux") &&
+        providers.environmentVariable("DISPLAY").orNull.isNullOrBlank()
+    ) {
         commandLine(listOf("xvfb-run", "--auto-servernum", "--server-args=-screen 0 1280x1024x24") + integrationCommand.get())
     } else {
         commandLine(integrationCommand.get())

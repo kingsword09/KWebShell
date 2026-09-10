@@ -87,7 +87,9 @@ private fun Robot.evidence(stage: String) {
 
 private fun Robot.clickWindowsDialogDefaultAction() {
     val bounds = dialogOwnerBounds()
-    mouseMove(bounds.x + bounds.width * 73 / 100, bounds.y + bounds.height - 8)
+    val panelWidth = minOf(bounds.width, 640)
+    val panelHeight = minOf(bounds.height, 480)
+    mouseMove(bounds.x + panelWidth * 73 / 100, bounds.y + panelHeight - 8)
     mousePress(InputEvent.BUTTON1_DOWN_MASK)
     mouseRelease(InputEvent.BUTTON1_DOWN_MASK)
 }

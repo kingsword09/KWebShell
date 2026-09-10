@@ -17,51 +17,51 @@ unchanged only when every exposed method is mapped to a generated, exact-origin
 typed service operation. Arbitrary IPC channels, synchronous IPC, Node-enabled
 renderers, and native Node addons require explicit rewrites rather than hidden
 compatibility behavior. The migration kit is an opt-in application dependency,
-but it is a required KWebShell project deliverable. See [KMP Native Services And Electron
-Migration](docs/kmp-native-services-and-electron-migration.md) for the service
-model, migration matrix, first vertical slice, and acceptance gates.
+but it is a required KWebShell project deliverable. See [KMP Native Services And
+Electron Migration](docs/kmp-native-services-and-electron-migration.md) for the
+service model and acceptance gates, and the [Electron Migration RFC
+Program](docs/rfcs/README.md) for the dependency-ordered capability roadmap.
 
 ## Current Status
 
 The repository contains the multiplatform build foundation, a native CEF host vertical slice, the verified CEF runtime catalog, persistent Chromium Profiles, and an in-process JVM/CEF browser session. The host uses the Chrome bootstrap with an explicit Alloy, windowed native child and reports fatal capability errors instead of selecting a fallback backend. Each browser receives an explicitly initialized disk-backed request context; Profile paths that are not direct children of the CEF root cache are rejected because Chromium would otherwise create an OffTheRecord Profile. The CEF browser process runs inside the JVM so a real native child belongs to the public `ComposeWindow.windowHandle` hierarchy. Objective 3.3 intentionally deletes the Phase 2 echo session and its request-only events; this is a breaking internal contract change, not a compatibility layer. Phase 9.1 now exposes the verified lifecycle facade; capabilities remain unpublished until their complete implementation is tested.
 
-Phase 11.1 publishes the `kweb-compose` module and its `KWebView` composable
-over an existing `KWebPage`; it preserves the direct CEF native child and
-reports unsupported geometry through a typed placement error. Phase 11.2 now
-publishes `kweb-services-core` and the first complete `KWebAppPaths` service,
-including the versioned native C ABI, JDK 25 FFM provider, generated
-exact-origin bridge, and explicit Engine service ownership. The macOS arm64
-service and CEF integration gates pass locally; Windows and Linux providers
-are implemented and remain subject to their hosted native-runtime gates. Phase
-11.3 now publishes the opt-in `kweb-electron-migration` kit: strict manifest
+Phase 11 publishes the `kweb-compose` `KWebView`, explicitly installed
+native-service registry, `KWebAppPaths`, typed window controls, composable exact
+bridge dispatch, native file dialogs with scoped handles, and the opt-in
+`kweb-electron-migration` kit. The migration kit provides strict manifest
 validation, generated `window.desktop` preload facades, source inventory,
 digest-bound compatibility reports, and a real CEF migration fixture. The
-macOS arm64 migration gate passes locally; Windows/Linux run the same hosted
-task before target publication. Component API and ownership rules are
-documented in [`kweb-compose/README.md`](kweb-compose/README.md), with migration
-details in [`docs/kmp-native-services-and-electron-migration.md`](docs/kmp-native-services-and-electron-migration.md).
+complete Phase 11 native and CEF checks passed on hosted macOS arm64, Windows
+x64, and Linux x64 before the file-dialog objective was merged. Component API
+and ownership rules are documented in
+[`kweb-compose/README.md`](kweb-compose/README.md), with migration details in
+[`docs/kmp-native-services-and-electron-migration.md`](docs/kmp-native-services-and-electron-migration.md).
 
-Objective 11.4 adds `kweb-service-window-controls` for one caller-owned
+Objective 11.4 publishes `kweb-service-window-controls` for one caller-owned
 `ComposeWindow`. It publishes typed state, bounds, title, visibility, focus,
 minimize/restore, maximize/restore, always-on-top, and resizable controls
-without creating or disposing the application window. The macOS arm64 direct
-and exact-origin CEF fixture passes locally; Windows/Linux use the same hosted
-gate. Fullscreen control, menus, tray objects, and custom title bars remain
-unpublished rather than emulated.
+without creating or disposing the application window. Fullscreen control, menus,
+tray objects, and custom title bars remain unpublished rather than emulated.
 
 Objective 11.5 publishes the composable exact bridge dispatcher. A configured
 browser can combine multiple complete typed service dispatchers through
 immutable method-owned routes; duplicate or undeclared methods fail explicitly,
 and cancellation continues to reach the selected handler. The desktop CEF
 conformance fixture uses this route table for its conformance and app-paths
-services. The common contract and native integration gate are required before
-the objective is committed.
+services.
 
 The native file service slice is `kweb-service-dialogs`: open/save selection
 owned by one `ComposeWindow`, followed by bounded read/write/truncate/close
 operations on opaque file handles. Renderer calls receive token metadata only;
 paths, unrestricted filesystem access, and hidden dialog windows remain outside
 the contract.
+
+All further Electron-class capabilities are split into reviewable KMP-first
+contracts in the [RFC catalog](docs/rfcs/README.md). An RFC is not a support
+claim: each capability enters the public matrix only after its common contract,
+real native providers, generated renderer adapter, packaging, and declared
+platform evidence are complete.
 
 Current verification evidence is intentionally platform-specific:
 

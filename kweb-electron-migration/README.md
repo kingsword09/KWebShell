@@ -40,4 +40,7 @@ in hosted platform jobs before those targets are published as accepted.
 The generated facade only exposes mappings declared by the manifest. To add a
 different Electron API, publish a complete service and adapter objective with
 its own schema, native implementation, policy, conformance tests, and matrix
-row; do not add a compatibility alias or fallback branch.
+row; do not add a compatibility alias or fallback branch. The
+[`docs/rfcs` program](../docs/rfcs/README.md) is the dependency-ordered source of
+truth for those objectives. A Proposed RFC is absent from generated facades and
+does not imply compatibility.

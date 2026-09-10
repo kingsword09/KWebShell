@@ -1755,11 +1755,47 @@ Acceptance criteria:
    archive. C ABI tests reject malformed UTF-8, incompatible structure
    versions, invalid filters, and invalid ownership without starting a picker.
 
-Implementation status: in progress. Common contracts, generated clients, and
-file I/O tests exist. AWT FileDialog was rejected because its macOS peer does
-not cancel the native panel on dispose. Native picker cancellation, selection,
-and platform acceptance remain required; transport-only CEF tests do not
-establish picker support.
+Implementation status: complete. The service uses Cocoa sheets, Windows COM
+`IFileDialog`, and the Linux XDG Desktop Portal through the packaged versioned C
+ABI. Real open, save, cancellation, owner shutdown, scoped I/O, and exact-origin
+CEF integration passed the hosted macOS arm64, Windows x64, and Linux x64 gates
+before Objective 11.6 was merged.
+
+### Phase 12: Electron-class capability RFC program
+
+Phase 12 turns the remaining Electron migration surface into a dependency-ordered
+KMP capability program. The normative catalog is
+[`docs/rfcs/README.md`](docs/rfcs/README.md). Its RFCs cover common browser and
+application ownership, reusable native services, privileged desktop capabilities,
+platform delivery, and a pinned reference-application migration. Electron
+documentation is an inventory source, not the public KWebShell contract.
+
+Program acceptance criteria:
+
+1. Every remaining Electron module is mapped to a delivered contract, one or
+   more numbered RFCs, or an explicit permanent `UNSUPPORTED` decision. Absence
+   from the roadmap is not an implicit promise.
+2. RFC 0002 establishes the common KMP provider SDK before new native-service
+   families proliferate. Service dependencies, ownership, permissions,
+   lifecycle, capability discovery, and error identity remain typed and
+   explicitly installed.
+3. Each capability RFC is small enough for one focused objective, commit, and
+   pull request. Dependencies must be `Implemented` before work starts; agents
+   may implement unrelated nodes in parallel.
+4. Each implementation publishes common Kotlin contracts and complete providers
+   only for its declared targets. Windows, macOS, and Linux claims require real
+   hosted native/CEF evidence, packaging, and resource-lifecycle checks; missing
+   platform facilities are typed failures rather than fallback behavior.
+5. Renderer exposure is generated from the service schema, exact-origin,
+   main-frame, grant, owner, and user-gesture constrained. Electron-shaped
+   adapters remain opt-in and cannot enter browser core or native-service APIs.
+6. A Proposed or Accepted RFC does not change the public compatibility matrix.
+   Support is published only when the RFC reaches Implemented with all retained
+   evidence and a pinned Electron migration fixture.
+7. RFC 0036 closes the program with a real reference application: its complete
+   Electron/Node inventory, migration classifications, generated adapters,
+   installers, three-platform conformance, and performance/security evidence
+   must all be reproducible.
 
 ## 12. Test Strategy
 
@@ -1818,6 +1854,7 @@ migration: publish the typed Electron migration kit
 services: publish typed window controls
 bridge: publish composable exact dispatch
 services: publish native file dialogs and scoped handles
+docs: define the Electron migration RFC program
 ```
 
 Do not create a commit for a partial objective. Do not move a failing test to a later phase. Each commit must include the verification command or CI result in its body.

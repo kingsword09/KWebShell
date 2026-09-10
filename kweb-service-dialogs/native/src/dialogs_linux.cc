@@ -16,10 +16,10 @@ void Response(GDBusConnection *, const gchar *, const gchar *, const gchar *,
   guint response;
   GVariant *values = nullptr;
   g_variant_get(parameters, "(u@a{sv})", &response, &values);
-  if (response == 1 || result.operation->cancel_requested.load()) {
+  if (response != 0 || result.operation->cancel_requested.load()) {
     result.operation->state = KWEB_DIALOG_CANCELLED;
     result.operation->failure = 0;
-  } else if (response == 0) {
+  } else {
     GVariant *uris = g_variant_lookup_value(values, "uris", G_VARIANT_TYPE_STRING_ARRAY);
     if (uris != nullptr && g_variant_n_children(uris) == 1) {
       const gchar *uri = nullptr;

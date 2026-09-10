@@ -44,8 +44,10 @@ internal suspend fun chooseNativeFile(
         robot.chord(KeyEvent.VK_ENTER)
     } else if (os.startsWith("Windows")) {
         // IFileDialog receives the exact folder and file name through the native request.
-        // Confirming its default button verifies those ABI fields without focus-sensitive accelerators.
-        robot.chord(KeyEvent.VK_ALT, KeyEvent.VK_O)
+        // The filename edit owns focus; advance through file type to Open/Save and activate it.
+        robot.chord(KeyEvent.VK_TAB)
+        robot.chord(KeyEvent.VK_TAB)
+        robot.chord(KeyEvent.VK_SPACE)
     } else {
         robot.chord(KeyEvent.VK_CONTROL, KeyEvent.VK_L)
         delay(400)
@@ -65,7 +67,7 @@ internal suspend fun chooseNativeFile(
             while ((os.startsWith("Mac") || os.startsWith("Windows")) &&
                 !pending.isCompleted && selector.isVisible()) {
                 if (withTimeoutOrNull(750) { pending.await(); true } == null && selector.isVisible()) {
-                    if (os.startsWith("Windows")) robot.chord(KeyEvent.VK_ALT, KeyEvent.VK_O)
+                    if (os.startsWith("Windows")) robot.chord(KeyEvent.VK_SPACE)
                     else robot.chord(KeyEvent.VK_ENTER)
                 }
             }
@@ -86,12 +88,18 @@ private fun Robot.evidence(stage: String) {
 internal suspend fun cancelNativePicker(selector: NativeFileDialogSelector, pending: Deferred<*>) {
     awaitNativePicker(selector, pending)
     val robot = Robot()
-    robot.chord(KeyEvent.VK_ESCAPE)
-    if (System.getProperty("os.name").startsWith("Mac") &&
-        withTimeoutOrNull(1_000) { pending.await() } == null) {
-        robot.chord(KeyEvent.VK_META, KeyEvent.VK_PERIOD)
+    val os = System.getProperty("os.name")
+    withTimeout(10_000) {
+        while (!pending.isCompleted && selector.isVisible()) {
+            robot.chord(KeyEvent.VK_ESCAPE)
+            when {
+                os.startsWith("Mac") -> robot.chord(KeyEvent.VK_META, KeyEvent.VK_PERIOD)
+                os.startsWith("Linux") -> robot.chord(KeyEvent.VK_ALT, KeyEvent.VK_C)
+            }
+            if (withTimeoutOrNull(750) { pending.await(); true } == true) return@withTimeout
+        }
     }
-    withTimeout(5_000) { pending.await() }
+    pending.await()
 }
 
 private fun Robot.chord(vararg codes: Int) {

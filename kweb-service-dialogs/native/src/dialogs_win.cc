@@ -38,6 +38,16 @@ void CALLBACK PollDialog(HWND, UINT, UINT_PTR, DWORD) {
   HWND handle = nullptr;
   if (SUCCEEDED(active->dialog->QueryInterface(IID_PPV_ARGS(&window))) &&
       SUCCEEDED(window->GetWindow(&handle)) && IsWindowVisible(handle)) {
+    if (!active->operation->visible.load()) {
+      const DWORD dialog_thread = GetCurrentThreadId();
+      const DWORD foreground_thread = GetWindowThreadProcessId(GetForegroundWindow(), nullptr);
+      const bool attached = foreground_thread != 0 && foreground_thread != dialog_thread &&
+                            AttachThreadInput(dialog_thread, foreground_thread, TRUE);
+      BringWindowToTop(handle);
+      SetForegroundWindow(handle);
+      SetActiveWindow(handle);
+      if (attached) AttachThreadInput(dialog_thread, foreground_thread, FALSE);
+    }
     active->operation->visible.store(true);
   }
   if (active->operation->cancel_requested.load() || !IsWindow(active->owner)) {

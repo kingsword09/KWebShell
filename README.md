@@ -57,6 +57,12 @@ conformance fixture uses this route table for its conformance and app-paths
 services. The common contract and native integration gate are required before
 the objective is committed.
 
+The native file service slice is `kweb-service-dialogs`: open/save selection
+owned by one `ComposeWindow`, followed by bounded read/write/truncate/close
+operations on opaque file handles. Renderer calls receive token metadata only;
+paths, unrestricted filesystem access, and hidden dialog windows remain outside
+the contract.
+
 Current verification evidence is intentionally platform-specific:
 
 - macOS arm64: local Apple M2 and hosted Apple Paravirtual ANGLE/Metal WebGL runs pass the real CEF, Alloy child, focus, mouse, native wheel, keyboard, resize, renderer/GPU failure, lifecycle, and bounded shutdown tests.

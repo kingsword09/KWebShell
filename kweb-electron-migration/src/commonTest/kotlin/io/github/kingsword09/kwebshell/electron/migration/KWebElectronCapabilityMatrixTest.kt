@@ -17,6 +17,14 @@ class KWebElectronCapabilityMatrixTest {
             KWebElectronMappingStatus.UNSUPPORTED,
             KWebElectronCapabilityMatrix.find("clipboard")?.status,
         )
+        assertEquals(
+            KWebElectronMappingStatus.REWRITE,
+            KWebElectronCapabilityMatrix.find("dialog")?.status,
+        )
+        assertEquals(
+            "KWebDialogs + DialogsBridge",
+            KWebElectronCapabilityMatrix.find("dialog")?.kweb,
+        )
         assertNotNull(KWebElectronCapabilityMatrix.find("node-runtime"))
         assertTrue(KWebElectronCapabilityMatrix.entries.size >= 12)
     }

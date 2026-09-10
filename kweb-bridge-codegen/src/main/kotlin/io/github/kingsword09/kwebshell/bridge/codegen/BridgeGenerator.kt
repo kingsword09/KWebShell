@@ -98,6 +98,7 @@ public class BridgeGenerator public constructor() {
         appendLine("import io.github.kingsword09.kwebshell.bridge.KWebBridgeDispatcher")
         appendLine("import io.github.kingsword09.kwebshell.bridge.KWebBridgeException")
         appendLine("import io.github.kingsword09.kwebshell.bridge.KWebBridgeProtocol")
+        appendLine("import kotlinx.serialization.SerializationException")
         appendLine("import kotlinx.serialization.Serializable")
         appendLine("import kotlinx.serialization.decodeFromString")
         appendLine("import kotlinx.serialization.encodeToString")
@@ -126,7 +127,7 @@ public class BridgeGenerator public constructor() {
         schema.methods.forEach { method ->
             appendLine("            \"${method.name}\" -> KWebBridgeProtocol.json.encodeToString(")
             appendLine("                handler.${method.name}(")
-            appendLine("                    KWebBridgeProtocol.json.decodeFromString<${method.request}>(request.payload.toString()),")
+            appendLine("                    decodePayload<${method.request}>(request.payload.toString()),")
             appendLine("                ),")
             appendLine("            )")
         }
@@ -135,6 +136,16 @@ public class BridgeGenerator public constructor() {
         appendLine("                message = \"Unknown bridge method '${'$'}{request.method}'.\",")
         appendLine("            )")
         appendLine("        }")
+        appendLine("    }")
+        appendLine()
+        appendLine("    private inline fun <reified T> decodePayload(payload: String): T = try {")
+        appendLine("        KWebBridgeProtocol.json.decodeFromString<T>(payload)")
+        appendLine("    } catch (error: SerializationException) {")
+        appendLine("        throw KWebBridgeException(")
+        appendLine("            code = \"service.request-invalid\",")
+        appendLine("            message = \"The bridge request payload is invalid.\",")
+        appendLine("            cause = error,")
+        appendLine("        )")
         appendLine("    }")
         appendLine("}")
     }

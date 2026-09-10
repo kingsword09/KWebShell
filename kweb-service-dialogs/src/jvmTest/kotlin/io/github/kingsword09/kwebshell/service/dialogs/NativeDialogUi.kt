@@ -1,0 +1,136 @@
+package io.github.kingsword09.kwebshell.service.dialogs
+
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import java.awt.Robot
+import java.awt.Window
+import java.awt.event.InputEvent
+import java.awt.event.KeyEvent
+import java.nio.file.Files
+import java.nio.file.Path
+import javax.imageio.ImageIO
+
+internal suspend fun awaitNativePicker(selector: NativeFileDialogSelector, pending: Deferred<*>) {
+    withTimeout(10_000) {
+        while (!selector.isVisible()) {
+            check(!pending.isCompleted) { "Native picker completed before becoming visible: ${pending.await()}" }
+            delay(10)
+        }
+    }
+}
+
+internal suspend fun chooseNativeFile(
+    selector: NativeFileDialogSelector,
+    pending: Deferred<*>,
+    path: Path,
+    mode: KWebFileDialogMode,
+) {
+    awaitNativePicker(selector, pending)
+    println("Native picker is ready for ${path.fileName}.")
+    val robot = Robot().apply { autoDelay = 20; isAutoWaitForIdle = true }
+    robot.evidence("ready")
+    val os = System.getProperty("os.name")
+    if (os.startsWith("Mac")) {
+        // Go To Folder is stable regardless of the panel's current focus or view mode.
+        robot.chord(KeyEvent.VK_META, KeyEvent.VK_SHIFT, KeyEvent.VK_G)
+        delay(400)
+        robot.chord(KeyEvent.VK_META, KeyEvent.VK_A)
+        robot.typeAscii(if (mode == KWebFileDialogMode.OPEN) path.toString() else path.parent.toString())
+        robot.waitForIdle()
+        delay(600)
+        robot.chord(KeyEvent.VK_ENTER)
+        delay(600)
+        robot.chord(KeyEvent.VK_ENTER)
+    } else if (os.startsWith("Windows")) {
+        // Hosted Windows runners retain keyboard focus in their console even when the
+        // owned IFileDialog is active. Click its default action inside the fixed smoke
+        // owner bounds so the test still completes through the real native control.
+        robot.clickWindowsDialogDefaultAction()
+    } else {
+        robot.chord(KeyEvent.VK_CONTROL, KeyEvent.VK_L)
+        delay(400)
+        robot.evidence("location")
+        robot.chord(KeyEvent.VK_CONTROL, KeyEvent.VK_A)
+        robot.typeAscii(path.toAbsolutePath().toString())
+        robot.waitForIdle()
+        delay(600)
+        robot.evidence("typed")
+        robot.chord(KeyEvent.VK_ENTER)
+    }
+    robot.evidence("submitted")
+    println("Native picker received the file selection keys.")
+    try {
+        withTimeout(15_000) {
+            // Native panels can load or validate a target asynchronously before enabling Open/Save.
+            while ((os.startsWith("Mac") || os.startsWith("Windows")) &&
+                !pending.isCompleted && selector.isVisible()) {
+                if (withTimeoutOrNull(750) { pending.await(); true } == null && selector.isVisible()) {
+                    if (os.startsWith("Windows")) robot.clickWindowsDialogDefaultAction()
+                    else robot.chord(KeyEvent.VK_ENTER)
+                }
+            }
+            pending.await()
+        }
+    } finally {
+        robot.evidence("completed")
+    }
+}
+
+private fun Robot.evidence(stage: String) {
+    val directory = System.getProperty("kweb.dialogs.ui.evidence")?.let(Path::of) ?: return
+    Files.createDirectories(directory)
+    val bounds = dialogOwnerBounds()
+    ImageIO.write(createScreenCapture(bounds), "png", directory.resolve("$stage.png").toFile())
+}
+
+private fun Robot.clickWindowsDialogDefaultAction() {
+    val bounds = dialogOwnerBounds()
+    val panelWidth = minOf(bounds.width, 640)
+    val panelHeight = minOf(bounds.height, 480)
+    mouseMove(bounds.x + panelWidth * 73 / 100, bounds.y + panelHeight - 8)
+    mousePress(InputEvent.BUTTON1_DOWN_MASK)
+    mouseRelease(InputEvent.BUTTON1_DOWN_MASK)
+}
+
+private fun dialogOwnerBounds() = onDialogsAwtThread {
+    Window.getWindows().first { it.isShowing }.bounds
+}
+
+internal suspend fun cancelNativePicker(selector: NativeFileDialogSelector, pending: Deferred<*>) {
+    awaitNativePicker(selector, pending)
+    val robot = Robot()
+    val os = System.getProperty("os.name")
+    withTimeout(10_000) {
+        while (!pending.isCompleted && selector.isVisible()) {
+            robot.chord(KeyEvent.VK_ESCAPE)
+            when {
+                os.startsWith("Mac") -> robot.chord(KeyEvent.VK_META, KeyEvent.VK_PERIOD)
+                os.startsWith("Linux") -> robot.chord(KeyEvent.VK_ALT, KeyEvent.VK_C)
+            }
+            if (withTimeoutOrNull(750) { pending.await(); true } == true) return@withTimeout
+        }
+    }
+    pending.await()
+}
+
+private fun Robot.chord(vararg codes: Int) {
+    codes.forEach(::keyPress)
+    codes.reversed().forEach(::keyRelease)
+}
+
+private fun Robot.typeAscii(value: String) {
+    value.forEach { character ->
+        val (key, shift) = when (character) {
+            ':' -> KeyEvent.VK_SEMICOLON to true
+            '_' -> KeyEvent.VK_MINUS to true
+            else -> KeyEvent.getExtendedKeyCodeForChar(character.uppercaseChar().code) to character.isUpperCase()
+        }
+        require(character.code in 32..126 && key != KeyEvent.VK_UNDEFINED) { "UI fixture path must be ASCII." }
+        if (shift) keyPress(KeyEvent.VK_SHIFT)
+        keyPress(key)
+        keyRelease(key)
+        if (shift) keyRelease(KeyEvent.VK_SHIFT)
+    }
+}

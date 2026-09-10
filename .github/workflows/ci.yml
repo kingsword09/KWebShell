@@ -20,14 +20,29 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - target: macos-arm64
+            os: macos-15
+            gpu-contract: hardware GPU contract
+            expect-hardware-gpu-unavailable: false
+            benchmark-machine-class: unused
+            run-application-benchmark: false
+            run-live-html5: false
           - target: windows-x64
             os: windows-2022
             gpu-contract: GPU unavailable contract
             expect-hardware-gpu-unavailable: true
             benchmark-machine-class: github-hosted-windows-2022-x64
             run-application-benchmark: true
+            run-live-html5: true
+          - target: linux-x64
+            os: ubuntu-24.04
+            gpu-contract: GPU unavailable contract
+            expect-hardware-gpu-unavailable: true
+            benchmark-machine-class: unused
+            run-application-benchmark: false
+            run-live-html5: false
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Check out repository
@@ -61,7 +76,18 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libasound2-dev libgtk-3-dev xvfb
+          sudo apt-get install --yes \
+            dbus-x11 \
+            libasound2-dev \
+            libglib2.0-dev \
+            libgtk-3-dev \
+            openbox \
+            x11-utils \
+            xdg-desktop-portal \
+            xdg-desktop-portal-gtk \
+            xdg-user-dirs \
+            xvfb
+          xdg-user-dirs-update
 
       - name: Verify native build prerequisites
         shell: bash
@@ -132,12 +158,14 @@ jobs:
           retention-days: 14
 
       - name: Run live HTML5test example
+        if: matrix.run-live-html5
         shell: bash
         run: |
           ./gradlew --no-daemon :kweb-example-html5-lab:html5TestSiteRun \
             -PcefRoot="$PWD/.cef-ci/source/$CEF_DIRECTORY"
 
       - name: Upload live HTML5test evidence
+        if: matrix.run-live-html5
         uses: actions/upload-artifact@v6
         with:
           name: html5test-${{ matrix.target }}-${{ github.sha }}
@@ -148,11 +176,34 @@ jobs:
       - name: Run complete verification
         shell: bash
         run: |
-          ./gradlew --no-daemon check \
-            -PcefRoot="$PWD/.cef-ci/source/$CEF_DIRECTORY" \
-            -PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}
+          arguments=(
+            --no-daemon
+            --max-workers=1
+            check
+            "-PcefRoot=$PWD/.cef-ci/source/$CEF_DIRECTORY"
+            "-PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}"
+          )
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            XDG_CURRENT_DESKTOP=GNOME xvfb-run -a dbus-run-session -- \
+              bash .github/scripts/run-linux-ui-verification.sh ./gradlew "${arguments[@]}"
+          else
+            ./gradlew "${arguments[@]}"
+          fi
+
+      - name: Upload native dialog evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: native-dialogs-${{ matrix.target }}-${{ github.sha }}
+          path: |
+            kweb-service-dialogs/build/reports/native-dialog-ui/
+            kweb-service-dialogs/build/reports/dialogs-cef-ui/
+            kweb-service-dialogs/build/dialogs-integration/
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload Electron migration evidence
+        if: always()
         uses: actions/upload-artifact@v6
         with:
           name: electron-migration-${{ matrix.target }}-${{ github.sha }}

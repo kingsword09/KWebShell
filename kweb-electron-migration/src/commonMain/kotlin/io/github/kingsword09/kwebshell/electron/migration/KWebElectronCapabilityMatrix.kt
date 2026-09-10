@@ -29,7 +29,7 @@ public object KWebElectronCapabilityMatrix {
         entry("profile-protocol", "protocol.handle", "profile-origin", KWebElectronMappingStatus.DIRECT, "Profile-scoped app:// origin", "Protocol handlers are verified host contracts."),
         entry("ipc-request", "ipcMain.handle + ipcRenderer.invoke", "typed-service", KWebElectronMappingStatus.ADAPTER, "Versioned service bridge", "Only declared channels are generated."),
         entry("context-bridge", "contextBridge.exposeInMainWorld", "generated-preload", KWebElectronMappingStatus.ADAPTER, "Generated preload facade", "No universal ipcRenderer object is installed."),
-        entry("dialog", "dialog", "native-dialog-service", KWebElectronMappingStatus.UNSUPPORTED, "", "Requires a complete native dialog objective."),
+        entry("dialog", "dialog.showOpenDialog + dialog.showSaveDialog", "native-dialog-service", KWebElectronMappingStatus.REWRITE, "KWebDialogs + DialogsBridge", "Path results must migrate to owner-scoped handles and explicit bounded I/O."),
         entry("clipboard", "clipboard", "native-clipboard-service", KWebElectronMappingStatus.UNSUPPORTED, "", "Requires explicit format and permission contracts."),
         entry("shell", "shell", "external-launch-service", KWebElectronMappingStatus.UNSUPPORTED, "", "Requires scheme and path policy."),
         entry("native-theme", "nativeTheme", "theme-service", KWebElectronMappingStatus.UNSUPPORTED, "", "Requires observation and lifecycle conformance."),

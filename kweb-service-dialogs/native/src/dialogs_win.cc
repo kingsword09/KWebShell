@@ -38,6 +38,7 @@ void CALLBACK PollDialog(HWND, UINT, UINT_PTR, DWORD) {
   HWND handle = nullptr;
   if (SUCCEEDED(active->dialog->QueryInterface(IID_PPV_ARGS(&window))) &&
       SUCCEEDED(window->GetWindow(&handle)) && IsWindowVisible(handle)) {
+    active->operation->dialog_window.store(reinterpret_cast<uintptr_t>(handle));
     if (!active->operation->visible.load()) {
       const DWORD dialog_thread = GetCurrentThreadId();
       const DWORD foreground_thread = GetWindowThreadProcessId(GetForegroundWindow(), nullptr);
@@ -54,6 +55,15 @@ void CALLBACK PollDialog(HWND, UINT, UINT_PTR, DWORD) {
     active->dialog->Close(HRESULT_FROM_WIN32(ERROR_CANCELLED));
   }
 }
+}
+
+void RequestWindowsDialogCancellation(Operation &op) {
+  const HWND handle = reinterpret_cast<HWND>(op.dialog_window.load());
+  if (handle != nullptr && IsWindow(handle)) {
+    // IFileDialog::Show owns a modal loop on the worker STA. Posting WM_CLOSE
+    // wakes that loop even when its thread timer is not being dispatched.
+    PostMessageW(handle, WM_CLOSE, 0, 0);
+  }
 }
 
 void RunDialog(Operation &op) {
@@ -100,6 +110,7 @@ void RunDialog(Operation &op) {
       status = dialog->Show(owner);
       KillTimer(nullptr, timer);
       active = nullptr;
+      op.dialog_window.store(0);
       if (status == HRESULT_FROM_WIN32(ERROR_CANCELLED) || op.cancel_requested.load()) {
         op.state = KWEB_DIALOG_CANCELLED;
         op.failure = 0;
@@ -119,6 +130,7 @@ void RunDialog(Operation &op) {
     }();
   } catch (...) {
     active = nullptr;
+    op.dialog_window.store(0);
     op.state = KWEB_DIALOG_FAILED;
     op.failure = KWEB_DIALOG_NATIVE_FAILED;
   }

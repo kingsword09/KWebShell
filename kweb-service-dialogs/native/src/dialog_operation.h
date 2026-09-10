@@ -15,6 +15,7 @@ struct Operation {
   std::string title, directory, name;
   std::vector<std::string> extensions;
   std::atomic<bool> cancel_requested{false};
+  std::atomic<uintptr_t> dialog_window{0};
   std::atomic<bool> visible{false};
   std::atomic<bool> done{false};
   uint32_t state = KWEB_DIALOG_PENDING;
@@ -26,5 +27,8 @@ struct Operation {
 /* Runs on its own worker. Implementations marshal to the actual platform UI. */
 void RunDialog(Operation &operation);
 bool ValidUtf8(const char *data, size_t size);
+#if defined(_WIN32)
+void RequestWindowsDialogCancellation(Operation &operation);
+#endif
 } // namespace kwebshell::dialogs
 #endif

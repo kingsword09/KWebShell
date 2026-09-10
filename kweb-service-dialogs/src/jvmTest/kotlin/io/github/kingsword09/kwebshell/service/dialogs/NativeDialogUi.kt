@@ -6,6 +6,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import java.awt.Robot
 import java.awt.Window
+import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
 import java.nio.file.Files
 import java.nio.file.Path
@@ -43,11 +44,10 @@ internal suspend fun chooseNativeFile(
         delay(600)
         robot.chord(KeyEvent.VK_ENTER)
     } else if (os.startsWith("Windows")) {
-        // IFileDialog receives the exact folder and file name through the native request.
-        // The filename edit owns focus; advance through file type to Open/Save and activate it.
-        robot.chord(KeyEvent.VK_TAB)
-        robot.chord(KeyEvent.VK_TAB)
-        robot.chord(KeyEvent.VK_SPACE)
+        // Hosted Windows runners retain keyboard focus in their console even when the
+        // owned IFileDialog is active. Click its default action inside the fixed smoke
+        // owner bounds so the test still completes through the real native control.
+        robot.clickWindowsDialogDefaultAction()
     } else {
         robot.chord(KeyEvent.VK_CONTROL, KeyEvent.VK_L)
         delay(400)
@@ -67,7 +67,7 @@ internal suspend fun chooseNativeFile(
             while ((os.startsWith("Mac") || os.startsWith("Windows")) &&
                 !pending.isCompleted && selector.isVisible()) {
                 if (withTimeoutOrNull(750) { pending.await(); true } == null && selector.isVisible()) {
-                    if (os.startsWith("Windows")) robot.chord(KeyEvent.VK_SPACE)
+                    if (os.startsWith("Windows")) robot.clickWindowsDialogDefaultAction()
                     else robot.chord(KeyEvent.VK_ENTER)
                 }
             }
@@ -81,8 +81,19 @@ internal suspend fun chooseNativeFile(
 private fun Robot.evidence(stage: String) {
     val directory = System.getProperty("kweb.dialogs.ui.evidence")?.let(Path::of) ?: return
     Files.createDirectories(directory)
-    val bounds = onDialogsAwtThread { Window.getWindows().first { it.isShowing }.bounds }
+    val bounds = dialogOwnerBounds()
     ImageIO.write(createScreenCapture(bounds), "png", directory.resolve("$stage.png").toFile())
+}
+
+private fun Robot.clickWindowsDialogDefaultAction() {
+    val bounds = dialogOwnerBounds()
+    mouseMove(bounds.x + bounds.width * 73 / 100, bounds.y + bounds.height - 8)
+    mousePress(InputEvent.BUTTON1_DOWN_MASK)
+    mouseRelease(InputEvent.BUTTON1_DOWN_MASK)
+}
+
+private fun dialogOwnerBounds() = onDialogsAwtThread {
+    Window.getWindows().first { it.isShowing }.bounds
 }
 
 internal suspend fun cancelNativePicker(selector: NativeFileDialogSelector, pending: Deferred<*>) {

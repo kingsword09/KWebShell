@@ -160,6 +160,9 @@ int32_t kweb_dialog_cancel(uint64_t id) {
   const auto found = registry.find(id);
   if (found == registry.end()) return KWEB_DIALOG_INVALID_HANDLE;
   found->second->cancel_requested.store(true);
+#if defined(_WIN32)
+  kwebshell::dialogs::RequestWindowsDialogCancellation(*found->second);
+#endif
   return KWEB_DIALOG_OK;
 }
 

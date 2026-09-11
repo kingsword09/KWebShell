@@ -147,4 +147,3 @@ public class KWebInMemoryConsentStore(
     private fun key(request: KWebConsentRequest): String =
         "$scopeOwnerId|${request.serviceId}|${request.operationId}|${request.origin}"
 }
-

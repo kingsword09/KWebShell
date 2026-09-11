@@ -43,8 +43,9 @@ class KWebRfcRepositoryGovernanceTest {
         ).check()
         assertEquals(KWebRfcGovernanceReport.READY, report.governanceStatus)
         val rfc0001 = report.rfcs.single { it.rfcId == "0001" }
-        assertEquals(KWebRfcStatus.IMPLEMENTING.label, rfc0001.declaredStatus)
+        assertEquals(KWebRfcStatus.IMPLEMENTED.label, rfc0001.declaredStatus)
         assertEquals(KWebRfcGovernanceState.READY, rfc0001.state)
+        assertEquals(KWEB_RFC_HOSTED_TARGETS, rfc0001.evidenceTargets.toSet())
     }
 
     @Test

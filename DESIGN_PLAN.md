@@ -1811,8 +1811,11 @@ Implementation evidence as of 2026-09-11 (RFC 0001):
   records byte-for-byte deterministically from structured test output.
 - Unit fixtures prove that unknown fields, duplicate RFC ids, missing targets,
   digest changes, stale runtime versions, and unsupported-to-supported
-  promotion fail. RFC 0001 flips to `Implemented` once the hosted jobs retain
-  the joined report on all three targets and its own evidence records land.
+  promotion fail. RFC 0001 reached `Implemented` on 2026-09-12: the migration
+  fixture pins `electronFixtureMajor: 44`, and all three hosted jobs retained a
+  byte-identical joined governance report (SHA-256
+  `035cc0ca0a5a66dcf1b83c883c7ccc2b1bc031d1b1f57610202d12a941b2ba25`, CI run
+  34620115764), whose digests are the checked-in evidence records.
 
 ## 12. Test Strategy
 

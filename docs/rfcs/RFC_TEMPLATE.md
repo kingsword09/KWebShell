@@ -6,6 +6,7 @@
 - Depends on: implemented RFC identifiers
 - Electron migration surface: exact Electron concepts being classified
 - Target mapping: intended `DIRECT`, `ADAPTER`, `REWRITE`, or `UNSUPPORTED`
+- Platform targets: omit for all desktop targets; otherwise `macos`, `windows`, and/or `linux`
 
 ## Objective
 

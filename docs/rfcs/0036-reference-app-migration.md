@@ -3,7 +3,7 @@
 - Status: Proposed
 - Priority: P0
 - Owners: `kweb-electron-migration`, examples, CI
-- Depends on: RFC 0005 and every capability selected by the pinned application
+- Depends on: RFC 0005
 - Electron migration surface: one complete pinned Electron application
 - Target mapping: measured application result
 
@@ -11,7 +11,10 @@
 
 Prove the migration system against a real maintained Electron application,
 initially a pinned LobeHub desktop revision or another explicitly approved
-candidate. Publish correctness, source-change, package, startup, memory, and
+candidate. RFC 0005 is the hard prerequisite; the complete set of required
+capability RFCs is derived from the pinned application inventory and must be
+Implemented before implementation begins.
+Publish correctness, source-change, package, startup, memory, and
 workload evidence without claiming universal Electron compatibility.
 
 ## Selection and scope

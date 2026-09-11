@@ -5,9 +5,11 @@ on:
     branches: [main]
     paths-ignore:
       - "**/*.md"
+      - "docs/rfcs/**"
   pull_request:
     paths-ignore:
       - "**/*.md"
+      - "docs/rfcs/**"
   workflow_dispatch:
 
 permissions:
@@ -208,5 +210,14 @@ jobs:
         with:
           name: electron-migration-${{ matrix.target }}-${{ github.sha }}
           path: kweb-electron-migration/build/reports/electron-migration/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload RFC governance evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: rfc-governance-${{ matrix.target }}-${{ github.sha }}
+          path: kweb-rfc-governance/build/reports/rfc-governance/
           if-no-files-found: error
           retention-days: 14

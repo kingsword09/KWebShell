@@ -1797,6 +1797,23 @@ Program acceptance criteria:
    installers, three-platform conformance, and performance/security evidence
    must all be reproducible.
 
+Implementation evidence as of 2026-09-11 (RFC 0001):
+
+- `kweb-rfc-governance` publishes the versioned capability evidence manifest
+  (`docs/rfcs/evidence/manifest.json`), its packaged JSON schema, the strict
+  deterministic validator with canonical digest verification, the RFC
+  front-matter catalog parser, the redaction scan, and the joined governance
+  report with `ready`/`blocked`/`stale`/`platform-specific` states.
+- The `rfcGovernanceCheck` task joins RFC metadata, service descriptors, the
+  capability matrix, and the pinned runtime identity on every `check`, and a
+  documentation-only workflow runs `git diff --check` plus the schema validator
+  without the native matrix. The `rfcEvidenceRecord` task regenerates evidence
+  records byte-for-byte deterministically from structured test output.
+- Unit fixtures prove that unknown fields, duplicate RFC ids, missing targets,
+  digest changes, stale runtime versions, and unsupported-to-supported
+  promotion fail. RFC 0001 flips to `Implemented` once the hosted jobs retain
+  the joined report on all three targets and its own evidence records land.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.
@@ -1855,6 +1872,7 @@ services: publish typed window controls
 bridge: publish composable exact dispatch
 services: publish native file dialogs and scoped handles
 docs: define the Electron migration RFC program
+rfc: publish RFC governance and evidence manifest
 ```
 
 Do not create a commit for a partial objective. Do not move a failing test to a later phase. Each commit must include the verification command or CI result in its body.

@@ -132,7 +132,7 @@ minimum descriptor contains:
 
 - Service ID and contract version.
 - Operation IDs and their request/result schema revisions.
-- Lifecycle scope: application, Profile, or Page.
+- Lifecycle scope: application, Profile, window, or Page.
 - Required KWebShell capabilities and OS facilities.
 - Renderer permissions and user-gesture requirements per operation.
 - Supported target triples and runtime availability evidence.
@@ -201,11 +201,51 @@ codes and structured details. The initial closed categories are:
 | `service.owner-closed` | The application, Profile, Page, or service owner is terminal. |
 | `service.cancelled` | The exact operation lost a declared cancellation race. |
 | `service.native-failed` | The selected native backend failed and supplied platform evidence. |
+| `service.provider.ambiguous` | Two providers claim one service contract; selection would be ambiguous. |
+| `service.provider.duplicate` | One provider identity is declared twice. |
+| `service.provider.missing` | A declared dependency has no provider in the configuration. |
+| `service.provider.target-unsupported` | A provider does not support the configuration target. |
+| `service.provider.graph-cycle` | The provider dependency graph is cyclic. |
+| `service.provider.startup-failed` | A factory failed after startup began; created services were rolled back. |
+| `service.provider.contract-mismatch` | A factory returned a service that does not match its declaration. |
+| `service.dependency.undeclared` | A provider queried a service it did not declare. |
+| `service.dependency.scope-invalid` | A provider depends on a narrower owner scope. |
+| `service.capability.missing` | A required capability fact is not declared. |
+| `service.capability.unavailable` | A required capability fact is declared unavailable on this target. |
 
 An unavailable Linux desktop portal, denied macOS permission, or failed Windows
 COM initialization is not permission to invoke another backend. The error must
 identify the service, operation, target, native status, and remediation without
 leaking private paths or native pointers to an untrusted renderer.
+
+### 4.4 Provider SDK
+
+Application code installs services through explicit provider declarations, not
+through direct construction scattered across the host. A declaration names one
+`providerId`, the service key with its exact `KWebServiceVersionRange`
+contract, the delivered contract version, the lifecycle scope, the supported
+targets, the required capability facts, its typed dependency edges, and one
+factory that receives only its declared owner environment.
+
+```kotlin
+engine.nativeServices.installProviders(
+    KWebServiceProviderConfiguration(
+        target = KWebTarget.parse("macos-arm64"),
+        ownerId = "application",
+        facts = setOf(KWebCapabilityFact("native-services-library", available = true)),
+        providers = listOf(appPathsProvider, windowControlsProvider),
+    ),
+)
+```
+
+Startup is deterministic topological order; close is the exact reverse. The
+whole configuration is validated before any factory runs — ambiguity,
+duplicates, missing providers, unsupported targets, undeclared capability
+facts, unsatisfiable ranges, scope violations, and cycles are typed failures.
+A factory failure rolls back exactly the resources created by that attempt and
+leaves a sticky typed failure. Capability facts report facts only; they never
+select a weaker backend. The deterministic provider catalog names every
+provider for packaging; no reflective implementation-class lookup exists.
 
 ## 5. Ownership And Lifecycle
 

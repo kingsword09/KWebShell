@@ -204,6 +204,15 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Upload provider lifecycle evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: provider-lifecycle-${{ matrix.target }}-${{ github.sha }}
+          path: kweb-service-window-controls/build/window-controls-integration/
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload Electron migration evidence
         if: always()
         uses: actions/upload-artifact@v6

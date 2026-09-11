@@ -10,13 +10,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-private val SERVICE_IDENTIFIER = Regex(
+internal val SERVICE_IDENTIFIER = Regex(
     "[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?)*",
 )
 
 public enum class KWebServiceScope {
     APPLICATION,
     PROFILE,
+    WINDOW,
     PAGE,
 }
 
@@ -24,7 +25,7 @@ public data class KWebServiceVersion(
     public val major: Int,
     public val minor: Int,
     public val patch: Int,
-) {
+) : Comparable<KWebServiceVersion> {
     init {
         if (major < 0 || minor < 0 || patch < 0) {
             throw KWebConfigurationException(
@@ -37,6 +38,14 @@ public data class KWebServiceVersion(
                 message = "Service version components must be non-negative.",
             )
         }
+    }
+
+    override fun compareTo(other: KWebServiceVersion): Int {
+        val majorOrder = major.compareTo(other.major)
+        if (majorOrder != 0) return majorOrder
+        val minorOrder = minor.compareTo(other.minor)
+        if (minorOrder != 0) return minorOrder
+        return patch.compareTo(other.patch)
     }
 
     public override fun toString(): String = "$major.$minor.$patch"
@@ -123,7 +132,7 @@ public interface KWebNativeService {
 
 public interface KWebServiceKey<T : KWebNativeService> {
     public val id: String
-    public val version: KWebServiceVersion
+    public val contract: KWebServiceVersionRange
 }
 
 public data class KWebServiceGrant(
@@ -172,13 +181,24 @@ public object KWebServiceErrorCode {
     public const val OWNER_CLOSED: String = "service.owner-closed"
     public const val CANCELLED: String = "service.cancelled"
     public const val NATIVE_FAILED: String = "service.native-failed"
+    public const val PROVIDER_AMBIGUOUS: String = "service.provider.ambiguous"
+    public const val PROVIDER_DUPLICATE: String = "service.provider.duplicate"
+    public const val PROVIDER_MISSING: String = "service.provider.missing"
+    public const val PROVIDER_TARGET_UNSUPPORTED: String = "service.provider.target-unsupported"
+    public const val PROVIDER_GRAPH_CYCLE: String = "service.provider.graph-cycle"
+    public const val PROVIDER_STARTUP_FAILED: String = "service.provider.startup-failed"
+    public const val PROVIDER_CONTRACT_MISMATCH: String = "service.provider.contract-mismatch"
+    public const val DEPENDENCY_UNDECLARED: String = "service.dependency.undeclared"
+    public const val DEPENDENCY_SCOPE_INVALID: String = "service.dependency.scope-invalid"
+    public const val CAPABILITY_MISSING: String = "service.capability.missing"
+    public const val CAPABILITY_UNAVAILABLE: String = "service.capability.unavailable"
 }
 
 public class KWebNativeServiceRegistry : AutoCloseable {
     private val lock = Any()
     private val mutableLifecycle = MutableStateFlow(KWebLifecycleState.OPEN)
     private val services = linkedMapOf<String, KWebNativeService>()
-    private var closeFailure: KWebNativeException? = null
+    private var closeFailure: KWebException? = null
 
     public val lifecycle: StateFlow<KWebLifecycleState> = mutableLifecycle.asStateFlow()
 
@@ -188,12 +208,12 @@ public class KWebNativeServiceRegistry : AutoCloseable {
     ) {
         synchronized(lock) {
             requireOpen("install")
-            if (service.descriptor.id != key.id || service.descriptor.version != key.version) {
+            if (service.descriptor.id != key.id || !key.contract.contains(service.descriptor.version)) {
                 throw KWebServiceException(
                     code = KWebServiceErrorCode.VERSION_INCOMPATIBLE,
                     details = mapOf(
                         "requestedService" to key.id,
-                        "requestedVersion" to key.version.toString(),
+                        "requestedContract" to key.contract.describe(),
                         "actualService" to service.descriptor.id,
                         "actualVersion" to service.descriptor.version.toString(),
                     ),
@@ -222,15 +242,15 @@ public class KWebNativeServiceRegistry : AutoCloseable {
             requireOpen("require")
             val service = services[key.id] ?: throw KWebServiceException(
                 code = KWebServiceErrorCode.NOT_INSTALLED,
-                details = mapOf("service" to key.id, "version" to key.version.toString()),
+                details = mapOf("service" to key.id, "contract" to key.contract.describe()),
                 message = "The requested native service is not installed.",
             )
-            if (service.descriptor.version != key.version) {
+            if (!key.contract.contains(service.descriptor.version)) {
                 throw KWebServiceException(
                     code = KWebServiceErrorCode.VERSION_INCOMPATIBLE,
                     details = mapOf(
                         "service" to key.id,
-                        "requestedVersion" to key.version.toString(),
+                        "requestedContract" to key.contract.describe(),
                         "actualVersion" to service.descriptor.version.toString(),
                     ),
                     message = "The installed native service has an incompatible contract version.",
@@ -246,6 +266,90 @@ public class KWebNativeServiceRegistry : AutoCloseable {
             @Suppress("UNCHECKED_CAST")
             return service as T
         }
+    }
+
+    /**
+     * Starts every declared provider in deterministic topological order and
+     * registers the created services. The whole configuration is validated
+     * before any factory runs; a failed startup rolls back exactly the
+     * resources created by that attempt and leaves a sticky typed failure.
+     */
+    public fun installProviders(
+        configuration: KWebServiceProviderConfiguration,
+    ): KWebServiceProviderInstallReport {
+        synchronized(lock) {
+            closeFailure?.let { throw it }
+            requireOpen("install-providers")
+            val ordered = KWebProviderStartupPlanner.validateAndOrder(configuration)
+            val created = mutableListOf<Pair<KWebServiceProviderDeclaration<*>, KWebNativeService>>()
+            try {
+                ordered.forEach { declaration ->
+                    val service = declaration.factory.create(
+                        ProviderStartupEnvironment(this, configuration, declaration),
+                    )
+                    validateCreatedService(declaration, service)
+                    services[service.descriptor.id] = service
+                    created += declaration to service
+                }
+            } catch (error: Throwable) {
+                rollbackStartup(error, created)
+            }
+            return KWebServiceProviderInstallReport(
+                providerOrder = created.map { it.first.providerId },
+                startupOrder = created.map { it.second.descriptor.id },
+            )
+        }
+    }
+
+    private fun validateCreatedService(
+        declaration: KWebServiceProviderDeclaration<*>,
+        service: KWebNativeService,
+    ) {
+        val mismatch = KWebServiceException(
+            code = KWebServiceErrorCode.PROVIDER_CONTRACT_MISMATCH,
+            details = mapOf(
+                "provider" to declaration.providerId,
+                "declaredService" to declaration.key.id,
+                "declaredVersion" to declaration.contractVersion.toString(),
+                "declaredScope" to declaration.scope.name,
+            ),
+            message = "A provider factory returned a service that does not match its declaration.",
+        )
+        if (service.lifecycle.value != KWebLifecycleState.OPEN) throw mismatch
+        val descriptor = service.descriptor
+        if (descriptor.id != declaration.key.id ||
+            descriptor.version != declaration.contractVersion ||
+            descriptor.scope != declaration.scope ||
+            !declaration.key.contract.contains(descriptor.version)
+        ) {
+            throw mismatch
+        }
+    }
+
+    private fun rollbackStartup(
+        cause: Throwable,
+        created: List<Pair<KWebServiceProviderDeclaration<*>, KWebNativeService>>,
+    ): Nothing {
+        var failure: Throwable = cause
+        created.asReversed().forEach { (_, service) ->
+            services.remove(service.descriptor.id)
+            try {
+                service.close()
+            } catch (closeError: Throwable) {
+                failure.addSuppressed(closeError)
+            }
+        }
+        // Typed SDK failures keep their stable codes; only foreign factory failures
+        // are wrapped into the typed startup failure. Either way the failure sticks.
+        val sticky = (cause as? KWebException) ?: KWebServiceException(
+            code = KWebServiceErrorCode.PROVIDER_STARTUP_FAILED,
+            details = mapOf("reason" to "factory-failed"),
+            message = "The native service provider startup failed and every created service was rolled back.",
+            cause = failure,
+        )
+        closeFailure = sticky
+        mutableLifecycle.value = KWebLifecycleState.FAILED
+        throw sticky
     }
 
     override fun close() {
@@ -293,5 +397,40 @@ public class KWebNativeServiceRegistry : AutoCloseable {
                 message = "The native service registry is not open.",
             )
         }
+    }
+}
+
+/**
+ * The environment one provider factory receives. It exposes only the declared
+ * configuration facts and refuses dependency access outside the declaration, so
+ * a provider can never query an undeclared service or reach another scope owner.
+ */
+private class ProviderStartupEnvironment(
+    private val registry: KWebNativeServiceRegistry,
+    private val configuration: KWebServiceProviderConfiguration,
+    private val declaration: KWebServiceProviderDeclaration<*>,
+) : KWebServiceProviderEnvironment {
+    override val target: KWebTarget = configuration.target
+    override val scope: KWebServiceScope = declaration.scope
+    override val ownerId: String = configuration.ownerId
+
+    override fun fact(id: String): KWebCapabilityFact {
+        return configuration.facts.singleOrNull { it.id == id }
+            ?: throw KWebServiceException(
+                code = KWebServiceErrorCode.CAPABILITY_MISSING,
+                details = mapOf("provider" to declaration.providerId, "fact" to id),
+                message = "The provider environment does not declare the requested capability fact.",
+            )
+    }
+
+    override fun <T : KWebNativeService> dependency(key: KWebServiceKey<T>): T {
+        if (declaration.dependencies.none { it.id == key.id }) {
+            throw KWebServiceException(
+                code = KWebServiceErrorCode.DEPENDENCY_UNDECLARED,
+                details = mapOf("provider" to declaration.providerId, "dependency" to key.id),
+                message = "A provider cannot query a service it did not declare.",
+            )
+        }
+        return registry.require(key)
     }
 }

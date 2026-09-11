@@ -39,6 +39,7 @@ kotlin {
             runtimeOnly(libs.junit.platform.launcher)
             implementation(project(":kweb-desktop"))
             implementation(project(":kweb-example-support"))
+            implementation(project(":kweb-service-app-paths"))
             implementation(libs.compose.ui.desktop)
             implementation(libs.kotlinx.coroutines.core)
         }
@@ -137,6 +138,15 @@ val nativeLocales = operatingSystem.map { name ->
     if (name.lowercase(Locale.ROOT).startsWith("mac")) nativeResources.get()
     else nativeReleaseDirectory.dir("locales").asFile
 }
+val servicesNativeLibrary = operatingSystem.map { name ->
+    val fileName = when {
+        name.lowercase(Locale.ROOT).startsWith("windows") -> "kwebshell_services.dll"
+        name.lowercase(Locale.ROOT).startsWith("mac") -> "libkwebshell_services.dylib"
+        name.lowercase(Locale.ROOT).startsWith("linux") -> "libkwebshell_services.so"
+        else -> throw GradleException("Unsupported services operating system '$name'.")
+    }
+    rootProject.layout.projectDirectory.file("kweb-service-app-paths/build/native/contract/$fileName").asFile
+}
 val integrationRoot = layout.buildDirectory.dir("window-controls-integration")
 val integrationClasspath = files(
     layout.buildDirectory.dir("classes/kotlin/jvm/test"),
@@ -158,6 +168,7 @@ val integrationCommand = providers.provider {
         add("-Dkweb.engine.resources.path=${nativeResources.get().absolutePath}")
         add("-Dkweb.engine.locales.path=${nativeLocales.get().absolutePath}")
         add("-Dkweb.window-controls.bridge.javascript=${generatedBridgeDirectory.get().file("WindowControlsBridgeBridge.js").asFile.absolutePath}")
+        add("-Dkweb.services.native.library.path=${servicesNativeLibrary.get().absolutePath}")
         add("-cp")
         add(integrationClasspath.asPath)
         add("io.github.kingsword09.kwebshell.service.windowcontrols.WindowControlsIntegrationMainKt")
@@ -175,6 +186,7 @@ val windowControlsIntegrationTest = tasks.register<Exec>("windowControlsIntegrat
         generateWindowControlsBridge,
         ":kweb-desktop:jar",
         ":kweb-cef-native:buildNative",
+        ":kweb-service-app-paths:buildNative",
     )
     mustRunAfter(
         ":kweb-desktop:engineIntegrationTest",

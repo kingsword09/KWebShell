@@ -6,6 +6,7 @@ import io.github.kingsword09.kwebshell.services.KWebServiceKey
 import io.github.kingsword09.kwebshell.services.KWebServiceOperationDescriptor
 import io.github.kingsword09.kwebshell.services.KWebServiceScope
 import io.github.kingsword09.kwebshell.services.KWebServiceVersion
+import io.github.kingsword09.kwebshell.services.KWebServiceVersionRange
 import io.github.kingsword09.kwebshell.core.KWebConfigurationException
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebTarget
@@ -98,7 +99,7 @@ public interface KWebAppPaths : KWebNativeService {
 
         public val Key: KWebServiceKey<KWebAppPaths> = object : KWebServiceKey<KWebAppPaths> {
             override val id: String = DESCRIPTOR.id
-            override val version: KWebServiceVersion = DESCRIPTOR.version
+            override val contract: KWebServiceVersionRange = KWebServiceVersionRange.exact(DESCRIPTOR.version)
         }
     }
 }

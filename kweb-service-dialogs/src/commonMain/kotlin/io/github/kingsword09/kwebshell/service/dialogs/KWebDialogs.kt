@@ -10,6 +10,7 @@ import io.github.kingsword09.kwebshell.services.KWebServiceKey
 import io.github.kingsword09.kwebshell.services.KWebServiceOperationDescriptor
 import io.github.kingsword09.kwebshell.services.KWebServiceScope
 import io.github.kingsword09.kwebshell.services.KWebServiceVersion
+import io.github.kingsword09.kwebshell.services.KWebServiceVersionRange
 import kotlinx.coroutines.flow.StateFlow
 
 public enum class KWebFileDialogMode(public val id: String) {
@@ -168,7 +169,7 @@ public interface KWebDialogs : KWebNativeService {
 
         public val Key: KWebServiceKey<KWebDialogs> = object : KWebServiceKey<KWebDialogs> {
             override val id: String = DESCRIPTOR.id
-            override val version: KWebServiceVersion = DESCRIPTOR.version
+            override val contract: KWebServiceVersionRange = KWebServiceVersionRange.exact(DESCRIPTOR.version)
         }
 
         private fun operation(id: String): KWebServiceOperationDescriptor = KWebServiceOperationDescriptor(

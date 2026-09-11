@@ -1817,6 +1817,26 @@ Implementation evidence as of 2026-09-11 (RFC 0001):
   `035cc0ca0a5a66dcf1b83c883c7ccc2b1bc031d1b1f57610202d12a941b2ba25`, CI run
   34620115764), whose digests are the checked-in evidence records.
 
+Implementation evidence as of 2026-09-12 (RFC 0002):
+
+- `kweb-services-core` extends the single native-service registry with the
+  provider SDK: `KWebServiceVersionRange` contract ranges on `KWebServiceKey`,
+  the `WINDOW` scope, typed `KWebServiceDependency` edges, explicit
+  `KWebServiceProviderDeclaration` factories that receive only their declared
+  owner environment, application-declared capability facts, and a deterministic
+  topological startup with exact reverse close, attempt-scoped rollback, and a
+  sticky typed startup failure. Missing, ambiguous, duplicate,
+  target-unsupported, undeclared-dependency, scope-violation, and cycle cases
+  each fail with distinct stable codes before any factory runs.
+- The real two-service fixture installs `KWebAppPaths` (FFM native provider)
+  and `KWebWindowControls` through provider factories inside the hosted
+  ComposeWindow integration, proves deterministic selection and startup order,
+  resolves a real path through the provider-installed native service, and
+  writes a deterministic provider lifecycle report plus the packaged provider
+  catalog; CI retains that report on all three hosted targets. RFC 0002 flips
+  to `Implemented` once those reports land and its evidence records are
+  checked in.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.

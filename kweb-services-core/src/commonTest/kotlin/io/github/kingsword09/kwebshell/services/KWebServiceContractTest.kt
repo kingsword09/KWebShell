@@ -101,8 +101,10 @@ class KWebServiceContractTest {
 
     private class RecordingKey(
         override val id: String,
-        override val version: KWebServiceVersion,
-    ) : KWebServiceKey<RecordingService>
+        version: KWebServiceVersion,
+    ) : KWebServiceKey<RecordingService> {
+        override val contract: KWebServiceVersionRange = KWebServiceVersionRange.exact(version)
+    }
 
     private class RecordingService(
         id: String,

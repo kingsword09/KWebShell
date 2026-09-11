@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebNativeException
+import io.github.kingsword09.kwebshell.core.KWebTarget
 import io.github.kingsword09.kwebshell.core.KWebPage
 import io.github.kingsword09.kwebshell.core.KWebProfile
 import io.github.kingsword09.kwebshell.core.KWebRect
@@ -13,6 +14,14 @@ import io.github.kingsword09.kwebshell.desktop.KWebDesktopEngine
 import io.github.kingsword09.kwebshell.desktop.KWebDesktopEngineConfiguration
 import io.github.kingsword09.kwebshell.example.support.KWebExampleCdpClient
 import io.github.kingsword09.kwebshell.example.support.KWebExampleCdpSession
+import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPathKind
+import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPaths
+import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPathsConfiguration
+import io.github.kingsword09.kwebshell.service.apppaths.JvmKWebAppPaths
+import io.github.kingsword09.kwebshell.services.KWebCapabilityFact
+import io.github.kingsword09.kwebshell.services.KWebServiceProviderCatalog
+import io.github.kingsword09.kwebshell.services.KWebServiceProviderConfiguration
+import io.github.kingsword09.kwebshell.services.KWebServiceProviderDeclaration
 import io.github.kingsword09.kwebshell.services.KWebServiceErrorCode
 import io.github.kingsword09.kwebshell.services.KWebServiceGrant
 import io.github.kingsword09.kwebshell.services.KWebServicePermissionPolicy
@@ -21,12 +30,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import java.awt.EventQueue
 import java.awt.Window
 import java.net.InetAddress
@@ -47,6 +63,7 @@ private const val SUBPROCESS_PROPERTY = "kweb.engine.subprocess.path"
 private const val RESOURCES_PROPERTY = "kweb.engine.resources.path"
 private const val LOCALES_PROPERTY = "kweb.engine.locales.path"
 private const val BRIDGE_JAVASCRIPT_PROPERTY = "kweb.window-controls.bridge.javascript"
+private const val SERVICES_LIBRARY_PROPERTY = "kweb.services.native.library.path"
 
 public fun main() {
     val root = requiredPath(ROOT_PROPERTY).toAbsolutePath().normalize()
@@ -63,16 +80,16 @@ public fun main() {
         }
     }
     val visibleWindows = visibleWindows()
-    val service = JvmKWebWindowControls.open(window)
     val eventScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val events = CopyOnWriteArrayList<KWebWindowEvent>()
-    val eventJob = eventScope.launch { service.events.collect(events::add) }
+    var eventJob: Job? = null
+    var installedService: KWebWindowControls? = null
+    var installedAppPaths: KWebAppPaths? = null
     var engine: KWebDesktopEngine? = null
     var profile: KWebProfile? = null
     val pages = mutableListOf<KWebPage>()
     var failure: Throwable? = null
     try {
-        exerciseDirectControls(service, window)
         val cdpPort = findFreePort()
         val liveEngine = KWebDesktop.openEngine(
             KWebDesktopEngineConfiguration(
@@ -86,8 +103,81 @@ public fun main() {
             ),
         )
         engine = liveEngine
-        liveEngine.nativeServices.install(KWebWindowControls.Key, service)
-        require(liveEngine.nativeServices.require(KWebWindowControls.Key) === service)
+        val servicesLibrary = requiredPath(SERVICES_LIBRARY_PROPERTY)
+        val providerConfiguration = KWebServiceProviderConfiguration(
+            target = KWebTarget.parse(currentTarget()),
+            ownerId = "window-controls-provider-fixture",
+            facts = setOf(
+                KWebCapabilityFact(
+                    id = "native-services-library",
+                    available = Files.isRegularFile(servicesLibrary),
+                ),
+            ),
+            providers = listOf(
+                KWebServiceProviderDeclaration(
+                    providerId = "app-paths.ffm-native",
+                    key = KWebAppPaths.Key,
+                    contractVersion = KWebAppPaths.DESCRIPTOR.version,
+                    scope = KWebAppPaths.DESCRIPTOR.scope,
+                    supportedTargets = KWebAppPaths.DESCRIPTOR.supportedTargets,
+                    requiredFacts = setOf("native-services-library"),
+                    dependencies = emptySet(),
+                    factory = { _ ->
+                        JvmKWebAppPaths.open(
+                            servicesLibrary,
+                            KWebAppPathsConfiguration(
+                                applicationId = "io.github.kwebshell.provider-fixture",
+                                applicationDataRoot = root.resolve("app-data").toString(),
+                                sessionDataRoot = root.resolve("session-data").toString(),
+                            ),
+                        )
+                    },
+                ),
+                KWebServiceProviderDeclaration(
+                    providerId = "window-controls.awt",
+                    key = KWebWindowControls.Key,
+                    contractVersion = KWebWindowControls.DESCRIPTOR.version,
+                    scope = KWebWindowControls.DESCRIPTOR.scope,
+                    supportedTargets = KWebWindowControls.DESCRIPTOR.supportedTargets,
+                    requiredFacts = emptySet(),
+                    dependencies = emptySet(),
+                    factory = { environment ->
+                        require(environment.scope == KWebWindowControls.DESCRIPTOR.scope)
+                        JvmKWebWindowControls.open(window)
+                    },
+                ),
+            ),
+        )
+        val catalogJson = KWebServiceProviderCatalog.of(providerConfiguration.catalog())
+        val providerReport = liveEngine.nativeServices.installProviders(providerConfiguration)
+        require(providerReport.startupOrder == listOf("app-paths", "window-controls")) {
+            "Provider startup order was not deterministic: ${providerReport.startupOrder}"
+        }
+        require(providerReport.providerOrder == listOf("app-paths.ffm-native", "window-controls.awt")) {
+            "Provider selection was not deterministic: ${providerReport.providerOrder}"
+        }
+        val service = liveEngine.nativeServices.require(KWebWindowControls.Key)
+        installedService = service
+        val appPaths = liveEngine.nativeServices.require(KWebAppPaths.Key)
+        installedAppPaths = appPaths
+        eventJob = eventScope.launch { service.events.collect(events::add) }
+        val resolvedUserData = runBlocking { appPaths.resolve(KWebAppPathKind.USER_DATA) }
+        require(resolvedUserData.path.isNotBlank() && resolvedUserData.source.isNotBlank()) {
+            "The provider-installed KWebAppPaths service did not resolve a real path."
+        }
+        val lifecycleReport = buildJsonObject {
+            put("schemaVersion", 1)
+            put("target", currentTarget())
+            put("ownerId", "window-controls-provider-fixture")
+            put("providerOrder", JsonArray(providerReport.providerOrder.map { JsonPrimitive(it) }))
+            put("startupOrder", JsonArray(providerReport.startupOrder.map { JsonPrimitive(it) }))
+            put("closeOrder", JsonArray(providerReport.startupOrder.asReversed().map { JsonPrimitive(it) }))
+            put("catalog", Json.parseToJsonElement(catalogJson))
+        }
+        Files.writeString(
+            root.resolve("provider-lifecycle-report.json"),
+            Json.encodeToString(JsonObject.serializer(), lifecycleReport) + "\n",
+        )
         val liveProfile = runBlocking { liveEngine.openProfile("window-controls") }
         profile = liveProfile
         val cdp = KWebExampleCdpClient(cdpPort, 30_000)
@@ -198,6 +288,9 @@ public fun main() {
         engine = null
         cdp.assertUnavailable()
         require(service.lifecycle.value == KWebLifecycleState.CLOSED)
+        require(installedAppPaths?.lifecycle?.value == KWebLifecycleState.CLOSED) {
+            "The provider-installed KWebAppPaths service did not close with the registry."
+        }
         require(onAwtThread { window.isDisplayable && window.isShowing }) {
             "Closing the Engine disposed the caller-owned ComposeWindow."
         }
@@ -229,11 +322,11 @@ public fun main() {
             failure = failure.append(error)
         }
         try {
-            service.close()
+            installedService?.close()
         } catch (error: Throwable) {
             failure = failure.append(error)
         }
-        runBlocking { eventJob.cancelAndJoin() }
+        runBlocking { eventJob?.cancelAndJoin() }
         eventScope.cancel()
         try {
             onAwtThread { window.dispose() }
@@ -400,3 +493,21 @@ private fun <T> onAwtThread(action: () -> T): T {
 private fun Throwable?.append(error: Throwable): Throwable = this?.also { current ->
     if (current !== error) current.addSuppressed(error)
 } ?: error
+
+
+private fun currentTarget(): String {
+    val operatingSystem = System.getProperty("os.name").lowercase(java.util.Locale.ROOT).let {
+        when {
+            it.startsWith("windows") -> "windows"
+            it.startsWith("mac") -> "macos"
+            it.startsWith("linux") -> "linux"
+            else -> error("Unsupported provider fixture operating system: $it")
+        }
+    }
+    val architecture = when (System.getProperty("os.arch").lowercase(java.util.Locale.ROOT)) {
+        "x86_64", "amd64" -> "x64"
+        "aarch64", "arm64" -> "arm64"
+        else -> error("Unsupported provider fixture architecture: ${System.getProperty("os.arch")}")
+    }
+    return "$operatingSystem-$architecture"
+}

@@ -9,6 +9,7 @@ import io.github.kingsword09.kwebshell.services.KWebServiceKey
 import io.github.kingsword09.kwebshell.services.KWebServiceOperationDescriptor
 import io.github.kingsword09.kwebshell.services.KWebServiceScope
 import io.github.kingsword09.kwebshell.services.KWebServiceVersion
+import io.github.kingsword09.kwebshell.services.KWebServiceVersionRange
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -101,7 +102,7 @@ public interface KWebWindowControls : KWebNativeService {
 
         public val Key: KWebServiceKey<KWebWindowControls> = object : KWebServiceKey<KWebWindowControls> {
             override val id: String = DESCRIPTOR.id
-            override val version: KWebServiceVersion = DESCRIPTOR.version
+            override val contract: KWebServiceVersionRange = KWebServiceVersionRange.exact(DESCRIPTOR.version)
         }
 
         private fun operation(id: String): KWebServiceOperationDescriptor = KWebServiceOperationDescriptor(

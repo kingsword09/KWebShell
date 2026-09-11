@@ -11,11 +11,54 @@ import io.github.kingsword09.kwebshell.service.windowcontrols.generated.WindowCo
 import io.github.kingsword09.kwebshell.service.windowcontrols.generated.WindowControlsBridgeHandler
 import io.github.kingsword09.kwebshell.service.windowcontrols.generated.WindowStateResponse
 import io.github.kingsword09.kwebshell.services.KWebServiceErrorCode
+import io.github.kingsword09.kwebshell.services.KWebServiceOperationDescriptor
 import io.github.kingsword09.kwebshell.services.KWebServicePermissionPolicy
+import io.github.kingsword09.kwebshell.services.KWebPolicySubject
+import io.github.kingsword09.kwebshell.services.policy.KWebPolicyDecision
+import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
 import kotlinx.coroutines.CancellationException
 
 public fun KWebWindowControls.bridgeDispatcher(
     policy: KWebServicePermissionPolicy,
+): KWebBridgeDispatcher = bridgeDispatcher { operationId ->
+    if (!policy.allows(KWebWindowControls.DESCRIPTOR.id, operationId)) {
+        throw KWebBridgeException(
+            code = KWebServiceErrorCode.PERMISSION_DENIED,
+            message = "The page is not granted '$operationId' on KWebWindowControls.",
+        )
+    }
+}
+
+public fun KWebWindowControls.bridgeDispatcher(
+    policyEngine: KWebServicePolicyEngine,
+    subject: KWebPolicySubject,
+): KWebBridgeDispatcher = bridgeDispatcher { operationId ->
+    authorizeOperation(policyEngine, subject, operationId)
+}
+
+private suspend fun authorizeOperation(
+    policyEngine: KWebServicePolicyEngine,
+    subject: KWebPolicySubject,
+    operationId: String,
+) {
+    val operation = KWebWindowControls.DESCRIPTOR.operations
+        .first { it.id == operationId }
+    val verdict = policyEngine.authorize(subject, KWebWindowControls.DESCRIPTOR.id, operation)
+    when (verdict.decision) {
+        KWebPolicyDecision.ALLOW -> Unit
+        KWebPolicyDecision.DENY -> throw KWebBridgeException(
+            code = verdict.reasonCode,
+            message = "The policy engine denied '$operationId' on KWebWindowControls.",
+        )
+        KWebPolicyDecision.PROMPT_REQUIRED -> throw KWebBridgeException(
+            code = KWebServicePolicyEngine.REASON_PROMPT,
+            message = "The policy engine requires explicit consent for '$operationId' on KWebWindowControls.",
+        )
+    }
+}
+
+private fun KWebWindowControls.bridgeDispatcher(
+    policyCheck: suspend (String) -> Unit,
 ): KWebBridgeDispatcher = WindowControlsBridgeDispatcher(
     object : WindowControlsBridgeHandler {
         override suspend fun getState(request: StateRequest): WindowStateResponse =
@@ -54,12 +97,7 @@ public fun KWebWindowControls.bridgeDispatcher(
             operationId: String,
             action: suspend () -> WindowStateResponse,
         ): WindowStateResponse {
-            if (!policy.allows(KWebWindowControls.DESCRIPTOR.id, operationId)) {
-                throw KWebBridgeException(
-                    code = KWebServiceErrorCode.PERMISSION_DENIED,
-                    message = "The page is not granted '$operationId' on KWebWindowControls.",
-                )
-            }
+            policyCheck(operationId)
             return try {
                 action()
             } catch (error: CancellationException) {

@@ -159,7 +159,7 @@ public interface KWebDialogs : KWebNativeService {
             operations = setOf(
                 operation("select-file"),
                 operation("read-file"),
-                operation("write-file"),
+                operation("write-file", requiresUserGesture = true),
                 operation("truncate-file"),
                 operation("close-file"),
             ),
@@ -172,11 +172,14 @@ public interface KWebDialogs : KWebNativeService {
             override val contract: KWebServiceVersionRange = KWebServiceVersionRange.exact(DESCRIPTOR.version)
         }
 
-        private fun operation(id: String): KWebServiceOperationDescriptor = KWebServiceOperationDescriptor(
+        private fun operation(
+            id: String,
+            requiresUserGesture: Boolean = false,
+        ): KWebServiceOperationDescriptor = KWebServiceOperationDescriptor(
             id = id,
             schemaVersion = 1,
             rendererPermission = "native.dialogs.$id",
-            requiresUserGesture = false,
+            requiresUserGesture = requiresUserGesture,
         )
     }
 }

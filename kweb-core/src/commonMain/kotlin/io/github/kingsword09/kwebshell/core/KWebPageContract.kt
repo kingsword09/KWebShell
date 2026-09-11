@@ -61,6 +61,9 @@ public interface KWebProfile : AutoCloseable {
 }
 
 public interface KWebPage : AutoCloseable {
+    /** Stable identity for policy binding (gesture tokens, audit subjects). */
+    public val id: String
+
     public val lifecycle: StateFlow<KWebLifecycleState>
     public val events: Flow<KWebPageEvent>
     public val profile: KWebProfile

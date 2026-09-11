@@ -7,23 +7,50 @@ import io.github.kingsword09.kwebshell.service.apppaths.generated.KWebAppPathsBr
 import io.github.kingsword09.kwebshell.service.apppaths.generated.ResolveRequest
 import io.github.kingsword09.kwebshell.service.apppaths.generated.ResolveResponse
 import io.github.kingsword09.kwebshell.service.apppaths.generated.KWebAppPathsBridgeDispatcher
+import io.github.kingsword09.kwebshell.services.KWebPolicySubject
 import io.github.kingsword09.kwebshell.services.KWebServiceErrorCode
-import io.github.kingsword09.kwebshell.services.KWebServiceGrant
+import io.github.kingsword09.kwebshell.services.KWebServiceOperationDescriptor
 import io.github.kingsword09.kwebshell.services.KWebServicePermissionPolicy
+import io.github.kingsword09.kwebshell.services.policy.KWebPolicyDecision
+import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
 import kotlinx.coroutines.CancellationException
 
 public fun KWebAppPaths.bridgeDispatcher(
     policy: KWebServicePermissionPolicy,
+): KWebBridgeDispatcher = bridgeDispatcher { _ ->
+    if (!policy.allows(KWebAppPaths.DESCRIPTOR.id, "resolve")) {
+        throw KWebBridgeException(
+            code = KWebServiceErrorCode.PERMISSION_DENIED,
+            message = "The page is not granted the KWebAppPaths resolve operation.",
+        )
+    }
+}
+
+public fun KWebAppPaths.bridgeDispatcher(
+    policyEngine: KWebServicePolicyEngine,
+    subject: KWebPolicySubject,
+): KWebBridgeDispatcher = bridgeDispatcher {
+    val operation = KWebAppPaths.DESCRIPTOR.operations.first { it.id == "resolve" }
+    val verdict = policyEngine.authorize(subject, KWebAppPaths.DESCRIPTOR.id, operation)
+    when (verdict.decision) {
+        KWebPolicyDecision.ALLOW -> Unit
+        KWebPolicyDecision.DENY -> throw KWebBridgeException(
+            code = verdict.reasonCode,
+            message = "The policy engine denied the KWebAppPaths resolve operation.",
+        )
+        KWebPolicyDecision.PROMPT_REQUIRED -> throw KWebBridgeException(
+            code = KWebServicePolicyEngine.REASON_PROMPT,
+            message = "The policy engine requires explicit consent for the KWebAppPaths resolve operation.",
+        )
+    }
+}
+
+private fun KWebAppPaths.bridgeDispatcher(
+    policyCheck: suspend (String) -> Unit,
 ): KWebBridgeDispatcher = KWebAppPathsBridgeDispatcher(
     object : KWebAppPathsBridgeHandler {
         override suspend fun resolve(request: ResolveRequest): ResolveResponse {
-            val grant = KWebServiceGrant(KWebAppPaths.DESCRIPTOR.id, "resolve")
-            if (!policy.allows(grant.serviceId, grant.operationId)) {
-                throw KWebBridgeException(
-                    code = KWebServiceErrorCode.PERMISSION_DENIED,
-                    message = "The page is not granted the KWebAppPaths resolve operation.",
-                )
-            }
+            policyCheck("resolve")
             val kind = try {
                 KWebAppPathKind.fromId(request.kind)
             } catch (error: Throwable) {

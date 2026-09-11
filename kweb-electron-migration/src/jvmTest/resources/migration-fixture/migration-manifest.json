@@ -20,7 +20,8 @@
       "serviceVersion": "1.0.0",
       "operationId": "resolve",
       "status": "ADAPTER",
-      "adapter": "APP_PATHS_GET_PATH"
+      "adapter": "APP_PATHS_GET_PATH",
+      "policy": {"rendererGrant": "native.app-paths.resolve", "requiresUserGesture": false, "requiresOsConsent": false}
     }
   ],
   "preloadMethods": [

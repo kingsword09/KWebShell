@@ -1838,6 +1838,26 @@ Implementation evidence as of 2026-09-12 (RFC 0002):
   provider lifecycle report (byte-identical modulo the target field, CI run
   34648487702) and the checked-in evidence records carry their digests.
 
+Implementation evidence as of 2026-09-12 (RFC 0003):
+
+- `kweb-services-core` publishes the policy engine: typed subjects, exact
+  renderer grants, single-use gesture tokens minted only from the native input
+  path and invalidated by navigation/expiry/owner close, OS consent providers
+  (Windows CapabilityAccessManager via FFM, macOS TCC via FFM, Linux portal
+  permission store), a durable per-scope consent store with observable
+  revocation, and an ordered, bounded, payload-free audit trail. Decisions are
+  `ALLOW`, `DENY`, or `PROMPT_REQUIRED` with no implicit allow.
+- The engine ABI (v8) forwards real browser-process keyboard input as an
+  input-gesture event; desktop pages mint tokens and invalidate them on
+  main-frame navigation and close. Service bridges on app-paths,
+  window-controls, and dialogs dispatch through the policy engine.
+- The hosted dialogs fixture proves the CEF contract: no gesture is denied, a
+  renderer-synthesized DOM event cannot mint one, a real OS keystroke grants
+  exactly one operation, replay is denied, navigation invalidates, and each
+  hosted target retains its real OS consent status. The migration validator
+  requires every ADAPTER channel to declare grant, gesture, and consent policy
+  before generation.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.

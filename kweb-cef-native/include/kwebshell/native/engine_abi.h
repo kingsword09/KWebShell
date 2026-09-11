@@ -52,6 +52,7 @@ typedef uint32_t kweb_extension_state_type;
 #define KWEB_BROWSER_EVENT_DEVTOOLS_OPENED ((kweb_browser_event_type)11)
 #define KWEB_BROWSER_EVENT_DEVTOOLS_CLOSED ((kweb_browser_event_type)12)
 #define KWEB_BROWSER_EVENT_DEVTOOLS_FAILED ((kweb_browser_event_type)13)
+#define KWEB_BROWSER_EVENT_INPUT_GESTURE ((kweb_browser_event_type)14)
 
 #define KWEB_BRIDGE_EVENT_REQUEST ((kweb_bridge_event_type)1)
 #define KWEB_BRIDGE_EVENT_CANCELLED ((kweb_bridge_event_type)2)

@@ -98,6 +98,7 @@ class KWebViewPlacementTest {
 }
 
 private class RecordingPage : KWebPage {
+    override val id: String = "recording-page"
     private val mutableLifecycle = MutableStateFlow(KWebLifecycleState.OPEN)
     var closeCalls: Int = 0
     var navigateCalls: Int = 0

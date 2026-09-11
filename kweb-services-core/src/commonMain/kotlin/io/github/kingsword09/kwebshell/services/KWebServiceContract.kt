@@ -56,6 +56,7 @@ public data class KWebServiceOperationDescriptor(
     public val schemaVersion: Int,
     public val rendererPermission: String?,
     public val requiresUserGesture: Boolean,
+    public val requiresOsConsent: Boolean = false,
 ) {
     init {
         if (!SERVICE_IDENTIFIER.matches(id)) {
@@ -145,6 +146,31 @@ public data class KWebServiceGrant(
                 code = "service.grant-invalid",
                 details = mapOf("service" to serviceId, "operation" to operationId),
                 message = "A native service grant must use stable identifiers.",
+            )
+        }
+    }
+}
+
+/**
+ * The typed subject of one privileged operation: who asks, from where, and
+ * through which frame. Host calls carry `hostCall = true` and bypass only the
+ * renderer grant and main-frame restriction.
+ */
+public data class KWebPolicySubject(
+    public val engineId: String,
+    public val profileId: String,
+    public val pageId: String,
+    public val origin: String,
+    public val scope: KWebServiceScope,
+    public val isMainFrame: Boolean = true,
+    public val hostCall: Boolean = false,
+) {
+    init {
+        if (engineId.isBlank() || profileId.isBlank() || pageId.isBlank() || origin.isBlank()) {
+            throw KWebConfigurationException(
+                code = "service.policy.subject-invalid",
+                details = mapOf("engine" to engineId, "profile" to profileId, "page" to pageId),
+                message = "A policy subject must identify the engine, profile, page, and origin.",
             )
         }
     }

@@ -54,6 +54,7 @@ internal enum class NativeBrowserEventType(val value: Int) {
     DEVTOOLS_OPENED(11),
     DEVTOOLS_CLOSED(12),
     DEVTOOLS_FAILED(13),
+    INPUT_GESTURE(14),
     ;
 
     companion object {

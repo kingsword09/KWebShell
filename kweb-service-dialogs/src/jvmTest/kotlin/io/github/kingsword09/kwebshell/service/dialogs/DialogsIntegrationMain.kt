@@ -12,8 +12,23 @@ import io.github.kingsword09.kwebshell.desktop.KWebDesktopEngine
 import io.github.kingsword09.kwebshell.desktop.KWebDesktopEngineConfiguration
 import io.github.kingsword09.kwebshell.example.support.KWebExampleCdpClient
 import io.github.kingsword09.kwebshell.example.support.KWebExampleCdpSession
+import io.github.kingsword09.kwebshell.core.KWebTarget
+import io.github.kingsword09.kwebshell.desktop.KWebPageDispatcherFactory
+import io.github.kingsword09.kwebshell.services.KWebCapabilityFact
+import io.github.kingsword09.kwebshell.services.KWebPolicySubject
 import io.github.kingsword09.kwebshell.services.KWebServiceGrant
 import io.github.kingsword09.kwebshell.services.KWebServicePermissionPolicy
+import io.github.kingsword09.kwebshell.services.KWebServiceScope
+import io.github.kingsword09.kwebshell.services.consent.KWebFileConsentStore
+import io.github.kingsword09.kwebshell.services.consent.LinuxPortalPermissionStoreConsentProvider
+import io.github.kingsword09.kwebshell.services.consent.MacOsTccConsentProvider
+import io.github.kingsword09.kwebshell.services.consent.WindowsCapabilityAccessConsentProvider
+import io.github.kingsword09.kwebshell.services.policy.KWebInMemoryConsentStore
+import io.github.kingsword09.kwebshell.services.policy.KWebUserGestureRegistry
+import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
+import java.awt.Robot
+import java.awt.event.InputEvent
+import java.awt.event.KeyEvent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -63,6 +78,8 @@ public fun main(): Unit = runBlocking {
     var failure: Throwable? = null
     try {
         val port = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
+        val gestures = KWebUserGestureRegistry()
+        val engineId = "engine-dialogs-fixture"
         val liveEngine = KWebDesktop.openEngine(KWebDesktopEngineConfiguration(
             cefRuntime = requiredPath("kweb.engine.cef.runtime.path"),
             browserSubprocess = requiredPath("kweb.engine.subprocess.path"),
@@ -71,6 +88,8 @@ public fun main(): Unit = runBlocking {
             rootCache = Files.createDirectories(root.resolve("profiles")),
             log = root.resolve("profiles/cef.log"),
             remoteDebuggingPort = port,
+            userGestureIssuer = gestures,
+            engineId = engineId,
         ))
         engine = liveEngine
         liveEngine.nativeServices.install(KWebDialogs.Key, service)
@@ -81,8 +100,30 @@ public fun main(): Unit = runBlocking {
         val grants = KWebServicePermissionPolicy.exact(KWebDialogs.DESCRIPTOR.operations.map {
             KWebServiceGrant(KWebDialogs.DESCRIPTOR.id, it.id)
         }.toSet())
+        val policyEngine = KWebServicePolicyEngine(
+            rendererGrants = grants,
+            gestures = gestures,
+            consentStore = KWebInMemoryConsentStore("dialogs-fixture"),
+            osConsent = null,
+            audit = io.github.kingsword09.kwebshell.services.policy.KWebPolicyAudit(),
+        )
         val allowed = liveProfile.openPage(
-            KWebDesktop.composeWindowHost(window, server.origin, service.bridgeDispatcher(grants)),
+            KWebDesktop.composeWindowHost(
+                window,
+                server.origin,
+                KWebPageDispatcherFactory { pageId ->
+                    service.bridgeDispatcher(
+                        policyEngine,
+                        KWebPolicySubject(
+                            engineId = engineId,
+                            profileId = "dialogs",
+                            pageId = pageId,
+                            origin = server.origin,
+                            scope = KWebServiceScope.APPLICATION,
+                        ),
+                    )
+                },
+            ),
             server.url, KWebRect(0, 0, 820, 550),
         )
         pages += allowed
@@ -101,11 +142,45 @@ public fun main(): Unit = runBlocking {
             check(read["bytes"]!!.jsonArray.size == KWEB_DIALOGS_MAX_TRANSFER_BYTES)
             check(read["bytes"]!!.jsonArray.all { it.jsonPrimitive.content == "255" })
             check(read["eof"]!!.jsonPrimitive.content == "true")
-            check(session.failureCode("DialogsBridge.createClient().writeFile({handle:${json(handle)},offset:'0',bytes:[1]})") == KWebDialogsErrorCode.HANDLE_MODE)
+            // The write-file operation is gated on a native-verified user gesture.
+            val writeFileOnReadHandle = "DialogsBridge.createClient().writeFile({handle:${json(handle)},offset:'0',bytes:[1]})"
+            check(session.failureCode(writeFileOnReadHandle) == "service.user-gesture-required") {
+                "A renderer call without a gesture must not reach the service."
+            }
+            // A renderer-synthesized DOM event cannot mint a gesture.
+            session.string(
+                "document.dispatchEvent(new KeyboardEvent('keydown', {key:'a'})); 'dispatched'",
+            )
+            check(session.failureCode(writeFileOnReadHandle) == "service.user-gesture-required") {
+                "A synthetic DOM event must never mint a user gesture."
+            }
+            // A real OS keystroke through the native input path mints one gesture.
+            sendGestureKeystroke(window)
+            check(session.failureCode(writeFileOnReadHandle) == KWebDialogsErrorCode.HANDLE_MODE) {
+                "The consumed gesture must carry the call to the service handler (handle-mode error)."
+            }
+            // The gesture was consumed once: a replay is denied.
+            check(session.failureCode(writeFileOnReadHandle) == "service.user-gesture-required")
+
+            // A main-frame navigation invalidates an outstanding gesture even
+            // when no renderer call consumed it first.
+            sendGestureKeystroke(window)
+            Thread.sleep(200)
+            val gestureNavUrl = "${server.url}?gesture-nav"
+            allowed.navigate(gestureNavUrl)
+            cdp.awaitPage(gestureNavUrl)
+            cdp.openPageSession(gestureNavUrl).use { navSession ->
+                navSession.awaitTrue("typeof DialogsBridge === 'object'")
+                check(navSession.failureCode(writeFileOnReadHandle) == "service.user-gesture-required") {
+                    "An outstanding gesture must be invalidated by a main-frame navigation."
+                }
+            }
 
             val saved = selectThroughRenderer(session, selector, KWebFileDialogMode.SAVE, output)
             val saveHandle = saved["handle"]!!.jsonPrimitive.content
             check(saveHandle != handle)
+            sendGestureKeystroke(window)
+            Thread.sleep(200)
             val written = session.json("DialogsBridge.createClient().writeFile({handle:${json(saveHandle)},offset:'0',bytes:Array($KWEB_DIALOGS_MAX_TRANSFER_BYTES).fill(255)})")
             check(written["written"]!!.jsonPrimitive.content == KWEB_DIALOGS_MAX_TRANSFER_BYTES.toString())
             check(session.json("DialogsBridge.createClient().truncateFile({handle:${json(saveHandle)},sizeBytes:'3'})")["sizeBytes"]!!.jsonPrimitive.content == "3")
@@ -179,7 +254,24 @@ public fun main(): Unit = runBlocking {
         cdp.assertUnavailable()
         check(onDialogsAwtThread { window.isShowing && window.isDisplayable })
         check(visibleWindows() == visibleWindows)
-        Files.writeString(root.resolve("passed.txt"), "Native selection, bounded IO, renderer abort, origins, permissions, and Engine shutdown passed.\n")
+        val osConsent = when (KWebTarget.parse(currentTargetId()).operatingSystem.id) {
+            "windows" -> WindowsCapabilityAccessConsentProvider("webcam")
+            "macos" -> MacOsTccConsentProvider("accessibility")
+            else -> LinuxPortalPermissionStoreConsentProvider("kwebshell-test")
+        }
+        val consentStatus = runCatching {
+            osConsent.status(
+                io.github.kingsword09.kwebshell.services.policy.KWebConsentRequest(
+                    KWebDialogs.DESCRIPTOR.id, "write-file", server.origin, osConsent.facility,
+                ),
+            )
+        }
+        Files.writeString(
+            evidence.resolve("consent-status.json"),
+            "{\"facility\": \"\${osConsent.facility}\", \"status\": \"\${consentStatus.getOrNull()}\", " +
+                "\"queriedThrough\": \"integration\", \"note\": \"real OS consent state, retained as-is\"}\n",
+        )
+        Files.writeString(root.resolve("passed.txt"), "Native selection, bounded IO, renderer gestures, origins, permissions, and Engine shutdown passed.\n")
         println("KWebShell dialogs passed real native selection and exact-origin CEF integration: $root")
     } catch (error: Throwable) {
         failure = error
@@ -197,6 +289,20 @@ public fun main(): Unit = runBlocking {
         }
     }
     failure?.let { throw it }
+}
+
+private fun sendGestureKeystroke(window: ComposeWindow) {
+    val robot = Robot()
+    robot.autoDelay = 40
+    robot.mouseMove(window.x + 410, window.y + 300)
+    robot.mousePress(InputEvent.BUTTON1_DOWN_MASK)
+    robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK)
+    Thread.sleep(150)
+    robot.keyPress(KeyEvent.VK_A)
+    robot.keyRelease(KeyEvent.VK_A)
+    // The keystroke reaches the browser-process input pipeline before any
+    // later CDP-driven bridge call; give the pipeline a bounded settle window.
+    Thread.sleep(300)
 }
 
 private suspend fun selectThroughRenderer(
@@ -230,6 +336,21 @@ private fun KWebExampleCdpSession.json(expression: String): JsonObject =
 
 private fun KWebExampleCdpSession.failureCode(expression: String): String =
     string("(async()=>{try{await ($expression);return 'unexpected-success'}catch(e){return e.code}})()")
+
+private fun currentTargetId(): String {
+    val operatingSystem = System.getProperty("os.name").lowercase().let {
+        when {
+            it.startsWith("windows") -> "windows"
+            it.startsWith("mac") -> "macos"
+            else -> "linux"
+        }
+    }
+    val architecture = when (System.getProperty("os.arch").lowercase()) {
+        "x86_64", "amd64" -> "x64"
+        else -> "arm64"
+    }
+    return "$operatingSystem-$architecture"
+}
 
 private fun json(value: String): String = Json.encodeToString(value)
 private fun requiredPath(name: String): Path = Path.of(requireNotNull(System.getProperty(name)) { "Missing $name" })

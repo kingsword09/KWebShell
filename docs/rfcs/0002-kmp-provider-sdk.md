@@ -1,6 +1,6 @@
 # RFC 0002: KMP native-service provider SDK and typed dependencies
 
-- Status: Implementing
+- Status: Implemented
 - Priority: P0
 - Owners: `kweb-services-core`, desktop provider integration
 - Depends on: RFC 0001

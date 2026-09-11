@@ -1833,9 +1833,10 @@ Implementation evidence as of 2026-09-12 (RFC 0002):
   ComposeWindow integration, proves deterministic selection and startup order,
   resolves a real path through the provider-installed native service, and
   writes a deterministic provider lifecycle report plus the packaged provider
-  catalog; CI retains that report on all three hosted targets. RFC 0002 flips
-  to `Implemented` once those reports land and its evidence records are
-  checked in.
+  catalog; CI retains that report on all three hosted targets. RFC 0002
+  reached `Implemented` on 2026-09-12: all three hosted jobs retained the
+  provider lifecycle report (byte-identical modulo the target field, CI run
+  34648487702) and the checked-in evidence records carry their digests.
 
 ## 12. Test Strategy
 

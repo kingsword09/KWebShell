@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordsSha256": "e74c3fb15c635e4fe5265295997cfe42e014aaa4d6443ff2899f0787eefe5aab",
+  "recordsSha256": "7e7f3cac8e19f530dff8b910178b230620b7bbb35fd117ad78d4603b9e63590b",
   "records": [
     {
       "rfcId": "0001",
@@ -62,6 +62,69 @@
         {
           "name": "governance-report",
           "sha256": "035cc0ca0a5a66dcf1b83c883c7ccc2b1bc031d1b1f57610202d12a941b2ba25"
+        }
+      ]
+    },
+    {
+      "rfcId": "0002",
+      "rfcStatus": "Implemented",
+      "serviceId": null,
+      "serviceVersion": null,
+      "schemaVersion": 1,
+      "providerId": "governance.hosted",
+      "target": "linux-x64",
+      "cefVersion": "151.3.16+gbe1e15d+chromium-151.0.7922.109",
+      "chromiumVersion": "151.0.7922.109",
+      "electronFixtureMajor": 44,
+      "testRunId": "34648487702",
+      "compatibilityStatus": "READY",
+      "matrixRowIds": [],
+      "artifacts": [
+        {
+          "name": "provider-lifecycle-report",
+          "sha256": "19d1b27083f80ebea83d8bf47903f51939473574dbc502ca726e5fbbece78aba"
+        }
+      ]
+    },
+    {
+      "rfcId": "0002",
+      "rfcStatus": "Implemented",
+      "serviceId": null,
+      "serviceVersion": null,
+      "schemaVersion": 1,
+      "providerId": "governance.hosted",
+      "target": "macos-arm64",
+      "cefVersion": "151.3.16+gbe1e15d+chromium-151.0.7922.109",
+      "chromiumVersion": "151.0.7922.109",
+      "electronFixtureMajor": 44,
+      "testRunId": "34648487702",
+      "compatibilityStatus": "READY",
+      "matrixRowIds": [],
+      "artifacts": [
+        {
+          "name": "provider-lifecycle-report",
+          "sha256": "99cd7b494dbfaaf30e2dcd33eff39f4c1c80793c930735a7f91beddf9f882a04"
+        }
+      ]
+    },
+    {
+      "rfcId": "0002",
+      "rfcStatus": "Implemented",
+      "serviceId": null,
+      "serviceVersion": null,
+      "schemaVersion": 1,
+      "providerId": "governance.hosted",
+      "target": "windows-x64",
+      "cefVersion": "151.3.16+gbe1e15d+chromium-151.0.7922.109",
+      "chromiumVersion": "151.0.7922.109",
+      "electronFixtureMajor": 44,
+      "testRunId": "34648487702",
+      "compatibilityStatus": "READY",
+      "matrixRowIds": [],
+      "artifacts": [
+        {
+          "name": "provider-lifecycle-report",
+          "sha256": "57d988b8d491cb49363ea8d261be3c4dcc61e60a101b388e6c0bbd9155531dca"
         }
       ]
     }

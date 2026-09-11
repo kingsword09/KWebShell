@@ -78,7 +78,7 @@ public fun main(): Unit = runBlocking {
     var failure: Throwable? = null
     try {
         val port = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
-        val gestures = KWebUserGestureRegistry()
+        val gestures = RecordingGestureIssuer()
         val engineId = "engine-dialogs-fixture"
         val liveEngine = KWebDesktop.openEngine(KWebDesktopEngineConfiguration(
             cefRuntime = requiredPath("kweb.engine.cef.runtime.path"),
@@ -156,6 +156,7 @@ public fun main(): Unit = runBlocking {
             }
             // A real OS keystroke through the native input path mints one gesture.
             sendGestureKeystroke(window)
+            var mintCount = awaitMint(gestures, 0)
             check(session.failureCode(writeFileOnReadHandle) == KWebDialogsErrorCode.HANDLE_MODE) {
                 "The consumed gesture must carry the call to the service handler (handle-mode error)."
             }
@@ -165,7 +166,7 @@ public fun main(): Unit = runBlocking {
             // A main-frame navigation invalidates an outstanding gesture even
             // when no renderer call consumed it first.
             sendGestureKeystroke(window)
-            Thread.sleep(200)
+            awaitMint(gestures, mintCount)
             val gestureNavUrl = "${server.url}?gesture-nav"
             allowed.navigate(gestureNavUrl)
             cdp.awaitPage(gestureNavUrl)
@@ -180,7 +181,7 @@ public fun main(): Unit = runBlocking {
             val saveHandle = saved["handle"]!!.jsonPrimitive.content
             check(saveHandle != handle)
             sendGestureKeystroke(window)
-            Thread.sleep(200)
+            awaitMint(gestures, mintCount)
             val written = session.json("DialogsBridge.createClient().writeFile({handle:${json(saveHandle)},offset:'0',bytes:Array($KWEB_DIALOGS_MAX_TRANSFER_BYTES).fill(255)})")
             check(written["written"]!!.jsonPrimitive.content == KWEB_DIALOGS_MAX_TRANSFER_BYTES.toString())
             check(session.json("DialogsBridge.createClient().truncateFile({handle:${json(saveHandle)},sizeBytes:'3'})")["sizeBytes"]!!.jsonPrimitive.content == "3")
@@ -289,6 +290,35 @@ public fun main(): Unit = runBlocking {
         }
     }
     failure?.let { throw it }
+}
+
+private class RecordingGestureIssuer(
+    private val delegate: KWebUserGestureRegistry = KWebUserGestureRegistry(),
+) : io.github.kingsword09.kwebshell.services.policy.KWebUserGestureIssuer {
+    val minted = java.util.concurrent.atomic.AtomicInteger(0)
+
+    override fun mint(binding: io.github.kingsword09.kwebshell.services.policy.KWebGestureBinding) =
+        delegate.mint(binding).also { minted.incrementAndGet() }
+
+    override fun consumeLatest(binding: io.github.kingsword09.kwebshell.services.policy.KWebGestureBinding) =
+        delegate.consumeLatest(binding)
+
+    override fun current(binding: io.github.kingsword09.kwebshell.services.policy.KWebGestureBinding) =
+        delegate.current(binding)
+
+    override fun invalidateNavigation(pageId: String) = delegate.invalidateNavigation(pageId)
+
+    override fun invalidatePage(pageId: String) = delegate.invalidatePage(pageId)
+}
+
+private fun awaitMint(issuer: RecordingGestureIssuer, previousCount: Int): Int {
+    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+    while (System.nanoTime() < deadline) {
+        val observed = issuer.minted.get()
+        if (observed > previousCount) return observed
+        Thread.sleep(25)
+    }
+    error("The native input path never minted a user gesture")
 }
 
 private fun sendGestureKeystroke(window: ComposeWindow) {

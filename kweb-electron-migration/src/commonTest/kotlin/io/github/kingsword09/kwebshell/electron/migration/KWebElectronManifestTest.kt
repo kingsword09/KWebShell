@@ -46,6 +46,25 @@ class KWebElectronManifestTest {
     }
 
     @Test
+    fun unpinnedOrInvalidElectronFixtureMajorFails() {
+        val missing = MANIFEST.replace("\"electronFixtureMajor\": 44,", "")
+        val missingFailure = assertFailsWith<KWebElectronMigrationException> {
+            KWebElectronMigrationJson.decode(missing)
+        }
+        assertEquals(KWebElectronMigrationErrorCode.MANIFEST_INVALID_JSON, missingFailure.code)
+
+        val zero = MANIFEST.replace("\"electronFixtureMajor\": 44", "\"electronFixtureMajor\": 0")
+        val zeroFailure = assertFailsWith<KWebElectronMigrationException> {
+            KWebElectronMigrationJson.decode(zero)
+        }
+        assertEquals(KWebElectronMigrationErrorCode.MANIFEST_INVALID, zeroFailure.code)
+        assertEquals(
+            "electronFixtureMajor",
+            zeroFailure.details["field"],
+        )
+    }
+
+    @Test
     fun unsafeRendererPathIsRejected() {
         val invalid = MANIFEST.replace("\"rendererRoot\": \"renderer\"", "\"rendererRoot\": \"../renderer\"")
         val failure = assertFailsWith<KWebElectronMigrationException> {
@@ -81,6 +100,7 @@ class KWebElectronManifestTest {
               "rendererRoot": "renderer",
               "rendererEntry": "index.html",
               "rendererSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+              "electronFixtureMajor": 44,
               "electronImports": [{"module":"electron","symbol":"contextBridge","status":"ADAPTER","matrixId":"context-bridge"}],
               "channels": [{"name":"app.getPath","schemaVersion":1,"requestType":"ElectronPathName","responseType":"string","serviceId":"app-paths","serviceVersion":"1.0.0","operationId":"resolve","status":"ADAPTER","adapter":"APP_PATHS_GET_PATH"}],
               "preloadMethods": [{"name":"getPath","channel":"app.getPath","parameterName":"name","parameterType":"ElectronPathName","returnType":"Promise<string>","status":"ADAPTER","adapter":"APP_PATHS_GET_PATH"}],

@@ -81,6 +81,7 @@ class KWebElectronInventoryContractTest {
           "rendererRoot":"renderer",
           "rendererEntry":"index.html",
           "rendererSha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "electronFixtureMajor":44,
           "electronImports":[
             {"module":"electron","symbol":"contextBridge","status":"ADAPTER","matrixId":"context-bridge"},
             {"module":"electron","symbol":"ipcRenderer","status":"ADAPTER","matrixId":"ipc-request"}

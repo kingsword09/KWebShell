@@ -64,6 +64,12 @@ public data class KWebElectronManifest(
     public val rendererRoot: String,
     public val rendererEntry: String,
     public val rendererSha256: String,
+    /**
+     * The pinned Electron major this fixture's API surface was surveyed against.
+     * The value participates in capability evidence and must be repinned with a new
+     * evidence revision when the fixture moves to a different Electron major.
+     */
+    public val electronFixtureMajor: Int,
     @SerialName("electronImports")
     public val electronImports: List<KWebElectronImport>,
     public val channels: List<KWebElectronChannel>,
@@ -154,6 +160,13 @@ public object KWebElectronManifestValidator {
         validateRelativePath(manifest.rendererEntry, "rendererEntry")
         if (!DIGEST.matches(manifest.rendererSha256)) {
             invalid("rendererSha256", manifest.rendererSha256, message = "The renderer digest must be lowercase SHA-256.")
+        }
+        if (manifest.electronFixtureMajor !in 1..999) {
+            invalid(
+                "electronFixtureMajor",
+                manifest.electronFixtureMajor.toString(),
+                message = "The Electron fixture major must be pinned between 1 and 999.",
+            )
         }
         if (manifest.channels.isEmpty() || manifest.preloadMethods.isEmpty()) {
             invalid("surface", message = "A migration manifest must declare at least one channel and preload method.")

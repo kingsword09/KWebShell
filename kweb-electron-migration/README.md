@@ -6,9 +6,11 @@ Node.js, install a universal `ipcRenderer`, or silently emulate unsupported
 APIs.
 
 The version-1 fixture maps the common `app.getPath(name)` preload call to the
-typed `KWebAppPaths` service. The manifest is the single source of truth for
-Electron imports, preload methods, channel schemas, required service versions,
-and renderer digest. The generator emits:
+typed `KWebAppPaths` service and pins the Electron major its API surface was
+surveyed against (`electronFixtureMajor: 44`, surveyed 2026-09-10). The manifest
+is the single source of truth for Electron imports, preload methods, channel
+schemas, required service versions, renderer digest, and the pinned Electron
+fixture major. The generator emits:
 
 - `KWebElectronPreload.ts` for strict TypeScript builds;
 - `KWebElectronPreload.d.ts` for renderer declarations; and

@@ -5,6 +5,7 @@
   "rendererRoot": "renderer",
   "rendererEntry": "renderer.ts",
   "rendererSha256": "cefbfa5f8441b596c76bbd38e32afa63beccf3387577fec0af47fba0f78a247a",
+  "electronFixtureMajor": 44,
   "electronImports": [
     { "module": "electron", "symbol": "contextBridge", "status": "ADAPTER", "matrixId": "context-bridge" },
     { "module": "electron", "symbol": "ipcRenderer", "status": "ADAPTER", "matrixId": "ipc-request" }

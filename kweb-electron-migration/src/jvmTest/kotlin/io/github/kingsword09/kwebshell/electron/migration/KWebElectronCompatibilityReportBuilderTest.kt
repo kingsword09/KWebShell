@@ -84,6 +84,7 @@ class KWebElectronCompatibilityReportBuilderTest {
           "rendererRoot":"renderer",
           "rendererEntry":"index.html",
           "rendererSha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "electronFixtureMajor":44,
           "electronImports":[{"module":"electron","symbol":"contextBridge","status":"ADAPTER","matrixId":"context-bridge"}],
           "channels":[{"name":"app.getPath","schemaVersion":1,"requestType":"ElectronPathName","responseType":"string","serviceId":"app-paths","serviceVersion":"1.0.0","operationId":"resolve","status":"ADAPTER","adapter":"APP_PATHS_GET_PATH"}],
           "preloadMethods":[{"name":"getPath","channel":"app.getPath","parameterName":"name","parameterType":"ElectronPathName","returnType":"Promise<string>","status":"ADAPTER","adapter":"APP_PATHS_GET_PATH"}],

@@ -83,6 +83,33 @@ Only one agent may move a given RFC to `Implementing`. Dependencies must already
 be `Implemented`, except when the same pull request supplies an inseparable
 private primitive and the RFC explicitly permits it.
 
+### Front matter schema
+
+Every RFC document declares exactly these machine-readable bullets before its
+first prose section: `Status`, `Priority`, `Owners`, `Depends on`,
+`Electron migration surface`, `Target mapping`, and optionally `Platform targets`
+(a comma-separated list of `macos`, `windows`, and `linux` for RFCs that are
+intentionally platform-specific). Unknown front-matter keys fail governance.
+
+## Evidence governance
+
+[RFC 0001](0001-program-governance.md) and
+[EVIDENCE.md](EVIDENCE.md) define the machine-readable capability evidence
+manifest, the `rfcGovernanceCheck` Gradle task, and the
+`ready`/`blocked`/`stale`/`platform-specific` report. The rules every RFC
+inherits:
+
+1. `Implemented` requires one current hosted evidence record per required target
+   (`macos-arm64`, `windows-x64`, `linux-x64`, or the RFC's declared platform
+   targets) in `docs/rfcs/evidence/manifest.json`.
+2. Evidence expires when a bound service contract or the pinned CEF/Chromium
+   identity changes; stale evidence is never support.
+3. The RFC catalog is the planning source. CI rejects a supported capability
+   matrix row that has neither a delivered Phase 11 prerequisite backing nor
+   current `Implemented`-RFC evidence.
+4. Documentation-only RFC pull requests run `git diff --check` and the schema
+   validator without the native matrix.
+
 ## Universal definition of done
 
 Every capability RFC inherits all gates below. Its own acceptance section adds

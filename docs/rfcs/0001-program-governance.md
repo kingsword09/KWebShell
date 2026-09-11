@@ -1,6 +1,6 @@
 # RFC 0001: RFC governance and capability evidence manifest
 
-- Status: Proposed
+- Status: Implementing
 - Priority: P0
 - Owners: repository governance, CI, documentation
 - Depends on: existing Phase 11 prerequisites

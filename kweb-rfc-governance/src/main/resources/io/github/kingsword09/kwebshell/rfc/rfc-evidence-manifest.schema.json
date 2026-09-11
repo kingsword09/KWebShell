@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kwebshell.dev/schemas/rfc-evidence-manifest-v1.json",
+  "title": "KWebShell RFC capability evidence manifest",
+  "description": "Machine-readable capability evidence for the KWebShell RFC program (RFC 0001). The deterministic Kotlin validator in kweb-rfc-governance is the enforcement engine; this packaged document is the versioned format contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "recordsSha256", "records"],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "recordsSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 over the compact canonical serialization of the sorted records array."
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rfcId",
+          "rfcStatus",
+          "serviceId",
+          "serviceVersion",
+          "schemaVersion",
+          "providerId",
+          "target",
+          "cefVersion",
+          "chromiumVersion",
+          "electronFixtureMajor",
+          "testRunId",
+          "compatibilityStatus",
+          "matrixRowIds",
+          "artifacts"
+        ],
+        "properties": {
+          "rfcId": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          },
+          "rfcStatus": {
+            "const": "Implemented"
+          },
+          "serviceId": {
+            "type": ["string", "null"],
+            "pattern": "^[a-z][a-z0-9.-]*$"
+          },
+          "serviceVersion": {
+            "type": ["string", "null"],
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+          },
+          "schemaVersion": {
+            "const": 1
+          },
+          "providerId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9.-]*$"
+          },
+          "target": {
+            "enum": ["macos-arm64", "windows-x64", "linux-x64"]
+          },
+          "cefVersion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "chromiumVersion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "electronFixtureMajor": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 999
+          },
+          "testRunId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+          },
+          "compatibilityStatus": {
+            "enum": ["READY", "BLOCKED"]
+          },
+          "matrixRowIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{1,63}$"
+            }
+          },
+          "artifacts": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 32,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "sha256"],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9.-]{0,63}$"
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

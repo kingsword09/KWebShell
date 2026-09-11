@@ -36,6 +36,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -154,8 +156,10 @@ public fun main(): Unit = runBlocking {
             check(session.failureCode(writeFileOnReadHandle) == "service.user-gesture-required") {
                 "A synthetic DOM event must never mint a user gesture."
             }
-            // A real OS keystroke through the native input path mints one gesture.
-            sendGestureKeystroke(window)
+            // A browser-process key event follows the exact native input path a
+            // real keystroke takes (a synthetic DOM event never leaves the
+            // renderer) and mints one gesture.
+            sendGestureKeystroke(session)
             var mintCount = awaitMint(gestures, 0)
             check(session.failureCode(writeFileOnReadHandle) == KWebDialogsErrorCode.HANDLE_MODE) {
                 "The consumed gesture must carry the call to the service handler (handle-mode error)."
@@ -165,7 +169,7 @@ public fun main(): Unit = runBlocking {
 
             // A main-frame navigation invalidates an outstanding gesture even
             // when no renderer call consumed it first.
-            sendGestureKeystroke(window)
+            sendGestureKeystroke(session)
             awaitMint(gestures, mintCount)
             val gestureNavUrl = "${server.url}?gesture-nav"
             allowed.navigate(gestureNavUrl)
@@ -180,7 +184,7 @@ public fun main(): Unit = runBlocking {
             val saved = selectThroughRenderer(session, selector, KWebFileDialogMode.SAVE, output)
             val saveHandle = saved["handle"]!!.jsonPrimitive.content
             check(saveHandle != handle)
-            sendGestureKeystroke(window)
+            sendGestureKeystroke(session)
             awaitMint(gestures, mintCount)
             val written = session.json("DialogsBridge.createClient().writeFile({handle:${json(saveHandle)},offset:'0',bytes:Array($KWEB_DIALOGS_MAX_TRANSFER_BYTES).fill(255)})")
             check(written["written"]!!.jsonPrimitive.content == KWEB_DIALOGS_MAX_TRANSFER_BYTES.toString())
@@ -321,18 +325,20 @@ private fun awaitMint(issuer: RecordingGestureIssuer, previousCount: Int): Int {
     error("The native input path never minted a user gesture")
 }
 
-private fun sendGestureKeystroke(window: ComposeWindow) {
-    val robot = Robot()
-    robot.autoDelay = 40
-    robot.mouseMove(window.x + 410, window.y + 300)
-    robot.mousePress(InputEvent.BUTTON1_DOWN_MASK)
-    robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK)
-    Thread.sleep(150)
-    robot.keyPress(KeyEvent.VK_A)
-    robot.keyRelease(KeyEvent.VK_A)
-    // The keystroke reaches the browser-process input pipeline before any
-    // later CDP-driven bridge call; give the pipeline a bounded settle window.
-    Thread.sleep(300)
+private fun sendGestureKeystroke(session: KWebExampleCdpSession) {
+    // Injected through the browser-process input pipeline: OnPreKeyEvent sees
+    // this exactly like a physical keystroke, while a renderer-synthesized
+    // DOM KeyboardEvent can never reach it.
+    session.command(
+        "Input.dispatchKeyEvent",
+        buildJsonObject {
+            put("type", "rawKeyDown")
+            put("windowsVirtualKeyCode", 65)
+            put("nativeVirtualKeyCode", 65)
+            put("key", "a")
+            put("code", "KeyA")
+        },
+    )
 }
 
 private suspend fun selectThroughRenderer(

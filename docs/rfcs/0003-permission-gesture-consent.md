@@ -1,6 +1,6 @@
 # RFC 0003: Native-service permission, user-gesture, consent, and audit policy
 
-- Status: Implementing
+- Status: Implemented
 - Priority: P0
 - Owners: `kweb-services-core`, `kweb-desktop`, service policy
 - Depends on: RFC 0001, RFC 0002

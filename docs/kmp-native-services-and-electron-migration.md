@@ -218,7 +218,31 @@ COM initialization is not permission to invoke another backend. The error must
 identify the service, operation, target, native status, and remediation without
 leaking private paths or native pointers to an untrusted renderer.
 
-### 4.4 Permission, gesture, consent, and audit policy
+### 4.4 Typed event, binary stream, and message-port bridges
+
+Request/response dispatch extends with generated, bounded, cancellable streams
+(one transport, one exact-origin policy — no event emitter, no generic message
+channel):
+
+- **One stream, one persistent query.** A renderer opens a declared stream as
+  one persistent bridge query on the same `__kwebBridgeQuery` transport. Every
+  frame is one response on that query; the stream ends through a declared
+  terminal frame, a typed failure, or the query being cancelled by navigation,
+  abort, owner close, or renderer termination.
+- **Declared contracts.** Schemas declare the request type, chunk type, binary
+  mode (base64 chunks bounded by `maxAggregateBytes`), renderer queue capacity,
+  and schema version. The generator emits a Kotlin `Flow` dispatcher, strict
+  TypeScript `AsyncIterable` with explicit `close()` and `AbortSignal`, and
+  browser JavaScript — deterministic and byte-for-byte reproducible.
+- **Backpressure is mandatory.** The renderer grants credits as it consumes;
+  the Kotlin publisher suspends on a credit gate instead of dropping,
+  unbounded-buffering, or silently truncating. Sequences start at 1, increase
+  per stream, and a broken sequence is a typed terminal error.
+- **Ownership.** A stream is bound to one Page main frame, committed origin,
+  and declared operation; acknowledgements carry the caller-declared stream id
+  and fail typed (`bridge.stream.ack-unknown-stream`) when the stream is gone.
+
+### 4.5 Permission, gesture, consent, and audit policy
 
 One policy engine decides every privileged browser and native-service
 operation. Each decision is `ALLOW`, `DENY`, or `PROMPT_REQUIRED`; there is no
@@ -245,7 +269,7 @@ OS consent, and persistent user decisions. Every outcome is audited.
 - **Audit records** are ordered, bounded, and closed-shape: they carry ids,
   codes, decisions, and consent status — never request or response payload.
 
-### 4.5 Provider SDK
+### 4.6 Provider SDK
 
 Application code installs services through explicit provider declarations, not
 through direct construction scattered across the host. A declaration names one

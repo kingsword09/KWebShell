@@ -89,6 +89,43 @@ public class BridgeGenerator public constructor() {
             require(method.request in typeNames) { "Unknown request type '${method.request}'." }
             require(method.response in typeNames) { "Unknown response type '${method.response}'." }
         }
+        val methodNames = schema.methods.mapTo(mutableSetOf()) { it.name }
+        val streamNames = mutableSetOf<String>()
+        schema.streams.forEach { stream ->
+            require(METHOD_NAME.matches(stream.name)) { "Invalid bridge stream name '${stream.name}'." }
+            require(stream.name !in KOTLIN_KEYWORDS) {
+                "Bridge stream name '${stream.name}' is a Kotlin keyword."
+            }
+            require(stream.name !in methodNames) {
+                "Bridge stream '${stream.name}' collides with a declared method."
+            }
+            require(stream.name !in streamNames) { "Duplicate stream name '${stream.name}'." }
+            streamNames += stream.name
+            require(stream.request in typeNames) { "Unknown stream request type '${stream.request}'." }
+            if (!stream.binary) {
+                require(stream.chunk in typeNames) { "Unknown stream chunk type '${stream.chunk}'." }
+                require(stream.maxAggregateBytes == null) {
+                    "A non-binary stream cannot declare maxAggregateBytes."
+                }
+            }
+            require(stream.capacity in 1..65536) {
+                "Stream '${stream.name}' capacity must be an integer from 1 through 65536."
+            }
+            require(stream.schemaVersion == 1) { "Only stream schema version 1 is supported." }
+            if (stream.maxAggregateBytes != null) {
+                require(stream.maxAggregateBytes >= 1) {
+                    "Stream '${stream.name}' maxAggregateBytes must be at least one byte."
+                }
+            }
+        }
+        streamNames.forEach { name ->
+            require((name + "Ack").length <= 64) {
+                "Stream '$name' acknowledgement method name exceeds 64 characters."
+            }
+            require((name + "Ack") !in methodNames) {
+                "Stream '$name' acknowledgement collides with a declared method."
+            }
+        }
     }
 
     private fun generateKotlin(schema: BridgeSchema): String = buildString {
@@ -98,10 +135,24 @@ public class BridgeGenerator public constructor() {
         appendLine("import io.github.kingsword09.kwebshell.bridge.KWebBridgeDispatcher")
         appendLine("import io.github.kingsword09.kwebshell.bridge.KWebBridgeException")
         appendLine("import io.github.kingsword09.kwebshell.bridge.KWebBridgeProtocol")
+        appendLine("import io.github.kingsword09.kwebshell.bridge.KWebBridgeRequest")
+        appendLine("import io.github.kingsword09.kwebshell.bridge.KWebStreamBridgeDispatcher")
+        appendLine("import io.github.kingsword09.kwebshell.bridge.KWebStreamBridgeErrorCode")
+        appendLine("import io.github.kingsword09.kwebshell.bridge.KWebStreamCreditGate")
+        appendLine("import io.github.kingsword09.kwebshell.bridge.KWebStreamFrame")
+        appendLine("import io.github.kingsword09.kwebshell.bridge.KWebStreamFrameKind")
+        appendLine("import io.github.kingsword09.kwebshell.bridge.KWebStreamFrameSink")
+        appendLine("import io.github.kingsword09.kwebshell.bridge.KWebStreamProtocol")
+        appendLine("import io.github.kingsword09.kwebshell.bridge.KWEB_STREAM_COMPLETED")
+        appendLine("import kotlinx.coroutines.CancellationException")
+        appendLine("import kotlinx.coroutines.flow.Flow")
         appendLine("import kotlinx.serialization.SerializationException")
         appendLine("import kotlinx.serialization.Serializable")
         appendLine("import kotlinx.serialization.decodeFromString")
         appendLine("import kotlinx.serialization.encodeToString")
+        appendLine("import kotlinx.serialization.json.buildJsonObject")
+        appendLine("import kotlinx.serialization.json.encodeToJsonElement")
+        appendLine("import kotlinx.serialization.json.put")
         appendLine()
         schema.types.forEach { type ->
             appendLine("@Serializable")
@@ -118,6 +169,20 @@ public class BridgeGenerator public constructor() {
         }
         appendLine("}")
         appendLine()
+        if (schema.streams.isNotEmpty()) {
+            appendLine("@kotlinx.serialization.Serializable")
+            appendLine("public class StreamAck(")
+            appendLine("    public val granted: Int,")
+            appendLine(")")
+            appendLine()
+            appendLine("public interface ${schema.namespace}StreamHandler {")
+            schema.streams.forEach { stream ->
+                val chunk = if (stream.binary) "ByteArray" else stream.chunk
+                appendLine("    public fun ${stream.name}(request: ${stream.request}): kotlinx.coroutines.flow.Flow<$chunk>")
+            }
+            appendLine("}")
+            appendLine()
+        }
         appendLine("public class ${schema.namespace}Dispatcher(")
         appendLine("    private val handler: ${schema.namespace}Handler,")
         appendLine(") : KWebBridgeDispatcher {")
@@ -148,6 +213,115 @@ public class BridgeGenerator public constructor() {
         appendLine("        )")
         appendLine("    }")
         appendLine("}")
+        append(generateKotlinStreams(schema))
+    }
+
+    /**
+     * Generates the typed stream dispatcher: one persistent-query stream per
+     * declared stream, credit-gated frame publication, and acknowledgement
+     * handling. Binary streams carry base64 chunks bounded by maxAggregateBytes.
+     */
+    private fun generateKotlinStreams(schema: BridgeSchema): String {
+        if (schema.streams.isEmpty()) return ""
+        return buildString {
+            appendLine()
+            appendLine("public class ${schema.namespace}StreamDispatcher(")
+            appendLine("    private val handler: ${schema.namespace}StreamHandler,")
+            appendLine(") : KWebStreamBridgeDispatcher {")
+            appendLine("    public override val streamMethods: Set<String> = setOf(")
+            schema.streams.forEach { stream -> appendLine("        \"${stream.name}\",") }
+            appendLine("    )")
+            appendLine()
+            appendLine("    public override val acknowledgedMethods: Set<String> = setOf(")
+            schema.streams.forEach { stream -> appendLine("        \"${stream.name}Ack\",") }
+            appendLine("    )")
+            appendLine()
+            appendLine("    public override fun capacity(method: String): Int = when (method) {")
+            schema.streams.forEach { stream ->
+                appendLine("        \"${stream.name}\" -> ${stream.capacity}")
+            }
+            appendLine("        else -> throw KWebBridgeException(")
+            appendLine("            code = KWebStreamBridgeErrorCode.ACK_UNKNOWN_STREAM,")
+            appendLine("            message = \"Unknown stream method '${'$'}method'.\",")
+            appendLine("        )")
+            appendLine("    }")
+            appendLine()
+            appendLine("    public override suspend fun acknowledge(request: KWebBridgeRequest, gate: KWebStreamCreditGate) {")
+            appendLine("        when (request.method) {")
+            schema.streams.forEach { stream ->
+                appendLine("            \"${stream.name}Ack\" -> gate.grant(decodePayload<StreamAck>(request.payload.toString()).granted)")
+            }
+            appendLine("            else -> throw KWebBridgeException(")
+            appendLine("                code = KWebStreamBridgeErrorCode.ACK_UNKNOWN_STREAM,")
+            appendLine("                message = \"Unknown stream acknowledgement '${'$'}{request.method}'.\",")
+            appendLine("            )")
+            appendLine("        }")
+            appendLine("    }")
+            appendLine()
+            appendLine("    public override suspend fun dispatchStream(")
+            appendLine("        request: KWebBridgeRequest,")
+            appendLine("        sink: KWebStreamFrameSink,")
+            appendLine("        gate: KWebStreamCreditGate,")
+            appendLine("    ) {")
+            appendLine("        when (request.method) {")
+            schema.streams.forEach { stream ->
+                val chunkType = if (stream.binary) "ByteArray" else stream.chunk
+                appendLine("            \"${stream.name}\" -> {")
+                appendLine("                val decoded = decodePayload<${stream.request}>(request.payload.toString())")
+                appendLine("                var sequence = 1L")
+                appendLine("                handler.${stream.name}(decoded).collect { chunk ->")
+                appendLine("                    if (!gate.acquire()) {")
+                appendLine("                        throw CancellationException(KWebStreamBridgeErrorCode.TRANSPORT_CLOSED)")
+                appendLine("                    }")
+                if (stream.binary) {
+                    appendLine("                    val payload = buildJsonObject {")
+                    appendLine("                        put(\"bytes\", java.util.Base64.getEncoder().encodeToString(chunk))")
+                    appendLine("                    }")
+                } else {
+                    appendLine("                    val payload = KWebBridgeProtocol.json.encodeToJsonElement(chunk)")
+                }
+                appendLine("                    sink.send(")
+                appendLine("                        KWebStreamProtocol.encode(")
+                appendLine("                            KWebStreamFrame(")
+                appendLine("                                version = KWebStreamProtocol.VERSION,")
+                appendLine("                                sequence = sequence,")
+                appendLine("                                kind = KWebStreamFrameKind.DATA,")
+                appendLine("                                payload = payload,")
+                appendLine("                            ),")
+                appendLine("                        ),")
+                appendLine("                    )")
+                appendLine("                    sequence += 1")
+                appendLine("                }")
+                appendLine("                sink.complete(")
+                appendLine("                    KWebStreamProtocol.encode(")
+                appendLine("                        KWebStreamFrame(")
+                appendLine("                            version = KWebStreamProtocol.VERSION,")
+                appendLine("                            sequence = 0,")
+                appendLine("                            kind = KWebStreamFrameKind.TERMINAL,")
+                appendLine("                            reason = KWEB_STREAM_COMPLETED,")
+                appendLine("                        ),")
+                appendLine("                    ),")
+                appendLine("                )")
+                appendLine("            }")
+            }
+            appendLine("            else -> throw KWebBridgeException(")
+            appendLine("                code = \"bridge.method.unknown\",")
+            appendLine("                message = \"Unknown stream method '${'$'}{request.method}'.\",")
+            appendLine("            )")
+            appendLine("        }")
+            appendLine("    }")
+            appendLine()
+            appendLine("    private inline fun <reified T> decodePayload(payload: String): T = try {")
+            appendLine("        KWebBridgeProtocol.json.decodeFromString<T>(payload)")
+            appendLine("    } catch (error: SerializationException) {")
+            appendLine("        throw KWebBridgeException(")
+            appendLine("            code = \"service.request-invalid\",")
+            appendLine("            message = \"The stream request payload is invalid.\",")
+            appendLine("            cause = error,")
+            appendLine("        )")
+            appendLine("    }")
+            appendLine("}")
+        }
     }
 
     private fun generateTypescript(schema: BridgeSchema): String = buildString {
@@ -172,9 +346,24 @@ public class BridgeGenerator public constructor() {
         appendLine("  }")
         appendLine("}")
         appendLine()
+        if (schema.streams.isNotEmpty()) {
+            appendLine("export interface KWebBridgeStreamCallOptions {")
+            appendLine("  readonly signal?: AbortSignal;")
+            appendLine("  readonly idleTimeoutMs?: number;")
+            appendLine("}")
+            appendLine()
+            appendLine("export interface KWebBridgeStream<Chunk> extends AsyncIterable<Chunk> {")
+            appendLine("  readonly close: () => void;")
+            appendLine("}")
+            appendLine()
+        }
         appendLine("export interface ${schema.namespace}Client {")
         schema.methods.forEach { method ->
             appendLine("  ${method.name}(request: ${method.request}, options?: KWebBridgeCallOptions): Promise<${method.response}>;")
+        }
+        schema.streams.forEach { stream ->
+            val chunk = if (stream.binary) "{ bytes: string }" else stream.chunk
+            appendLine("  open${stream.name.replaceFirstChar { it.uppercaseChar() }}(request: ${stream.request}, options?: KWebBridgeStreamCallOptions): KWebBridgeStream<$chunk>;")
         }
         appendLine("}")
         appendLine()
@@ -182,7 +371,7 @@ public class BridgeGenerator public constructor() {
         appendLine("  interface Window {")
         appendLine("    __kwebBridgeQuery(options: {")
         appendLine("      request: string;")
-        appendLine("      persistent: false;")
+        appendLine("      persistent: boolean;")
         appendLine("      onSuccess(response: string): void;")
         appendLine("      onFailure(errorCode: number, errorMessage: string): void;")
         appendLine("    }): number;")
@@ -209,7 +398,11 @@ public class BridgeGenerator public constructor() {
         schema.methods.forEach { method ->
             appendLine("    ${method.name}: (request, options) => invoke(\"${method.name}\", request, options),")
         }
+        schema.streams.forEach { stream ->
+            appendLine("    open${stream.name.replaceFirstChar { it.uppercaseChar() }}: (request, options) => openStream(\"${stream.name}\", \"${stream.name}Ack\", request, ${stream.capacity}, ${stream.binary.toString()}, ${stream.maxAggregateBytes?.toString() ?: "null"}, options),")
+        }
         appendLine("  });")
+        append(generateBrowserStreamJavascript(schema))
         appendLine("  Object.defineProperty(globalThis, \"${schema.namespace}\", {")
         appendLine("    configurable: false,")
         appendLine("    enumerable: false,")
@@ -281,8 +474,16 @@ public class BridgeGenerator public constructor() {
                     "invoke<${method.response}>(\"${method.name}\", request, options),",
             )
         }
+        schema.streams.forEach { stream ->
+            appendLine(
+                "    open${stream.name.replaceFirstChar { it.uppercaseChar() }}: (request: ${stream.request}, options?: KWebBridgeStreamCallOptions) => " +
+                    "openStream<${if (stream.binary) "{ bytes: string }" else stream.chunk}>(\"${stream.name}\", \"${stream.name}Ack\", request, ${stream.capacity}, ${stream.binary.toString()}, " +
+                    "${stream.maxAggregateBytes?.toString() ?: "null"}, options),",
+            )
+        }
         appendLine("  });")
         appendLine("}")
+        append(typescriptStreamRuntime(schema))
     }.trimEnd()
 
     private fun javascriptInvokeFunction(): String = """
@@ -340,6 +541,131 @@ public class BridgeGenerator public constructor() {
           });
         }
     """.trimIndent()
+
+    private fun generateBrowserStreamJavascript(schema: BridgeSchema): String {
+        if (schema.streams.isEmpty()) return ""
+        return buildString {
+            appendLine()
+            appendLine("  let kwebStreamCounter = 0;")
+            appendLine("  const openStream = (method, ackMethod, payload, capacity, binary, maxAggregateBytes, options = {}) => {")
+            appendLine("    const streamId = ++kwebStreamCounter;")
+            appendLine("    const frames = [];")
+            appendLine("    const errors = [];")
+            appendLine("    let done = false;")
+            appendLine("    let queryId = 0;")
+            appendLine("    let expected = 0;")
+            appendLine("    let aggregate = 0;")
+            appendLine("    let sinceAck = 0;")
+            appendLine("    let notify = null;")
+            appendLine("    let idleTimer = null;")
+            appendLine("    const batchSize = Math.max(1, Math.floor(capacity / 2));")
+            appendLine("    const wake = () => { const waiting = notify; notify = null; if (waiting) waiting(); };")
+            appendLine("    const close = () => {")
+            appendLine("      if (done) return;")
+            appendLine("      done = true;")
+            appendLine("      if (idleTimer !== null) clearTimeout(idleTimer);")
+            appendLine("      if (queryId !== 0) globalThis.__kwebBridgeCancel(queryId);")
+            appendLine("      wake();")
+            appendLine("    };")
+            appendLine("    const terminate = (code, message) => {")
+            appendLine("      if (done) return;")
+            appendLine("      done = true;")
+            appendLine("      if (idleTimer !== null) clearTimeout(idleTimer);")
+            appendLine("      if (queryId !== 0) globalThis.__kwebBridgeCancel(queryId);")
+            appendLine("      errors.push(new KWebBridgeError(code, message));")
+            appendLine("      wake();")
+            appendLine("    };")
+            appendLine("    const ack = () => {")
+            appendLine("      if (sinceAck <= 0) return;")
+            appendLine("      const granted = sinceAck;")
+            appendLine("      sinceAck = 0;")
+            appendLine("      globalThis.__kwebBridgeQuery({")
+            appendLine("        request: JSON.stringify({ version: 1, method: ackMethod, payload: { granted }, streamId }),")
+            appendLine("        persistent: false,")
+            appendLine("        onSuccess: () => {},")
+            appendLine("        onFailure: () => {},")
+            appendLine("      });")
+            appendLine("    };")
+            appendLine("    const armIdle = () => {")
+            appendLine("      if (idleTimer !== null) clearTimeout(idleTimer);")
+            appendLine("      const idle = options.idleTimeoutMs;")
+            appendLine("      if (idle === undefined) return;")
+            appendLine("      idleTimer = setTimeout(() => terminate(\"bridge.stream.idle-timeout\", \"The stream received no frame within the idle timeout.\"), idle);")
+            appendLine("    };")
+            appendLine("    const onSuccess = response => {")
+            appendLine("      if (done) return;")
+            appendLine("      let frame;")
+            appendLine("      try { frame = JSON.parse(response); }")
+            appendLine("      catch { terminate(\"bridge.stream.frame-invalid\", \"The stream frame is not valid JSON.\"); return; }")
+            appendLine("      if (frame.kind === \"terminal\") {")
+            appendLine("        done = true;")
+            appendLine("        if (idleTimer !== null) clearTimeout(idleTimer);")
+            appendLine("        if (frame.reason !== undefined && frame.reason !== \"bridge.stream.completed\") {")
+            appendLine("          errors.push(new KWebBridgeError(frame.reason, \"The stream ended with a terminal result.\"));")
+            appendLine("        }")
+            appendLine("        wake();")
+            appendLine("        return;")
+            appendLine("      }")
+            appendLine("      if (frame.sequence !== expected + 1) {")
+            appendLine("        terminate(\"bridge.stream.sequence-invalid\", \"The stream frame sequence is not contiguous.\");")
+            appendLine("        return;")
+            appendLine("      }")
+            appendLine("      expected = frame.sequence;")
+            appendLine("      if (binary) {")
+            appendLine("        aggregate += (frame.payload && frame.payload.bytes ? frame.payload.bytes.length : 0);")
+            appendLine("        if (maxAggregateBytes !== null && aggregate > maxAggregateBytes) {")
+            appendLine("          terminate(\"bridge.stream.aggregate-exceeded\", \"The stream exceeded its maximum aggregate size.\");")
+            appendLine("          return;")
+            appendLine("        }")
+            appendLine("      }")
+            appendLine("      frames.push({ sequence: frame.sequence, payload: frame.payload });")
+            appendLine("      armIdle();")
+            appendLine("      wake();")
+            appendLine("    };")
+            appendLine("    const onFailure = (_errorCode, errorMessage) => {")
+            appendLine("      if (done) return;")
+            appendLine("      let failure = {};")
+            appendLine("      try { failure = JSON.parse(errorMessage); } catch { failure = {}; }")
+            appendLine("      done = true;")
+            appendLine("      if (idleTimer !== null) clearTimeout(idleTimer);")
+            appendLine("      if ((failure.code || \"\") !== \"bridge.stream.completed\") {")
+            appendLine("        errors.push(new KWebBridgeError(failure.code || \"bridge.transport.failed\", failure.message || errorMessage));")
+            appendLine("      }")
+            appendLine("      wake();")
+            appendLine("    };")
+            appendLine("    queryId = globalThis.__kwebBridgeQuery({")
+            appendLine("      request: JSON.stringify({ version: 1, method, payload, streamId }),")
+            appendLine("      persistent: true,")
+            appendLine("      onSuccess,")
+            appendLine("      onFailure,")
+            appendLine("    });")
+            appendLine("    armIdle();")
+            appendLine("    if (options.signal !== undefined) {")
+            appendLine("      if (options.signal.aborted) close();")
+            appendLine("      else options.signal.addEventListener(\"abort\", close, { once: true });")
+            appendLine("    }")
+            appendLine("    const next = () => new Promise((resolve, reject) => {")
+            appendLine("      const step = () => {")
+            appendLine("        if (errors.length > 0) { reject(errors.shift()); return; }")
+            appendLine("        if (frames.length > 0) {")
+            appendLine("          const frame = frames.shift();")
+            appendLine("          sinceAck += 1;")
+            appendLine("          if (sinceAck >= batchSize) ack();")
+            appendLine("          resolve({ done: false, value: binary ? frame.payload.bytes : frame.payload });")
+            appendLine("          return;")
+            appendLine("        }")
+            appendLine("        if (done) { resolve({ done: true, value: undefined }); return; }")
+            appendLine("        notify = step;")
+            appendLine("      };")
+            appendLine("      step();")
+            appendLine("    });")
+            appendLine("    return {")
+            appendLine("      close,")
+            appendLine("      [Symbol.asyncIterator]() { return { next }; },")
+            appendLine("    };")
+            appendLine("  };")
+        }
+    }
 
     private fun kotlinType(field: BridgeField): String {
         val base = KOTLIN_TYPES[field.type] ?: field.type
@@ -409,3 +735,149 @@ public class BridgeGenerator public constructor() {
         )
     }
 }
+
+    /**
+     * The generated stream runtime: one persistent query per open stream, an
+     * ordered credit-acknowledged async queue, declared terminal frames, and
+     * explicit close()/AbortSignal handling. There is no generic postMessage
+     * and no Node Buffer: binary chunks are base64 strings.
+     */
+    private fun typescriptStreamRuntime(schema: BridgeSchema): String {
+        if (schema.streams.isEmpty()) return ""
+        return buildString {
+        appendLine()
+        appendLine("const KWEB_STREAM_COMPLETED = \"bridge.stream.completed\";")
+        appendLine()
+        appendLine("function openStream<Chunk>(")
+        appendLine("  method: string,")
+        appendLine("  ackMethod: string,")
+        appendLine("  payload: unknown,")
+        appendLine("  capacity: number,")
+        appendLine("  binary: boolean,")
+        appendLine("  maxAggregateBytes: number | null,")
+        appendLine("  options: KWebBridgeStreamCallOptions = {},")
+        appendLine("): KWebBridgeStream<Chunk> {")
+        appendLine("  const frames: Array<{ seq: number; payload?: unknown }> = [];")
+        appendLine("  const errors: KWebBridgeError[] = [];")
+        appendLine("  const streamId = ++kwebStreamCounter;")
+        appendLine("  let done = false;")
+        appendLine("  let queryId = 0;")
+        appendLine("  let expected = 0;")
+        appendLine("  let aggregate = 0;")
+        appendLine("  let sinceAck = 0;")
+        appendLine("  let notify: (() => void) | null = null;")
+        appendLine("  let idleTimer: ReturnType<typeof setTimeout> | null = null;")
+        appendLine("  const batchSize = Math.max(1, Math.floor(capacity / 2));")
+        appendLine("  const wake = (): void => {")
+        appendLine("    const waiting = notify;")
+        appendLine("    notify = null;")
+        appendLine("    waiting?.();")
+        appendLine("  };")
+        appendLine("  const close = (): void => {")
+        appendLine("    if (done) return;")
+        appendLine("    done = true;")
+        appendLine("    if (idleTimer !== null) clearTimeout(idleTimer);")
+        appendLine("    if (queryId !== 0) window.__kwebBridgeCancel(queryId);")
+        appendLine("    wake();")
+        appendLine("  };")
+        appendLine("  const terminate = (code: string, message: string): void => {")
+        appendLine("    if (done) return;")
+        appendLine("    done = true;")
+        appendLine("    if (idleTimer !== null) clearTimeout(idleTimer);")
+        appendLine("    if (queryId !== 0) window.__kwebBridgeCancel(queryId);")
+        appendLine("    errors.push(new KWebBridgeError(code, message));")
+        appendLine("    wake();")
+        appendLine("  };")
+        appendLine("  const ack = (): void => {")
+        appendLine("    if (sinceAck <= 0) return;")
+        appendLine("    const granted = sinceAck;")
+        appendLine("    sinceAck = 0;")
+        appendLine("    window.__kwebBridgeQuery({")
+        appendLine("      request: JSON.stringify({ version: 1, method: ackMethod, payload: { granted }, streamId }),")
+        appendLine("      persistent: false,")
+        appendLine("      onSuccess: () => {},")
+        appendLine("      onFailure: () => {},")
+        appendLine("    });")
+        appendLine("  };")
+        appendLine("  const armIdle = (): void => {")
+        appendLine("    if (idleTimer !== null) clearTimeout(idleTimer);")
+        appendLine("    const idle = options.idleTimeoutMs;")
+        appendLine("    if (idle === undefined) return;")
+        appendLine("    idleTimer = setTimeout(() => terminate(\"bridge.stream.idle-timeout\", \"The stream received no frame within the idle timeout.\"), idle);")
+        appendLine("  };")
+        appendLine("  const onSuccess = (response: string): void => {")
+        appendLine("    if (done) return;")
+        appendLine("    let frame: { kind?: string; seq?: number; payload?: { bytes?: string }; reason?: string };")
+        appendLine("    try { frame = JSON.parse(response); }")
+        appendLine("    catch { terminate(\"bridge.stream.frame-invalid\", \"The stream frame is not valid JSON.\"); return; }")
+        appendLine("    if (frame.kind === \"terminal\") {")
+        appendLine("      done = true;")
+        appendLine("      if (idleTimer !== null) clearTimeout(idleTimer);")
+        appendLine("      if (frame.reason !== undefined && frame.reason !== KWEB_STREAM_COMPLETED) {")
+        appendLine("        errors.push(new KWebBridgeError(frame.reason, \"The stream ended with a terminal result.\"));")
+        appendLine("      }")
+        appendLine("      wake();")
+        appendLine("      return;")
+        appendLine("    }")
+        appendLine("    if (frame.sequence !== expected + 1) {")
+        appendLine("      terminate(\"bridge.stream.sequence-invalid\", \"The stream frame sequence is not contiguous.\");")
+        appendLine("      return;")
+        appendLine("    }")
+        appendLine("    expected = frame.sequence;")
+        appendLine("    if (binary) {")
+        appendLine("      aggregate += frame.payload?.bytes?.length ?? 0;")
+        appendLine("      if (maxAggregateBytes !== null && aggregate > maxAggregateBytes) {")
+        appendLine("        terminate(\"bridge.stream.aggregate-exceeded\", \"The stream exceeded its maximum aggregate size.\");")
+        appendLine("        return;")
+        appendLine("      }")
+        appendLine("    }")
+        appendLine("    frames.push({ sequence: frame.sequence, payload: frame.payload });")
+        appendLine("    armIdle();")
+        appendLine("    wake();")
+        appendLine("  };")
+        appendLine("  const onFailure = (_errorCode: number, errorMessage: string): void => {")
+        appendLine("    if (done) return;")
+        appendLine("    let failure: { code?: string; message?: string } = {};")
+        appendLine("    try { failure = JSON.parse(errorMessage); } catch { failure = {}; }")
+        appendLine("    done = true;")
+        appendLine("    if (idleTimer !== null) clearTimeout(idleTimer);")
+        appendLine("    if ((failure.code ?? \"\") !== KWEB_STREAM_COMPLETED) {")
+        appendLine("      errors.push(new KWebBridgeError(failure.code ?? \"bridge.transport.failed\", failure.message ?? errorMessage));")
+        appendLine("    }")
+        appendLine("    wake();")
+        appendLine("  };")
+        appendLine("  queryId = window.__kwebBridgeQuery({")
+        appendLine("    request: JSON.stringify({ version: 1, method, payload, streamId }),")
+        appendLine("    persistent: true,")
+        appendLine("    onSuccess,")
+        appendLine("    onFailure,")
+        appendLine("  });")
+        appendLine("  armIdle();")
+        appendLine("  if (options.signal !== undefined) {")
+        appendLine("    if (options.signal.aborted) close();")
+        appendLine("    else options.signal.addEventListener(\"abort\", close, { once: true });")
+        appendLine("  }")
+        appendLine("  const next = (): Promise<IteratorResult<Chunk>> => new Promise((resolve, reject) => {")
+        appendLine("    const step = (): void => {")
+        appendLine("      if (errors.length > 0) { reject(errors.shift()!); return; }")
+        appendLine("      if (frames.length > 0) {")
+        appendLine("        const frame = frames.shift()!;")
+        appendLine("        sinceAck += 1;")
+        appendLine("        if (sinceAck >= batchSize) ack();")
+        appendLine("        resolve({ done: false, value: (binary ? (frame.payload as { bytes: string }) : frame.payload) as Chunk });")
+        appendLine("        return;")
+        appendLine("      }")
+        appendLine("      if (done) { resolve({ done: true, value: undefined }); return; }")
+        appendLine("      notify = step;")
+        appendLine("    };")
+        appendLine("    step();")
+        appendLine("  });")
+        appendLine("  return {")
+        appendLine("    close,")
+        appendLine("    [Symbol.asyncIterator]() {")
+        appendLine("      return { next };")
+        appendLine("    },")
+        appendLine("  };")
+        appendLine("}")
+        }
+    }

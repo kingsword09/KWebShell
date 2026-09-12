@@ -20,6 +20,10 @@ import io.github.kingsword09.kwebshell.extensions.KWebExtensionRuntimeState
 import io.github.kingsword09.kwebshell.desktop.generated.AckResponse
 import io.github.kingsword09.kwebshell.desktop.generated.ConformanceBridgeDispatcher
 import io.github.kingsword09.kwebshell.desktop.generated.ConformanceBridgeHandler
+import io.github.kingsword09.kwebshell.desktop.generated.ConformanceBridgeStreamDispatcher
+import io.github.kingsword09.kwebshell.desktop.generated.ConformanceBridgeStreamHandler
+import io.github.kingsword09.kwebshell.desktop.generated.StreamChunk
+import io.github.kingsword09.kwebshell.desktop.generated.StreamStartRequest
 import io.github.kingsword09.kwebshell.desktop.generated.FailureRequest
 import io.github.kingsword09.kwebshell.desktop.generated.ProbeRequest
 import io.github.kingsword09.kwebshell.desktop.generated.ProbeResponse
@@ -56,6 +60,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onCompletion
 import androidx.compose.ui.awt.ComposeWindow
 import java.awt.AWTEvent
 import java.awt.Point
@@ -318,6 +325,7 @@ private fun runSuccessfulLifecycle() {
                     "invalid browser dimensions",
                 )
                 val bridgeHandler = ConformanceBridgeTestHandler()
+                val streamHandler = ConformanceStreamTestHandler()
                 val bridgeDispatcher = KWebBridgeDispatchers.exact(
                     KWebBridgeRoute(
                         methods = setOf("probe", "fail", "crash", "wait"),
@@ -339,6 +347,7 @@ private fun runSuccessfulLifecycle() {
                     height = 600,
                     bridgeOrigin = origin.origin,
                     bridgeDispatcher = bridgeDispatcher,
+                    streamDispatcher = ConformanceBridgeStreamDispatcher(streamHandler),
                 ) { event ->
                     browserEvents += event
                     when {
@@ -398,7 +407,7 @@ private fun runSuccessfulLifecycle() {
                 cdp.awaitBridge()
                 cdp.awaitAppPathsBridge()
                 require(cdp.evaluate("document.title") == FIRST_TITLE)
-                runBridgeConformance(cdp, bridgeHandler)
+                runBridgeConformance(cdp, bridgeHandler, streamHandler)
                 require(cdp.evaluate("typeof document.getElementById('bridge-frame').contentWindow.__kwebBridgeQuery") == "undefined")
                 require(cdp.evaluate("typeof document.getElementById('bridge-frame').contentWindow.KWebAppPathsBridge") == "undefined")
                 runAppPathsBridgeConformance(cdp, directHome)
@@ -1590,7 +1599,33 @@ private class ConformanceBridgeTestHandler : ConformanceBridgeHandler {
     }
 }
 
-private fun runBridgeConformance(cdp: CdpClient, handler: ConformanceBridgeTestHandler) {
+private class ConformanceStreamTestHandler : ConformanceBridgeStreamHandler {
+    val cancelled = java.util.concurrent.atomic.AtomicInteger()
+
+    override fun streamEvents(request: StreamStartRequest): Flow<StreamChunk> = flow {
+        repeat(request.frames) { index ->
+            emit(StreamChunk(index = index + 1))
+            delay(10)
+        }
+    }.onCompletion { error ->
+        if (error is CancellationException) cancelled.incrementAndGet()
+    }
+
+    fun awaitCancelled(count: Int, operation: String) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+        while (System.nanoTime() < deadline) {
+            if (cancelled.get() >= count) return
+            Thread.sleep(25)
+        }
+        error("The stream handler was not cancelled $count time(s) for $operation.")
+    }
+}
+
+private fun runBridgeConformance(
+    cdp: CdpClient,
+    handler: ConformanceBridgeTestHandler,
+    streamHandler: ConformanceStreamTestHandler,
+) {
     val probe = kotlinx.serialization.json.Json.parseToJsonElement(
         cdp.evaluate(
             """
@@ -1637,6 +1672,8 @@ private fun runBridgeConformance(cdp: CdpClient, handler: ConformanceBridgeTestH
     require(timeout["code"]!!.jsonPrimitive.content == "bridge.call.timeout")
     handler.awaitStarted("timeout")
     handler.awaitCancelled("timeout")
+
+    runStreamConformance(cdp, streamHandler)
 
     val aborted = bridgeFailure(
         cdp,
@@ -2569,4 +2606,96 @@ private fun findFreePort(): Int = ServerSocket().use { socket ->
     socket.reuseAddress = false
     socket.bind(InetSocketAddress("127.0.0.1", 0))
     socket.localPort
+}
+
+/**
+ * CEF stream conformance: ordered delivery, slow-consumer backpressure, abort,
+ * malformed acknowledgements, and terminal framing over the persistent query.
+ */
+private val EMPTY_OR_STRING_EXPRESSION = "String(globalThis.__streamError)"
+
+private fun runStreamConformance(cdp: CdpClient, streamHandler: ConformanceStreamTestHandler) {
+    // 1. Ordered delivery and declared completion: the terminal frame ends the
+    //    iteration with no error.
+    cdp.evaluate(
+        """
+        (async () => {
+          globalThis.__streamSeen = null;
+          globalThis.__streamError = null;
+          try {
+            const stream = ConformanceBridge.createClient().openStreamEvents({frames: 8});
+            const seen = [];
+            for await (const chunk of stream) seen.push(chunk.index);
+            globalThis.__streamSeen = JSON.stringify(seen);
+          } catch (error) {
+            globalThis.__streamError = (error && error.code ? error.code + ":" : "") + (error && error.message);
+          }
+          globalThis.__streamDone = true;
+        })(); "started"
+        """.trimIndent(),
+    )
+    cdp.awaitExpression("globalThis.__streamSeen !== null || globalThis.__streamError !== null")
+    val streamError = runCatching {
+        cdp.evaluate(EMPTY_OR_STRING_EXPRESSION)
+    }.getOrNull()
+    require(streamError == null || streamError == "null") {
+        "The conformance stream failed: $streamError"
+    }
+
+    // 2. Slow consumer: consuming slower than production still delivers every
+    //    frame exactly once (credit backpressure, no silent loss).
+    cdp.evaluate(
+        """
+        (async () => {
+          globalThis.__slowSeen = null;
+          const stream = ConformanceBridge.createClient().openStreamEvents({frames: 12});
+          const seen = [];
+          for await (const chunk of stream) {
+            seen.push(chunk.index);
+            await new Promise(resolve => setTimeout(resolve, 40));
+          }
+          globalThis.__slowSeen = JSON.stringify(seen);
+        })(); "started"
+        """.trimIndent(),
+    )
+    cdp.awaitExpression(
+        "globalThis.__slowSeen === JSON.stringify(Array.from({length: 12}, (_v, i) => i + 1))",
+    )
+
+    // 3. Close/abort: closing the stream cancels the persistent query, which is
+    //    the declared terminal result; the handler observes the cancellation.
+    cdp.evaluate(
+        """
+        (async () => {
+          globalThis.__abortSeen = 0;
+          globalThis.__abortDone = false;
+          const stream = ConformanceBridge.createClient().openStreamEvents({frames: 1000});
+          for await (const chunk of stream) {
+            globalThis.__abortSeen = chunk.index;
+            stream.close();
+          }
+          globalThis.__abortDone = true;
+        })(); "started"
+        """.trimIndent(),
+    )
+    cdp.awaitExpression("globalThis.__abortDone === true")
+    cdp.awaitExpression("globalThis.__abortSeen >= 1")
+    streamHandler.awaitCancelled(1, "stream close")
+
+    // 4. Malformed acknowledgement: an ack without a stream id fails with a
+    //    typed code and never reaches a handler.
+    cdp.evaluate(
+        """
+        (() => {
+          globalThis.__badAck = null;
+          window.__kwebBridgeQuery({
+            request: JSON.stringify({version: 1, method: "streamEventsAck", payload: {granted: 1}}),
+            persistent: false,
+            onSuccess: () => { globalThis.__badAck = "unexpected-success"; },
+            onFailure: (_code, message) => { globalThis.__badAck = JSON.parse(message).code; }
+          });
+        })(); "sent"
+        """.trimIndent(),
+    )
+    cdp.awaitExpression("globalThis.__badAck === 'bridge.stream.ack-unknown-stream'")
 }

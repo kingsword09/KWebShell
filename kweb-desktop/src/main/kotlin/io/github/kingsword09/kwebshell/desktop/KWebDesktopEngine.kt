@@ -193,6 +193,7 @@ internal class KWebDesktopProfile(
                 val nativeParent = validateComposeWindow(composeHost.window)
                 val pageId = java.util.UUID.randomUUID().toString()
                 val bridgeDispatcher = composeHost.bridgeDispatcherForPage?.create(pageId)
+                val streamDispatcher = composeHost.streamDispatcherForPage?.create(pageId)
                 if ((bridgeDispatcher == null) != composeHost.bridgeOrigin.isNullOrEmpty()) {
                     throw KWebConfigurationException(
                         code = "desktop.page.bridge-incomplete",
@@ -221,6 +222,7 @@ internal class KWebDesktopProfile(
                     height = bounds.height,
                     bridgeOrigin = composeHost.bridgeOrigin.orEmpty(),
                     bridgeDispatcher = bridgeDispatcher,
+                    streamDispatcher = streamDispatcher,
                     listener = eventStream::accept,
                 )
                 val page = KWebDesktopPage(this@KWebDesktopProfile, nativePage, eventStream, pageId)

@@ -48,6 +48,18 @@
       "fields": [
         { "name": "accepted", "type": "boolean" }
       ]
+    },
+    {
+      "name": "StreamStartRequest",
+      "fields": [
+        { "name": "frames", "type": "int32" }
+      ]
+    },
+    {
+      "name": "StreamChunk",
+      "fields": [
+        { "name": "index", "type": "int32" }
+      ]
     }
   ],
   "methods": [
@@ -55,5 +67,15 @@
     { "name": "fail", "request": "FailureRequest", "response": "AckResponse" },
     { "name": "crash", "request": "FailureRequest", "response": "AckResponse" },
     { "name": "wait", "request": "WaitRequest", "response": "AckResponse" }
+  ],
+  "streams": [
+    {
+      "name": "streamEvents",
+      "request": "StreamStartRequest",
+      "chunk": "StreamChunk",
+      "binary": false,
+      "capacity": 4,
+      "schemaVersion": 1
+    }
   ]
 }

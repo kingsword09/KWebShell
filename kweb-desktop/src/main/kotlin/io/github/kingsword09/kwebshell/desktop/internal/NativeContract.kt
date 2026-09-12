@@ -2,7 +2,7 @@ package io.github.kingsword09.kwebshell.desktop.internal
 
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 
-internal const val NATIVE_ABI_VERSION: Int = 8
+internal const val NATIVE_ABI_VERSION: Int = 9
 
 internal enum class NativeStatus(
     val value: Int,

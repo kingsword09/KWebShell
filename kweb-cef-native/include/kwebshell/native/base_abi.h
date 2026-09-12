@@ -11,7 +11,7 @@
 #define KWEB_ABI_CALL
 #endif
 
-#define KWEB_ABI_VERSION ((uint32_t)8)
+#define KWEB_ABI_VERSION ((uint32_t)9)
 
 typedef uint32_t kweb_status;
 

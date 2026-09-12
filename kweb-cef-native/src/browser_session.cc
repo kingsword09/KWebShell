@@ -549,21 +549,46 @@ public:
       if (found == bridge_requests_.end()) {
         return KWEB_STATUS_BRIDGE_REQUEST_NOT_FOUND;
       }
-      callback = found->second;
-      bridge_requests_.erase(found);
-      const auto query = std::find_if(
-          bridge_query_ids_.begin(), bridge_query_ids_.end(),
-          [request_id](const auto &entry) {
-            return entry.second == request_id;
-          });
-      if (query != bridge_query_ids_.end()) {
-        bridge_query_ids_.erase(query);
+      callback = found->second.callback;
+      const bool persistent = found->second.persistent;
+      // A persistent query is one open stream: it stays registered across
+      // frame responses and ends only through Failure or cancellation.
+      if (!persistent || !success) {
+        bridge_requests_.erase(found);
+        const auto query = std::find_if(
+            bridge_query_ids_.begin(), bridge_query_ids_.end(),
+            [request_id](const auto &entry) {
+              return entry.second == request_id;
+            });
+        if (query != bridge_query_ids_.end()) {
+          bridge_query_ids_.erase(query);
+        }
       }
     }
-    if (success) {
-      callback->Success(response);
-    } else {
-      callback->Failure(kBridgeFailureCode, response);
+    // CEF requires the router callbacks on the CEF UI thread. Posting keeps
+    // per-stream frames ordered (the UI queue is FIFO) without blocking the
+    // caller's thread.
+    if (CefCurrentlyOn(TID_UI)) {
+      if (success) {
+        callback->Success(response);
+      } else {
+        callback->Failure(kBridgeFailureCode, response);
+      }
+      return KWEB_STATUS_OK;
+    }
+    if (!CefPostTask(
+            TID_UI,
+            base::BindOnce(
+                [](CefRefPtr<CefMessageRouterBrowserSide::Callback> callback,
+                   bool success_flag, std::string payload) {
+                  if (success_flag) {
+                    callback->Success(payload);
+                  } else {
+                    callback->Failure(kBridgeFailureCode, payload);
+                  }
+                },
+                callback, success, std::move(response)))) {
+      return KWEB_STATUS_CEF_UI_TASK_FAILED;
     }
     return KWEB_STATUS_OK;
   }
@@ -590,7 +615,7 @@ public:
                    CefRefPtr<CefMessageRouterBrowserSide::Callback> callback) {
     CEF_REQUIRE_UI_THREAD();
     if (!bridge_callback_ || !browser_ || !browser->IsSame(browser_) ||
-        !frame || !frame->IsMain() || persistent || query_id <= 0 ||
+        !frame || !frame->IsMain() || query_id <= 0 ||
         !callback || BridgeOriginFromUrl(frame->GetURL()) != bridge_origin_) {
       return false;
     }
@@ -609,7 +634,7 @@ public:
     const uint64_t request_id = next_bridge_request_id_++;
     {
       std::lock_guard lock(bridge_mutex_);
-      bridge_requests_.emplace(request_id, callback);
+      bridge_requests_.emplace(request_id, BridgeRequest{callback, persistent});
       bridge_query_ids_.emplace(query_id, request_id);
     }
     EmitBridge(KWEB_BRIDGE_EVENT_REQUEST, request_id, payload);
@@ -1260,8 +1285,11 @@ private:
   std::unique_ptr<BridgeQueryHandler> bridge_handler_;
   CefRefPtr<CefMessageRouterBrowserSide> bridge_router_;
   std::mutex bridge_mutex_;
-  std::map<uint64_t, CefRefPtr<CefMessageRouterBrowserSide::Callback>>
-      bridge_requests_;
+  struct BridgeRequest {
+    CefRefPtr<CefMessageRouterBrowserSide::Callback> callback;
+    bool persistent;
+  };
+  std::map<uint64_t, BridgeRequest> bridge_requests_;
   std::map<int64_t, uint64_t> bridge_query_ids_;
   uint64_t next_bridge_request_id_ = 1;
   uint64_t sequence_ = 0;

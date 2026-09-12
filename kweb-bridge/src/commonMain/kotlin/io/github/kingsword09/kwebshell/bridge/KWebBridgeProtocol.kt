@@ -2,8 +2,8 @@ package io.github.kingsword09.kwebshell.bridge
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -12,6 +12,11 @@ public const val KWEB_BRIDGE_PROTOCOL_VERSION: Int = 1
 public data class KWebBridgeRequest(
     public val method: String,
     public val payload: JsonElement,
+    /**
+     * The caller-declared stream identity. Only stream open and
+     * acknowledgement frames carry it; plain requests leave it null.
+     */
+    public val streamId: Long? = null,
 )
 
 public class KWebBridgeException(
@@ -50,7 +55,7 @@ public object KWebBridgeProtocol {
                 message = "Bridge protocol version $version is not supported.",
             )
         }
-        val allowedKeys = setOf("version", "method", "payload")
+        val allowedKeys = setOf("version", "method", "payload", "streamId")
         val unknownKeys = envelope.keys - allowedKeys
         if (unknownKeys.isNotEmpty()) {
             throw KWebBridgeException(
@@ -65,12 +70,23 @@ public object KWebBridgeProtocol {
                 message = "The bridge method name is invalid.",
             )
         }
+        val streamId = envelope["streamId"]?.let { element ->
+            val raw = (element as? JsonPrimitive)?.content ?: throw KWebBridgeException(
+                code = "bridge.request.stream-id-invalid",
+                message = "The bridge stream id must be a JSON integer.",
+            )
+            raw.toLongOrNull()?.takeIf { it > 0 } ?: throw KWebBridgeException(
+                code = "bridge.request.stream-id-invalid",
+                message = "The bridge stream id must be a positive integer.",
+            )
+        }
         return KWebBridgeRequest(
             method = method,
             payload = envelope["payload"] ?: throw KWebBridgeException(
                 code = "bridge.request.payload-missing",
                 message = "The bridge request payload is required.",
             ),
+            streamId = streamId,
         )
     }
 

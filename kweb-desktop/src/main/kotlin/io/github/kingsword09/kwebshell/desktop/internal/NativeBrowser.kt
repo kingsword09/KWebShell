@@ -1,6 +1,13 @@
 package io.github.kingsword09.kwebshell.desktop.internal
 
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeDispatcher
+import io.github.kingsword09.kwebshell.bridge.KWebStreamBridgeDispatcher
+import io.github.kingsword09.kwebshell.bridge.KWebStreamCreditGate
+import io.github.kingsword09.kwebshell.bridge.KWebStreamFrameSink
+import io.github.kingsword09.kwebshell.bridge.KWebStreamProtocol
+import io.github.kingsword09.kwebshell.bridge.KWebStreamBridgeErrorCode
+import io.github.kingsword09.kwebshell.bridge.KWebBridgeException
+import io.github.kingsword09.kwebshell.bridge.KWebBridgeRequest
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeProtocol
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebConfigurationException
@@ -89,6 +96,7 @@ internal class NativeBrowser private constructor(
     private val listener: (NativeBrowserEvent) -> Unit,
     private val profilePath: Path,
     private val bridgeDispatcher: KWebBridgeDispatcher?,
+    private val streamDispatcher: KWebStreamBridgeDispatcher?,
 ) : AutoCloseable {
     private val mutableLifecycle = MutableStateFlow(KWebLifecycleState.OPENING)
     private val nativeHandle = AtomicLong(0)
@@ -378,10 +386,33 @@ internal class NativeBrowser private constructor(
                     return@execute
                 }
                 when (NativeBridgeEventType.fromValue(typeValue)) {
-                    NativeBridgeEventType.REQUEST -> launchBridgeRequest(browserHandle, requestId, payload)
-                    NativeBridgeEventType.CANCELLED -> bridgeJobs.remove(requestId)?.cancel(
-                        CancellationException("The page cancelled bridge request $requestId."),
-                    )
+                    NativeBridgeEventType.REQUEST -> {
+                        val request = try {
+                            KWebBridgeProtocol.decodeRequest(payload)
+                        } catch (error: KWebBridgeException) {
+                            // Malformed stream acknowledgements and invalid
+                            // envelopes both land on the plain failure path.
+                            launchBridgeRequest(browserHandle, requestId, payload)
+                            return@execute
+                        }
+                        val stream = streamDispatcher
+                        when {
+                            stream != null && request.method in stream.streamMethods ->
+                                launchStreamRequest(browserHandle, requestId, request, stream)
+                            stream != null && request.method in stream.acknowledgedMethods ->
+                                launchStreamAcknowledgement(browserHandle, requestId, request, stream)
+                            else -> launchBridgeRequest(browserHandle, requestId, payload)
+                        }
+                    }
+                    NativeBridgeEventType.CANCELLED -> {
+                        synchronized(streamsByStreamId) {
+                            streamsByStreamId.entries.removeIf { it.value.requestId == requestId }
+                                .let { removed -> if (removed) streamsByStreamId.values.lastOrNull()?.gate?.close() }
+                        }
+                        bridgeJobs.remove(requestId)?.cancel(
+                            CancellationException("The page cancelled bridge request $requestId."),
+                        )
+                    }
                     null -> recordCallbackFailure(
                         "native.bridge.callback-type-unknown",
                         mapOf("type" to typeValue.toString()),
@@ -396,6 +427,153 @@ internal class NativeBrowser private constructor(
                 "A native bridge callback arrived after dispatcher shutdown.",
                 error,
             )
+        }
+    }
+
+    private class StreamEntry(
+        val gate: KWebStreamCreditGate,
+        val requestId: Long,
+    )
+
+    // streamId (caller-declared) -> the open stream's gate and request id.
+    private val streamsByStreamId = linkedMapOf<Long, StreamEntry>()
+    private val COMPLETED_FAILURE_JSON = "\"code\":\"bridge.stream.completed\""
+
+    private fun launchStreamRequest(
+        browserHandle: Long,
+        requestId: Long,
+        request: KWebBridgeRequest,
+        streamDispatcher: KWebStreamBridgeDispatcher,
+    ) {
+        val streamId = requireNotNull(request.streamId) {
+            "A stream open request must carry a stream id."
+        }
+        val gate = KWebStreamCreditGate(streamDispatcher.capacity(request.method))
+        val job = bridgeScope.launch(start = CoroutineStart.LAZY) {
+            var terminalSent = false
+            try {
+                streamDispatcher.dispatchStream(
+                    request,
+                    object : KWebStreamFrameSink {
+                        override suspend fun send(frameJson: String): Boolean {
+                            val status = NativeBindings.browserBridgeRespond(browserHandle, requestId, frameJson)
+                            if (status == NativeStatus.OK.value) return true
+                            // The peer or transport is gone; the stream must end.
+                            if (status != NativeStatus.BRIDGE_REQUEST_NOT_FOUND.value) {
+                                recordCallbackFailure(
+                                    "native.bridge.frame-response-rejected",
+                                    mapOf("requestId" to requestId.toString(), "status" to status.toString()),
+                                    "The native bridge rejected a stream frame.",
+                                )
+                            }
+                            return false
+                        }
+
+                        override suspend fun complete(frameJson: String) {
+                            terminalSent = true
+                            send(frameJson)
+                            // Ending a persistent query requires its failure path.
+                            NativeBindings.browserBridgeFail(browserHandle, requestId, COMPLETED_FAILURE_JSON)
+                        }
+                    },
+                    gate,
+                )
+            } catch (_: CancellationException) {
+                // Navigation, abort, or owner close: the declared terminal result
+                // is the absence of further frames on a query the peer cancelled.
+            } catch (error: Throwable) {
+                val status = NativeBindings.browserBridgeFail(
+                    browserHandle,
+                    requestId,
+                    KWebBridgeProtocol.encodeFailure(error),
+                )
+                if (status != NativeStatus.OK.value &&
+                    status != NativeStatus.BRIDGE_REQUEST_NOT_FOUND.value
+                ) {
+                    recordCallbackFailure(
+                        "native.bridge.failure-response-rejected",
+                        mapOf("requestId" to requestId.toString(), "status" to status.toString()),
+                        "The native bridge rejected a typed stream failure.",
+                        error,
+                    )
+                }
+            } finally {
+                gate.close()
+                synchronized(streamsByStreamId) { streamsByStreamId.remove(streamId) }
+                if (!terminalSent) {
+                    // Best effort: end the persistent query when no terminal
+                    // frame was published.
+                    NativeBindings.browserBridgeFail(browserHandle, requestId, COMPLETED_FAILURE_JSON)
+                }
+                bridgeJobs.remove(requestId)
+            }
+        }
+        if (bridgeJobs.putIfAbsent(requestId, job) != null) {
+            job.cancel(CancellationException("Duplicate bridge request ID $requestId."))
+            recordCallbackFailure(
+                "native.bridge.request-duplicate",
+                mapOf("requestId" to requestId.toString()),
+                "Native reused a live bridge request ID.",
+            )
+        } else {
+            synchronized(streamsByStreamId) { streamsByStreamId[streamId] = StreamEntry(gate, requestId) }
+            job.start()
+        }
+    }
+
+    private fun launchStreamAcknowledgement(
+        browserHandle: Long,
+        requestId: Long,
+        request: KWebBridgeRequest,
+        streamDispatcher: KWebStreamBridgeDispatcher,
+    ) {
+        val job = bridgeScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                val streamId = request.streamId
+                val gate = streamId?.let { id -> synchronized(streamsByStreamId) { streamsByStreamId[id]?.gate } }
+                if (gate == null) {
+                    throw KWebBridgeException(
+                        code = KWebStreamBridgeErrorCode.ACK_UNKNOWN_STREAM,
+                        message = "The acknowledgement references an unknown or ended stream.",
+                    )
+                }
+                streamDispatcher.acknowledge(request, gate)
+                requireBridgeNativeSuccess(
+                    "browser-bridge-respond",
+                    NativeBindings.browserBridgeRespond(browserHandle, requestId, "{}"),
+                    requestId,
+                )
+            } catch (_: CancellationException) {
+                throw CancellationException("Bridge request $requestId was cancelled.")
+            } catch (error: Throwable) {
+                val status = NativeBindings.browserBridgeFail(
+                    browserHandle,
+                    requestId,
+                    KWebBridgeProtocol.encodeFailure(error),
+                )
+                if (status != NativeStatus.OK.value &&
+                    status != NativeStatus.BRIDGE_REQUEST_NOT_FOUND.value
+                ) {
+                    recordCallbackFailure(
+                        "native.bridge.failure-response-rejected",
+                        mapOf("requestId" to requestId.toString(), "status" to status.toString()),
+                        "The native bridge rejected a stream acknowledgement failure.",
+                        error,
+                    )
+                }
+            } finally {
+                bridgeJobs.remove(requestId)
+            }
+        }
+        if (bridgeJobs.putIfAbsent(requestId, job) != null) {
+            job.cancel(CancellationException("Duplicate bridge request ID $requestId."))
+            recordCallbackFailure(
+                "native.bridge.request-duplicate",
+                mapOf("requestId" to requestId.toString()),
+                "Native reused a live bridge request ID.",
+            )
+        } else {
+            job.start()
         }
     }
 
@@ -720,6 +898,7 @@ internal class NativeBrowser private constructor(
             height: Int,
             bridgeOrigin: String = "",
             bridgeDispatcher: KWebBridgeDispatcher? = null,
+            streamDispatcher: KWebStreamBridgeDispatcher? = null,
             listener: (NativeBrowserEvent) -> Unit = {},
         ): NativeBrowser {
             if ((bridgeDispatcher == null) != bridgeOrigin.isEmpty()) {
@@ -764,7 +943,7 @@ internal class NativeBrowser private constructor(
                     cause = error,
                 )
             }
-            val browser = NativeBrowser(engine, listener, normalizedProfile, bridgeDispatcher)
+            val browser = NativeBrowser(engine, listener, normalizedProfile, bridgeDispatcher, streamDispatcher)
             val result = NativeEngine.onAwtEventDispatchThread {
                 NativeBindings.browserCreate(
                     engine.requireLiveHandle("browser-create"),

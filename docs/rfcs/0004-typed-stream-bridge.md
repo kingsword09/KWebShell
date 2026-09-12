@@ -1,6 +1,6 @@
 # RFC 0004: Typed event, binary stream, and message-port bridge
 
-- Status: Proposed
+- Status: Implementing
 - Priority: P0
 - Owners: `kweb-bridge`, `kweb-bridge-codegen`, `kweb-desktop`
 - Depends on: RFC 0001, RFC 0003

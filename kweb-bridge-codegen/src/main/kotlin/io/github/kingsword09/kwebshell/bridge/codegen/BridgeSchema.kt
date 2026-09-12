@@ -10,6 +10,24 @@ internal data class BridgeSchema(
     val version: Int,
     val types: List<BridgeType>,
     val methods: List<BridgeMethod>,
+    val streams: List<BridgeStream> = emptyList(),
+)
+
+/**
+ * One declared server stream. The renderer opens it as one persistent query on
+ * the same exact-origin transport; frames are chunk values, capacity is the
+ * renderer queue bound (and the initial credit), and a binary stream carries
+ * base64 chunks bounded by maxAggregateBytes.
+ */
+@Serializable
+internal data class BridgeStream(
+    val name: String,
+    val request: String,
+    val chunk: String = "Bytes",
+    val binary: Boolean = false,
+    val capacity: Int,
+    val schemaVersion: Int,
+    val maxAggregateBytes: Long? = null,
 )
 
 @Serializable

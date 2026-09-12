@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordsSha256": "3ed4ce43649320681ceae8045f02998962876111a182267616a81c745ae69163",
+  "recordsSha256": "0a32d442641ef1e4f2e53415e2ce5cc6cee2b7271898196f5b62c9792b09f043",
   "records": [
     {
       "rfcId": "0001",
@@ -188,6 +188,69 @@
         {
           "name": "dialogs-integration-passed",
           "sha256": "64dbd76bbc9f2cccc9bf0c8d64140a561e2a383e32053c340c07440f8cdc2bcc"
+        }
+      ]
+    },
+    {
+      "rfcId": "0004",
+      "rfcStatus": "Implemented",
+      "serviceId": null,
+      "serviceVersion": null,
+      "schemaVersion": 1,
+      "providerId": "governance.hosted",
+      "target": "linux-x64",
+      "cefVersion": "151.3.16+gbe1e15d+chromium-151.0.7922.109",
+      "chromiumVersion": "151.0.7922.109",
+      "electronFixtureMajor": 44,
+      "testRunId": "34686988772",
+      "compatibilityStatus": "READY",
+      "matrixRowIds": [],
+      "artifacts": [
+        {
+          "name": "stream-conformance",
+          "sha256": "738f9ccd9b32a138283d3a486c74e4f6cf01bdc9668520029830775ce802b55a"
+        }
+      ]
+    },
+    {
+      "rfcId": "0004",
+      "rfcStatus": "Implemented",
+      "serviceId": null,
+      "serviceVersion": null,
+      "schemaVersion": 1,
+      "providerId": "governance.hosted",
+      "target": "macos-arm64",
+      "cefVersion": "151.3.16+gbe1e15d+chromium-151.0.7922.109",
+      "chromiumVersion": "151.0.7922.109",
+      "electronFixtureMajor": 44,
+      "testRunId": "34686988772",
+      "compatibilityStatus": "READY",
+      "matrixRowIds": [],
+      "artifacts": [
+        {
+          "name": "stream-conformance",
+          "sha256": "9b4b6d62ea3a91e4a9c857c0c1f7abbe01944395eadd31e4ea9340d7e4db733a"
+        }
+      ]
+    },
+    {
+      "rfcId": "0004",
+      "rfcStatus": "Implemented",
+      "serviceId": null,
+      "serviceVersion": null,
+      "schemaVersion": 1,
+      "providerId": "governance.hosted",
+      "target": "windows-x64",
+      "cefVersion": "151.3.16+gbe1e15d+chromium-151.0.7922.109",
+      "chromiumVersion": "151.0.7922.109",
+      "electronFixtureMajor": 44,
+      "testRunId": "34686988772",
+      "compatibilityStatus": "READY",
+      "matrixRowIds": [],
+      "artifacts": [
+        {
+          "name": "stream-conformance",
+          "sha256": "b0b5d073e9d5c3273ab5e569dd85a703d1b9f7483a4f211f53c8093c8d45a225"
         }
       ]
     }

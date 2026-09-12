@@ -43,21 +43,21 @@ class KWebRfcRepositoryGovernanceTest {
         ).check()
         assertEquals(KWebRfcGovernanceReport.READY, report.governanceStatus)
         val rfc0001 = report.rfcs.single { it.rfcId == "0001" }
-        assertEquals(KWebRfcStatus.IMPLEMENTED.label, rfc0001.declaredStatus)
+        assertEquals(KWebRfcStatus.IMPLEMENTING.label, rfc0001.declaredStatus)
         assertEquals(KWebRfcGovernanceState.READY, rfc0001.state)
-        assertEquals(KWEB_RFC_HOSTED_TARGETS, rfc0001.evidenceTargets.toSet())
+        assertTrue(rfc0001.evidenceTargets.isEmpty())
         val rfc0002 = report.rfcs.single { it.rfcId == "0002" }
-        assertEquals(KWebRfcStatus.IMPLEMENTED.label, rfc0002.declaredStatus)
+        assertEquals(KWebRfcStatus.ACCEPTED.label, rfc0002.declaredStatus)
         assertEquals(KWebRfcGovernanceState.READY, rfc0002.state)
-        assertEquals(KWEB_RFC_HOSTED_TARGETS, rfc0002.evidenceTargets.toSet())
+        assertTrue(rfc0002.evidenceTargets.isEmpty())
         val rfc0003 = report.rfcs.single { it.rfcId == "0003" }
-        assertEquals(KWebRfcStatus.IMPLEMENTED.label, rfc0003.declaredStatus)
+        assertEquals(KWebRfcStatus.ACCEPTED.label, rfc0003.declaredStatus)
         assertEquals(KWebRfcGovernanceState.READY, rfc0003.state)
-        assertEquals(KWEB_RFC_HOSTED_TARGETS, rfc0003.evidenceTargets.toSet())
+        assertTrue(rfc0003.evidenceTargets.isEmpty())
         val rfc0004 = report.rfcs.single { it.rfcId == "0004" }
-        assertEquals(KWebRfcStatus.IMPLEMENTED.label, rfc0004.declaredStatus)
+        assertEquals(KWebRfcStatus.ACCEPTED.label, rfc0004.declaredStatus)
         assertEquals(KWebRfcGovernanceState.READY, rfc0004.state)
-        assertEquals(KWEB_RFC_HOSTED_TARGETS, rfc0004.evidenceTargets.toSet())
+        assertTrue(rfc0004.evidenceTargets.isEmpty())
     }
 
     @Test

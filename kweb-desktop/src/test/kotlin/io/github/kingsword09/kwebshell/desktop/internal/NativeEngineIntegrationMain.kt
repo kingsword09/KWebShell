@@ -95,6 +95,21 @@ import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
 private const val INTEGRATION_ROOT_PROPERTY = "kweb.engine.integration.root"
+
+private fun currentTargetId(): String {
+    val operatingSystem = System.getProperty("os.name").lowercase().let {
+        when {
+            it.startsWith("windows") -> "windows"
+            it.startsWith("mac") -> "macos"
+            else -> "linux"
+        }
+    }
+    val architecture = when (System.getProperty("os.arch").lowercase()) {
+        "x86_64", "amd64" -> "x64"
+        else -> "arm64"
+    }
+    return "$operatingSystem-$architecture"
+}
 private const val CEF_RUNTIME_PROPERTY = "kweb.engine.cef.runtime.path"
 private const val SUBPROCESS_PROPERTY = "kweb.engine.subprocess.path"
 private const val RESOURCES_PROPERTY = "kweb.engine.resources.path"
@@ -408,6 +423,19 @@ private fun runSuccessfulLifecycle() {
                 cdp.awaitAppPathsBridge()
                 require(cdp.evaluate("document.title") == FIRST_TITLE)
                 runBridgeConformance(cdp, bridgeHandler, streamHandler)
+                Files.writeString(
+                    requiredPathProperty(INTEGRATION_ROOT_PROPERTY).resolve("stream-conformance.json"),
+                    buildString {
+                        append("{\"schemaVersion\": 1, \"target\": \"")
+                        append(currentTargetId())
+                        append("\", \"cefRuntime\": \"pinned-151\", \"assertions\": [")
+                        append("\"ordered-delivery-8-frames-terminal-completed\", ")
+                        append("\"slow-consumer-12-frames-credit-backpressure\", ")
+                        append("\"close-abort-cancellation-reached-handler\", ")
+                        append("\"malformed-ack-unknown-stream-typed-failure\"]}")
+                    } + "\n",
+                    StandardCharsets.UTF_8,
+                )
                 require(cdp.evaluate("typeof document.getElementById('bridge-frame').contentWindow.__kwebBridgeQuery") == "undefined")
                 require(cdp.evaluate("typeof document.getElementById('bridge-frame').contentWindow.KWebAppPathsBridge") == "undefined")
                 runAppPathsBridgeConformance(cdp, directHome)

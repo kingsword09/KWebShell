@@ -32,6 +32,18 @@ public data class KWebElectronServiceRequirement(
     public val version: String,
 )
 
+/**
+ * The declared policy of one privileged migration channel: renderer grant,
+ * user-gesture requirement, and OS consent requirement must all be stated
+ * explicitly before the migration facade can be generated or packaged.
+ */
+@Serializable
+public data class KWebElectronChannelPolicy(
+    public val rendererGrant: String?,
+    public val requiresUserGesture: Boolean,
+    public val requiresOsConsent: Boolean,
+)
+
 @Serializable
 public data class KWebElectronChannel(
     public val name: String,
@@ -43,6 +55,7 @@ public data class KWebElectronChannel(
     public val operationId: String? = null,
     public val status: KWebElectronMappingStatus,
     public val adapter: KWebElectronAdapterKind? = null,
+    public val policy: KWebElectronChannelPolicy? = null,
 )
 
 @Serializable
@@ -133,6 +146,27 @@ public object KWebElectronManifestValidator {
     private const val APP_PATHS_RESPONSE: String = "string"
     private const val APP_PATHS_PARAMETER_TYPE: String = "ElectronPathName"
     private const val APP_PATHS_RETURN_TYPE: String = "Promise<string>"
+    // The published KWebAppPaths resolve operation policy; a jvmTest drift
+    // check asserts these constants still match the live descriptor.
+    private const val APP_PATHS_GRANT: String = "native.app-paths.resolve"
+    private const val APP_PATHS_GESTURE: Boolean = false
+    private const val APP_PATHS_CONSENT: Boolean = false
+
+    private fun validateChannelPolicy(channel: KWebElectronChannel) {
+        if (channel.status != KWebElectronMappingStatus.ADAPTER) {
+            if (channel.policy != null) {
+                invalid("channel", channel.name, message = "Only ADAPTER channels declare a migration policy.")
+            }
+            return
+        }
+        val policy = channel.policy
+            ?: invalid("channel", channel.name, message = "A privileged ADAPTER channel must declare its policy.")
+        policy.rendererGrant?.let { grant ->
+            if (!SERVICE_ID.matches(grant)) {
+                invalid("channel", channel.name, message = "A channel renderer grant must be a stable identifier.")
+            }
+        }
+    }
     private val APPLICATION_ID = Regex(
         "[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?)+",
     )
@@ -238,6 +272,7 @@ public object KWebElectronManifestValidator {
             if (!IDENTIFIER.matches(channel.requestType) || !IDENTIFIER.matches(channel.responseType)) {
                 invalid("channels[$index]", message = "Channel request and response types must be identifiers.")
             }
+            validateChannelPolicy(channel)
             validateMapping(channel.status, channel.adapter, channel.serviceId, channel.serviceVersion, channel.operationId, services, channel.name)
             if (channel.adapter == KWebElectronAdapterKind.APP_PATHS_GET_PATH) {
                 if (channel.name != APP_PATHS_CHANNEL || channel.serviceId != APP_PATHS_SERVICE ||
@@ -248,6 +283,17 @@ public object KWebElectronManifestValidator {
                         KWebElectronMigrationErrorCode.MAPPING_UNRESOLVED,
                         "channel" to channel.name,
                         message = "The app-paths adapter must bind the published app.getPath contract exactly.",
+                    )
+                }
+                val policy = channel.policy
+                if (policy == null || policy.rendererGrant != APP_PATHS_GRANT ||
+                    policy.requiresUserGesture != APP_PATHS_GESTURE ||
+                    policy.requiresOsConsent != APP_PATHS_CONSENT
+                ) {
+                    invalid(
+                        KWebElectronMigrationErrorCode.MAPPING_UNRESOLVED,
+                        "channel" to channel.name,
+                        message = "The app-paths adapter must declare the published grant, gesture, and consent policy exactly.",
                     )
                 }
             }

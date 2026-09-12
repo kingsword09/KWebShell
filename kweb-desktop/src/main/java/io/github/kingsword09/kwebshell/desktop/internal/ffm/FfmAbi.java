@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 public final class FfmAbi {
-    public static final int VERSION = 7;
+    public static final int VERSION = 8;
 
     public static final FunctionDescriptor ENGINE_CALLBACK = FunctionDescriptor.ofVoid(
         FfmLayouts.POINTER,

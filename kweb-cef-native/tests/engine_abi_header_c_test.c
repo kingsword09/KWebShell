@@ -6,7 +6,7 @@
 
 _Static_assert(KWEB_INVALID_ENGINE_HANDLE == 0,
                "the invalid engine handle must remain zero");
-_Static_assert(KWEB_ABI_VERSION == 7,
+_Static_assert(KWEB_ABI_VERSION == 8,
                "the placement contract requires ABI version 7");
 _Static_assert(KWEB_ENGINE_EVENT_OPENED != KWEB_ENGINE_EVENT_CLOSED,
                "engine lifecycle events must remain distinct");
@@ -89,7 +89,9 @@ _Static_assert(KWEB_BROWSER_EVENT_DEVTOOLS_OPENED == 11,
 _Static_assert(KWEB_BROWSER_EVENT_DEVTOOLS_CLOSED == 12,
                "the DevTools closed event is ABI-stable");
 _Static_assert(KWEB_BROWSER_EVENT_DEVTOOLS_FAILED == 13,
-               "the DevTools failed event is ABI-stable");
+              "the devtools-failed event id must stay stable");
+_Static_assert(KWEB_BROWSER_EVENT_INPUT_GESTURE == 14,
+               "the input-gesture event id is ABI-stable");
 _Static_assert(KWEB_BROWSER_EVENT_CREATED != KWEB_BROWSER_EVENT_CLOSED,
                "browser lifecycle events must remain distinct");
 

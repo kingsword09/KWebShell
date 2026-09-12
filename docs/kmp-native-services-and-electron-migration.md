@@ -218,7 +218,34 @@ COM initialization is not permission to invoke another backend. The error must
 identify the service, operation, target, native status, and remediation without
 leaking private paths or native pointers to an untrusted renderer.
 
-### 4.4 Provider SDK
+### 4.4 Permission, gesture, consent, and audit policy
+
+One policy engine decides every privileged browser and native-service
+operation. Each decision is `ALLOW`, `DENY`, or `PROMPT_REQUIRED`; there is no
+implicit allow and no fallback prompt. The engine evaluates, in order: the
+main-frame restriction, exact renderer grants, native-verified user gestures,
+OS consent, and persistent user decisions. Every outcome is audited.
+
+- **Subjects** are typed: engine, Profile, Page, exact origin, main frame, and
+  whether the caller is Kotlin-host. Host calls bypass only the renderer grant
+  and main-frame restriction; OS consent and gestures always apply.
+- **Gestures** are minted only from the real browser input path (browser-process
+  keyboard events through the engine ABI). They bind to one
+  Engine/Profile/Page/origin, expire, are consumed once, and are invalidated by
+  main-frame navigation or owner close. Renderer-synthesized DOM events can
+  never reach the minting path, and child frames cannot present a gesture.
+- **OS consent** providers report the real platform state — Windows
+  CapabilityAccessManager, macOS TCC, Linux portal permission stores — as
+  `granted`, `denied`, `restricted`, `not-configured`, or
+  `temporarily-unavailable`. They never prompt implicitly and never flip OS
+  state.
+- **User decisions** persist per persistence scope (application or Profile) in
+  a durable store with observable revocation; after revocation the next attempt
+  is `PROMPT_REQUIRED` again.
+- **Audit records** are ordered, bounded, and closed-shape: they carry ids,
+  codes, decisions, and consent status — never request or response payload.
+
+### 4.5 Provider SDK
 
 Application code installs services through explicit provider declarations, not
 through direct construction scattered across the host. A declaration names one

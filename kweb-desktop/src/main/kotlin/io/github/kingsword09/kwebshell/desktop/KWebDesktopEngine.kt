@@ -4,6 +4,8 @@ import androidx.compose.ui.awt.ComposeWindow
 import io.github.kingsword09.kwebshell.core.KWebBounds
 import io.github.kingsword09.kwebshell.core.KWebRect
 import io.github.kingsword09.kwebshell.core.KWebCapability
+import io.github.kingsword09.kwebshell.services.policy.KWebGestureBinding
+import io.github.kingsword09.kwebshell.services.policy.KWebUserGestureIssuer
 import io.github.kingsword09.kwebshell.core.KWebConfigurationException
 import io.github.kingsword09.kwebshell.core.KWebEngine
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
@@ -38,6 +40,9 @@ public class KWebDesktopEngine private constructor(
     private val native: NativeEngine,
     private val configuration: KWebDesktopEngineConfiguration,
 ) : KWebEngine {
+    internal val engineId: String = configuration.engineId
+
+    internal val userGestureIssuer: KWebUserGestureIssuer? = configuration.userGestureIssuer
     private val lock = Any()
     private val profiles = linkedMapOf<Path, KWebDesktopProfile>()
     private val closed = AtomicBoolean(false)
@@ -186,7 +191,25 @@ internal class KWebDesktopProfile(
                         message = "The desktop CEF page requires KWebComposeWindowHost.",
                     )
                 val nativeParent = validateComposeWindow(composeHost.window)
-                val eventStream = KWebPageEventStream()
+                val pageId = java.util.UUID.randomUUID().toString()
+                val bridgeDispatcher = composeHost.bridgeDispatcherForPage?.create(pageId)
+                if ((bridgeDispatcher == null) != composeHost.bridgeOrigin.isNullOrEmpty()) {
+                    throw KWebConfigurationException(
+                        code = "desktop.page.bridge-incomplete",
+                        details = mapOf("origin" to composeHost.bridgeOrigin.orEmpty()),
+                        message = "An exact-origin page requires both a bridge origin and a dispatcher.",
+                    )
+                }
+                val gestureContext = engine.userGestureIssuer?.let { issuer ->
+                    KWebPageGestureContext(
+                        issuer = issuer,
+                        engineId = engine.engineId,
+                        profileId = name,
+                        pageId = pageId,
+                        origin = composeHost.bridgeOrigin.orEmpty(),
+                    )
+                }
+                val eventStream = KWebPageEventStream(gestureContext)
                 val nativePage = NativeBrowser.open(
                     engine = engine.nativeEngine(),
                     nativeParent = nativeParent,
@@ -197,10 +220,10 @@ internal class KWebDesktopProfile(
                     width = bounds.width,
                     height = bounds.height,
                     bridgeOrigin = composeHost.bridgeOrigin.orEmpty(),
-                    bridgeDispatcher = composeHost.bridgeDispatcher,
+                    bridgeDispatcher = bridgeDispatcher,
                     listener = eventStream::accept,
                 )
-                val page = KWebDesktopPage(this@KWebDesktopProfile, nativePage, eventStream)
+                val page = KWebDesktopPage(this@KWebDesktopProfile, nativePage, eventStream, pageId)
                 pages += page
                 page
             }
@@ -295,6 +318,7 @@ internal class KWebDesktopPage(
     private val owner: KWebDesktopProfile,
     private val native: NativeBrowser,
     private val eventStream: KWebPageEventStream,
+    override val id: String,
 ) : KWebPage {
     private val closeLock = Any()
 
@@ -342,6 +366,7 @@ internal class KWebDesktopPage(
             if (lifecycle.value == KWebLifecycleState.CLOSED) return
             native.close()
             if (lifecycle.value == KWebLifecycleState.CLOSED) {
+                eventStream.onPageClosed()
                 owner.removePage(this)
             }
         }
@@ -358,7 +383,42 @@ internal class KWebDesktopPage(
     }
 }
 
-internal class KWebPageEventStream {
+/**
+ * Gesture minting context for one page. The issuer is application-supplied;
+ * minting happens only from the native input event path and binding uses the
+ * page's exact configured bridge origin.
+ */
+internal class KWebPageGestureContext(
+    private val issuer: KWebUserGestureIssuer,
+    private val engineId: String,
+    private val profileId: String,
+    private val pageId: String,
+    private val origin: String,
+) {
+    fun onInputGesture() {
+        if (origin.isEmpty()) return
+        issuer.mint(
+            KWebGestureBinding(
+                engineId = engineId,
+                profileId = profileId,
+                pageId = pageId,
+                origin = origin,
+            ),
+        )
+    }
+
+    fun onNavigationStarted() {
+        if (origin.isNotEmpty()) issuer.invalidateNavigation(pageId)
+    }
+
+    fun onPageClosed() {
+        if (origin.isNotEmpty()) issuer.invalidatePage(pageId)
+    }
+}
+
+internal class KWebPageEventStream(
+    private val gestureContext: KWebPageGestureContext? = null,
+) {
     private val mutableEvents = MutableSharedFlow<KWebPageEvent>(
         replay = 128,
         extraBufferCapacity = 128,
@@ -367,6 +427,13 @@ internal class KWebPageEventStream {
     internal val events: Flow<KWebPageEvent> = mutableEvents.asSharedFlow()
 
     internal fun accept(event: NativeBrowserEvent) {
+        if (event.type == NativeBrowserEventType.INPUT_GESTURE) {
+            gestureContext?.onInputGesture()
+            return
+        }
+        if (event.type == NativeBrowserEventType.NAVIGATION_STARTED) {
+            gestureContext?.onNavigationStarted()
+        }
         val publicEvent = event.toPublicEvent()
         if (!mutableEvents.tryEmit(publicEvent)) {
             throw KWebNativeException(
@@ -375,6 +442,10 @@ internal class KWebPageEventStream {
                 message = "The page event stream has no capacity for the ordered native event.",
             )
         }
+    }
+
+    internal fun onPageClosed() {
+        gestureContext?.onPageClosed()
     }
 }
 
@@ -393,6 +464,9 @@ private fun NativeBrowserEvent.toPublicEvent(): KWebPageEvent {
         NativeBrowserEventType.DEVTOOLS_OPENED -> KWebPageEventType.DEVTOOLS_OPENED
         NativeBrowserEventType.DEVTOOLS_CLOSED -> KWebPageEventType.DEVTOOLS_CLOSED
         NativeBrowserEventType.DEVTOOLS_FAILED -> KWebPageEventType.DEVTOOLS_FAILED
+        NativeBrowserEventType.INPUT_GESTURE ->
+            // Filtered by KWebPageEventStream before the public mapping.
+            throw IllegalStateException("The internal input-gesture event reached the public mapping.")
     }
     val flags = buildSet {
         if (this@toPublicEvent.flags and 1 != 0) add(KWebPageEventFlag.LOADING)

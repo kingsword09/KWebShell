@@ -16,11 +16,45 @@ import io.github.kingsword09.kwebshell.service.dialogs.generated.TruncateFileReq
 import io.github.kingsword09.kwebshell.service.dialogs.generated.TruncateFileResponse
 import io.github.kingsword09.kwebshell.service.dialogs.generated.WriteFileRequest
 import io.github.kingsword09.kwebshell.service.dialogs.generated.WriteFileResponse
+import io.github.kingsword09.kwebshell.services.KWebPolicySubject
+import io.github.kingsword09.kwebshell.services.KWebServiceOperationDescriptor
 import io.github.kingsword09.kwebshell.services.KWebServicePermissionPolicy
+import io.github.kingsword09.kwebshell.services.policy.KWebPolicyDecision
+import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
 import kotlinx.coroutines.CancellationException
 
 public fun KWebDialogs.bridgeDispatcher(
     policy: KWebServicePermissionPolicy,
+): KWebBridgeDispatcher = bridgeDispatcher { operationId ->
+    if (!policy.allows(KWebDialogs.DESCRIPTOR.id, operationId)) {
+        throw KWebBridgeException(
+            code = "service.permission-denied",
+            message = "The page is not granted '$operationId' on KWebDialogs.",
+        )
+    }
+}
+
+public fun KWebDialogs.bridgeDispatcher(
+    policyEngine: KWebServicePolicyEngine,
+    subject: KWebPolicySubject,
+): KWebBridgeDispatcher = bridgeDispatcher { operationId ->
+    val operation = KWebDialogs.DESCRIPTOR.operations.first { it.id == operationId }
+    val verdict = policyEngine.authorize(subject, KWebDialogs.DESCRIPTOR.id, operation)
+    when (verdict.decision) {
+        KWebPolicyDecision.ALLOW -> Unit
+        KWebPolicyDecision.DENY -> throw KWebBridgeException(
+            code = verdict.reasonCode,
+            message = "The policy engine denied '$operationId' on KWebDialogs.",
+        )
+        KWebPolicyDecision.PROMPT_REQUIRED -> throw KWebBridgeException(
+            code = KWebServicePolicyEngine.REASON_PROMPT,
+            message = "The policy engine requires explicit consent for '$operationId' on KWebDialogs.",
+        )
+    }
+}
+
+private fun KWebDialogs.bridgeDispatcher(
+    policyCheck: suspend (String) -> Unit,
 ): KWebBridgeDispatcher = DialogsBridgeDispatcher(
     object : DialogsBridgeHandler {
         override suspend fun selectFile(request: SelectFileRequest): SelectFileResponse =
@@ -87,12 +121,7 @@ public fun KWebDialogs.bridgeDispatcher(
             operationId: String,
             action: suspend () -> T,
         ): T {
-            if (!policy.allows(KWebDialogs.DESCRIPTOR.id, operationId)) {
-                throw KWebBridgeException(
-                    code = "service.permission-denied",
-                    message = "The page is not granted '$operationId' on KWebDialogs.",
-                )
-            }
+            policyCheck(operationId)
             return try {
                 action()
             } catch (error: CancellationException) {

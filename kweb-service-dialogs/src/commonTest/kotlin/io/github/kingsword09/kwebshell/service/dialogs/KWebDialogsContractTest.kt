@@ -16,7 +16,12 @@ class KWebDialogsContractTest {
             setOf("select-file", "read-file", "write-file", "truncate-file", "close-file"),
             KWebDialogs.DESCRIPTOR.operations.map { it.id }.toSet(),
         )
-        assertTrue(KWebDialogs.DESCRIPTOR.operations.none { it.requiresUserGesture })
+        // write-file mutates caller-provided handles and is gated on a
+        // native-verified user gesture; the remaining operations are not.
+        assertEquals(
+            setOf("write-file"),
+            KWebDialogs.DESCRIPTOR.operations.filter { it.requiresUserGesture }.map { it.id }.toSet(),
+        )
         assertEquals("open", KWebFileDialogMode.OPEN.id)
         assertEquals(KWebFileDialogMode.SAVE, KWebFileDialogMode.fromId("save"))
     }

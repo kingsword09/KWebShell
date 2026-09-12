@@ -27,6 +27,7 @@
 #include "include/base/cef_callback.h"
 #include "include/cef_client.h"
 #include "include/cef_cookie.h"
+#include "include/cef_keyboard_handler.h"
 #include "include/cef_parser.h"
 #include "include/cef_request_context.h"
 #include "include/cef_request_context_handler.h"
@@ -230,6 +231,8 @@ SessionRegistry &Registry() {
 
 class SessionClient final : public CefClient,
                             public CefDisplayHandler,
+                            public CefFocusHandler,
+                            public CefKeyboardHandler,
                             public CefLifeSpanHandler,
                             public CefLoadHandler,
                             public CefRequestHandler {
@@ -239,6 +242,8 @@ public:
   ~SessionClient() override;
 
   CefRefPtr<CefDisplayHandler> GetDisplayHandler() override { return this; }
+  CefRefPtr<CefFocusHandler> GetFocusHandler() override { return this; }
+  CefRefPtr<CefKeyboardHandler> GetKeyboardHandler() override { return this; }
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
   CefRefPtr<CefLoadHandler> GetLoadHandler() override { return this; }
   CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
@@ -260,6 +265,9 @@ public:
   bool OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
                       CefRefPtr<CefRequest> request, bool user_gesture,
                       bool is_redirect) override;
+  bool OnPreKeyEvent(CefRefPtr<CefBrowser> browser, const CefKeyEvent &event,
+                     CefEventHandle os_event,
+                     bool *is_keyboard_shortcut) override;
   bool OnProcessMessageReceived(
       CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
       CefProcessId source_process,
@@ -778,6 +786,12 @@ public:
     uint32_t flags = user_gesture ? KWEB_BROWSER_FLAG_USER_GESTURE : 0;
     flags |= redirect ? KWEB_BROWSER_FLAG_REDIRECT : 0;
     Emit(KWEB_BROWSER_EVENT_NAVIGATION_STARTED, flags, url, 0, 0, 0);
+  }
+
+  // Real browser-process keyboard input is the only production gesture
+  // minting path; renderer-synthesized DOM events never reach this callback.
+  void InputGesture() {
+    Emit(KWEB_BROWSER_EVENT_INPUT_GESTURE, 0, {}, 0, 0, 0);
   }
 
   void LoadingChanged(bool loading, bool can_go_back, bool can_go_forward) {
@@ -1350,6 +1364,19 @@ void SessionClient::OnLoadError(CefRefPtr<CefBrowser> browser,
       session->LoadFailed(failed_url.ToString(), error_code);
     }
   }
+}
+
+bool SessionClient::OnPreKeyEvent(CefRefPtr<CefBrowser> browser,
+                                  const CefKeyEvent &event,
+                                  CefEventHandle os_event,
+                                  bool *is_keyboard_shortcut) {
+  CEF_REQUIRE_UI_THREAD();
+  if (event.type == KEYEVENT_RAWKEYDOWN || event.type == KEYEVENT_KEYDOWN) {
+    if (auto session = session_.lock()) {
+      session->InputGesture();
+    }
+  }
+  return false;
 }
 
 bool SessionClient::OnBeforeBrowse(CefRefPtr<CefBrowser> browser,

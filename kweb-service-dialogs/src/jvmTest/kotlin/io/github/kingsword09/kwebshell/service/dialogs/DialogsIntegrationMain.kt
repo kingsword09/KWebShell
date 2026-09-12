@@ -273,7 +273,7 @@ public fun main(): Unit = runBlocking {
         }
         Files.writeString(
             evidence.resolve("consent-status.json"),
-            "{\"facility\": \"\${osConsent.facility}\", \"status\": \"\${consentStatus.getOrNull()}\", " +
+            "{\"facility\": \"${'$'}{osConsent.facility}\", \"status\": \"${'$'}{consentStatus.getOrNull()}\", " +
                 "\"queriedThrough\": \"integration\", \"note\": \"real OS consent state, retained as-is\"}\n",
         )
         Files.writeString(root.resolve("passed.txt"), "Native selection, bounded IO, renderer gestures, origins, permissions, and Engine shutdown passed.\n")

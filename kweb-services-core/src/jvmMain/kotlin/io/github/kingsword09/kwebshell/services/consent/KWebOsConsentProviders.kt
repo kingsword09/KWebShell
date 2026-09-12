@@ -148,9 +148,20 @@ public class LinuxPortalPermissionStoreConsentProvider(
     override val facility: String = "linux.portal-permission-store.$table"
 
     override suspend fun status(request: KWebConsentRequest): KWebConsentStatus = withContext(Dispatchers.IO) {
-        val process = ProcessBuilder("xdg-permission-store", "get", table, entryId)
-            .redirectErrorStream(false)
-            .start()
+        // The portal CLI ships at distribution-specific absolute locations and
+        // is not always on PATH; a missing facility is a real not-configured.
+        var process: Process? = null
+        for (tool in TOOL_CANDIDATES) {
+            try {
+                process = ProcessBuilder(tool, "get", table, entryId)
+                    .redirectErrorStream(false)
+                    .start()
+                break
+            } catch (error: java.io.IOException) {
+                continue
+            }
+        }
+        process ?: return@withContext KWebConsentStatus.NOT_CONFIGURED
         val finished = process.waitFor(10, TimeUnit.SECONDS)
         if (!finished) {
             process.destroyForcibly()
@@ -165,5 +176,13 @@ public class LinuxPortalPermissionStoreConsentProvider(
             // The portal store reports a missing entry as a lookup failure.
             else -> KWebConsentStatus.NOT_CONFIGURED
         }
+    }
+
+    public companion object {
+        private val TOOL_CANDIDATES: List<String> = listOf(
+            "xdg-permission-store",
+            "/usr/libexec/xdg-permission-store",
+            "/usr/lib/xdg-permission-store",
+        )
     }
 }

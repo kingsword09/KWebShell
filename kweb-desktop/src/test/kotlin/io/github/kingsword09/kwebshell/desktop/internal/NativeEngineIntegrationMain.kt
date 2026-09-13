@@ -33,8 +33,14 @@ import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPathKind
 import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPaths
 import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPathsConfiguration
 import io.github.kingsword09.kwebshell.service.apppaths.bridgeDispatcher
+import io.github.kingsword09.kwebshell.services.KWebPolicySubject
 import io.github.kingsword09.kwebshell.services.KWebServiceGrant
 import io.github.kingsword09.kwebshell.services.KWebServicePermissionPolicy
+import io.github.kingsword09.kwebshell.services.KWebServiceScope
+import io.github.kingsword09.kwebshell.services.policy.KWebInMemoryConsentStore
+import io.github.kingsword09.kwebshell.services.policy.KWebPolicyAudit
+import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
+import io.github.kingsword09.kwebshell.services.policy.KWebUserGestureRegistry
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeDispatchers
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeException
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeRoute
@@ -299,6 +305,13 @@ private fun runSuccessfulLifecycle() {
             setOf(KWebServiceGrant(KWebAppPaths.DESCRIPTOR.id, "resolve")),
         )
         val appPathsDenyPolicy = KWebServicePermissionPolicy.exact(emptySet())
+        val appPathsPolicyEngine = KWebServicePolicyEngine(
+            rendererGrants = appPathsAllowPolicy,
+            gestures = KWebUserGestureRegistry(),
+            consentStore = KWebInMemoryConsentStore("engine-integration"),
+            osConsent = null,
+            audit = KWebPolicyAudit(),
+        )
         val directHome = kotlinx.coroutines.runBlocking {
             appPathsService.resolve(KWebAppPathKind.HOME)
         }
@@ -348,7 +361,16 @@ private fun runSuccessfulLifecycle() {
                     ),
                     KWebBridgeRoute(
                         methods = setOf("resolve"),
-                        dispatcher = appPathsService.bridgeDispatcher(appPathsAllowPolicy),
+                        dispatcher = appPathsService.bridgeDispatcher(
+                            appPathsPolicyEngine,
+                            KWebPolicySubject(
+                                engineId = "engine-integration",
+                                profileId = "integration-profile",
+                                pageId = "bridge-page",
+                                origin = origin.origin,
+                                scope = KWebServiceScope.APPLICATION,
+                            ),
+                        ),
                     ),
                 )
                 val browser = NativeBrowser.open(
@@ -460,7 +482,16 @@ private fun runSuccessfulLifecycle() {
                     width = 320,
                     height = 240,
                     bridgeOrigin = origin.origin,
-                    bridgeDispatcher = appPathsService.bridgeDispatcher(appPathsDenyPolicy),
+                    bridgeDispatcher = appPathsService.bridgeDispatcher(
+                        appPathsPolicyEngine,
+                        KWebPolicySubject(
+                            engineId = "engine-integration",
+                            profileId = "integration-profile",
+                            pageId = "denied-page",
+                            origin = origin.origin,
+                            scope = KWebServiceScope.APPLICATION,
+                        ),
+                    ),
                 )
                 try {
                     cdp.awaitPage("${origin.firstUrl}?denied")

@@ -405,10 +405,21 @@ internal class NativeBrowser private constructor(
                         }
                     }
                     NativeBridgeEventType.CANCELLED -> {
-                        synchronized(streamsByStreamId) {
-                            streamsByStreamId.entries.removeIf { it.value.requestId == requestId }
-                                .let { removed -> if (removed) streamsByStreamId.values.lastOrNull()?.gate?.close() }
+                        // Close only the gates of the streams owned by the
+                        // cancelled request; unrelated streams keep running.
+                        val cancelledGates: List<KWebStreamCreditGate> = synchronized(streamsByStreamId) {
+                            val gates = mutableListOf<KWebStreamCreditGate>()
+                            streamsByStreamId.entries.removeAll { entry ->
+                                if (entry.value.requestId == requestId) {
+                                    gates += entry.value.gate
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                            gates
                         }
+                        cancelledGates.forEach { it.close() }
                         bridgeJobs.remove(requestId)?.cancel(
                             CancellationException("The page cancelled bridge request $requestId."),
                         )
@@ -516,7 +527,20 @@ internal class NativeBrowser private constructor(
                 "Native reused a live bridge request ID.",
             )
         } else {
-            synchronized(streamsByStreamId) { streamsByStreamId[streamId] = StreamEntry(gate, requestId) }
+            synchronized(streamsByStreamId) {
+                // A duplicate caller-declared stream id is a typed failure: the
+                // late ACK would otherwise be routed to the wrong stream.
+                if (streamsByStreamId.containsKey(streamId)) {
+                    job.cancel(CancellationException("Duplicate stream id $streamId."))
+                    recordCallbackFailure(
+                        "native.bridge.stream-duplicate",
+                        mapOf("streamId" to streamId.toString(), "requestId" to requestId.toString()),
+                        "Native reused a live stream id.",
+                    )
+                    return@launchStreamRequest
+                }
+                streamsByStreamId[streamId] = StreamEntry(gate, requestId)
+            }
             job.start()
         }
     }

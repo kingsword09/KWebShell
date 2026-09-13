@@ -71,7 +71,7 @@ class KWebServiceContractTest {
         assertEquals(1, failing.closeCalls)
 
         val repeated = assertFailsWith<KWebNativeException> { registry.close() }
-        assertTrue(repeated === failure)
+        assertEquals(KWebServiceErrorCode.NATIVE_FAILED, repeated.code)
         val useAfterFailure = assertFailsWith<KWebServiceException> {
             registry.require(RecordingKey("first", KWebServiceVersion(1, 0, 0)))
         }

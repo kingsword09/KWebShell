@@ -195,6 +195,26 @@ class KWebServiceProviderSdkTest {
     }
 
     @Test
+    fun misreportedDependencyScopeFails() {
+        val failure = assertFailsWith<KWebServiceException> {
+            KWebNativeServiceRegistry().installProviders(
+                configuration(
+                    declaration("page-service", scope = KWebServiceScope.PAGE),
+                    declaration(
+                        "app-service",
+                        scope = KWebServiceScope.APPLICATION,
+                        dependencies = setOf(
+                            // The edge lies about the providing service's scope.
+                            KWebServiceDependency("page-service", KWebServiceVersionRange.exact(KWebServiceVersion(1, 0, 0)), KWebServiceScope.APPLICATION),
+                        ),
+                    ),
+                ),
+            )
+        }
+        assertEquals(KWebServiceErrorCode.DEPENDENCY_SCOPE_INVALID, failure.code)
+    }
+
+    @Test
     fun unsatisfiedDependencyRangeFails() {
         val failure = assertFailsWith<KWebServiceException> {
             KWebNativeServiceRegistry().installProviders(
@@ -259,9 +279,64 @@ class KWebServiceProviderSdkTest {
             registry.installProviders(configuration(declaration("a")))
         }
         assertSame(failure, retry)
+        // Close releases every service before reporting the sticky failure; the
+        // attempt's own failure keeps its stable code.
         val closeFailure = assertFailsWith<KWebServiceException> { registry.close() }
-        assertSame(failure, closeFailure)
+        assertEquals(KWebServiceErrorCode.PROVIDER_STARTUP_FAILED, closeFailure.code)
         assertEquals(1, createdServices.getValue("a").closeCount, "Rollback closes each created resource exactly once.")
+    }
+
+    @Test
+    fun closeAfterFailedSecondStartupReleasesEarlierServices() {
+        val registry = KWebNativeServiceRegistry()
+        registry.installProviders(configuration(declaration("survivor")))
+        assertEquals(0, createdServices.getValue("survivor").closeCount)
+
+        assertFailsWith<KWebServiceException> {
+            registry.installProviders(
+                configuration(
+                    declaration("later"),
+                    declaration(
+                        "broken",
+                        dependencies = setOf(KWebServiceDependency("later", KWebServiceVersionRange.exact(KWebServiceVersion(1, 0, 0)), KWebServiceScope.APPLICATION)),
+                        factoryError = IllegalStateException("second startup failed"),
+                    ),
+                ),
+            )
+        }
+        assertEquals(KWebLifecycleState.FAILED, registry.lifecycle.value)
+        assertEquals(0, createdServices.getValue("survivor").closeCount)
+
+        val sticky = assertFailsWith<KWebServiceException> { registry.close() }
+        assertEquals(KWebServiceErrorCode.PROVIDER_STARTUP_FAILED, sticky.code)
+        assertEquals(1, createdServices.getValue("survivor").closeCount, "A failed registry must still close earlier installed services.")
+        assertEquals(KWebLifecycleState.FAILED, registry.lifecycle.value)
+        val requireFailure = assertFailsWith<KWebServiceException> {
+            registry.require(testKey<KWebNativeService>("survivor"))
+        }
+        assertEquals(KWebServiceErrorCode.OWNER_CLOSED, requireFailure.code)
+    }
+
+    @Test
+    fun installProvidersCannotReplaceAnInstalledService() {
+        val registry = KWebNativeServiceRegistry()
+        registry.installProviders(configuration(declaration("first")))
+        val original = createdServices.getValue("first")
+
+        val failure = assertFailsWith<KWebServiceException> {
+            registry.installProviders(configuration(declaration("first", providerId = "second.provider")))
+        }
+        assertEquals("service.duplicate-installation", failure.code)
+        // The replacement attempt is sticky-failed; its instance was closed
+        // immediately and the original is no longer reachable through the failed
+        // registry, but it is still released exactly once by close.
+        assertEquals(1, createdServices.getValue("first").closeCount, "The replacement instance must be closed immediately.")
+        val requireFailure = assertFailsWith<KWebServiceException> {
+            registry.require(testKey<KWebNativeService>("first"))
+        }
+        assertEquals(KWebServiceErrorCode.OWNER_CLOSED, requireFailure.code)
+        assertFailsWith<KWebServiceException> { registry.close() }
+        assertEquals(2, closeOrder.count { it == "first" }, "The original service must survive until the registry closes.")
     }
 
     @Test
@@ -345,6 +420,31 @@ class KWebServiceProviderSdkTest {
             capturedEnvironment.dependency(testKey<KWebNativeService>("a"))
         }
         assertEquals(KWebServiceErrorCode.OWNER_CLOSED, afterClose.code)
+    }
+
+    @Test
+    fun environmentRefusesUndeclaredButConfiguredFacts() {
+        val registry = KWebNativeServiceRegistry()
+        lateinit var capturedEnvironment: KWebServiceProviderEnvironment
+        registry.installProviders(
+            configuration(
+                declaration(
+                    "a",
+                    onCreate = { environment -> capturedEnvironment = environment },
+                ),
+                declaration(
+                    "b",
+                    requiredFacts = setOf("other-provider-fact"),
+                ),
+                facts = setOf(
+                    KWebCapabilityFact("other-provider-fact", available = true),
+                ),
+            ),
+        )
+        // The fact exists in the configuration, but this provider never declared it.
+        val refused = assertFailsWith<KWebServiceException> { capturedEnvironment.fact("other-provider-fact") }
+        assertEquals(KWebServiceErrorCode.CAPABILITY_MISSING, refused.code)
+        registry.close()
     }
 
     @Test

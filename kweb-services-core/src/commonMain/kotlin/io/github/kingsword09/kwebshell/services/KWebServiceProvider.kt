@@ -288,7 +288,18 @@ internal object KWebProviderStartupPlanner {
                         ),
                         message = "A declared dependency has no provider in the configuration.",
                     )
-                if (dependency.scope.ordinal > declaration.scope.ordinal) {
+                if (dependency.scope != providing.scope) {
+                    throw KWebServiceException(
+                        code = KWebServiceErrorCode.DEPENDENCY_SCOPE_INVALID,
+                        details = mapOf(
+                            "provider" to declaration.providerId,
+                            "dependency" to dependency.id,
+                            "dependencyScope" to dependency.scope.name,
+                            "providedScope" to providing.scope.name,
+                        ),
+                        message = "A provider cannot depend on a narrower owner scope.",
+                    )
+                } else if (dependency.scope.ordinal > declaration.scope.ordinal) {
                     throw KWebServiceException(
                         code = KWebServiceErrorCode.DEPENDENCY_SCOPE_INVALID,
                         details = mapOf(
@@ -297,7 +308,7 @@ internal object KWebProviderStartupPlanner {
                             "dependencyScope" to dependency.scope.name,
                             "providerScope" to declaration.scope.name,
                         ),
-                        message = "A provider cannot depend on a narrower owner scope.",
+                        message = "A provider cannot depend on a narrower owner scope than itself.",
                     )
                 }
                 if (!dependency.contract.contains(providing.contractVersion)) {

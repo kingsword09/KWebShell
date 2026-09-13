@@ -13,15 +13,17 @@ import kotlinx.serialization.json.put
 /**
  * Governance command line.
  *
- * check <catalog-dir> <manifest.json> <runtime.json> [--report <out.json>]
+ * check <catalog-dir> <manifest.json> <runtime.json> <contracts.json>
+ *       --repository-root <dir> [--report <out.json>]
  *   Validates the RFC catalog, the capability evidence manifest, the published
  *   service descriptors, and the capability matrix backing. Writes the joined
  *   status report (ready/blocked/stale/platform-specific per RFC) and exits 2 on
  *   any blocking finding.
  *
  * record <manifest.json> <output.json> --catalog <dir> --runtime <runtime.json>
- *        --rfc <id> --provider <id> --target <t> --test-run <id> --electron-major <n>
- *        [--service <id>] [--matrix-row <id>]... [--artifact <name=sha256>]...
+ *        --contracts <contracts.json> --repository-root <dir>
+ *        --rfc <id> --provider <id> --electron-major <n>
+ *        [--service <id>] [--matrix-row <id>]... [--artifact <name=path>]...
  *        [--compatibility-status READY|BLOCKED] [--from-compatibility-report <path>]
  *   Upserts one evidence record derived from structured test output and rewrites
  *   the manifest canonically. Regeneration from the same inputs is byte-for-byte
@@ -60,12 +62,19 @@ public object KWebRfcGovernanceCli {
 
     private fun check(arguments: List<String>) {
         val positional = arguments.takeWhile { !it.startsWith("--") }
-        require(positional.size == 3) { "Usage: check <catalog-dir> <manifest.json> <runtime.json> [--report <out.json>]" }
+        require(positional.size == 4) {
+            "Usage: check <catalog-dir> <manifest.json> <runtime.json> <contracts.json> --repository-root <dir>"
+        }
         val options = parseOptions(arguments.drop(positional.size))
         val reportPath = options["--report"]?.let { Path.of(it) }
+        val repositoryRoot = Path.of(
+            options["--repository-root"]
+                ?: throw IllegalArgumentException("The check command requires --repository-root."),
+        )
 
         val catalog = KWebRfcCatalog.load(Path.of(positional[0]))
         val runtime = KWebRfcRuntimeIdentity.load(Path.of(positional[2]))
+        val contractBindings = KWebRfcContractBindings.load(Path.of(positional[3]))
         val manifest = try {
             KWebRfcEvidenceJson.decodeManifest(Files.readString(Path.of(positional[1])))
         } catch (error: KWebRfcGovernanceException) {
@@ -77,8 +86,14 @@ public object KWebRfcGovernanceCli {
             }
             throw error
         }
-        val report = KWebRfcGovernanceChecker(catalog, manifest, KWebElectronCapabilityMatrix.document(), runtime)
-            .check()
+        val report = KWebRfcGovernanceChecker(
+            catalog,
+            manifest,
+            KWebElectronCapabilityMatrix.document(),
+            runtime,
+            KWebRfcContractDigestProvider.forRepository(contractBindings, repositoryRoot),
+            KWebRfcArtifactDigestProvider.forRepository(repositoryRoot),
+        ).check()
         reportPath?.let { writeReport(it, report) }
 
         report.rfcs.forEach { status ->
@@ -103,21 +118,23 @@ public object KWebRfcGovernanceCli {
         val options = parseMultiOptions(arguments.drop(positional.size))
         val catalog = KWebRfcCatalog.load(Path.of(requiredOption(options, "--catalog")))
         val runtime = KWebRfcRuntimeIdentity.load(Path.of(requiredOption(options, "--runtime")))
+        val contractBindings = KWebRfcContractBindings.load(Path.of(requiredOption(options, "--contracts")))
+        val repositoryRoot = Path.of(requiredOption(options, "--repository-root"))
         val manifest = KWebRfcEvidenceJson.decodeManifest(Files.readString(Path.of(positional[0])))
+        val run = hostedRunFromEnvironment(System.getenv())
 
         val compatibilityReport = options["--from-compatibility-report"]?.singleOrNull()?.let { path ->
             val report = KWebElectronMigrationJson.format.decodeFromString(
                 KWebElectronCompatibilityReport.serializer(),
                 Files.readString(Path.of(path)),
             )
-            val reportDigest = KWebRfcEvidenceJson.sha256(Files.readAllBytes(Path.of(path)))
-            report to reportDigest
+            report to Path.of(path)
         }
         val request = KWebRfcEvidenceRecordRequest(
             rfcId = requiredOption(options, "--rfc"),
             providerId = requiredOption(options, "--provider"),
-            target = requiredOption(options, "--target"),
-            testRunId = requiredOption(options, "--test-run"),
+            target = hostedTargetFromEnvironment(System.getenv()),
+            run = run,
             electronFixtureMajor = requiredOption(options, "--electron-major").toIntOrNull()
                 ?: throw KWebRfcGovernanceException(
                     code = "rfc.record.invalid-argument",
@@ -133,18 +150,25 @@ public object KWebRfcGovernanceCli {
                     throw KWebRfcGovernanceException(
                         code = "rfc.record.invalid-argument",
                         details = mapOf("option" to "--artifact"),
-                        message = "Artifacts must be passed as name=sha256.",
+                        message = "Artifacts must be passed as name=path.",
                     )
                 }
-                KWebRfcEvidenceArtifact(
+                KWebRfcEvidenceArtifactInput(
                     name = pair.substring(0, separator),
-                    sha256 = pair.substring(separator + 1),
+                    path = Path.of(pair.substring(separator + 1)),
                 )
             },
             compatibilityReport = compatibilityReport?.first,
-            compatibilityReportSha256 = compatibilityReport?.second,
+            compatibilityReportPath = compatibilityReport?.second,
         )
-        val updated = KWebRfcEvidenceRecorder().record(request, manifest, catalog, runtime)
+        val updated = KWebRfcEvidenceRecorder().record(
+            request,
+            manifest,
+            catalog,
+            runtime,
+            contractBindings,
+            repositoryRoot,
+        )
         val output = Path.of(positional[1]).toAbsolutePath().normalize()
         output.parent?.let(Files::createDirectories)
         Files.writeString(output, KWebRfcEvidenceJson.encodeManifest(updated) + "\n")
@@ -197,4 +221,45 @@ public object KWebRfcGovernanceCli {
                 details = mapOf("option" to name),
                 message = "The record command requires exactly one '$name' option.",
             )
+
+    internal fun hostedRunFromEnvironment(environment: Map<String, String>): KWebRfcHostedRun {
+        if (environment["GITHUB_ACTIONS"] != "true") {
+            throw KWebRfcGovernanceException(
+                code = "rfc.record.untrusted-environment",
+                message = "Evidence records may only be produced by a GitHub Actions hosted run.",
+            )
+        }
+        fun required(name: String): String = environment[name]?.takeIf(String::isNotBlank)
+            ?: throw KWebRfcGovernanceException(
+                code = "rfc.record.missing-provenance",
+                details = mapOf("environment" to name),
+                message = "The hosted run did not expose all required evidence provenance.",
+            )
+        return KWebRfcHostedRun(
+            repository = required("GITHUB_REPOSITORY"),
+            workflowRef = required("GITHUB_WORKFLOW_REF"),
+            runId = required("GITHUB_RUN_ID"),
+            runAttempt = required("GITHUB_RUN_ATTEMPT").toIntOrNull()
+                ?: throw KWebRfcGovernanceException(
+                    code = "rfc.record.missing-provenance",
+                    details = mapOf("environment" to "GITHUB_RUN_ATTEMPT"),
+                    message = "The hosted run attempt is not an integer.",
+                ),
+            sourceRevision = required("GITHUB_SHA"),
+        )
+    }
+
+    internal fun hostedTargetFromEnvironment(environment: Map<String, String>): String {
+        val key = "${environment["RUNNER_OS"]}:${environment["RUNNER_ARCH"]}"
+        return when (key) {
+            "macOS:ARM64" -> "macos-arm64"
+            "Windows:X64" -> "windows-x64"
+            "Linux:X64" -> "linux-x64"
+            else -> throw KWebRfcGovernanceException(
+                code = "rfc.record.unsupported-runner",
+                details = mapOf("runner" to key),
+                message = "The hosted runner is not one of the RFC evidence targets.",
+            )
+        }
+    }
 }

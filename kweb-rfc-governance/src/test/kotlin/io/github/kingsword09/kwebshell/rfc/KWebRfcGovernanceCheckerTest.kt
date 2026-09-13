@@ -75,6 +75,41 @@ class KWebRfcGovernanceCheckerTest {
     }
 
     @Test
+    fun changedBoundContractMakesEvidenceStale() {
+        val report = KWebRfcGovernanceChecker(
+            implementedCatalog(),
+            fixtureManifest(threeHostedTargets()),
+            matrix,
+            FIXTURE_RUNTIME,
+            KWebRfcContractDigestProvider { "d".repeat(64) },
+            KWebRfcArtifactDigestProvider { "a".repeat(64) },
+        ).check()
+        assertEquals(KWebRfcGovernanceReport.BLOCKED, report.governanceStatus)
+        assertEquals(KWebRfcGovernanceState.STALE, report.rfcs.single { it.rfcId == "0001" }.state)
+        assertEquals(
+            KWEB_RFC_HOSTED_TARGETS.size,
+            report.findings.count { it.code == KWebRfcFindingCode.EVIDENCE_STALE_CONTRACT },
+        )
+    }
+
+    @Test
+    fun missingOrChangedRetainedArtifactMakesEvidenceStale() {
+        val report = KWebRfcGovernanceChecker(
+            implementedCatalog(),
+            fixtureManifest(threeHostedTargets()),
+            matrix,
+            FIXTURE_RUNTIME,
+            FIXTURE_CONTRACT_DIGESTS,
+            KWebRfcArtifactDigestProvider { null },
+        ).check()
+        assertEquals(KWebRfcGovernanceState.STALE, report.rfcs.single { it.rfcId == "0001" }.state)
+        assertEquals(
+            KWEB_RFC_HOSTED_TARGETS.size,
+            report.findings.count { it.code == KWebRfcFindingCode.EVIDENCE_STALE_ARTIFACT },
+        )
+    }
+
+    @Test
     fun staleServiceVersionMakesEvidenceStale() {
         val report = KWebRfcGovernanceChecker(
             implementedCatalog(),

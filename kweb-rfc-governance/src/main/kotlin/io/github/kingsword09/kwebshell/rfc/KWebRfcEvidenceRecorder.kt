@@ -2,20 +2,29 @@ package io.github.kingsword09.kwebshell.rfc
 
 import io.github.kingsword09.kwebshell.electron.migration.KWebElectronCompatibilityReport
 import io.github.kingsword09.kwebshell.electron.migration.KWebElectronCompatibilityReportValidator
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 
 /** Inputs for upserting one deterministic evidence record into the manifest. */
-public data class KWebRfcEvidenceRecordRequest(
-    public val rfcId: String,
-    public val providerId: String,
-    public val target: String,
-    public val testRunId: String,
-    public val electronFixtureMajor: Int,
-    public val serviceId: String? = null,
-    public val matrixRowIds: List<String> = emptyList(),
-    public val compatibilityStatus: String? = null,
-    public val artifacts: List<KWebRfcEvidenceArtifact> = emptyList(),
-    public val compatibilityReport: KWebElectronCompatibilityReport? = null,
-    public val compatibilityReportSha256: String? = null,
+internal data class KWebRfcEvidenceRecordRequest(
+    val rfcId: String,
+    val providerId: String,
+    val target: String,
+    val run: KWebRfcHostedRun,
+    val electronFixtureMajor: Int,
+    val serviceId: String? = null,
+    val matrixRowIds: List<String> = emptyList(),
+    val compatibilityStatus: String? = null,
+    val artifacts: List<KWebRfcEvidenceArtifactInput> = emptyList(),
+    val compatibilityReport: KWebElectronCompatibilityReport? = null,
+    val compatibilityReportPath: Path? = null,
+)
+
+/** Local retained output whose exact bytes are hashed by the recorder. */
+internal data class KWebRfcEvidenceArtifactInput(
+    val name: String,
+    val path: Path,
 )
 
 /**
@@ -24,12 +33,14 @@ public data class KWebRfcEvidenceRecordRequest(
  * manifest, never typed by hand, so regenerating the manifest from the same inputs
  * is byte-for-byte deterministic.
  */
-public class KWebRfcEvidenceRecorder {
-    public fun record(
+internal class KWebRfcEvidenceRecorder {
+    fun record(
         request: KWebRfcEvidenceRecordRequest,
         manifest: KWebRfcEvidenceManifest,
         catalog: List<KWebRfcDocument>,
         runtime: KWebRfcRuntimeIdentity,
+        contractBindings: KWebRfcContractBindingsDocument,
+        repositoryRoot: Path,
     ): KWebRfcEvidenceManifest {
         val document = catalog.singleOrNull { it.id == request.rfcId }
             ?: throw KWebRfcGovernanceException(
@@ -48,7 +59,7 @@ public class KWebRfcEvidenceRecorder {
         var serviceId = request.serviceId
         var serviceVersion: String? = null
         var compatibilityStatus = request.compatibilityStatus
-        val artifacts = request.artifacts.toMutableList()
+        val artifactInputs = request.artifacts.toMutableList()
 
         request.compatibilityReport?.let { report ->
             KWebElectronCompatibilityReportValidator.validate(report)
@@ -88,32 +99,31 @@ public class KWebRfcEvidenceRecorder {
                     )
                 }
             }
-            serviceVersion = report.serviceContractVersions.getValue(serviceId!!)
+            serviceVersion = report.serviceContractVersions.getValue(serviceId)
             compatibilityStatus = compatibilityStatus ?: report.migrationStatus
-            artifacts += KWebRfcEvidenceArtifact("renderer", report.rendererSha256)
-            artifacts += KWebRfcEvidenceArtifact("migration-manifest", report.manifestSha256)
-            artifacts += KWebRfcEvidenceArtifact("generated-output", report.generatedOutputSha256)
-            artifacts += KWebRfcEvidenceArtifact("inventory", report.inventorySha256)
-            artifacts += KWebRfcEvidenceArtifact("capability-matrix", report.capabilityMatrixSha256)
-            request.compatibilityReportSha256?.let {
-                artifacts += KWebRfcEvidenceArtifact("compatibility-report", it)
-            }
+            val reportPath = request.compatibilityReportPath
+                ?: throw KWebRfcGovernanceException(
+                    code = KWebRfcRecorderErrorCode.REPORT_ARTIFACT_MISSING,
+                    message = "A compatibility report must retain and hash the exact report bytes.",
+                )
+            artifactInputs += KWebRfcEvidenceArtifactInput("compatibility-report", reportPath)
         }
 
         if (serviceId != null && serviceVersion == null) {
             throw KWebRfcGovernanceException(
                 code = KWebRfcRecorderErrorCode.SERVICE_UNRESOLVED,
-                details = mapOf("service" to serviceId!!),
+                details = mapOf("service" to serviceId),
                 message = "A declared service requires a version from a compatibility report.",
             )
         }
-        if (artifacts.isEmpty()) {
+        if (artifactInputs.isEmpty()) {
             throw KWebRfcGovernanceException(
                 code = KWebRfcRecorderErrorCode.ARTIFACTS_EMPTY,
                 details = mapOf("rfc" to request.rfcId),
                 message = "An evidence record must retain at least one artifact digest.",
             )
         }
+        val artifacts = artifactInputs.map { input -> retainArtifact(input, request, repositoryRoot) }
 
         val record = KWebRfcEvidenceRecord(
             rfcId = request.rfcId,
@@ -126,10 +136,11 @@ public class KWebRfcEvidenceRecorder {
             cefVersion = runtime.cefVersion,
             chromiumVersion = runtime.chromiumVersion,
             electronFixtureMajor = request.electronFixtureMajor,
-            testRunId = request.testRunId,
+            run = request.run,
+            contractSha256 = KWebRfcContractBindings.digest(contractBindings, repositoryRoot, request.rfcId),
             compatibilityStatus = compatibilityStatus ?: KWebRfcEvidenceValidator.READY_STATUS,
             matrixRowIds = request.matrixRowIds,
-            artifacts = artifacts,
+            artifacts = artifacts.sortedBy { it.name },
         )
         val retained = manifest.records
             .filterNot { it.rfcId == record.rfcId && it.target == record.target && it.providerId == record.providerId }
@@ -138,6 +149,62 @@ public class KWebRfcEvidenceRecorder {
         KWebRfcEvidenceValidator.validate(updated)
         return updated
     }
+
+    private fun retainArtifact(
+        input: KWebRfcEvidenceArtifactInput,
+        request: KWebRfcEvidenceRecordRequest,
+        repositoryRoot: Path,
+    ): KWebRfcEvidenceArtifact {
+        if (!Files.isRegularFile(input.path) || Files.isSymbolicLink(input.path)) {
+            throw KWebRfcGovernanceException(
+                code = KWebRfcRecorderErrorCode.ARTIFACT_UNREADABLE,
+                details = mapOf("artifact" to input.name),
+                message = "Evidence artifacts must be readable regular files, not caller-provided digests.",
+            )
+        }
+        if (!SAFE_ARTIFACT_NAME.matches(input.name)) {
+            throw KWebRfcGovernanceException(
+                code = KWebRfcRecorderErrorCode.ARTIFACT_UNREADABLE,
+                details = mapOf("artifact" to input.name),
+                message = "An evidence artifact name is unsafe for deterministic retention.",
+            )
+        }
+        val fileName = input.path.fileName.toString()
+        if (!SAFE_FILE_NAME.matches(fileName)) {
+            throw KWebRfcGovernanceException(
+                code = KWebRfcRecorderErrorCode.ARTIFACT_UNREADABLE,
+                details = mapOf("artifact" to input.name),
+                message = "An evidence artifact file name is unsafe for deterministic retention.",
+            )
+        }
+        val relative = Path.of(
+            "docs",
+            "rfcs",
+            "evidence",
+            "artifacts",
+            request.rfcId,
+            request.run.sourceRevision,
+            request.target,
+            input.name,
+            fileName,
+        )
+        val destination = repositoryRoot.toAbsolutePath().normalize().resolve(relative).normalize()
+        Files.createDirectories(destination.parent)
+        if (input.path.toAbsolutePath().normalize() != destination) {
+            Files.copy(input.path, destination, StandardCopyOption.REPLACE_EXISTING)
+        }
+        val digest = KWebRfcEvidenceJson.sha256(Files.readAllBytes(destination))
+        return KWebRfcEvidenceArtifact(
+            name = input.name,
+            path = relative.toString().replace('\\', '/'),
+            sha256 = digest,
+        )
+    }
+
+    private companion object {
+        val SAFE_ARTIFACT_NAME: Regex = Regex("[a-z0-9][a-z0-9.-]{0,63}")
+        val SAFE_FILE_NAME: Regex = Regex("[A-Za-z0-9_.-]{1,128}")
+    }
 }
 
 public object KWebRfcRecorderErrorCode {
@@ -145,6 +212,8 @@ public object KWebRfcRecorderErrorCode {
     public const val RFC_NOT_IMPLEMENTED: String = "rfc.record.rfc-not-implemented"
     public const val REPORT_TARGET_MISMATCH: String = "rfc.record.report-target-mismatch"
     public const val REPORT_STALE_RUNTIME: String = "rfc.record.report-stale-runtime"
+    public const val REPORT_ARTIFACT_MISSING: String = "rfc.record.report-artifact-missing"
     public const val SERVICE_UNRESOLVED: String = "rfc.record.service-unresolved"
     public const val ARTIFACTS_EMPTY: String = "rfc.record.artifacts-empty"
+    public const val ARTIFACT_UNREADABLE: String = "rfc.record.artifact-unreadable"
 }

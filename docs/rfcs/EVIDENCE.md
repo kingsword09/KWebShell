@@ -14,6 +14,7 @@ builds CEF, never runs the native matrix, and never publishes a capability.
 |---|---|
 | RFC catalog | `docs/rfcs/NNNN-*.md` front matter |
 | Capability evidence manifest | `docs/rfcs/evidence/manifest.json` |
+| RFC contract bindings | `docs/rfcs/evidence/contracts.json` |
 | Pinned CEF/Chromium identity | `runtime/cef-runtime.json` |
 | Electron capability matrix | `KWebElectronCapabilityMatrix` (conservative runtime code) |
 | Published service descriptors | `KWebAppPaths`, `KWebWindowControls`, `KWebDialogs` |
@@ -21,7 +22,7 @@ builds CEF, never runs the native matrix, and never publishes a capability.
 
 ## Evidence manifest format
 
-The manifest is versioned JSON (`schemaVersion: 1`) with a `recordsSha256` digest
+The manifest is versioned JSON (`schemaVersion: 2`) with a `recordsSha256` digest
 over the canonical serialization of the sorted records. Every record is one
 hosted-target support claim and must identify:
 
@@ -30,9 +31,10 @@ hosted-target support claim and must identify:
 - the hosted target triple (`macos-arm64`, `windows-x64`, or `linux-x64`),
 - the provider id, the pinned CEF/Chromium identity, and the Electron fixture
   major used by the migration fixture,
-- the test run id that produced the evidence,
+- immutable GitHub repository, workflow ref, run id/attempt, and source revision,
+- a digest over every repository path declared for the RFC in `contracts.json`,
 - the compatibility status (`READY` or `BLOCKED`), the capability matrix rows the
-  record backs, and the retained artifact digests.
+  record backs, and repository-relative paths plus digests for retained artifacts.
 
 Unknown fields, duplicate record identities, non-hosted targets, and hand-edited
 digests fail validation. The manifest itself is never edited by hand: it is
@@ -49,18 +51,27 @@ report (the Phase 11 flow):
   record docs/rfcs/evidence/manifest.json docs/rfcs/evidence/manifest.json
   --catalog docs/rfcs
   --runtime runtime/cef-runtime.json
-  --rfc 0017 --provider menus.macos --target macos-arm64
-  --test-run 2026-09-11-1234567890 --electron-major 37
+  --contracts docs/rfcs/evidence/contracts.json
+  --repository-root .
+  --rfc 0017 --provider menus.macos
+  --electron-major 37
   --matrix-row menu-tray
   --from-compatibility-report kweb-electron-migration/build/reports/electron-migration/compatibility.json'
 ```
 
-For governance-only evidence (RFCs without a native service, such as RFC 0001),
-declare the artifact digests explicitly instead of a compatibility report:
+The command only runs in GitHub Actions. It derives the target, repository,
+workflow, run id/attempt, and tested revision from the runner environment. For
+governance-only evidence (RFCs without a native service, such as RFC 0001), pass
+the retained artifact file instead of a digest:
 
 ```sh
-... --artifact governance-report=<sha256-of-retained-report>
+... --artifact governance-report=kweb-rfc-governance/build/reports/rfc-governance/status.json
 ```
+
+The recorder copies each file under
+`docs/rfcs/evidence/artifacts/<rfc>/<revision>/<target>/` and records that safe
+repository-relative path. Governance checks re-hash those checked-in bytes; a
+missing, replaced, or hand-edited retained artifact is stale evidence.
 
 Regeneration from the same inputs is byte-for-byte deterministic: records are
 sorted canonically, the digest is recomputed, and the output is stable. Two runs
@@ -72,7 +83,9 @@ digest fails validation.
 Evidence expires when a bound contract changes. The check marks a record stale
 when:
 
-- its CEF or Chromium identity differs from `runtime/cef-runtime.json`, or
+- its CEF or Chromium identity differs from `runtime/cef-runtime.json`,
+- any file or directory bound to that RFC by `contracts.json` has changed, or
+- any retained artifact path is missing or no longer matches its digest, or
 - its service version differs from the published service descriptor.
 
 A stale record is never support: an `Implemented` RFC whose evidence is stale

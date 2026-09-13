@@ -51,6 +51,12 @@ waive platform tests, or let a stale successful run validate changed artifacts.
 4. Moving an RFC to `Implemented` without all required native evidence fails.
 5. Reports contain no credentials, private paths, runner tokens, or native
    pointers.
+6. The recorder accepts artifact files rather than caller-supplied digests,
+   copies their exact bytes into the checked-in evidence store, derives run
+   identity and target from GitHub Actions, and rejects local or unsupported
+   runner environments.
+7. Every evidence record binds the deterministic digest of the RFC's declared
+   repository contract paths; changing any bound file makes the record stale.
 
 ## Evidence
 

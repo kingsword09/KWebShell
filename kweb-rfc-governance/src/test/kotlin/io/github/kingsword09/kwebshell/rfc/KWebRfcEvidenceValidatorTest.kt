@@ -22,8 +22,8 @@ class KWebRfcEvidenceValidatorTest {
     fun unknownTopLevelFieldFails() {
         val text = KWebRfcEvidenceJson.encodeManifest(fixtureManifest()) + "\n"
         val edited = text.replace(
-            "\"schemaVersion\": 1,",
-            "\"schemaVersion\": 1,\n  \"extra\": true,",
+            "\"schemaVersion\": 2,",
+            "\"schemaVersion\": 2,\n  \"extra\": true,",
         )
         val error = assertFailsWith<KWebRfcGovernanceException> {
             KWebRfcEvidenceJson.decodeManifest(edited)
@@ -61,7 +61,7 @@ class KWebRfcEvidenceValidatorTest {
     @Test
     fun unsupportedSchemaVersionFails() {
         val error = assertFailsWith<KWebRfcGovernanceException> {
-            KWebRfcEvidenceValidator.validate(fixtureManifest().copy(schemaVersion = 2))
+            KWebRfcEvidenceValidator.validate(fixtureManifest().copy(schemaVersion = 3))
         }
         assertEquals(KWebRfcEvidenceErrorCode.SCHEMA_UNSUPPORTED, error.code)
     }
@@ -120,7 +120,7 @@ class KWebRfcEvidenceValidatorTest {
     fun recordSchemaVersionMismatchFails() {
         val error = assertFailsWith<KWebRfcGovernanceException> {
             KWebRfcEvidenceValidator.validate(
-                fixtureManifest(listOf(fixtureRecord(schemaVersion = 2))),
+                fixtureManifest(listOf(fixtureRecord(schemaVersion = 1))),
             )
         }
         assertTrue(error.message!!.contains("schema version"))
@@ -150,10 +150,10 @@ class KWebRfcEvidenceValidatorTest {
     fun invalidTestRunIdFails() {
         val error = assertFailsWith<KWebRfcGovernanceException> {
             KWebRfcEvidenceValidator.validate(
-                fixtureManifest(listOf(fixtureRecord(testRunId = "run id with spaces"))),
+                fixtureManifest(listOf(fixtureRecord(run = FIXTURE_RUN.copy(runId = "run id with spaces")))),
             )
         }
-        assertTrue(error.message!!.contains("test run id"))
+        assertTrue(error.message!!.contains("run id"))
     }
 
     @Test
@@ -161,7 +161,13 @@ class KWebRfcEvidenceValidatorTest {
         val error = assertFailsWith<KWebRfcGovernanceException> {
             KWebRfcEvidenceValidator.validate(
                 fixtureManifest(
-                    listOf(fixtureRecord(testRunId = "run-ghp_Abcdefghijklmnopqrst")),
+                    listOf(
+                        fixtureRecord(
+                            run = FIXTURE_RUN.copy(
+                                workflowRef = "owner/repo/.github/workflows/ghp_Abcdefghijklmnopqrst",
+                            ),
+                        ),
+                    ),
                 ),
             )
         }
@@ -184,7 +190,9 @@ class KWebRfcEvidenceValidatorTest {
     fun nativePointerIsRejected() {
         val error = assertFailsWith<KWebRfcGovernanceException> {
             KWebRfcEvidenceValidator.validate(
-                fixtureManifest(listOf(fixtureRecord(testRunId = "ptr-0xdeadbeefcafe"))),
+                fixtureManifest(
+                    listOf(fixtureRecord(run = FIXTURE_RUN.copy(workflowRef = "ptr-0xdeadbeefcafe"))),
+                ),
             )
         }
         assertEquals("native-pointer", error.details["pattern"])

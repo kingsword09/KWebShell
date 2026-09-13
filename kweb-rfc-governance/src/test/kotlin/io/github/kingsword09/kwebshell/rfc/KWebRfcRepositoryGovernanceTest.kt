@@ -33,13 +33,25 @@ class KWebRfcRepositoryGovernanceTest {
             Files.readString(repositoryRoot.resolve("docs/rfcs/evidence/manifest.json")),
         )
         val runtime = KWebRfcRuntimeIdentity.load(repositoryRoot.resolve("runtime/cef-runtime.json"))
+        val contractBindings = KWebRfcContractBindings.load(
+            repositoryRoot.resolve("docs/rfcs/evidence/contracts.json"),
+        )
         assertTrue(runtime.chromiumVersion.startsWith("151."), "The pinned Chromium major must stay 151.")
+        (1..4).forEach { number ->
+            val rfcId = number.toString().padStart(4, '0')
+            assertEquals(
+                64,
+                KWebRfcContractBindings.digest(contractBindings, repositoryRoot, rfcId).length,
+            )
+        }
 
         val report = KWebRfcGovernanceChecker(
             catalog,
             manifest,
             io.github.kingsword09.kwebshell.electron.migration.KWebElectronCapabilityMatrix.document(),
             runtime,
+            KWebRfcContractDigestProvider.forRepository(contractBindings, repositoryRoot),
+            KWebRfcArtifactDigestProvider.forRepository(repositoryRoot),
         ).check()
         assertEquals(KWebRfcGovernanceReport.READY, report.governanceStatus)
         val rfc0001 = report.rfcs.single { it.rfcId == "0001" }
@@ -69,7 +81,7 @@ class KWebRfcRepositoryGovernanceTest {
         val schema = Json.parseToJsonElement(schemaText).jsonObject
         val manifestProperties = schema.getValue("properties").jsonObject
         assertEquals(
-            1,
+            2,
             manifestProperties.getValue("schemaVersion").jsonObject.getValue("const").jsonPrimitive.content.toInt(),
         )
         val recordsSpec = manifestProperties.getValue("records").jsonObject
@@ -83,5 +95,9 @@ class KWebRfcRepositoryGovernanceTest {
             .getValue("items").jsonObject
             .getValue("properties").jsonObject
         assertEquals(KWebRfcEvidenceValidator.ARTIFACT_FIELDS.sorted(), artifactProperties.keys.sorted())
+        val runProperties = recordProperties
+            .getValue("run").jsonObject
+            .getValue("properties").jsonObject
+        assertEquals(KWebRfcEvidenceValidator.RUN_FIELDS.sorted(), runProperties.keys.sorted())
     }
 }

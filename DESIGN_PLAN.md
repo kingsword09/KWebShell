@@ -1797,7 +1797,20 @@ Program acceptance criteria:
    installers, three-platform conformance, and performance/security evidence
    must all be reproducible.
 
-Implementation evidence as of 2026-09-11 (RFC 0001):
+RFC 0001 remediation objective and acceptance:
+
+- Evidence publication must hash and copy retained artifact files into the
+  checked-in evidence store, accept provenance only from a supported GitHub
+  Actions runner, and bind the exact source revision. Missing or changed retained
+  bytes must expire the record.
+- `docs/rfcs/evidence/contracts.json` must declare each RFC's repository contract
+  inputs. Their deterministic aggregate digest is part of every evidence record,
+  and changing any bound byte must make support stale.
+- The checked-in schema, validator, CLI, contributor guide, and tests must agree
+  on evidence schema v2. RFC 0001 remains `Implementing` until fresh three-target
+  hosted records produced through that path are checked in.
+
+Implementation status (RFC 0001):
 
 - `kweb-rfc-governance` publishes the versioned capability evidence manifest
   (`docs/rfcs/evidence/manifest.json`), its packaged JSON schema, the strict
@@ -1810,12 +1823,10 @@ Implementation evidence as of 2026-09-11 (RFC 0001):
   without the native matrix. The `rfcEvidenceRecord` task regenerates evidence
   records byte-for-byte deterministically from structured test output.
 - Unit fixtures prove that unknown fields, duplicate RFC ids, missing targets,
-  digest changes, stale runtime versions, and unsupported-to-supported
-  promotion fail. RFC 0001 reached `Implemented` on 2026-09-12: the migration
-  fixture pins `electronFixtureMajor: 44`, and all three hosted jobs retained a
-  byte-identical joined governance report (SHA-256
-  `035cc0ca0a5a66dcf1b83c883c7ccc2b1bc031d1b1f57610202d12a941b2ba25`, CI run
-  34620115764), whose digests are the checked-in evidence records.
+  artifact-file absence, contract digest changes, stale runtime versions,
+  unsupported runners, and unsupported-to-supported promotion fail. The earlier
+  run 34620115764 records were revoked because they did not bind artifact bytes
+  and complete contract inputs.
 
 Implementation evidence as of 2026-09-12 (RFC 0002):
 

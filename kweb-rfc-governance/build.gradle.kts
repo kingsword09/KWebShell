@@ -34,6 +34,7 @@ tasks.withType<Test>().configureEach {
 val rfcCatalogDirectory = rootProject.layout.projectDirectory.dir("docs/rfcs")
 val rfcEvidenceManifest = rootProject.layout.projectDirectory.file("docs/rfcs/evidence/manifest.json")
 val rfcRuntimeIdentity = rootProject.layout.projectDirectory.file("runtime/cef-runtime.json")
+val rfcContractBindings = rootProject.layout.projectDirectory.file("docs/rfcs/evidence/contracts.json")
 val rfcGovernanceReport = layout.buildDirectory.file("reports/rfc-governance/status.json")
 
 val rfcGovernanceCheck = tasks.register<JavaExec>("rfcGovernanceCheck") {
@@ -46,12 +47,16 @@ val rfcGovernanceCheck = tasks.register<JavaExec>("rfcGovernanceCheck") {
         rfcCatalogDirectory.asFile.absolutePath,
         rfcEvidenceManifest.asFile.absolutePath,
         rfcRuntimeIdentity.asFile.absolutePath,
+        rfcContractBindings.asFile.absolutePath,
+        "--repository-root",
+        rootProject.layout.projectDirectory.asFile.absolutePath,
         "--report",
         rfcGovernanceReport.get().asFile.absolutePath,
     )
     inputs.dir(rfcCatalogDirectory)
     inputs.file(rfcEvidenceManifest)
     inputs.file(rfcRuntimeIdentity)
+    inputs.file(rfcContractBindings)
     outputs.file(rfcGovernanceReport)
 }
 

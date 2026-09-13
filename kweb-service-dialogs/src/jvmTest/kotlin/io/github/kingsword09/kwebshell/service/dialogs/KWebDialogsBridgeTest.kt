@@ -1,10 +1,17 @@
 package io.github.kingsword09.kwebshell.service.dialogs
 
+import io.github.kingsword09.kwebshell.bridge.KWebBridgeDispatcher
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeException
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebNativeException
+import io.github.kingsword09.kwebshell.services.KWebPolicySubject
 import io.github.kingsword09.kwebshell.services.KWebServiceGrant
 import io.github.kingsword09.kwebshell.services.KWebServicePermissionPolicy
+import io.github.kingsword09.kwebshell.services.KWebServiceScope
+import io.github.kingsword09.kwebshell.services.policy.KWebInMemoryConsentStore
+import io.github.kingsword09.kwebshell.services.policy.KWebPolicyAudit
+import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
+import io.github.kingsword09.kwebshell.services.policy.KWebUserGestureRegistry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
@@ -13,11 +20,35 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 
+private fun policyDispatcher(
+    service: KWebDialogs,
+    grants: Set<KWebServiceGrant>,
+    engineId: String = "engine-bridge-test",
+): KWebBridgeDispatcher {
+    val engine = KWebServicePolicyEngine(
+        rendererGrants = KWebServicePermissionPolicy.exact(grants),
+        gestures = KWebUserGestureRegistry(),
+        consentStore = KWebInMemoryConsentStore("bridge-test"),
+        osConsent = null,
+        audit = KWebPolicyAudit(),
+    )
+    return service.bridgeDispatcher(
+        engine,
+        KWebPolicySubject(
+            engineId = engineId,
+            profileId = "bridge-test",
+            pageId = "page-1",
+            origin = "https://app.example",
+            scope = KWebServiceScope.APPLICATION,
+        ),
+    )
+}
+
 class KWebDialogsBridgeTest {
     @Test
     fun bridgeRequiresAnExactGrantForEveryOperation() {
         val service = RecordingDialogs()
-        val dispatcher = service.bridgeDispatcher(KWebServicePermissionPolicy.exact(emptySet()))
+        val dispatcher = policyDispatcher(service, emptySet())
 
         val failure = assertFailsWith<KWebBridgeException> {
             runBlocking {
@@ -36,7 +67,7 @@ class KWebDialogsBridgeTest {
         val grants = KWebDialogs.DESCRIPTOR.operations.mapTo(mutableSetOf()) {
             KWebServiceGrant(KWebDialogs.DESCRIPTOR.id, it.id)
         }
-        val dispatcher = service.bridgeDispatcher(KWebServicePermissionPolicy.exact(grants))
+        val dispatcher = policyDispatcher(service, grants)
 
         val selection = runBlocking {
             dispatcher.dispatch(
@@ -63,10 +94,9 @@ class KWebDialogsBridgeTest {
     @Test
     fun bridgePreservesCancellation() {
         val service = RecordingDialogs().also { it.cancelReads = true }
-        val dispatcher = service.bridgeDispatcher(
-            KWebServicePermissionPolicy.exact(
-                setOf(KWebServiceGrant(KWebDialogs.DESCRIPTOR.id, "read-file")),
-            ),
+        val dispatcher = policyDispatcher(
+            service,
+            setOf(KWebServiceGrant(KWebDialogs.DESCRIPTOR.id, "read-file")),
         )
         assertFailsWith<CancellationException> {
             runBlocking {
@@ -79,7 +109,7 @@ class KWebDialogsBridgeTest {
 
     @Test
     fun everyOperationRejectsMissingGrantsBeforeCallingTheService() = runBlocking {
-        val dispatcher = RecordingDialogs().bridgeDispatcher(KWebServicePermissionPolicy.exact(emptySet()))
+        val dispatcher = policyDispatcher(RecordingDialogs(), emptySet())
         val requests = listOf(
             "selectFile" to """{"mode":"open","title":"Pick","defaultName":null,"filters":[]}""",
             "readFile" to """{"handle":"${"A".repeat(43)}","offset":"0","length":1}""",
@@ -97,9 +127,10 @@ class KWebDialogsBridgeTest {
     @Test
     fun rendererCannotSupplyDirectoriesAndNumericStringsAreCanonical() = runBlocking {
         val service = RecordingDialogs()
-        val dispatcher = service.bridgeDispatcher(KWebServicePermissionPolicy.exact(
+        val dispatcher = policyDispatcher(
+            service,
             KWebDialogs.DESCRIPTOR.operations.map { KWebServiceGrant("dialogs", it.id) }.toSet(),
-        ))
+        )
         assertFailsWith<KWebBridgeException> {
             dispatcher.dispatch("""{"version":1,"method":"selectFile","payload":{"mode":"open","title":"Pick","defaultDirectory":"/private/path","defaultName":null,"filters":[]}}""")
         }
@@ -114,7 +145,10 @@ class KWebDialogsBridgeTest {
     @Test
     fun hostFailuresNeverCopyPathsIntoRendererMessages() = runBlocking {
         val service = RecordingDialogs()
-        val dispatcher = service.bridgeDispatcher(KWebServicePermissionPolicy.exact(setOf(KWebServiceGrant("dialogs", "read-file"))))
+        val dispatcher = policyDispatcher(
+            service,
+            setOf(KWebServiceGrant("dialogs", "read-file")),
+        )
         for (error in listOf(
             IllegalStateException("Private path: /private/secret"),
             KWebNativeException("dialog.path-invalid", emptyMap(), "Private path: /private/secret"),

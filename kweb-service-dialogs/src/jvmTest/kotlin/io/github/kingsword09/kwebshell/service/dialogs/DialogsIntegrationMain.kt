@@ -214,8 +214,26 @@ public fun main(): Unit = runBlocking {
         }
 
         val deniedUrl = "${server.url}?denied"
-        val denied = liveProfile.openPage(KWebDesktop.composeWindowHost(window, server.origin,
-            service.bridgeDispatcher(KWebServicePermissionPolicy.exact(emptySet()))), deniedUrl, KWebRect(0, 0, 820, 550))
+        val denied = liveProfile.openPage(
+            KWebDesktop.composeWindowHost(
+                window,
+                server.origin,
+                KWebPageDispatcherFactory { pageId ->
+                    service.bridgeDispatcher(
+                        policyEngine,
+                        KWebPolicySubject(
+                            engineId = engineId,
+                            profileId = "dialogs",
+                            pageId = pageId,
+                            origin = server.origin,
+                            scope = KWebServiceScope.APPLICATION,
+                        ),
+                    )
+                },
+            ),
+            deniedUrl,
+            KWebRect(0, 0, 820, 550),
+        )
         pages += denied
         cdp.awaitPage(deniedUrl)
         cdp.openPageSession(deniedUrl).use { session ->
@@ -264,16 +282,14 @@ public fun main(): Unit = runBlocking {
             "macos" -> MacOsTccConsentProvider("accessibility")
             else -> LinuxPortalPermissionStoreConsentProvider("kwebshell-test")
         }
-        val consentStatus = runCatching {
-            osConsent.status(
-                io.github.kingsword09.kwebshell.services.policy.KWebConsentRequest(
-                    KWebDialogs.DESCRIPTOR.id, "write-file", server.origin, osConsent.facility,
-                ),
-            )
-        }
+        // A provider failure is a real failed native integration, never evidence.
+        val consentRequest = io.github.kingsword09.kwebshell.services.policy.KWebConsentRequest(
+            KWebDialogs.DESCRIPTOR.id, "write-file", server.origin, osConsent.facility,
+        )
+        val consentStatus = osConsent.status(consentRequest)
         Files.writeString(
             evidence.resolve("consent-status.json"),
-            "{\"facility\": \"${'$'}{osConsent.facility}\", \"status\": \"${'$'}{consentStatus.getOrNull()}\", " +
+            "{\"facility\": \"${osConsent.facility}\", \"status\": \"$consentStatus\", " +
                 "\"queriedThrough\": \"integration\", \"note\": \"real OS consent state, retained as-is\"}\n",
         )
         Files.writeString(root.resolve("passed.txt"), "Native selection, bounded IO, renderer gestures, origins, permissions, and Engine shutdown passed.\n")

@@ -10,22 +10,15 @@ import io.github.kingsword09.kwebshell.service.apppaths.generated.KWebAppPathsBr
 import io.github.kingsword09.kwebshell.services.KWebPolicySubject
 import io.github.kingsword09.kwebshell.services.KWebServiceErrorCode
 import io.github.kingsword09.kwebshell.services.KWebServiceOperationDescriptor
-import io.github.kingsword09.kwebshell.services.KWebServicePermissionPolicy
 import io.github.kingsword09.kwebshell.services.policy.KWebPolicyDecision
 import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
 import kotlinx.coroutines.CancellationException
 
-public fun KWebAppPaths.bridgeDispatcher(
-    policy: KWebServicePermissionPolicy,
-): KWebBridgeDispatcher = bridgeDispatcher { _ ->
-    if (!policy.allows(KWebAppPaths.DESCRIPTOR.id, "resolve")) {
-        throw KWebBridgeException(
-            code = KWebServiceErrorCode.PERMISSION_DENIED,
-            message = "The page is not granted the KWebAppPaths resolve operation.",
-        )
-    }
-}
-
+/**
+ * The one bridge entry for KWebAppPaths. Every renderer call is authorized by
+ * the policy engine, so a grant-only dispatcher cannot bypass gesture or
+ * consent rules.
+ */
 public fun KWebAppPaths.bridgeDispatcher(
     policyEngine: KWebServicePolicyEngine,
     subject: KWebPolicySubject,

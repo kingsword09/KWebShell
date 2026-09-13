@@ -18,22 +18,15 @@ import io.github.kingsword09.kwebshell.service.dialogs.generated.WriteFileReques
 import io.github.kingsword09.kwebshell.service.dialogs.generated.WriteFileResponse
 import io.github.kingsword09.kwebshell.services.KWebPolicySubject
 import io.github.kingsword09.kwebshell.services.KWebServiceOperationDescriptor
-import io.github.kingsword09.kwebshell.services.KWebServicePermissionPolicy
 import io.github.kingsword09.kwebshell.services.policy.KWebPolicyDecision
 import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
 import kotlinx.coroutines.CancellationException
 
-public fun KWebDialogs.bridgeDispatcher(
-    policy: KWebServicePermissionPolicy,
-): KWebBridgeDispatcher = bridgeDispatcher { operationId ->
-    if (!policy.allows(KWebDialogs.DESCRIPTOR.id, operationId)) {
-        throw KWebBridgeException(
-            code = "service.permission-denied",
-            message = "The page is not granted '$operationId' on KWebDialogs.",
-        )
-    }
-}
-
+/**
+ * The one bridge entry for KWebDialogs. Every renderer call is authorized by the
+ * policy engine — exact grants, native-verified gestures, and OS consent — so a
+ * grant-only dispatcher cannot bypass gesture or consent rules.
+ */
 public fun KWebDialogs.bridgeDispatcher(
     policyEngine: KWebServicePolicyEngine,
     subject: KWebPolicySubject,

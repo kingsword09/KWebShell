@@ -312,6 +312,13 @@ private fun runSuccessfulLifecycle() {
             osConsent = null,
             audit = KWebPolicyAudit(),
         )
+        val appPathsDenyPolicyEngine = KWebServicePolicyEngine(
+            rendererGrants = appPathsDenyPolicy,
+            gestures = KWebUserGestureRegistry(),
+            consentStore = KWebInMemoryConsentStore("engine-integration-denied"),
+            osConsent = null,
+            audit = KWebPolicyAudit(),
+        )
         val directHome = kotlinx.coroutines.runBlocking {
             appPathsService.resolve(KWebAppPathKind.HOME)
         }
@@ -483,7 +490,7 @@ private fun runSuccessfulLifecycle() {
                     height = 240,
                     bridgeOrigin = origin.origin,
                     bridgeDispatcher = appPathsService.bridgeDispatcher(
-                        appPathsPolicyEngine,
+                        appPathsDenyPolicyEngine,
                         KWebPolicySubject(
                             engineId = "engine-integration",
                             profileId = "integration-profile",
@@ -1782,10 +1789,17 @@ private fun runAppPathsBridgeConformance(
     }
 }
 
-private fun bridgeFailure(cdp: CdpClient, call: String): kotlinx.serialization.json.JsonObject =
-    kotlinx.serialization.json.Json.parseToJsonElement(
-        cdp.evaluate("(async()=>{try{await ($call);return 'unexpected-success'}catch(e){return JSON.stringify({code:e.code,message:e.message})}})()"),
-    ).jsonObject
+private fun bridgeFailure(cdp: CdpClient, call: String): kotlinx.serialization.json.JsonObject {
+    val result = cdp.evaluate(
+        "(async()=>{try{await ($call);return 'unexpected-success'}catch(e){return JSON.stringify({code:e.code,message:e.message})}})()",
+    )
+    require(result != "unexpected-success") {
+        "The denied bridge call unexpectedly succeeded instead of failing: $call"
+    }
+    // Any other string result (including a non-JSON error) is a failed fixture
+    // expectation, not a JSON object to index.
+    return kotlinx.serialization.json.Json.parseToJsonElement(result).jsonObject
+}
 
 private fun javascriptString(value: String): String = buildString {
     append('\'')

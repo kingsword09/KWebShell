@@ -193,10 +193,18 @@ public fun main() {
                 KWebServiceGrant(KWebWindowControls.DESCRIPTOR.id, operation.id)
             }.toSet(),
         )
+        val denyPolicy = KWebServicePermissionPolicy.exact(emptySet())
         val policyEngine = KWebServicePolicyEngine(
             rendererGrants = allowPolicy,
             gestures = KWebUserGestureRegistry(),
             consentStore = KWebInMemoryConsentStore("window-controls-fixture"),
+            osConsent = null,
+            audit = KWebPolicyAudit(),
+        )
+        val denyPolicyEngine = KWebServicePolicyEngine(
+            rendererGrants = denyPolicy,
+            gestures = KWebUserGestureRegistry(),
+            consentStore = KWebInMemoryConsentStore("window-controls-fixture-denied"),
             osConsent = null,
             audit = KWebPolicyAudit(),
         )
@@ -269,7 +277,7 @@ public fun main() {
                     server.origin,
                     KWebPageDispatcherFactory { pageId ->
                         service.bridgeDispatcher(
-                            policyEngine,
+                            denyPolicyEngine,
                             KWebPolicySubject(
                                 engineId = "window-controls-fixture",
                                 profileId = "window-controls",

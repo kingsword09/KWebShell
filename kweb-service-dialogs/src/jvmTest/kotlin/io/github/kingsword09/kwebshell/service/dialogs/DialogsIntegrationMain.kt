@@ -102,10 +102,18 @@ public fun main(): Unit = runBlocking {
         val grants = KWebServicePermissionPolicy.exact(KWebDialogs.DESCRIPTOR.operations.map {
             KWebServiceGrant(KWebDialogs.DESCRIPTOR.id, it.id)
         }.toSet())
+        val denyGrants = KWebServicePermissionPolicy.exact(emptySet())
         val policyEngine = KWebServicePolicyEngine(
             rendererGrants = grants,
             gestures = gestures,
             consentStore = KWebInMemoryConsentStore("dialogs-fixture"),
+            osConsent = null,
+            audit = io.github.kingsword09.kwebshell.services.policy.KWebPolicyAudit(),
+        )
+        val denyPolicyEngine = KWebServicePolicyEngine(
+            rendererGrants = denyGrants,
+            gestures = gestures,
+            consentStore = KWebInMemoryConsentStore("dialogs-fixture-denied"),
             osConsent = null,
             audit = io.github.kingsword09.kwebshell.services.policy.KWebPolicyAudit(),
         )
@@ -220,7 +228,7 @@ public fun main(): Unit = runBlocking {
                 server.origin,
                 KWebPageDispatcherFactory { pageId ->
                     service.bridgeDispatcher(
-                        policyEngine,
+                        denyPolicyEngine,
                         KWebPolicySubject(
                             engineId = engineId,
                             profileId = "dialogs",

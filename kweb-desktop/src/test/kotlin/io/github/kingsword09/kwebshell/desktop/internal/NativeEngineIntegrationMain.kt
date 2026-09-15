@@ -867,9 +867,9 @@ private fun runPublicFacadeLifecycle() {
                 )
                 awaitGestureMint(gestures, probeBinding)
                 println("KWEBSHELL_ENGINE_PROBE_STAGE:minted")
-                val orphanCloseStatus = NativeBindings.browserClose(
-                    (orphanPage as KWebDesktopPage).requireNativeHandle("engine-close-probe"),
-                )
+                val orphanHandle = (orphanPage as KWebDesktopPage)
+                    .requireNativeHandle("engine-close-probe")
+                val orphanCloseStatus = NativeBindings.browserClose(orphanHandle)
                 require(
                     orphanCloseStatus == NativeStatus.OK.value ||
                         orphanCloseStatus == NativeStatus.BROWSER_CLOSING.value
@@ -882,6 +882,15 @@ private fun runPublicFacadeLifecycle() {
                     }
                 }
                 println("KWEBSHELL_ENGINE_PROBE_STAGE:browser-terminal")
+                // The sanctioned Page close releases the FFM callback owner
+                // after the terminal event; the ABI close must do the same or
+                // the owner leaks past the Engine close.
+                NativeBindings.releaseBrowserOwner(orphanHandle)?.let { failure ->
+                    throw IllegalStateException(
+                        "The probe browser FFM owner release failed.",
+                        failure,
+                    )
+                }
                 engine.close()
                 println("KWEBSHELL_ENGINE_PROBE_STAGE:engine-closed")
                 require(

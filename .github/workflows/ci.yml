@@ -47,6 +47,10 @@ jobs:
     timeout-minutes: 90
 
     steps:
+      - name: Configure line endings for deterministic contract digests
+        shell: bash
+        run: git config --global core.eol lf
+
       - name: Check out repository
         uses: actions/checkout@v7
 

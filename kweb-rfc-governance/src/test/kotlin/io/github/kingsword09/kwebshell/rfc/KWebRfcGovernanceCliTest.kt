@@ -1,10 +1,16 @@
 package io.github.kingsword09.kwebshell.rfc
 
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import org.junit.jupiter.api.io.TempDir
 
 class KWebRfcGovernanceCliTest {
+    @TempDir
+    lateinit var temporaryDirectory: Path
+
     private val hostedEnvironment: Map<String, String> = mapOf(
         "GITHUB_ACTIONS" to "true",
         "GITHUB_REPOSITORY" to "kingsword09/KWebShell",
@@ -44,5 +50,91 @@ class KWebRfcGovernanceCliTest {
             )
         }
         assertEquals("rfc.record.unsupported-runner", unsupported.code)
+    }
+
+    @Test
+    fun mergeUnionsPerTargetRecordsInCanonicalOrderWithARecomputedDigest() {
+        val first = writeManifest(
+            "first.json",
+            fixtureRecord(target = "macos-arm64"),
+        )
+        val second = writeManifest(
+            "second.json",
+            fixtureRecord(rfcId = "0002", target = "windows-x64", serviceId = "dialogs"),
+            fixtureRecord(target = "linux-x64"),
+        )
+        val output = temporaryDirectory.resolve("merged.json")
+
+        KWebRfcGovernanceCli.mergeManifests(listOf(first, second), output)
+
+        val merged = KWebRfcEvidenceJson.decodeManifest(Files.readString(output))
+        val expected = listOf(
+            fixtureRecord(target = "linux-x64"),
+            fixtureRecord(target = "macos-arm64"),
+            fixtureRecord(rfcId = "0002", target = "windows-x64", serviceId = "dialogs"),
+        )
+        assertEquals(expected, merged.records)
+        assertEquals(KWebRfcEvidenceJson.recordsSha256(expected), merged.recordsSha256)
+    }
+
+    @Test
+    fun mergeIsByteForByteDeterministicAcrossRuns() {
+        val first = writeManifest("first.json", fixtureRecord(target = "macos-arm64"))
+        val second = writeManifest("second.json", fixtureRecord(target = "windows-x64"))
+        val firstOutput = temporaryDirectory.resolve("merged-first.json")
+        val secondOutput = temporaryDirectory.resolve("merged-second.json")
+
+        KWebRfcGovernanceCli.mergeManifests(listOf(first, second), firstOutput)
+        KWebRfcGovernanceCli.mergeManifests(listOf(second, first), secondOutput)
+
+        assertEquals(Files.readString(firstOutput), Files.readString(secondOutput))
+    }
+
+    @Test
+    fun mergeRejectsDuplicateRecordIdentities() {
+        val first = writeManifest("first.json", fixtureRecord(target = "macos-arm64"))
+        val second = writeManifest("second.json", fixtureRecord(target = "macos-arm64"))
+
+        val error = assertFailsWith<KWebRfcGovernanceException> {
+            KWebRfcGovernanceCli.mergeManifests(
+                listOf(first, second),
+                temporaryDirectory.resolve("merged.json"),
+            )
+        }
+        assertEquals("rfc.merge.duplicate-record", error.code)
+    }
+
+    @Test
+    fun mergeRequiresAtLeastTwoInputManifests() {
+        val only = writeManifest("only.json", fixtureRecord(target = "macos-arm64"))
+
+        val error = assertFailsWith<KWebRfcGovernanceException> {
+            KWebRfcGovernanceCli.mergeManifests(
+                listOf(only),
+                temporaryDirectory.resolve("merged.json"),
+            )
+        }
+        assertEquals("rfc.merge.invalid-argument", error.code)
+    }
+
+    @Test
+    fun mergeRejectsInputManifestsThatAreNotStrictSchemaJson() {
+        val valid = writeManifest("valid.json", fixtureRecord(target = "macos-arm64"))
+        val malformed = temporaryDirectory.resolve("malformed.json")
+        Files.writeString(malformed, "{\"schemaVersion\": \"not-a-number\"}")
+
+        val error = assertFailsWith<KWebRfcGovernanceException> {
+            KWebRfcGovernanceCli.mergeManifests(
+                listOf(valid, malformed),
+                temporaryDirectory.resolve("merged.json"),
+            )
+        }
+        assertEquals(KWebRfcEvidenceErrorCode.INVALID_JSON, error.code)
+    }
+
+    private fun writeManifest(name: String, vararg records: KWebRfcEvidenceRecord): Path {
+        val path = temporaryDirectory.resolve(name)
+        Files.writeString(path, KWebRfcEvidenceJson.encodeManifest(fixtureManifest(records.toList())) + "\n")
+        return path
     }
 }

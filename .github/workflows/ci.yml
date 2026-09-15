@@ -239,3 +239,69 @@ jobs:
           path: kweb-rfc-governance/build/reports/rfc-governance/
           if-no-files-found: error
           retention-days: 14
+
+      - name: Record hosted RFC evidence
+        shell: bash
+        run: .github/scripts/record-rfc-evidence.sh
+
+      - name: Upload hosted RFC evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: rfc-evidence-${{ matrix.target }}-${{ github.sha }}
+          path: |
+            build/rfc-evidence/manifest-*.json
+            docs/rfcs/evidence/artifacts/
+          if-no-files-found: error
+          retention-days: 14
+
+  rfc-evidence:
+    name: Merge hosted RFC evidence
+    needs: [verify]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 25 runtime
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Download per-target evidence bundles
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh run download "$GITHUB_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "rfc-evidence-*-${{ github.sha }}" \
+            --dir build/rfc-evidence/downloaded
+          find build/rfc-evidence/downloaded -maxdepth 4 -type f | sort
+
+      - name: Merge per-target manifests
+        shell: bash
+        run: .github/scripts/merge-rfc-evidence.sh
+
+      - name: Upload merged RFC evidence manifest
+        uses: actions/upload-artifact@v6
+        with:
+          name: rfc-evidence-manifest-${{ github.sha }}
+          path: build/rfc-evidence/manifest.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload merged RFC evidence artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: rfc-evidence-artifacts-${{ github.sha }}
+          path: build/rfc-evidence/artifacts/
+          if-no-files-found: error
+          retention-days: 14

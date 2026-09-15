@@ -70,3 +70,10 @@ val rfcEvidenceRecord = tasks.register<JavaExec>("rfcEvidenceRecord") {
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCli")
 }
+
+val rfcEvidenceMerge = tasks.register<JavaExec>("rfcEvidenceMerge") {
+    group = "governance"
+    description = "Merges per-target RFC evidence manifests into one; pass arguments with --args (see docs/rfcs/EVIDENCE.md)."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCli")
+}

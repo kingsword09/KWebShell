@@ -28,6 +28,11 @@ import kotlinx.serialization.json.put
  *   Upserts one evidence record derived from structured test output and rewrites
  *   the manifest canonically. Regeneration from the same inputs is byte-for-byte
  *   deterministic.
+ *
+ * merge <manifest.json>... --output <out.json>
+ *   Unions the records of two or more per-target manifests into one manifest:
+ *   canonical record order, recomputed records digest, strict validation, and
+ *   deterministic bytes. Duplicate record identities fail the merge.
  */
 public object KWebRfcGovernanceCli {
     @JvmStatic
@@ -56,7 +61,8 @@ public object KWebRfcGovernanceCli {
         when (arguments.firstOrNull()) {
             "check" -> check(arguments.drop(1))
             "record" -> record(arguments.drop(1))
-            else -> throw IllegalArgumentException("Usage: check|record ...")
+            "merge" -> merge(arguments.drop(1))
+            else -> throw IllegalArgumentException("Usage: check|record|merge ...")
         }
     }
 
@@ -176,6 +182,48 @@ public object KWebRfcGovernanceCli {
             "RFC evidence manifest updated: ${updated.records.size} records, " +
                 "digest ${updated.recordsSha256}.",
         )
+    }
+
+    internal fun mergeManifests(inputPaths: List<Path>, output: Path) {
+        if (inputPaths.size < 2) {
+            throw KWebRfcGovernanceException(
+                code = "rfc.merge.invalid-argument",
+                message = "Merging requires at least two input manifests.",
+            )
+        }
+        val records = inputPaths.flatMap { path ->
+            KWebRfcEvidenceJson.decodeManifest(Files.readString(path)).records
+        }
+        val identities = records.map { Triple(it.rfcId, it.target, it.providerId) }
+        if (identities.size != identities.toSet().size) {
+            val duplicates = identities.groupBy { it }.filterValues { it.size > 1 }.keys
+            throw KWebRfcGovernanceException(
+                code = "rfc.merge.duplicate-record",
+                details = mapOf("records" to duplicates.joinToString { "${it.first}/${it.second}/${it.third}" }),
+                message = "Merged manifests must not declare the same record identity twice.",
+            )
+        }
+        val updated = KWebRfcEvidenceJson.emptyManifest()
+            .copy(records = records, recordsSha256 = KWebRfcEvidenceJson.recordsSha256(records))
+        val encoded = KWebRfcEvidenceJson.encodeManifest(updated)
+        val normalized = output.toAbsolutePath().normalize()
+        normalized.parent?.let(Files::createDirectories)
+        Files.writeString(normalized, encoded + "\n")
+        println(
+            "RFC evidence manifests merged: ${records.size} records, " +
+                "digest ${updated.recordsSha256}.",
+        )
+    }
+
+    private fun merge(arguments: List<String>) {
+        val positional = arguments.takeWhile { !it.startsWith("--") }
+        if (positional.size < 2) {
+            throw IllegalArgumentException("Usage: merge <manifest.json>... --output <out.json>")
+        }
+        val output = Path.of(
+            requiredOption(parseMultiOptions(arguments.drop(positional.size)), "--output"),
+        )
+        mergeManifests(positional.map(Path::of), output)
     }
 
     private fun writeReport(path: Path, report: KWebRfcGovernanceReport) {

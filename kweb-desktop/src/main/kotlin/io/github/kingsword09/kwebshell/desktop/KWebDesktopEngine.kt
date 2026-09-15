@@ -384,6 +384,8 @@ internal class KWebDesktopPage(
         eventStream.onPageClosed()
     }
 
+    internal fun requireNativeHandle(operation: String): Long = native.requireLiveHandle(operation)
+
     private fun requireOpen(operation: String) {
         if (lifecycle.value != KWebLifecycleState.OPEN) {
             throw KWebNativeException(

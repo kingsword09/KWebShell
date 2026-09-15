@@ -7,8 +7,10 @@ import io.github.kingsword09.kwebshell.core.KWebRect
 import io.github.kingsword09.kwebshell.core.KWebCapability
 import io.github.kingsword09.kwebshell.core.KWebPageEventType
 import io.github.kingsword09.kwebshell.desktop.KWebComposeWindowHost
+import io.github.kingsword09.kwebshell.desktop.KWebDesktopPage
 import io.github.kingsword09.kwebshell.desktop.KWebDesktop
 import io.github.kingsword09.kwebshell.desktop.KWebDesktopEngineConfiguration
+import io.github.kingsword09.kwebshell.desktop.KWebPageDispatcherFactory
 import io.github.kingsword09.kwebshell.extensions.KWebExtensionLifecycleResolution
 import io.github.kingsword09.kwebshell.extensions.JvmKWebExtensionLifecycleCoordinator
 import io.github.kingsword09.kwebshell.extensions.KWebExtensionRuntime
@@ -37,6 +39,8 @@ import io.github.kingsword09.kwebshell.services.KWebPolicySubject
 import io.github.kingsword09.kwebshell.services.KWebServiceGrant
 import io.github.kingsword09.kwebshell.services.KWebServicePermissionPolicy
 import io.github.kingsword09.kwebshell.services.KWebServiceScope
+import io.github.kingsword09.kwebshell.services.policy.KWebGestureBinding
+import io.github.kingsword09.kwebshell.services.policy.KWebGestureConsumeResult
 import io.github.kingsword09.kwebshell.services.policy.KWebInMemoryConsentStore
 import io.github.kingsword09.kwebshell.services.policy.KWebPolicyAudit
 import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
@@ -664,6 +668,7 @@ private fun runSuccessfulLifecycle() {
 
 private fun runPublicFacadeLifecycle() {
     val configuration = runtimeConfiguration()
+    val gestures = KWebUserGestureRegistry()
     val engine = KWebDesktop.openEngine(
         KWebDesktopEngineConfiguration(
             cefRuntime = configuration.cefRuntime,
@@ -673,6 +678,7 @@ private fun runPublicFacadeLifecycle() {
             rootCache = configuration.rootCache,
             log = configuration.log,
             remoteDebuggingPort = configuration.remoteDebuggingPort,
+            userGestureIssuer = gestures,
         ),
     )
     var surface: ComposeBrowserSurface? = null
@@ -809,6 +815,73 @@ private fun runPublicFacadeLifecycle() {
                     },
                 ) {
                     "The ComposeWindow parent changed or stopped showing after public page close."
+                }
+
+                // An Engine shutdown is a page-owner close: a page the Profile
+                // still tracks whose native browser closed through the
+                // sanctioned ABI must have its outstanding gesture token
+                // invalidated by the Engine close itself.
+                val orphanPolicy = KWebServicePermissionPolicy.exact(
+                    setOf(KWebServiceGrant(KWebAppPaths.DESCRIPTOR.id, "resolve")),
+                )
+                val orphanPolicyEngine = KWebServicePolicyEngine(
+                    rendererGrants = orphanPolicy,
+                    gestures = gestures,
+                    consentStore = KWebInMemoryConsentStore("engine-integration-public"),
+                    osConsent = null,
+                    audit = KWebPolicyAudit(),
+                )
+                val orphanPage = kotlinx.coroutines.runBlocking {
+                    publicProfile.openPage(
+                        KWebDesktop.composeWindowHost(
+                            publicSurface.window,
+                            origin.origin,
+                            KWebPageDispatcherFactory { pageId ->
+                                appPathsService.bridgeDispatcher(
+                                    orphanPolicyEngine,
+                                    KWebPolicySubject(
+                                        engineId = engine.engineId,
+                                        profileId = "public-facade",
+                                        pageId = pageId,
+                                        origin = origin.origin,
+                                        scope = KWebServiceScope.APPLICATION,
+                                    ),
+                                )
+                            },
+                        ),
+                        origin.firstUrl,
+                        KWebRect(0, 0, 800, 600),
+                    )
+                }
+                val probeCdp = CdpClient(configuration.remoteDebuggingPort)
+                probeCdp.awaitPage(origin.firstUrl)
+                probeCdp.dispatchTrustedKeyDown()
+                val probeBinding = KWebGestureBinding(
+                    engineId = engine.engineId,
+                    profileId = "public-facade",
+                    pageId = orphanPage.id,
+                    origin = origin.origin,
+                )
+                awaitGestureMint(gestures, probeBinding)
+                val orphanCloseStatus = NativeBindings.browserClose(
+                    (orphanPage as KWebDesktopPage).requireNativeHandle("engine-close-probe"),
+                )
+                require(
+                    orphanCloseStatus == NativeStatus.OK.value ||
+                        orphanCloseStatus == NativeStatus.BROWSER_CLOSING.value
+                ) {
+                    "The sanctioned ABI browser close failed: $orphanCloseStatus"
+                }
+                kotlinx.coroutines.runBlocking {
+                    withTimeout(30_000) {
+                        orphanPage.events.first { it.type == KWebPageEventType.CLOSED }
+                    }
+                }
+                engine.close()
+                require(
+                    gestures.consumeLatest(probeBinding) == KWebGestureConsumeResult.OWNER_CLOSED
+                ) {
+                    "An Engine shutdown must invalidate the outstanding gesture of the orphaned page."
                 }
                 publicProfile.close()
                 engine.close()
@@ -2323,6 +2396,21 @@ private class CdpClient(private val port: Int) {
         )
     }
 
+    fun dispatchTrustedKeyDown() {
+        val targetId = checkNotNull(activePageTargetId) {
+            "awaitPage must select a browser page before CDP input dispatch."
+        }
+        val targets = getArray("/json/list")
+        val page = targets.singleOrNull { it["id"]?.jsonPrimitive?.content == targetId }
+            ?: error("The selected CDP page target '$targetId' is no longer available: $targets")
+        webSocket(page["webSocketDebuggerUrl"]!!.jsonPrimitive.content).use { socket ->
+            socket.command(
+                "Input.dispatchKeyEvent",
+                "{\"type\":\"rawKeyDown\",\"windowsVirtualKeyCode\":65,\"nativeVirtualKeyCode\":65,\"key\":\"a\",\"code\":\"KeyA\"}",
+            )
+        }
+    }
+
     fun awaitDevToolsTarget() {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
         while (System.nanoTime() < deadline) {
@@ -2446,6 +2534,20 @@ private class CdpWebSocket(url: String) : AutoCloseable {
         return response["result"]!!.jsonObject["result"]!!.jsonObject["value"]!!.jsonPrimitive.content
     }
 
+    fun command(method: String, paramsJson: String): kotlinx.serialization.json.JsonObject {
+        socket.sendText(
+            "{\"id\":1,\"method\":${jsonString(method)},\"params\":$paramsJson}",
+            true,
+        ).join()
+        val response = kotlinx.serialization.json.Json.parseToJsonElement(
+            messages.orTimeout(10, TimeUnit.SECONDS).join(),
+        ).jsonObject
+        require(response["error"] == null) {
+            "CDP command '$method' failed: $response"
+        }
+        return response
+    }
+
     override fun close() {
         socket.sendClose(java.net.http.WebSocket.NORMAL_CLOSURE, "done").join()
     }
@@ -2462,6 +2564,18 @@ private fun requiredPathProperty(name: String): Path {
 private fun requiredBooleanProperty(name: String): Boolean {
     val value = System.getProperty(name) ?: error("Missing required system property '$name'.")
     return value.toBooleanStrictOrNull() ?: error("System property '$name' must be exactly 'true' or 'false'.")
+}
+
+private fun awaitGestureMint(
+    gestures: KWebUserGestureRegistry,
+    binding: KWebGestureBinding,
+) {
+    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+    while (System.nanoTime() < deadline) {
+        if (gestures.current(binding) != null) return
+        Thread.sleep(25)
+    }
+    error("The native input path never minted a user gesture for the probe page")
 }
 
 private fun requireStatus(actual: Int, expected: NativeStatus, operation: String) {

@@ -694,6 +694,7 @@ private fun runPublicFacadeLifecycle() {
     )
     engine.nativeServices.install(KWebAppPaths.Key, appPathsService)
     require(engine.nativeServices.require(KWebAppPaths.Key) === appPathsService)
+    var failure: Throwable? = null
     try {
         require(KWebCapability.NATIVE_CHILD in engine.capabilities)
         require(KWebCapability.PERSISTENT_PROFILE in engine.capabilities)
@@ -855,7 +856,9 @@ private fun runPublicFacadeLifecycle() {
                 }
                 val probeCdp = CdpClient(configuration.remoteDebuggingPort)
                 probeCdp.awaitPage(origin.firstUrl)
+                println("KWEBSHELL_ENGINE_PROBE_STAGE:cdp-ready")
                 probeCdp.dispatchTrustedKeyDown()
+                println("KWEBSHELL_ENGINE_PROBE_STAGE:input-dispatched")
                 val probeBinding = KWebGestureBinding(
                     engineId = engine.engineId,
                     profileId = "public-facade",
@@ -863,6 +866,7 @@ private fun runPublicFacadeLifecycle() {
                     origin = origin.origin,
                 )
                 awaitGestureMint(gestures, probeBinding)
+                println("KWEBSHELL_ENGINE_PROBE_STAGE:minted")
                 val orphanCloseStatus = NativeBindings.browserClose(
                     (orphanPage as KWebDesktopPage).requireNativeHandle("engine-close-probe"),
                 )
@@ -877,12 +881,15 @@ private fun runPublicFacadeLifecycle() {
                         orphanPage.events.first { it.type == KWebPageEventType.CLOSED }
                     }
                 }
+                println("KWEBSHELL_ENGINE_PROBE_STAGE:browser-terminal")
                 engine.close()
+                println("KWEBSHELL_ENGINE_PROBE_STAGE:engine-closed")
                 require(
                     gestures.consumeLatest(probeBinding) == KWebGestureConsumeResult.OWNER_CLOSED
                 ) {
                     "An Engine shutdown must invalidate the outstanding gesture of the orphaned page."
                 }
+                println("KWEBSHELL_ENGINE_PROBE_STAGE:owner-closed-verified")
                 publicProfile.close()
                 engine.close()
                 require(appPathsService.lifecycle.value == KWebLifecycleState.CLOSED) {
@@ -902,19 +909,49 @@ private fun runPublicFacadeLifecycle() {
             }
             require(NativeBrowser.liveNativeBrowserCount() == 0L)
         }
+    } catch (error: Throwable) {
+        failure = error
+        throw error
     } finally {
-        if (page?.lifecycle?.value != KWebLifecycleState.CLOSED) {
-            page?.close()
+        val cleanupFailures = mutableListOf<Throwable>()
+        try {
+            if (page?.lifecycle?.value != KWebLifecycleState.CLOSED) {
+                page?.close()
+            }
+        } catch (error: Throwable) {
+            cleanupFailures += error
         }
-        if (profile?.lifecycle?.value != KWebLifecycleState.CLOSED) {
-            profile?.close()
+        try {
+            if (profile?.lifecycle?.value != KWebLifecycleState.CLOSED) {
+                profile?.close()
+            }
+        } catch (error: Throwable) {
+            cleanupFailures += error
         }
-        if (engine.lifecycle.value != KWebLifecycleState.CLOSED) {
-            engine.close()
+        try {
+            if (engine.lifecycle.value != KWebLifecycleState.CLOSED) {
+                engine.close()
+            }
+        } catch (error: Throwable) {
+            cleanupFailures += error
         }
-        surface?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
-        if (appPathsService.lifecycle.value != KWebLifecycleState.CLOSED) {
-            appPathsService.close()
+        try {
+            surface?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
+        } catch (error: Throwable) {
+            cleanupFailures += error
+        }
+        try {
+            if (appPathsService.lifecycle.value != KWebLifecycleState.CLOSED) {
+                appPathsService.close()
+            }
+        } catch (error: Throwable) {
+            cleanupFailures += error
+        }
+        val pending = failure
+        if (pending != null) {
+            cleanupFailures.forEach(pending::addSuppressed)
+        } else {
+            cleanupFailures.firstOrNull()?.let { throw it }
         }
     }
     require(NativeBrowser.liveNativeBrowserCount() == 0L)

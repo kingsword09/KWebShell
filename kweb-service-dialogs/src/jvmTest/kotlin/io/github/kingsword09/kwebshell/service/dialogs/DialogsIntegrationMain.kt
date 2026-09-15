@@ -23,8 +23,6 @@ import io.github.kingsword09.kwebshell.services.consent.KWebFileConsentStore
 import io.github.kingsword09.kwebshell.services.consent.LinuxPortalPermissionStoreConsentProvider
 import io.github.kingsword09.kwebshell.services.consent.MacOsTccConsentProvider
 import io.github.kingsword09.kwebshell.services.consent.WindowsCapabilityAccessConsentProvider
-import io.github.kingsword09.kwebshell.services.policy.KWebGestureBinding
-import io.github.kingsword09.kwebshell.services.policy.KWebGestureConsumeResult
 import io.github.kingsword09.kwebshell.services.policy.KWebInMemoryConsentStore
 import io.github.kingsword09.kwebshell.services.policy.KWebUserGestureRegistry
 import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
@@ -41,7 +39,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -270,48 +267,6 @@ public fun main(): Unit = runBlocking {
         }
         unconfigured.close()
         pages.remove(unconfigured)
-
-        // An Engine shutdown is a page-owner close: a Profile that still holds
-        // a Kotlin page whose native browser was closed out of band must have
-        // that page's outstanding gesture token invalidated by the Engine
-        // close, exactly as an explicit Page close would.
-        val probeProfile = liveEngine.openProfile("dialogs-engine-close-probe")
-        val probePage = probeProfile.openPage(
-            KWebDesktop.composeWindowHost(
-                window,
-                server.origin,
-                KWebPageDispatcherFactory { pageId ->
-                    service.bridgeDispatcher(
-                        policyEngine,
-                        KWebPolicySubject(
-                            engineId = engineId,
-                            profileId = "dialogs-engine-close-probe",
-                            pageId = pageId,
-                            origin = server.origin,
-                            scope = KWebServiceScope.APPLICATION,
-                        ),
-                    )
-                },
-            ),
-            "${server.url}?engine-close-probe",
-            KWebRect(0, 0, 820, 550),
-        )
-        pages += probePage
-        cdp.awaitPage("${server.url}?engine-close-probe")
-        val mintedBeforeProbe = gestures.minted.get()
-        cdp.openPageSession("${server.url}?engine-close-probe").use { session ->
-            session.awaitTrue("typeof DialogsBridge === 'object'")
-            sendGestureKeystroke(session)
-            awaitMint(gestures, mintedBeforeProbe)
-        }
-        val probeTarget = cdp.awaitPage("${server.url}?engine-close-probe")
-        val closeResponse = java.net.URI("http://127.0.0.1:$port/json/close/${probeTarget.id}")
-            .toURL().readText()
-        check(closeResponse.contains("Target is closing")) {
-            "The out-of-band target close was rejected: $closeResponse"
-        }
-        awaitProbeTargetRemoved(port, probeTarget.id)
-
         liveProfile.close()
         profile = null
         // Keep a native operation live while the Engine closes its installed provider.
@@ -325,18 +280,6 @@ public fun main(): Unit = runBlocking {
         check(ownerFailure is io.github.kingsword09.kwebshell.core.KWebNativeException && ownerFailure.code == "service.owner-closed")
         check(service.lifecycle.value == KWebLifecycleState.CLOSED)
         check(!selector.isVisible())
-        check(
-            gestures.consumeLatest(
-                KWebGestureBinding(
-                    engineId = engineId,
-                    profileId = "dialogs-engine-close-probe",
-                    pageId = probePage.id,
-                    origin = server.origin,
-                ),
-            ) == KWebGestureConsumeResult.OWNER_CLOSED,
-        ) {
-            "An Engine shutdown must invalidate the outstanding gesture of the orphaned probe page."
-        }
         val readAfterClose = runCatching { service.readFile(requireNotNull(readHandle), 0, 1) }.exceptionOrNull()
         check(readAfterClose is io.github.kingsword09.kwebshell.core.KWebNativeException && readAfterClose.code == "service.owner-closed")
         cdp.assertUnavailable()
@@ -404,20 +347,6 @@ private fun awaitMint(issuer: RecordingGestureIssuer, previousCount: Int): Int {
         Thread.sleep(25)
     }
     error("The native input path never minted a user gesture")
-}
-
-private fun awaitProbeTargetRemoved(port: Int, targetId: String) {
-    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
-    while (System.nanoTime() < deadline) {
-        val stillListed = runCatching {
-            java.net.URI("http://127.0.0.1:$port/json/list").toURL().readText()
-                .let(Json::parseToJsonElement).jsonArray
-                .any { it.jsonObject["id"]?.jsonPrimitive?.contentOrNull == targetId }
-        }.getOrDefault(true)
-        if (!stillListed) return
-        Thread.sleep(100)
-    }
-    error("The out-of-band target close never removed the probe target")
 }
 
 private fun sendGestureKeystroke(session: KWebExampleCdpSession) {

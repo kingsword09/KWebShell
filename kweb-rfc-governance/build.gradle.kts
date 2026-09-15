@@ -64,9 +64,24 @@ tasks.named("check") {
     dependsOn(rfcGovernanceCheck)
 }
 
+val rfcEvidenceArguments: List<String> = providers.gradleProperty("rfcEvidenceArguments").orElse("")
+    .map { arguments -> arguments.trim().split(Regex("\\s+")).filter(String::isNotEmpty) }
+    .get()
+
 val rfcEvidenceRecord = tasks.register<JavaExec>("rfcEvidenceRecord") {
     group = "governance"
-    description = "Upserts one RFC capability evidence record; pass arguments with --args (see docs/rfcs/EVIDENCE.md)."
+    description = "Upserts one RFC capability evidence record; pass the command through -PrfcEvidenceArguments (see docs/rfcs/EVIDENCE.md)."
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCli")
+    workingDir(rootDir)
+    args(rfcEvidenceArguments)
+}
+
+val rfcEvidenceMerge = tasks.register<JavaExec>("rfcEvidenceMerge") {
+    group = "governance"
+    description = "Merges per-target RFC evidence manifests into one; pass the command through -PrfcEvidenceArguments (see docs/rfcs/EVIDENCE.md)."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCli")
+    workingDir(rootDir)
+    args(rfcEvidenceArguments)
 }

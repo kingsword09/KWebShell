@@ -1807,8 +1807,11 @@ RFC 0001 remediation objective and acceptance:
   inputs. Their deterministic aggregate digest is part of every evidence record,
   and changing any bound byte must make support stale.
 - The checked-in schema, validator, CLI, contributor guide, and tests must agree
-  on evidence schema v2. RFC 0001 remains `Implementing` until fresh three-target
-  hosted records produced through that path are checked in.
+  on evidence schema v2. Fresh three-target hosted records produced through that
+  path are now checked in: RFC 0001-0003 are `Implemented` with READY records
+  (run 34996435709) and RFC 0004 remains `Accepted` until its remaining stream
+  scenarios, peak-memory measurement, and named migration stream adapter are
+  delivered.
 
 Implementation status (RFC 0001):
 

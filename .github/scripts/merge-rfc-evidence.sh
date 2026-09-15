@@ -30,8 +30,7 @@ if [ "${#inputs[@]}" -lt 2 ]; then
   exit 1
 fi
 
-./gradlew --no-daemon :kweb-rfc-governance:rfcEvidenceMerge --args="
-  merge ${inputs[*]}
-  --output build/rfc-evidence/manifest.json"
+./gradlew --no-daemon :kweb-rfc-governance:rfcEvidenceMerge \
+  -PrfcEvidenceArguments="merge ${inputs[*]} --output build/rfc-evidence/manifest.json"
 
 echo "Merged RFC evidence manifest at build/rfc-evidence/manifest.json"

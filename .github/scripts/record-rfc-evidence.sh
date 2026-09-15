@@ -25,14 +25,8 @@ done
 
 record() {
   local rfc="$1" artifact="$2" input="$3"
-  ./gradlew --no-daemon :kweb-rfc-governance:rfcEvidenceRecord --args="
-    record ${input} ${output}-${target}.json
-    --catalog docs/rfcs
-    --runtime runtime/cef-runtime.json
-    --contracts docs/rfcs/evidence/contracts.json
-    --repository-root .
-    --rfc ${rfc} --provider governance.hosted --electron-major 44
-    --artifact ${artifact}"
+  ./gradlew --no-daemon :kweb-rfc-governance:rfcEvidenceRecord \
+    -PrfcEvidenceArguments="record ${input} ${output}-${target}.json --catalog docs/rfcs --runtime runtime/cef-runtime.json --contracts docs/rfcs/evidence/contracts.json --repository-root . --rfc ${rfc} --provider governance.hosted --electron-major 44 --artifact ${artifact}"
 }
 
 record 0001 \

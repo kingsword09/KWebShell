@@ -47,16 +47,8 @@ memory. To upsert one record into the manifest from a migration compatibility
 report (the Phase 11 flow):
 
 ```sh
-./gradlew :kweb-rfc-governance:rfcEvidenceRecord --args='
-  record docs/rfcs/evidence/manifest.json docs/rfcs/evidence/manifest.json
-  --catalog docs/rfcs
-  --runtime runtime/cef-runtime.json
-  --contracts docs/rfcs/evidence/contracts.json
-  --repository-root .
-  --rfc 0017 --provider menus.macos
-  --electron-major 37
-  --matrix-row menu-tray
-  --from-compatibility-report kweb-electron-migration/build/reports/electron-migration/compatibility.json'
+./gradlew :kweb-rfc-governance:rfcEvidenceRecord \
+  -PrfcEvidenceArguments='record docs/rfcs/evidence/manifest.json docs/rfcs/evidence/manifest.json --catalog docs/rfcs --runtime runtime/cef-runtime.json --contracts docs/rfcs/evidence/contracts.json --repository-root . --rfc 0017 --provider menus.macos --electron-major 37 --matrix-row menu-tray --from-compatibility-report kweb-electron-migration/build/reports/electron-migration/compatibility.json'
 ```
 
 The command only runs in GitHub Actions. It derives the target, repository,
@@ -151,9 +143,8 @@ that gets checked in:
    collects the retained artifacts, and merges the manifests with:
 
    ```sh
-   ./gradlew :kweb-rfc-governance:rfcEvidenceMerge --args='
-     merge build/rfc-evidence/downloaded/<bundle>/build/rfc-evidence/manifest-macos-arm64.json ...
-     --output build/rfc-evidence/manifest.json'
+   ./gradlew :kweb-rfc-governance:rfcEvidenceMerge \
+     -PrfcEvidenceArguments='merge build/rfc-evidence/downloaded/<bundle>/build/rfc-evidence/manifest-macos-arm64.json ... --output build/rfc-evidence/manifest.json'
    ```
 
    `merge` unions records, rejects duplicate record identities, sorts canonically,

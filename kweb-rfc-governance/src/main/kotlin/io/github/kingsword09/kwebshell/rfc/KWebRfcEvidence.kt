@@ -14,7 +14,18 @@ import kotlinx.serialization.json.Json
 @Serializable
 public data class KWebRfcEvidenceArtifact(
     public val name: String,
+    public val path: String,
     public val sha256: String,
+)
+
+/** Immutable GitHub Actions identity for the hosted run that produced evidence. */
+@Serializable
+public data class KWebRfcHostedRun(
+    public val repository: String,
+    public val workflowRef: String,
+    public val runId: String,
+    public val runAttempt: Int,
+    public val sourceRevision: String,
 )
 
 /**
@@ -33,7 +44,8 @@ public data class KWebRfcEvidenceRecord(
     public val cefVersion: String,
     public val chromiumVersion: String,
     public val electronFixtureMajor: Int,
-    public val testRunId: String,
+    public val run: KWebRfcHostedRun,
+    public val contractSha256: String,
     public val compatibilityStatus: String,
     public val matrixRowIds: List<String> = emptyList(),
     public val artifacts: List<KWebRfcEvidenceArtifact>,
@@ -83,7 +95,7 @@ public val KWEB_RFC_PLATFORM_HOSTED_TARGETS: Map<String, String> = mapOf(
 )
 
 public object KWebRfcEvidenceJson {
-    private const val CURRENT_SCHEMA_VERSION: Int = 1
+    private const val CURRENT_SCHEMA_VERSION: Int = 2
 
     /** Canonical checked-in form: stable key order, two-space indent, trailing newline added by writers. */
     public val canonical: Json = Json {
@@ -155,7 +167,7 @@ public object KWebRfcEvidenceJson {
 }
 
 public object KWebRfcEvidenceValidator {
-    public const val CURRENT_SCHEMA_VERSION: Int = 1
+    public const val CURRENT_SCHEMA_VERSION: Int = 2
     public const val IMPLEMENTED_STATUS: String = "Implemented"
     public const val READY_STATUS: String = "READY"
     public const val BLOCKED_STATUS: String = "BLOCKED"
@@ -175,13 +187,21 @@ public object KWebRfcEvidenceValidator {
         "cefVersion",
         "chromiumVersion",
         "electronFixtureMajor",
-        "testRunId",
+        "run",
+        "contractSha256",
         "compatibilityStatus",
         "matrixRowIds",
         "artifacts",
     )
 
-    public val ARTIFACT_FIELDS: List<String> = listOf("name", "sha256")
+    public val ARTIFACT_FIELDS: List<String> = listOf("name", "path", "sha256")
+    public val RUN_FIELDS: List<String> = listOf(
+        "repository",
+        "workflowRef",
+        "runId",
+        "runAttempt",
+        "sourceRevision",
+    )
 
     private val RFC_ID = Regex("[0-9]{4}")
     private val SERVICE_ID = Regex(
@@ -190,8 +210,12 @@ public object KWebRfcEvidenceValidator {
     private val SEMANTIC_VERSION = Regex("[0-9]+\\.[0-9]+\\.[0-9]+")
     private val IDENTITY_VERSION = Regex("[A-Za-z0-9.+_-]{1,64}")
     private val MATRIX_ROW_ID = Regex("[a-z][a-z0-9-]{1,63}")
-    private val TEST_RUN_ID = Regex("[A-Za-z0-9._:-]{1,128}")
+    private val GITHUB_REPOSITORY = Regex("[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}")
+    private val WORKFLOW_REF = Regex("[A-Za-z0-9_./@-]{1,256}")
+    private val TEST_RUN_ID = Regex("[1-9][0-9]{0,19}")
+    private val SOURCE_REVISION = Regex("[0-9a-f]{40}")
     private val ARTIFACT_NAME = Regex("[a-z0-9][a-z0-9.-]{0,63}")
+    private val ARTIFACT_PATH = Regex("[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*")
     private val DIGEST = Regex("[0-9a-f]{64}")
 
     public fun validate(manifest: KWebRfcEvidenceManifest) {
@@ -273,11 +297,46 @@ public object KWebRfcEvidenceValidator {
                 "An evidence record Electron fixture major must be between 1 and 999.",
             )
         }
-        if (!TEST_RUN_ID.matches(record.testRunId)) {
+        if (!GITHUB_REPOSITORY.matches(record.run.repository)) {
             throw invalid(
-                "records[$index].testRunId",
-                record.testRunId,
-                "An evidence test run id must be 1..128 characters of [A-Za-z0-9._:-].",
+                "records[$index].run.repository",
+                record.run.repository,
+                "Evidence must identify a GitHub repository as owner/name.",
+            )
+        }
+        if (!WORKFLOW_REF.matches(record.run.workflowRef)) {
+            throw invalid(
+                "records[$index].run.workflowRef",
+                record.run.workflowRef,
+                "Evidence must identify the GitHub workflow ref that produced it.",
+            )
+        }
+        if (!TEST_RUN_ID.matches(record.run.runId)) {
+            throw invalid(
+                "records[$index].run.runId",
+                record.run.runId,
+                "An evidence run id must be a positive GitHub Actions run id.",
+            )
+        }
+        if (record.run.runAttempt !in 1..999) {
+            throw invalid(
+                "records[$index].run.runAttempt",
+                record.run.runAttempt.toString(),
+                "An evidence run attempt must be between 1 and 999.",
+            )
+        }
+        if (!SOURCE_REVISION.matches(record.run.sourceRevision)) {
+            throw invalid(
+                "records[$index].run.sourceRevision",
+                record.run.sourceRevision,
+                "Evidence must bind the exact 40-character source revision tested by GitHub Actions.",
+            )
+        }
+        if (!DIGEST.matches(record.contractSha256)) {
+            throw invalid(
+                "records[$index].contractSha256",
+                record.contractSha256,
+                "An evidence contract digest must be lowercase SHA-256.",
             )
         }
         if (record.compatibilityStatus != READY_STATUS && record.compatibilityStatus != BLOCKED_STATUS) {
@@ -332,9 +391,22 @@ public object KWebRfcEvidenceValidator {
                 "An evidence record must retain 1..32 artifact digests.",
             )
         }
+        if (record.artifacts.map { it.name }.toSet().size != record.artifacts.size) {
+            throw invalid(
+                "records[$index].artifacts",
+                message = "An evidence record cannot repeat an artifact name.",
+            )
+        }
         record.artifacts.forEach { artifact ->
             if (!ARTIFACT_NAME.matches(artifact.name)) {
                 throw invalid("records[$index].artifacts.name", artifact.name, "An artifact name is invalid.")
+            }
+            if (!ARTIFACT_PATH.matches(artifact.path) || artifact.path.split('/').any { it == "." || it == ".." }) {
+                throw invalid(
+                    "records[$index].artifacts.path",
+                    artifact.name,
+                    "An artifact path must be safe and repository-relative.",
+                )
             }
             if (!DIGEST.matches(artifact.sha256)) {
                 throw invalid(
@@ -396,12 +468,17 @@ public object KWebRfcRedaction {
         scan("target", record.target)
         scan("cefVersion", record.cefVersion)
         scan("chromiumVersion", record.chromiumVersion)
-        scan("testRunId", record.testRunId)
+        scan("run.repository", record.run.repository)
+        scan("run.workflowRef", record.run.workflowRef)
+        scan("run.runId", record.run.runId)
+        scan("run.sourceRevision", record.run.sourceRevision)
+        scan("contractSha256", record.contractSha256)
         record.serviceId?.let { scan("serviceId", it) }
         record.serviceVersion?.let { scan("serviceVersion", it) }
         record.matrixRowIds.forEach { scan("matrixRowIds", it) }
         record.artifacts.forEach { artifact ->
             scan("artifacts.${artifact.name}.name", artifact.name)
+            scan("artifacts.${artifact.name}.path", artifact.path)
             scan("artifacts.${artifact.name}.sha256", artifact.sha256)
         }
     }

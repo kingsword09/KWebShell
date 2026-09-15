@@ -314,7 +314,21 @@ public class KWebNativeServiceRegistry : AutoCloseable {
                         ProviderStartupEnvironment(this, configuration, declaration),
                     )
                     validateCreatedService(declaration, service)
-                    services[service.descriptor.id] = service
+                    if (services.putIfAbsent(service.descriptor.id, service) != null) {
+                        // The registry already owns a service with this id. This
+                        // attempt's instance was never registered, so it is
+                        // released immediately and never replaces the original.
+                        try {
+                            service.close()
+                        } catch (closeError: Throwable) {
+                            closeFailure?.addSuppressed(closeError)
+                        }
+                        throw KWebServiceException(
+                            code = "service.duplicate-installation",
+                            details = mapOf("service" to service.descriptor.id),
+                            message = "The native service is already installed in this registry.",
+                        )
+                    }
                     created += declaration to service
                 }
             } catch (error: Throwable) {
@@ -380,15 +394,24 @@ public class KWebNativeServiceRegistry : AutoCloseable {
 
     override fun close() {
         val toClose: List<KWebNativeService>
+        var pendingStickyFailure: KWebException? = null
         synchronized(lock) {
             if (mutableLifecycle.value == KWebLifecycleState.CLOSED) return
-            closeFailure?.let { throw it }
-            requireOpen("close")
+            if (mutableLifecycle.value == KWebLifecycleState.FAILED) {
+                // A failed registry must still release the services installed by
+                // earlier successful startup attempts; the sticky failure is
+                // reported after every resource is closed.
+                pendingStickyFailure = closeFailure
+                closeFailure = null
+            } else {
+                closeFailure?.let { throw it }
+                requireOpen("close")
+            }
             mutableLifecycle.value = KWebLifecycleState.CLOSING
             toClose = services.values.toList().asReversed()
             services.clear()
         }
-        var failure: Throwable? = null
+        var failure: Throwable? = pendingStickyFailure
         toClose.forEach { service ->
             try {
                 service.close()
@@ -396,13 +419,21 @@ public class KWebNativeServiceRegistry : AutoCloseable {
                 if (failure == null) failure = error else failure.addSuppressed(error)
             }
         }
+        // The sticky startup failure keeps its own stable code when no resource
+        // failed while being released.
         val terminalFailure = failure?.let {
-            KWebNativeException(
-                code = KWebServiceErrorCode.NATIVE_FAILED,
-                details = mapOf("operation" to "registry-close"),
-                message = "One or more native services failed during registry shutdown.",
-                cause = it,
-            )
+            if (it === pendingStickyFailure) {
+                it
+            } else if (it is KWebException) {
+                it
+            } else {
+                KWebNativeException(
+                    code = KWebServiceErrorCode.NATIVE_FAILED,
+                    details = mapOf("operation" to "registry-close"),
+                    message = "One or more native services failed during registry shutdown.",
+                    cause = it,
+                )
+            }
         }
         synchronized(lock) {
             closeFailure = terminalFailure
@@ -441,6 +472,13 @@ private class ProviderStartupEnvironment(
     override val ownerId: String = configuration.ownerId
 
     override fun fact(id: String): KWebCapabilityFact {
+        if (id !in declaration.requiredFacts) {
+            throw KWebServiceException(
+                code = KWebServiceErrorCode.CAPABILITY_MISSING,
+                details = mapOf("provider" to declaration.providerId, "fact" to id),
+                message = "The provider environment does not declare the requested capability fact.",
+            )
+        }
         return configuration.facts.singleOrNull { it.id == id }
             ?: throw KWebServiceException(
                 code = KWebServiceErrorCode.CAPABILITY_MISSING,

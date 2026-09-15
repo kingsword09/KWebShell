@@ -1,9 +1,16 @@
 package io.github.kingsword09.kwebshell.service.windowcontrols
 
+import io.github.kingsword09.kwebshell.bridge.KWebBridgeDispatcher
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeException
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
+import io.github.kingsword09.kwebshell.services.KWebPolicySubject
 import io.github.kingsword09.kwebshell.services.KWebServiceGrant
 import io.github.kingsword09.kwebshell.services.KWebServicePermissionPolicy
+import io.github.kingsword09.kwebshell.services.KWebServiceScope
+import io.github.kingsword09.kwebshell.services.policy.KWebInMemoryConsentStore
+import io.github.kingsword09.kwebshell.services.policy.KWebPolicyAudit
+import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
+import io.github.kingsword09.kwebshell.services.policy.KWebUserGestureRegistry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
@@ -12,11 +19,34 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
+private fun policyDispatcher(
+    service: KWebWindowControls,
+    grants: Set<KWebServiceGrant>,
+): KWebBridgeDispatcher {
+    val engine = KWebServicePolicyEngine(
+        rendererGrants = KWebServicePermissionPolicy.exact(grants),
+        gestures = KWebUserGestureRegistry(),
+        consentStore = KWebInMemoryConsentStore("bridge-test"),
+        osConsent = null,
+        audit = KWebPolicyAudit(),
+    )
+    return service.bridgeDispatcher(
+        engine,
+        KWebPolicySubject(
+            engineId = "engine-bridge-test",
+            profileId = "bridge-test",
+            pageId = "page-1",
+            origin = "https://app.example",
+            scope = KWebServiceScope.APPLICATION,
+        ),
+    )
+}
+
 class KWebWindowControlsBridgeTest {
     @Test
     fun bridgeRequiresExactOperationGrant() {
         val service = RecordingWindowControls()
-        val dispatcher = service.bridgeDispatcher(KWebServicePermissionPolicy.exact(emptySet()))
+        val dispatcher = policyDispatcher(service, emptySet())
 
         val failure = assertFailsWith<KWebBridgeException> {
             runBlocking {
@@ -30,13 +60,13 @@ class KWebWindowControlsBridgeTest {
     @Test
     fun bridgeMapsTypedRequestsAndPreservesCancellation() {
         val service = RecordingWindowControls()
-        val policy = KWebServicePermissionPolicy.exact(
+        val dispatcher = policyDispatcher(
+            service,
             setOf(
                 KWebServiceGrant(KWebWindowControls.DESCRIPTOR.id, "set-title"),
                 KWebServiceGrant(KWebWindowControls.DESCRIPTOR.id, "get-state"),
             ),
         )
-        val dispatcher = service.bridgeDispatcher(policy)
 
         val response = runBlocking {
             dispatcher.dispatch("""{"version":1,"method":"setTitle","payload":{"title":"KWebShell"}}""")

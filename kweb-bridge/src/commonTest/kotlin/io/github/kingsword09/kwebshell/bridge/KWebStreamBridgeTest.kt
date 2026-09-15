@@ -5,6 +5,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -138,6 +139,24 @@ class KWebStreamBridgeTest {
                 .decode(frame.payload!!.jsonObject["bytes"]!!.jsonPrimitive.content)
             assertTrue(decoded.contentEquals(chunk))
         }
+    }
+
+    @Test
+    fun creditGateCapsAccumulatedCreditsWithoutOverflowing() = runBlocking {
+        val gate = KWebStreamCreditGate(initialCredits = 1)
+        // Repeated oversized grants must saturate the bounded capacity instead of
+        // overflowing the counter into a negative, permanently blocking value.
+        repeat(64) { gate.grant(Int.MAX_VALUE) }
+        var consumed = 0
+        withTimeout(30_000) {
+            while (consumed < 16) {
+                assertTrue(gate.acquire(), "Saturated credits must remain consumable.")
+                consumed += 1
+            }
+        }
+        // The bounded ceiling keeps the stream live; close then ends transport.
+        gate.close()
+        assertEquals(false, gate.acquire())
     }
 
     @Test

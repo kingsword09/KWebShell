@@ -12,23 +12,16 @@ import io.github.kingsword09.kwebshell.service.windowcontrols.generated.WindowCo
 import io.github.kingsword09.kwebshell.service.windowcontrols.generated.WindowStateResponse
 import io.github.kingsword09.kwebshell.services.KWebServiceErrorCode
 import io.github.kingsword09.kwebshell.services.KWebServiceOperationDescriptor
-import io.github.kingsword09.kwebshell.services.KWebServicePermissionPolicy
 import io.github.kingsword09.kwebshell.services.KWebPolicySubject
 import io.github.kingsword09.kwebshell.services.policy.KWebPolicyDecision
 import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
 import kotlinx.coroutines.CancellationException
 
-public fun KWebWindowControls.bridgeDispatcher(
-    policy: KWebServicePermissionPolicy,
-): KWebBridgeDispatcher = bridgeDispatcher { operationId ->
-    if (!policy.allows(KWebWindowControls.DESCRIPTOR.id, operationId)) {
-        throw KWebBridgeException(
-            code = KWebServiceErrorCode.PERMISSION_DENIED,
-            message = "The page is not granted '$operationId' on KWebWindowControls.",
-        )
-    }
-}
-
+/**
+ * The one bridge entry for KWebWindowControls. Every renderer call is authorized
+ * by the policy engine, so a grant-only dispatcher cannot bypass gesture or
+ * consent rules.
+ */
 public fun KWebWindowControls.bridgeDispatcher(
     policyEngine: KWebServicePolicyEngine,
     subject: KWebPolicySubject,

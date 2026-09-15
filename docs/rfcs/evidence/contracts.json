@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "bindings": [
+    {
+      "rfcId": "0001",
+      "paths": [
+        ".github/workflows/docs.yml",
+        "kweb-rfc-governance/build.gradle.kts",
+        "kweb-rfc-governance/src"
+      ]
+    },
+    {
+      "rfcId": "0002",
+      "paths": [
+        "kweb-services-core/src"
+      ]
+    },
+    {
+      "rfcId": "0003",
+      "paths": [
+        "kweb-desktop/src/main",
+        "kweb-service-app-paths/src",
+        "kweb-service-dialogs/src",
+        "kweb-service-window-controls/src",
+        "kweb-services-core/src/commonMain/kotlin/io/github/kingsword09/kwebshell/services/policy",
+        "kweb-services-core/src/commonTest/kotlin/io/github/kingsword09/kwebshell/services/policy"
+      ]
+    },
+    {
+      "rfcId": "0004",
+      "paths": [
+        "kweb-bridge-codegen/src",
+        "kweb-bridge/src",
+        "kweb-cef-native/src",
+        "kweb-desktop/src"
+      ]
+    }
+  ]
+}

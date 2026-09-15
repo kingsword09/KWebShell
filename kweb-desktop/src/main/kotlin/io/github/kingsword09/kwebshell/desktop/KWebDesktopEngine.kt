@@ -269,10 +269,16 @@ internal class KWebDesktopProfile(
         }
 
     internal fun markClosedByEngine() {
+        val orphanedPages: List<KWebDesktopPage>
         synchronized(lock) {
             closedByEngine = true
             mutableLifecycle.value = KWebLifecycleState.CLOSED
+            orphanedPages = pages.toList()
         }
+        // An Engine shutdown is a page-owner close: every page the Profile
+        // still holds must have its outstanding gesture tokens invalidated
+        // exactly as an explicit Page close would.
+        orphanedPages.forEach { it.onEngineClosed() }
     }
 
     private fun requireOpen(operation: String) {
@@ -373,6 +379,12 @@ internal class KWebDesktopPage(
             }
         }
     }
+
+    internal fun onEngineClosed() {
+        eventStream.onPageClosed()
+    }
+
+    internal fun requireNativeHandle(operation: String): Long = native.requireLiveHandle(operation)
 
     private fun requireOpen(operation: String) {
         if (lifecycle.value != KWebLifecycleState.OPEN) {

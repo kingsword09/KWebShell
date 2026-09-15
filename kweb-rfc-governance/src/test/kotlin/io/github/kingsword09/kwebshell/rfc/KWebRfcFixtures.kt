@@ -1,8 +1,35 @@
 package io.github.kingsword09.kwebshell.rfc
 
+import io.github.kingsword09.kwebshell.electron.migration.KWebElectronCapabilityMatrixDocument
+
 internal val FIXTURE_RUNTIME: KWebRfcRuntimeIdentity = KWebRfcRuntimeIdentity(
     cefVersion = "151.3.16+gbe1e15d+chromium-151.0.7922.109",
     chromiumVersion = "151.0.7922.109",
+)
+
+internal val FIXTURE_RUN: KWebRfcHostedRun = KWebRfcHostedRun(
+    repository = "kingsword09/KWebShell",
+    workflowRef = "kingsword09/KWebShell/.github/workflows/ci.yml@refs/heads/main",
+    runId = "123456789",
+    runAttempt = 1,
+    sourceRevision = "1".repeat(40),
+)
+
+internal val FIXTURE_CONTRACT_DIGESTS: KWebRfcContractDigestProvider =
+    KWebRfcContractDigestProvider { "c".repeat(64) }
+
+internal fun KWebRfcGovernanceChecker(
+    catalog: List<KWebRfcDocument>,
+    manifest: KWebRfcEvidenceManifest,
+    matrix: KWebElectronCapabilityMatrixDocument,
+    runtime: KWebRfcRuntimeIdentity,
+): KWebRfcGovernanceChecker = KWebRfcGovernanceChecker(
+    catalog,
+    manifest,
+    matrix,
+    runtime,
+    FIXTURE_CONTRACT_DIGESTS,
+    KWebRfcArtifactDigestProvider { "a".repeat(64) },
 )
 
 internal fun fixtureRecord(
@@ -11,15 +38,20 @@ internal fun fixtureRecord(
     providerId: String = "governance.hosted",
     serviceId: String? = "app-paths",
     serviceVersion: String? = "1.0.0",
-    schemaVersion: Int = 1,
+    schemaVersion: Int = 2,
     matrixRowIds: List<String> = emptyList(),
     compatibilityStatus: String = "READY",
     cefVersion: String = FIXTURE_RUNTIME.cefVersion,
     chromiumVersion: String = FIXTURE_RUNTIME.chromiumVersion,
-    testRunId: String = "run-2026-09-11-1",
+    run: KWebRfcHostedRun = FIXTURE_RUN,
+    contractSha256: String = "c".repeat(64),
     electronFixtureMajor: Int = 37,
     artifacts: List<KWebRfcEvidenceArtifact> = listOf(
-        KWebRfcEvidenceArtifact("governance-report", "a".repeat(64)),
+        KWebRfcEvidenceArtifact(
+            "governance-report",
+            "docs/rfcs/evidence/artifacts/fixture.json",
+            "a".repeat(64),
+        ),
     ),
 ): KWebRfcEvidenceRecord = KWebRfcEvidenceRecord(
     rfcId = rfcId,
@@ -32,7 +64,8 @@ internal fun fixtureRecord(
     cefVersion = cefVersion,
     chromiumVersion = chromiumVersion,
     electronFixtureMajor = electronFixtureMajor,
-    testRunId = testRunId,
+    run = run,
+    contractSha256 = contractSha256,
     compatibilityStatus = compatibilityStatus,
     matrixRowIds = matrixRowIds,
     artifacts = artifacts,
@@ -40,7 +73,7 @@ internal fun fixtureRecord(
 
 internal fun fixtureManifest(records: List<KWebRfcEvidenceRecord> = emptyList()): KWebRfcEvidenceManifest =
     KWebRfcEvidenceManifest(
-        schemaVersion = 1,
+        schemaVersion = 2,
         recordsSha256 = KWebRfcEvidenceJson.recordsSha256(records),
         records = records,
     )

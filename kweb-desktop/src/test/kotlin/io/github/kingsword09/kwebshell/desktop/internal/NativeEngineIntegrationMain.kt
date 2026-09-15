@@ -7,8 +7,10 @@ import io.github.kingsword09.kwebshell.core.KWebRect
 import io.github.kingsword09.kwebshell.core.KWebCapability
 import io.github.kingsword09.kwebshell.core.KWebPageEventType
 import io.github.kingsword09.kwebshell.desktop.KWebComposeWindowHost
+import io.github.kingsword09.kwebshell.desktop.KWebDesktopPage
 import io.github.kingsword09.kwebshell.desktop.KWebDesktop
 import io.github.kingsword09.kwebshell.desktop.KWebDesktopEngineConfiguration
+import io.github.kingsword09.kwebshell.desktop.KWebPageDispatcherFactory
 import io.github.kingsword09.kwebshell.extensions.KWebExtensionLifecycleResolution
 import io.github.kingsword09.kwebshell.extensions.JvmKWebExtensionLifecycleCoordinator
 import io.github.kingsword09.kwebshell.extensions.KWebExtensionRuntime
@@ -33,8 +35,16 @@ import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPathKind
 import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPaths
 import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPathsConfiguration
 import io.github.kingsword09.kwebshell.service.apppaths.bridgeDispatcher
+import io.github.kingsword09.kwebshell.services.KWebPolicySubject
 import io.github.kingsword09.kwebshell.services.KWebServiceGrant
 import io.github.kingsword09.kwebshell.services.KWebServicePermissionPolicy
+import io.github.kingsword09.kwebshell.services.KWebServiceScope
+import io.github.kingsword09.kwebshell.services.policy.KWebGestureBinding
+import io.github.kingsword09.kwebshell.services.policy.KWebGestureConsumeResult
+import io.github.kingsword09.kwebshell.services.policy.KWebInMemoryConsentStore
+import io.github.kingsword09.kwebshell.services.policy.KWebPolicyAudit
+import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
+import io.github.kingsword09.kwebshell.services.policy.KWebUserGestureRegistry
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeDispatchers
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeException
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeRoute
@@ -299,6 +309,20 @@ private fun runSuccessfulLifecycle() {
             setOf(KWebServiceGrant(KWebAppPaths.DESCRIPTOR.id, "resolve")),
         )
         val appPathsDenyPolicy = KWebServicePermissionPolicy.exact(emptySet())
+        val appPathsPolicyEngine = KWebServicePolicyEngine(
+            rendererGrants = appPathsAllowPolicy,
+            gestures = KWebUserGestureRegistry(),
+            consentStore = KWebInMemoryConsentStore("engine-integration"),
+            osConsent = null,
+            audit = KWebPolicyAudit(),
+        )
+        val appPathsDenyPolicyEngine = KWebServicePolicyEngine(
+            rendererGrants = appPathsDenyPolicy,
+            gestures = KWebUserGestureRegistry(),
+            consentStore = KWebInMemoryConsentStore("engine-integration-denied"),
+            osConsent = null,
+            audit = KWebPolicyAudit(),
+        )
         val directHome = kotlinx.coroutines.runBlocking {
             appPathsService.resolve(KWebAppPathKind.HOME)
         }
@@ -348,7 +372,16 @@ private fun runSuccessfulLifecycle() {
                     ),
                     KWebBridgeRoute(
                         methods = setOf("resolve"),
-                        dispatcher = appPathsService.bridgeDispatcher(appPathsAllowPolicy),
+                        dispatcher = appPathsService.bridgeDispatcher(
+                            appPathsPolicyEngine,
+                            KWebPolicySubject(
+                                engineId = "engine-integration",
+                                profileId = "integration-profile",
+                                pageId = "bridge-page",
+                                origin = origin.origin,
+                                scope = KWebServiceScope.APPLICATION,
+                            ),
+                        ),
                     ),
                 )
                 val browser = NativeBrowser.open(
@@ -460,7 +493,16 @@ private fun runSuccessfulLifecycle() {
                     width = 320,
                     height = 240,
                     bridgeOrigin = origin.origin,
-                    bridgeDispatcher = appPathsService.bridgeDispatcher(appPathsDenyPolicy),
+                    bridgeDispatcher = appPathsService.bridgeDispatcher(
+                        appPathsDenyPolicyEngine,
+                        KWebPolicySubject(
+                            engineId = "engine-integration",
+                            profileId = "integration-profile",
+                            pageId = "denied-page",
+                            origin = origin.origin,
+                            scope = KWebServiceScope.APPLICATION,
+                        ),
+                    ),
                 )
                 try {
                     cdp.awaitPage("${origin.firstUrl}?denied")
@@ -626,6 +668,7 @@ private fun runSuccessfulLifecycle() {
 
 private fun runPublicFacadeLifecycle() {
     val configuration = runtimeConfiguration()
+    val gestures = KWebUserGestureRegistry()
     val engine = KWebDesktop.openEngine(
         KWebDesktopEngineConfiguration(
             cefRuntime = configuration.cefRuntime,
@@ -635,6 +678,7 @@ private fun runPublicFacadeLifecycle() {
             rootCache = configuration.rootCache,
             log = configuration.log,
             remoteDebuggingPort = configuration.remoteDebuggingPort,
+            userGestureIssuer = gestures,
         ),
     )
     var surface: ComposeBrowserSurface? = null
@@ -650,6 +694,7 @@ private fun runPublicFacadeLifecycle() {
     )
     engine.nativeServices.install(KWebAppPaths.Key, appPathsService)
     require(engine.nativeServices.require(KWebAppPaths.Key) === appPathsService)
+    var failure: Throwable? = null
     try {
         require(KWebCapability.NATIVE_CHILD in engine.capabilities)
         require(KWebCapability.PERSISTENT_PROFILE in engine.capabilities)
@@ -772,6 +817,88 @@ private fun runPublicFacadeLifecycle() {
                 ) {
                     "The ComposeWindow parent changed or stopped showing after public page close."
                 }
+
+                // An Engine shutdown is a page-owner close: a page the Profile
+                // still tracks whose native browser closed through the
+                // sanctioned ABI must have its outstanding gesture token
+                // invalidated by the Engine close itself.
+                val orphanPolicy = KWebServicePermissionPolicy.exact(
+                    setOf(KWebServiceGrant(KWebAppPaths.DESCRIPTOR.id, "resolve")),
+                )
+                val orphanPolicyEngine = KWebServicePolicyEngine(
+                    rendererGrants = orphanPolicy,
+                    gestures = gestures,
+                    consentStore = KWebInMemoryConsentStore("engine-integration-public"),
+                    osConsent = null,
+                    audit = KWebPolicyAudit(),
+                )
+                val orphanPage = kotlinx.coroutines.runBlocking {
+                    publicProfile.openPage(
+                        KWebDesktop.composeWindowHost(
+                            publicSurface.window,
+                            origin.origin,
+                            KWebPageDispatcherFactory { pageId ->
+                                appPathsService.bridgeDispatcher(
+                                    orphanPolicyEngine,
+                                    KWebPolicySubject(
+                                        engineId = engine.engineId,
+                                        profileId = "public-facade",
+                                        pageId = pageId,
+                                        origin = origin.origin,
+                                        scope = KWebServiceScope.APPLICATION,
+                                    ),
+                                )
+                            },
+                        ),
+                        origin.firstUrl,
+                        KWebRect(0, 0, 800, 600),
+                    )
+                }
+                val probeCdp = CdpClient(configuration.remoteDebuggingPort)
+                probeCdp.awaitPage(origin.firstUrl)
+                println("KWEBSHELL_ENGINE_PROBE_STAGE:cdp-ready")
+                probeCdp.dispatchTrustedKeyDown()
+                println("KWEBSHELL_ENGINE_PROBE_STAGE:input-dispatched")
+                val probeBinding = KWebGestureBinding(
+                    engineId = engine.engineId,
+                    profileId = "public-facade",
+                    pageId = orphanPage.id,
+                    origin = origin.origin,
+                )
+                awaitGestureMint(gestures, probeBinding)
+                println("KWEBSHELL_ENGINE_PROBE_STAGE:minted")
+                val orphanHandle = (orphanPage as KWebDesktopPage)
+                    .requireNativeHandle("engine-close-probe")
+                val orphanCloseStatus = NativeBindings.browserClose(orphanHandle)
+                require(
+                    orphanCloseStatus == NativeStatus.OK.value ||
+                        orphanCloseStatus == NativeStatus.BROWSER_CLOSING.value
+                ) {
+                    "The sanctioned ABI browser close failed: $orphanCloseStatus"
+                }
+                kotlinx.coroutines.runBlocking {
+                    withTimeout(30_000) {
+                        orphanPage.events.first { it.type == KWebPageEventType.CLOSED }
+                    }
+                }
+                println("KWEBSHELL_ENGINE_PROBE_STAGE:browser-terminal")
+                // The sanctioned Page close releases the FFM callback owner
+                // after the terminal event; the ABI close must do the same or
+                // the owner leaks past the Engine close.
+                NativeBindings.releaseBrowserOwner(orphanHandle)?.let { failure ->
+                    throw IllegalStateException(
+                        "The probe browser FFM owner release failed.",
+                        failure,
+                    )
+                }
+                engine.close()
+                println("KWEBSHELL_ENGINE_PROBE_STAGE:engine-closed")
+                require(
+                    gestures.consumeLatest(probeBinding) == KWebGestureConsumeResult.OWNER_CLOSED
+                ) {
+                    "An Engine shutdown must invalidate the outstanding gesture of the orphaned page."
+                }
+                println("KWEBSHELL_ENGINE_PROBE_STAGE:owner-closed-verified")
                 publicProfile.close()
                 engine.close()
                 require(appPathsService.lifecycle.value == KWebLifecycleState.CLOSED) {
@@ -791,19 +918,49 @@ private fun runPublicFacadeLifecycle() {
             }
             require(NativeBrowser.liveNativeBrowserCount() == 0L)
         }
+    } catch (error: Throwable) {
+        failure = error
+        throw error
     } finally {
-        if (page?.lifecycle?.value != KWebLifecycleState.CLOSED) {
-            page?.close()
+        val cleanupFailures = mutableListOf<Throwable>()
+        try {
+            if (page?.lifecycle?.value != KWebLifecycleState.CLOSED) {
+                page?.close()
+            }
+        } catch (error: Throwable) {
+            cleanupFailures += error
         }
-        if (profile?.lifecycle?.value != KWebLifecycleState.CLOSED) {
-            profile?.close()
+        try {
+            if (profile?.lifecycle?.value != KWebLifecycleState.CLOSED) {
+                profile?.close()
+            }
+        } catch (error: Throwable) {
+            cleanupFailures += error
         }
-        if (engine.lifecycle.value != KWebLifecycleState.CLOSED) {
-            engine.close()
+        try {
+            if (engine.lifecycle.value != KWebLifecycleState.CLOSED) {
+                engine.close()
+            }
+        } catch (error: Throwable) {
+            cleanupFailures += error
         }
-        surface?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
-        if (appPathsService.lifecycle.value != KWebLifecycleState.CLOSED) {
-            appPathsService.close()
+        try {
+            surface?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
+        } catch (error: Throwable) {
+            cleanupFailures += error
+        }
+        try {
+            if (appPathsService.lifecycle.value != KWebLifecycleState.CLOSED) {
+                appPathsService.close()
+            }
+        } catch (error: Throwable) {
+            cleanupFailures += error
+        }
+        val pending = failure
+        if (pending != null) {
+            cleanupFailures.forEach(pending::addSuppressed)
+        } else {
+            cleanupFailures.firstOrNull()?.let { throw it }
         }
     }
     require(NativeBrowser.liveNativeBrowserCount() == 0L)
@@ -1751,10 +1908,17 @@ private fun runAppPathsBridgeConformance(
     }
 }
 
-private fun bridgeFailure(cdp: CdpClient, call: String): kotlinx.serialization.json.JsonObject =
-    kotlinx.serialization.json.Json.parseToJsonElement(
-        cdp.evaluate("(async()=>{try{await ($call);return 'unexpected-success'}catch(e){return JSON.stringify({code:e.code,message:e.message})}})()"),
-    ).jsonObject
+private fun bridgeFailure(cdp: CdpClient, call: String): kotlinx.serialization.json.JsonObject {
+    val result = cdp.evaluate(
+        "(async()=>{try{await ($call);return 'unexpected-success'}catch(e){return JSON.stringify({code:e.code,message:e.message})}})()",
+    )
+    require(result != "unexpected-success") {
+        "The denied bridge call unexpectedly succeeded instead of failing: $call"
+    }
+    // Any other string result (including a non-JSON error) is a failed fixture
+    // expectation, not a JSON object to index.
+    return kotlinx.serialization.json.Json.parseToJsonElement(result).jsonObject
+}
 
 private fun javascriptString(value: String): String = buildString {
     append('\'')
@@ -2278,6 +2442,21 @@ private class CdpClient(private val port: Int) {
         )
     }
 
+    fun dispatchTrustedKeyDown() {
+        val targetId = checkNotNull(activePageTargetId) {
+            "awaitPage must select a browser page before CDP input dispatch."
+        }
+        val targets = getArray("/json/list")
+        val page = targets.singleOrNull { it["id"]?.jsonPrimitive?.content == targetId }
+            ?: error("The selected CDP page target '$targetId' is no longer available: $targets")
+        webSocket(page["webSocketDebuggerUrl"]!!.jsonPrimitive.content).use { socket ->
+            socket.command(
+                "Input.dispatchKeyEvent",
+                "{\"type\":\"rawKeyDown\",\"windowsVirtualKeyCode\":65,\"nativeVirtualKeyCode\":65,\"key\":\"a\",\"code\":\"KeyA\"}",
+            )
+        }
+    }
+
     fun awaitDevToolsTarget() {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
         while (System.nanoTime() < deadline) {
@@ -2401,6 +2580,20 @@ private class CdpWebSocket(url: String) : AutoCloseable {
         return response["result"]!!.jsonObject["result"]!!.jsonObject["value"]!!.jsonPrimitive.content
     }
 
+    fun command(method: String, paramsJson: String): kotlinx.serialization.json.JsonObject {
+        socket.sendText(
+            "{\"id\":1,\"method\":${jsonString(method)},\"params\":$paramsJson}",
+            true,
+        ).join()
+        val response = kotlinx.serialization.json.Json.parseToJsonElement(
+            messages.orTimeout(10, TimeUnit.SECONDS).join(),
+        ).jsonObject
+        require(response["error"] == null) {
+            "CDP command '$method' failed: $response"
+        }
+        return response
+    }
+
     override fun close() {
         socket.sendClose(java.net.http.WebSocket.NORMAL_CLOSURE, "done").join()
     }
@@ -2417,6 +2610,18 @@ private fun requiredPathProperty(name: String): Path {
 private fun requiredBooleanProperty(name: String): Boolean {
     val value = System.getProperty(name) ?: error("Missing required system property '$name'.")
     return value.toBooleanStrictOrNull() ?: error("System property '$name' must be exactly 'true' or 'false'.")
+}
+
+private fun awaitGestureMint(
+    gestures: KWebUserGestureRegistry,
+    binding: KWebGestureBinding,
+) {
+    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+    while (System.nanoTime() < deadline) {
+        if (gestures.current(binding) != null) return
+        Thread.sleep(25)
+    }
+    error("The native input path never minted a user gesture for the probe page")
 }
 
 private fun requireStatus(actual: Int, expected: NativeStatus, operation: String) {
@@ -2592,6 +2797,7 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
         }
         add("-D$INTEGRATION_ROOT_PROPERTY=$root")
         if (mode == IntegrationMode.SUCCESS ||
+            mode == IntegrationMode.PUBLIC_FACADE ||
             mode == IntegrationMode.EXTENSION_LIFECYCLE_CRASH ||
             mode.name.startsWith("EXTENSION_LIFECYCLE_STAGE")
         ) {

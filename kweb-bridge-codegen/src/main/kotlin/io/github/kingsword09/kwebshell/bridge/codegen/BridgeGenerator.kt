@@ -249,7 +249,16 @@ public class BridgeGenerator public constructor() {
             appendLine("    public override suspend fun acknowledge(request: KWebBridgeRequest, gate: KWebStreamCreditGate) {")
             appendLine("        when (request.method) {")
             schema.streams.forEach { stream ->
-                appendLine("            \"${stream.name}Ack\" -> gate.grant(decodePayload<StreamAck>(request.payload.toString()).granted)")
+                appendLine("            \"${stream.name}Ack\" -> {")
+                appendLine("                val granted = decodePayload<StreamAck>(request.payload.toString()).granted")
+                appendLine("                if (granted <= 0 || granted > ${stream.capacity}) {")
+                appendLine("                    throw KWebBridgeException(")
+                appendLine("                        code = KWebStreamBridgeErrorCode.FRAME_INVALID,")
+                appendLine("                        message = \"An acknowledgement must grant 1 through ${stream.capacity} frames.\",")
+                appendLine("                    )")
+                appendLine("                }")
+                appendLine("                gate.grant(granted)")
+                appendLine("            }")
             }
             appendLine("            else -> throw KWebBridgeException(")
             appendLine("                code = KWebStreamBridgeErrorCode.ACK_UNKNOWN_STREAM,")
@@ -280,7 +289,7 @@ public class BridgeGenerator public constructor() {
                 } else {
                     appendLine("                    val payload = KWebBridgeProtocol.json.encodeToJsonElement(chunk)")
                 }
-                appendLine("                    sink.send(")
+                appendLine("                    val delivered = sink.send(")
                 appendLine("                        KWebStreamProtocol.encode(")
                 appendLine("                            KWebStreamFrame(")
                 appendLine("                                version = KWebStreamProtocol.VERSION,")
@@ -290,6 +299,9 @@ public class BridgeGenerator public constructor() {
                 appendLine("                            ),")
                 appendLine("                        ),")
                 appendLine("                    )")
+                appendLine("                    if (!delivered) {")
+                appendLine("                        throw CancellationException(KWebStreamBridgeErrorCode.TRANSPORT_CLOSED)")
+                appendLine("                    }")
                 appendLine("                    sequence += 1")
                 appendLine("                }")
                 appendLine("                sink.complete(")

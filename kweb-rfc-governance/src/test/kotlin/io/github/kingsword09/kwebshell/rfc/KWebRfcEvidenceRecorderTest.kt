@@ -1,12 +1,18 @@
 package io.github.kingsword09.kwebshell.rfc
 
 import io.github.kingsword09.kwebshell.electron.migration.KWebElectronCompatibilityReport
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.io.TempDir
 
 class KWebRfcEvidenceRecorderTest {
+    @TempDir
+    lateinit var temporaryDirectory: Path
+
     private val catalog = listOf(
         fixtureDocument(id = "0001", status = KWebRfcStatus.IMPLEMENTED),
         fixtureDocument(id = "0002", status = KWebRfcStatus.PROPOSED, dependsOn = listOf("0001")),
@@ -30,22 +36,45 @@ class KWebRfcEvidenceRecorderTest {
 
     private fun request(
         report: KWebElectronCompatibilityReport? = compatibilityReport,
-        reportDigest: String? = "9".repeat(64),
         rfcId: String = "0001",
         target: String = "macos-arm64",
     ) = KWebRfcEvidenceRecordRequest(
         rfcId = rfcId,
         providerId = "governance.hosted",
         target = target,
-        testRunId = "run-2026-09-11-1",
+        run = FIXTURE_RUN,
         electronFixtureMajor = 37,
         compatibilityReport = report,
-        compatibilityReportSha256 = reportDigest,
+        compatibilityReportPath = report?.let { retainedFile("compatibility-report.json", "retained report") },
     )
+
+    private fun retainedFile(name: String, contents: String): Path =
+        temporaryDirectory.resolve(name).also { Files.writeString(it, contents) }
+
+    private fun record(
+        request: KWebRfcEvidenceRecordRequest,
+        manifest: KWebRfcEvidenceManifest = fixtureManifest(),
+        recordCatalog: List<KWebRfcDocument> = catalog,
+        runtime: KWebRfcRuntimeIdentity = FIXTURE_RUNTIME,
+    ): KWebRfcEvidenceManifest {
+        val contract = retainedFile("contract.txt", "contract")
+        val bindings = KWebRfcContractBindingsDocument(
+            schemaVersion = 1,
+            bindings = listOf(KWebRfcContractBinding(request.rfcId, listOf(contract.fileName.toString()))),
+        )
+        return KWebRfcEvidenceRecorder().record(
+            request,
+            manifest,
+            recordCatalog,
+            runtime,
+            bindings,
+            temporaryDirectory,
+        )
+    }
 
     @Test
     fun recordDerivesDigestsAndServiceVersionFromCompatibilityReport() {
-        val updated = KWebRfcEvidenceRecorder().record(request(), fixtureManifest(), catalog, FIXTURE_RUNTIME)
+        val updated = record(request())
         val record = updated.records.single()
         assertEquals("app-paths", record.serviceId)
         assertEquals("1.0.0", record.serviceVersion)
@@ -53,12 +82,12 @@ class KWebRfcEvidenceRecorderTest {
         assertEquals("READY", record.compatibilityStatus)
         assertEquals(
             listOf(
-                KWebRfcEvidenceArtifact("renderer", "b".repeat(64)),
-                KWebRfcEvidenceArtifact("migration-manifest", "c".repeat(64)),
-                KWebRfcEvidenceArtifact("generated-output", "d".repeat(64)),
-                KWebRfcEvidenceArtifact("inventory", "e".repeat(64)),
-                KWebRfcEvidenceArtifact("capability-matrix", "f".repeat(64)),
-                KWebRfcEvidenceArtifact("compatibility-report", "9".repeat(64)),
+                KWebRfcEvidenceArtifact(
+                    "compatibility-report",
+                    "docs/rfcs/evidence/artifacts/0001/${FIXTURE_RUN.sourceRevision}/macos-arm64/" +
+                        "compatibility-report/compatibility-report.json",
+                    KWebRfcEvidenceJson.sha256("retained report".encodeToByteArray()),
+                ),
             ),
             record.artifacts,
         )
@@ -68,10 +97,10 @@ class KWebRfcEvidenceRecorderTest {
     fun regenerationIsByteForByteDeterministic() {
         val recorder = KWebRfcEvidenceRecorder()
         val first = KWebRfcEvidenceJson.encodeManifest(
-            recorder.record(request(), fixtureManifest(), catalog, FIXTURE_RUNTIME),
+            record(request()),
         )
         val second = KWebRfcEvidenceJson.encodeManifest(
-            recorder.record(request(), fixtureManifest(), catalog, FIXTURE_RUNTIME),
+            record(request()),
         )
         assertEquals(first, second)
         assertTrue(first.contains("\"recordsSha256\""))
@@ -81,26 +110,21 @@ class KWebRfcEvidenceRecorderTest {
     fun upsertReplacesSameIdentityAndKeepsOtherTargets() {
         val recorder = KWebRfcEvidenceRecorder()
         val manifest = fixtureManifest(threeHostedTargets())
-        val updated = recorder.record(
+        val updated = record(
             request(target = "macos-arm64"),
             manifest,
-            catalog,
-            FIXTURE_RUNTIME,
         )
         assertEquals(3, updated.records.size)
         val macosRecords = updated.records.filter { it.target == "macos-arm64" }
         assertEquals(1, macosRecords.size)
-        assertEquals("run-2026-09-11-1", macosRecords.single().testRunId)
+        assertEquals(FIXTURE_RUN, macosRecords.single().run)
     }
 
     @Test
     fun reportForDifferentTargetFails() {
         val error = assertFailsWith<KWebRfcGovernanceException> {
-            KWebRfcEvidenceRecorder().record(
+            record(
                 request(target = "windows-x64"),
-                fixtureManifest(),
-                catalog,
-                FIXTURE_RUNTIME,
             )
         }
         assertEquals(KWebRfcRecorderErrorCode.REPORT_TARGET_MISMATCH, error.code)
@@ -110,11 +134,8 @@ class KWebRfcEvidenceRecorderTest {
     fun reportAgainstDifferentRuntimeFails() {
         val staleReport = compatibilityReport.copy(cefVersion = "150.0.0+old")
         val error = assertFailsWith<KWebRfcGovernanceException> {
-            KWebRfcEvidenceRecorder().record(
+            record(
                 request(report = staleReport),
-                fixtureManifest(),
-                catalog,
-                FIXTURE_RUNTIME,
             )
         }
         assertEquals(KWebRfcRecorderErrorCode.REPORT_STALE_RUNTIME, error.code)
@@ -123,11 +144,8 @@ class KWebRfcEvidenceRecorderTest {
     @Test
     fun recordingForProposedRfcFails() {
         val error = assertFailsWith<KWebRfcGovernanceException> {
-            KWebRfcEvidenceRecorder().record(
+            record(
                 request(rfcId = "0002"),
-                fixtureManifest(),
-                catalog,
-                FIXTURE_RUNTIME,
             )
         }
         assertEquals(KWebRfcRecorderErrorCode.RFC_NOT_IMPLEMENTED, error.code)
@@ -136,11 +154,8 @@ class KWebRfcEvidenceRecorderTest {
     @Test
     fun recordingForUnknownRfcFails() {
         val error = assertFailsWith<KWebRfcGovernanceException> {
-            KWebRfcEvidenceRecorder().record(
+            record(
                 request(rfcId = "0042"),
-                fixtureManifest(),
-                catalog,
-                FIXTURE_RUNTIME,
             )
         }
         assertEquals(KWebRfcRecorderErrorCode.RFC_UNKNOWN, error.code)
@@ -148,38 +163,64 @@ class KWebRfcEvidenceRecorderTest {
 
     @Test
     fun declaredArtifactsRequireNoReportButServiceBindingRequiresReport() {
-        val updated = KWebRfcEvidenceRecorder().record(
+        val updated = record(
             KWebRfcEvidenceRecordRequest(
                 rfcId = "0001",
                 providerId = "governance.hosted",
                 target = "linux-x64",
-                testRunId = "run-2026-09-11-2",
+                run = FIXTURE_RUN,
                 electronFixtureMajor = 37,
-                artifacts = listOf(KWebRfcEvidenceArtifact("governance-report", "a".repeat(64))),
+                artifacts = listOf(
+                    KWebRfcEvidenceArtifactInput(
+                        "governance-report",
+                        retainedFile("governance-report.json", "governance"),
+                    ),
+                ),
             ),
-            fixtureManifest(),
-            catalog,
-            FIXTURE_RUNTIME,
         )
         assertEquals(1, updated.records.size)
         assertEquals(null, updated.records.single().serviceId)
 
         val error = assertFailsWith<KWebRfcGovernanceException> {
-            KWebRfcEvidenceRecorder().record(
+            record(
                 KWebRfcEvidenceRecordRequest(
                     rfcId = "0001",
                     providerId = "governance.hosted",
                     target = "linux-x64",
-                    testRunId = "run-2026-09-11-2",
+                    run = FIXTURE_RUN,
                     electronFixtureMajor = 37,
                     serviceId = "app-paths",
-                    artifacts = listOf(KWebRfcEvidenceArtifact("governance-report", "a".repeat(64))),
+                    artifacts = listOf(
+                        KWebRfcEvidenceArtifactInput(
+                            "governance-report",
+                            retainedFile("governance-report-2.json", "governance"),
+                        ),
+                    ),
                 ),
-                fixtureManifest(),
-                catalog,
-                FIXTURE_RUNTIME,
             )
         }
         assertEquals(KWebRfcRecorderErrorCode.SERVICE_UNRESOLVED, error.code)
+    }
+
+    @Test
+    fun missingArtifactFileFailsInsteadOfTrustingACallerDigest() {
+        val error = assertFailsWith<KWebRfcGovernanceException> {
+            record(
+                KWebRfcEvidenceRecordRequest(
+                    rfcId = "0001",
+                    providerId = "governance.hosted",
+                    target = "linux-x64",
+                    run = FIXTURE_RUN,
+                    electronFixtureMajor = 37,
+                    artifacts = listOf(
+                        KWebRfcEvidenceArtifactInput(
+                            "governance-report",
+                            temporaryDirectory.resolve("does-not-exist.json"),
+                        ),
+                    ),
+                ),
+            )
+        }
+        assertEquals(KWebRfcRecorderErrorCode.ARTIFACT_UNREADABLE, error.code)
     }
 }

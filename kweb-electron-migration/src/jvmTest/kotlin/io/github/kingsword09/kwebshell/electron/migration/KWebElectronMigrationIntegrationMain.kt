@@ -17,8 +17,14 @@ import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPathKind
 import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPaths
 import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPathsConfiguration
 import io.github.kingsword09.kwebshell.service.apppaths.bridgeDispatcher
+import io.github.kingsword09.kwebshell.services.KWebPolicySubject
 import io.github.kingsword09.kwebshell.services.KWebServiceGrant
 import io.github.kingsword09.kwebshell.services.KWebServicePermissionPolicy
+import io.github.kingsword09.kwebshell.services.KWebServiceScope
+import io.github.kingsword09.kwebshell.services.policy.KWebInMemoryConsentStore
+import io.github.kingsword09.kwebshell.services.policy.KWebPolicyAudit
+import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
+import io.github.kingsword09.kwebshell.services.policy.KWebUserGestureRegistry
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -104,7 +110,32 @@ public fun main() {
         setOf(KWebServiceGrant(KWebAppPaths.DESCRIPTOR.id, "resolve")),
     )
     val denyPolicy = KWebServicePermissionPolicy.exact(emptySet())
-    val slowDispatcher = SlowAppPathsDispatcher(appPaths.bridgeDispatcher(allowPolicy))
+    val allowPolicyEngine = KWebServicePolicyEngine(
+        rendererGrants = allowPolicy,
+        gestures = KWebUserGestureRegistry(),
+        consentStore = KWebInMemoryConsentStore("migration-fixture"),
+        osConsent = null,
+        audit = KWebPolicyAudit(),
+    )
+    val denyPolicyEngine = KWebServicePolicyEngine(
+        rendererGrants = denyPolicy,
+        gestures = KWebUserGestureRegistry(),
+        consentStore = KWebInMemoryConsentStore("migration-fixture-denied"),
+        osConsent = null,
+        audit = KWebPolicyAudit(),
+    )
+    val slowDispatcher = SlowAppPathsDispatcher(
+        appPaths.bridgeDispatcher(
+            allowPolicyEngine,
+            KWebPolicySubject(
+                engineId = "migration-fixture",
+                profileId = "electron-migration-fixture",
+                pageId = "bridge-page",
+                origin = server.origin,
+                scope = KWebServiceScope.APPLICATION,
+            ),
+        ),
+    )
     var activePage: KWebPage? = null
     var failure: Throwable? = null
     try {
@@ -182,7 +213,20 @@ public fun main() {
 
         val deniedPage = runBlocking {
             profile.openPage(
-                KWebDesktop.composeWindowHost(window, server.origin, appPaths.bridgeDispatcher(denyPolicy)),
+                KWebDesktop.composeWindowHost(
+                    window,
+                    server.origin,
+                    appPaths.bridgeDispatcher(
+                        denyPolicyEngine,
+                        KWebPolicySubject(
+                            engineId = "migration-fixture",
+                            profileId = "electron-migration-fixture",
+                            pageId = "denied-page",
+                            origin = server.origin,
+                            scope = KWebServiceScope.APPLICATION,
+                        ),
+                    ),
+                ),
                 "${server.indexUrl}?denied",
                 KWebRect(0, 0, 960, 700),
             )

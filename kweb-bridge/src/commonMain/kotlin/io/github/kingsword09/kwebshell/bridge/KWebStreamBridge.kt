@@ -216,11 +216,23 @@ public class KWebStreamCreditGate(
     public fun grant(count: Int) {
         if (count <= 0) return
         state.update { current ->
-            if (current.closed) current else current.copy(credits = current.credits + count)
+            when {
+                current.closed -> current
+                // Long arithmetic plus the bounded credit ceiling keeps a hostile
+                // or buggy ACK sequence from overflowing the counter into a
+                // permanently suspended stream.
+                else -> current.copy(
+                    credits = minOf(current.credits.toLong() + count, CREDIT_CEILING.toLong()).toInt(),
+                )
+            }
         }
     }
 
     public fun close() {
         state.update { it.copy(closed = true) }
+    }
+
+    public companion object {
+        internal const val CREDIT_CEILING: Int = 1 shl 20
     }
 }

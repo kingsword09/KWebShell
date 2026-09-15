@@ -16,6 +16,8 @@ public object KWebRfcFindingCode {
     public const val EVIDENCE_STATUS_MISMATCH: String = "evidence.status-mismatch"
     public const val EVIDENCE_STALE_RUNTIME: String = "evidence.stale-runtime"
     public const val EVIDENCE_STALE_SERVICE: String = "evidence.stale-service"
+    public const val EVIDENCE_STALE_CONTRACT: String = "evidence.stale-contract"
+    public const val EVIDENCE_STALE_ARTIFACT: String = "evidence.stale-artifact"
     public const val EVIDENCE_UNKNOWN_SERVICE: String = "evidence.unknown-service"
     public const val EVIDENCE_UNKNOWN_MATRIX_ROW: String = "evidence.unknown-matrix-row"
     public const val EVIDENCE_UNSUPPORTED_ROW_CLAIM: String = "evidence.unsupported-row-claim"
@@ -93,6 +95,8 @@ public class KWebRfcGovernanceChecker(
     private val manifest: KWebRfcEvidenceManifest,
     private val matrix: KWebElectronCapabilityMatrixDocument,
     private val runtime: KWebRfcRuntimeIdentity,
+    private val contractDigests: KWebRfcContractDigestProvider,
+    private val artifactDigests: KWebRfcArtifactDigestProvider,
 ) {
     /**
      * Matrix rows that are backed by delivered Phase 11 prerequisites instead of an
@@ -280,6 +284,23 @@ public class KWebRfcGovernanceChecker(
                     "Chromium ${runtime.chromiumVersion}."
             }
             current = false
+        }
+        val currentContractDigest = contractDigests.digest(record.rfcId)
+        if (record.contractSha256 != currentContractDigest) {
+            findings += finding(record.rfcId, KWebRfcFindingCode.EVIDENCE_STALE_CONTRACT) {
+                "Evidence for ${record.target} binds contract ${record.contractSha256}; " +
+                    "the current RFC ${record.rfcId} contract is $currentContractDigest."
+            }
+            current = false
+        }
+        record.artifacts.forEach { artifact ->
+            val retainedDigest = artifactDigests.digest(artifact.path)
+            if (retainedDigest != artifact.sha256) {
+                findings += finding(record.rfcId, KWebRfcFindingCode.EVIDENCE_STALE_ARTIFACT) {
+                    "Evidence artifact '${artifact.name}' for ${record.target} is missing or its retained bytes changed."
+                }
+                current = false
+            }
         }
         record.serviceId?.let { serviceId ->
             val contract = KWebRfcServiceCatalog.find(serviceId)

@@ -12,6 +12,7 @@ import io.github.kingsword09.kwebshell.core.KWebRect
 import io.github.kingsword09.kwebshell.desktop.KWebDesktop
 import io.github.kingsword09.kwebshell.desktop.KWebDesktopEngine
 import io.github.kingsword09.kwebshell.desktop.KWebDesktopEngineConfiguration
+import io.github.kingsword09.kwebshell.desktop.KWebPageDispatcherFactory
 import io.github.kingsword09.kwebshell.example.support.KWebExampleCdpClient
 import io.github.kingsword09.kwebshell.example.support.KWebExampleCdpSession
 import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPathKind
@@ -19,12 +20,18 @@ import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPaths
 import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPathsConfiguration
 import io.github.kingsword09.kwebshell.service.apppaths.JvmKWebAppPaths
 import io.github.kingsword09.kwebshell.services.KWebCapabilityFact
+import io.github.kingsword09.kwebshell.services.KWebPolicySubject
 import io.github.kingsword09.kwebshell.services.KWebServiceProviderCatalog
 import io.github.kingsword09.kwebshell.services.KWebServiceProviderConfiguration
 import io.github.kingsword09.kwebshell.services.KWebServiceProviderDeclaration
 import io.github.kingsword09.kwebshell.services.KWebServiceErrorCode
 import io.github.kingsword09.kwebshell.services.KWebServiceGrant
 import io.github.kingsword09.kwebshell.services.KWebServicePermissionPolicy
+import io.github.kingsword09.kwebshell.services.KWebServiceScope
+import io.github.kingsword09.kwebshell.services.policy.KWebInMemoryConsentStore
+import io.github.kingsword09.kwebshell.services.policy.KWebPolicyAudit
+import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
+import io.github.kingsword09.kwebshell.services.policy.KWebUserGestureRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -182,13 +189,43 @@ public fun main() {
         profile = liveProfile
         val cdp = KWebExampleCdpClient(cdpPort, 30_000)
         val allowPolicy = KWebServicePermissionPolicy.exact(
-            KWebWindowControls.DESCRIPTOR.operations.mapTo(mutableSetOf()) { operation ->
+            KWebWindowControls.DESCRIPTOR.operations.map { operation ->
                 KWebServiceGrant(KWebWindowControls.DESCRIPTOR.id, operation.id)
-            },
+            }.toSet(),
+        )
+        val denyPolicy = KWebServicePermissionPolicy.exact(emptySet())
+        val policyEngine = KWebServicePolicyEngine(
+            rendererGrants = allowPolicy,
+            gestures = KWebUserGestureRegistry(),
+            consentStore = KWebInMemoryConsentStore("window-controls-fixture"),
+            osConsent = null,
+            audit = KWebPolicyAudit(),
+        )
+        val denyPolicyEngine = KWebServicePolicyEngine(
+            rendererGrants = denyPolicy,
+            gestures = KWebUserGestureRegistry(),
+            consentStore = KWebInMemoryConsentStore("window-controls-fixture-denied"),
+            osConsent = null,
+            audit = KWebPolicyAudit(),
         )
         val allowedPage = runBlocking {
             liveProfile.openPage(
-                KWebDesktop.composeWindowHost(window, server.origin, service.bridgeDispatcher(allowPolicy)),
+                KWebDesktop.composeWindowHost(
+                    window,
+                    server.origin,
+                    KWebPageDispatcherFactory { pageId ->
+                        service.bridgeDispatcher(
+                            policyEngine,
+                            KWebPolicySubject(
+                                engineId = "window-controls-fixture",
+                                profileId = "window-controls",
+                                pageId = pageId,
+                                origin = server.origin,
+                                scope = KWebServiceScope.APPLICATION,
+                            ),
+                        )
+                    },
+                ),
                 server.indexUrl,
                 KWebRect(0, 0, 800, 560),
             )
@@ -238,7 +275,18 @@ public fun main() {
                 KWebDesktop.composeWindowHost(
                     window,
                     server.origin,
-                    service.bridgeDispatcher(KWebServicePermissionPolicy.exact(emptySet())),
+                    KWebPageDispatcherFactory { pageId ->
+                        service.bridgeDispatcher(
+                            denyPolicyEngine,
+                            KWebPolicySubject(
+                                engineId = "window-controls-fixture",
+                                profileId = "window-controls",
+                                pageId = pageId,
+                                origin = server.origin,
+                                scope = KWebServiceScope.APPLICATION,
+                            ),
+                        )
+                    },
                 ),
                 "${server.indexUrl}?denied",
                 KWebRect(0, 0, 800, 560),
@@ -288,7 +336,7 @@ public fun main() {
         engine = null
         cdp.assertUnavailable()
         require(service.lifecycle.value == KWebLifecycleState.CLOSED)
-        require(installedAppPaths?.lifecycle?.value == KWebLifecycleState.CLOSED) {
+        require(installedAppPaths.lifecycle.value == KWebLifecycleState.CLOSED) {
             "The provider-installed KWebAppPaths service did not close with the registry."
         }
         require(onAwtThread { window.isDisplayable && window.isShowing }) {

@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebPage
+import io.github.kingsword09.kwebshell.core.KWebPageEventType
 import io.github.kingsword09.kwebshell.core.KWebProfile
 import io.github.kingsword09.kwebshell.core.KWebRect
 import io.github.kingsword09.kwebshell.desktop.KWebDesktop
@@ -23,6 +24,8 @@ import io.github.kingsword09.kwebshell.services.consent.KWebFileConsentStore
 import io.github.kingsword09.kwebshell.services.consent.LinuxPortalPermissionStoreConsentProvider
 import io.github.kingsword09.kwebshell.services.consent.MacOsTccConsentProvider
 import io.github.kingsword09.kwebshell.services.consent.WindowsCapabilityAccessConsentProvider
+import io.github.kingsword09.kwebshell.services.policy.KWebGestureBinding
+import io.github.kingsword09.kwebshell.services.policy.KWebGestureConsumeResult
 import io.github.kingsword09.kwebshell.services.policy.KWebInMemoryConsentStore
 import io.github.kingsword09.kwebshell.services.policy.KWebUserGestureRegistry
 import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
@@ -33,6 +36,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
@@ -267,6 +271,51 @@ public fun main(): Unit = runBlocking {
         }
         unconfigured.close()
         pages.remove(unconfigured)
+
+        // An Engine shutdown is a page-owner close: a Profile that still holds
+        // a Kotlin page whose native browser was closed out of band must have
+        // that page's outstanding gesture token invalidated by the Engine
+        // close, exactly as an explicit Page close would.
+        val probeProfile = liveEngine.openProfile("dialogs-engine-close-probe")
+        val probePage = probeProfile.openPage(
+            KWebDesktop.composeWindowHost(
+                window,
+                server.origin,
+                KWebPageDispatcherFactory { pageId ->
+                    service.bridgeDispatcher(
+                        policyEngine,
+                        KWebPolicySubject(
+                            engineId = engineId,
+                            profileId = "dialogs-engine-close-probe",
+                            pageId = pageId,
+                            origin = server.origin,
+                            scope = KWebServiceScope.APPLICATION,
+                        ),
+                    )
+                },
+            ),
+            "${server.url}?engine-close-probe",
+            KWebRect(0, 0, 820, 550),
+        )
+        pages += probePage
+        cdp.awaitPage("${server.url}?engine-close-probe")
+        val mintedBeforeProbe = gestures.minted.get()
+        cdp.openPageSession("${server.url}?engine-close-probe").use { session ->
+            session.awaitTrue("typeof DialogsBridge === 'object'")
+            sendGestureKeystroke(session)
+            awaitMint(gestures, mintedBeforeProbe)
+        }
+        val probeTarget = cdp.awaitPage("${server.url}?engine-close-probe")
+        cdp.openBrowserSession().use { browserSession ->
+            browserSession.command(
+                "Target.closeTarget",
+                buildJsonObject { put("targetId", probeTarget.id) },
+            )
+        }
+        withTimeout(30_000) {
+            probePage.events.first { it.type == KWebPageEventType.CLOSED }
+        }
+
         liveProfile.close()
         profile = null
         // Keep a native operation live while the Engine closes its installed provider.
@@ -280,6 +329,18 @@ public fun main(): Unit = runBlocking {
         check(ownerFailure is io.github.kingsword09.kwebshell.core.KWebNativeException && ownerFailure.code == "service.owner-closed")
         check(service.lifecycle.value == KWebLifecycleState.CLOSED)
         check(!selector.isVisible())
+        check(
+            gestures.consumeLatest(
+                KWebGestureBinding(
+                    engineId = engineId,
+                    profileId = "dialogs-engine-close-probe",
+                    pageId = probePage.id,
+                    origin = server.origin,
+                ),
+            ) == KWebGestureConsumeResult.OWNER_CLOSED,
+        ) {
+            "An Engine shutdown must invalidate the outstanding gesture of the orphaned probe page."
+        }
         val readAfterClose = runCatching { service.readFile(requireNotNull(readHandle), 0, 1) }.exceptionOrNull()
         check(readAfterClose is io.github.kingsword09.kwebshell.core.KWebNativeException && readAfterClose.code == "service.owner-closed")
         cdp.assertUnavailable()

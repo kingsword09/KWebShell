@@ -20,8 +20,12 @@ esac
 # Windows runners check out CRLF working trees; the contract digests hash the
 # committed LF bytes, so re-materialize the tree from the index before recording.
 if [ "$RUNNER_OS" = "Windows" ]; then
+  # A plain checkout never rewrites CRLF working files: the clean filter makes
+  # them look unchanged against the LF index. Remove the tracked files and
+  # re-materialize the whole tree so the smudge filter writes the committed LF
+  # bytes the contract digests hash.
+  git ls-files -z | xargs -0 rm -f
   git -c core.autocrlf=false -c core.eol=lf checkout HEAD -- .
-  git status --short | head -10 || true
   file docs/rfcs/0001-program-governance.md || true
 fi
 

@@ -17,6 +17,13 @@ case "${RUNNER_OS}:${RUNNER_ARCH}" in
   *) echo "Unsupported runner ${RUNNER_OS}:${RUNNER_ARCH}" >&2; exit 1 ;;
 esac
 
+# Windows runners check out CRLF working trees; the contract digests hash the
+# committed LF bytes, so re-materialize the tree from the index before recording.
+if [ "$RUNNER_OS" = "Windows" ]; then
+  git config core.autocrlf false
+  git checkout HEAD -- .
+fi
+
 for rfc in 0001 0002 0003; do
   file=$(ls docs/rfcs/${rfc}-*.md)
   sed 's/^- Status: .*$/- Status: Implemented/' "$file" > "$file.recorded"

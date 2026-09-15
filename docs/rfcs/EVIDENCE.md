@@ -138,7 +138,10 @@ that gets checked in:
      `kweb-service-dialogs/build/dialogs-integration/consent-status.json`
      (`dialogs-consent`),
    chaining one per-target manifest through the three upserts and retaining each
-   artifact under `docs/rfcs/evidence/artifacts/`.
+   artifact under `docs/rfcs/evidence/artifacts/`. On Windows the script first
+   re-materializes the working tree from the index with `core.autocrlf false`,
+   because the contract digests hash the committed LF bytes rather than the
+   runner's checkout line endings.
 2. `rfc-evidence`, the aggregation job, downloads the three per-target bundles,
    collects the retained artifacts, and merges the manifests with:
 

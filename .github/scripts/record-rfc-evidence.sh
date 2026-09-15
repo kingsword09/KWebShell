@@ -22,6 +22,10 @@ esac
 if [ "$RUNNER_OS" = "Windows" ]; then
   git config core.autocrlf false
   git checkout HEAD -- .
+  git status --short | head -10 || true
+  echo "autocrlf: $(git config core.autocrlf || echo unset)"
+  file docs/rfcs/0001-program-governance.md || true
+  head -c 120 docs/rfcs/0001-program-governance.md | od -c | head -4 || true
 fi
 
 for rfc in 0001 0002 0003; do

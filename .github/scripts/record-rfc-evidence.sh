@@ -7,7 +7,7 @@
 # because the recorder refuses to record against a non-Implemented catalog.
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 output="build/rfc-evidence/manifest"
 case "${RUNNER_OS}:${RUNNER_ARCH}" in

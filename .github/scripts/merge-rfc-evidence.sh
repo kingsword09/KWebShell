@@ -5,7 +5,7 @@
 # same manifest bytes regardless of merge order.
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 downloaded="build/rfc-evidence/downloaded"
 artifacts_root="build/rfc-evidence/artifacts"

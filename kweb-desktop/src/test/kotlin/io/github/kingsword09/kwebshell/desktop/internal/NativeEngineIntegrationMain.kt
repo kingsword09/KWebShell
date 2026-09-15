@@ -2788,6 +2788,7 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
         }
         add("-D$INTEGRATION_ROOT_PROPERTY=$root")
         if (mode == IntegrationMode.SUCCESS ||
+            mode == IntegrationMode.PUBLIC_FACADE ||
             mode == IntegrationMode.EXTENSION_LIFECYCLE_CRASH ||
             mode.name.startsWith("EXTENSION_LIFECYCLE_STAGE")
         ) {

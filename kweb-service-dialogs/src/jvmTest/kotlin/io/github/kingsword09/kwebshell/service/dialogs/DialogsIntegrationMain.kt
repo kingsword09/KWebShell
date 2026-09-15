@@ -5,7 +5,6 @@ import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebPage
-import io.github.kingsword09.kwebshell.core.KWebPageEventType
 import io.github.kingsword09.kwebshell.core.KWebProfile
 import io.github.kingsword09.kwebshell.core.KWebRect
 import io.github.kingsword09.kwebshell.desktop.KWebDesktop
@@ -36,13 +35,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -306,15 +305,12 @@ public fun main(): Unit = runBlocking {
             awaitMint(gestures, mintedBeforeProbe)
         }
         val probeTarget = cdp.awaitPage("${server.url}?engine-close-probe")
-        cdp.openBrowserSession().use { browserSession ->
-            browserSession.command(
-                "Target.closeTarget",
-                buildJsonObject { put("targetId", probeTarget.id) },
-            )
+        val closeResponse = java.net.URI("http://127.0.0.1:$port/json/close/${probeTarget.id}")
+            .toURL().readText()
+        check(closeResponse.contains("Target is closing")) {
+            "The out-of-band target close was rejected: $closeResponse"
         }
-        withTimeout(30_000) {
-            probePage.events.first { it.type == KWebPageEventType.CLOSED }
-        }
+        awaitProbeTargetRemoved(port, probeTarget.id)
 
         liveProfile.close()
         profile = null
@@ -408,6 +404,20 @@ private fun awaitMint(issuer: RecordingGestureIssuer, previousCount: Int): Int {
         Thread.sleep(25)
     }
     error("The native input path never minted a user gesture")
+}
+
+private fun awaitProbeTargetRemoved(port: Int, targetId: String) {
+    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+    while (System.nanoTime() < deadline) {
+        val stillListed = runCatching {
+            java.net.URI("http://127.0.0.1:$port/json/list").toURL().readText()
+                .let(Json::parseToJsonElement).jsonArray
+                .any { it.jsonObject["id"]?.jsonPrimitive?.contentOrNull == targetId }
+        }.getOrDefault(true)
+        if (!stillListed) return
+        Thread.sleep(100)
+    }
+    error("The out-of-band target close never removed the probe target")
 }
 
 private fun sendGestureKeystroke(session: KWebExampleCdpSession) {

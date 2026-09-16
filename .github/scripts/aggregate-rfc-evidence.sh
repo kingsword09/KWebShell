@@ -11,6 +11,15 @@ cd "$(dirname "$0")/../.."
 downloaded="build/rfc-evidence/downloaded"
 input="docs/rfcs/evidence/manifest.json"
 
+# The recorder refuses a non-Implemented catalog: flip the three statuses in
+# this workspace before recording. The checked-in flip lands in the same commit
+# as the checked-in records.
+for rfc in 0001 0002 0003; do
+  file=$(ls docs/rfcs/${rfc}-*.md)
+  sed 's/^- Status: .*$/- Status: Implemented/' "$file" > "$file.recorded"
+  mv "$file.recorded" "$file"
+done
+
 record() {
   local target="$1" rfc="$2" artifact="$3" file="$4" input="$5" output="$6"
   if [ -z "$file" ] || [ ! -f "$file" ]; then

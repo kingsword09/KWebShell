@@ -45,4 +45,5 @@ class KWebRfcGovernanceCliTest {
         }
         assertEquals("rfc.record.unsupported-runner", unsupported.code)
     }
+
 }

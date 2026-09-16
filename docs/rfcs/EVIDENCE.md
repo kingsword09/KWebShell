@@ -47,16 +47,8 @@ memory. To upsert one record into the manifest from a migration compatibility
 report (the Phase 11 flow):
 
 ```sh
-./gradlew :kweb-rfc-governance:rfcEvidenceRecord --args='
-  record docs/rfcs/evidence/manifest.json docs/rfcs/evidence/manifest.json
-  --catalog docs/rfcs
-  --runtime runtime/cef-runtime.json
-  --contracts docs/rfcs/evidence/contracts.json
-  --repository-root .
-  --rfc 0017 --provider menus.macos
-  --electron-major 37
-  --matrix-row menu-tray
-  --from-compatibility-report kweb-electron-migration/build/reports/electron-migration/compatibility.json'
+./gradlew :kweb-rfc-governance:rfcEvidenceRecord \
+  -PrfcEvidenceArguments='record docs/rfcs/evidence/manifest.json docs/rfcs/evidence/manifest.json --catalog docs/rfcs --runtime runtime/cef-runtime.json --contracts docs/rfcs/evidence/contracts.json --repository-root . --rfc 0017 --provider menus.macos --electron-major 37 --matrix-row menu-tray --from-compatibility-report kweb-electron-migration/build/reports/electron-migration/compatibility.json'
 ```
 
 The command only runs in GitHub Actions. It derives the target, repository,
@@ -126,6 +118,25 @@ Every manifest record, RFC front matter, and generated report is scanned for
 runner tokens, cloud credentials, private keys, native pointers, and private
 filesystem paths. A detection is a typed failure that names the field and the
 pattern class; the sensitive value itself is never echoed.
+
+## Hosted recording flow (RFC 0001-0003)
+
+A single aggregation job records all nine hosted records from the retained
+artifacts of the same run's verification jobs:
+
+1. Each verification target uploads its raw evidence: the governance report
+   (`rfc-governance-*`), the provider lifecycle report
+   (`provider-lifecycle-*`), and the dialogs consent status
+   (`native-dialogs-*`).
+2. The `rfc-evidence` job checks the repository out (LF working tree), downloads
+   those artifacts, and chains three upserts per target through
+   `.github/scripts/aggregate-rfc-evidence.sh`, passing the target explicitly
+   with `--target`; the recorder still requires the `Implemented` catalog, so
+   the check-in commit lands the catalog flip together with the records.
+3. The merged manifest plus the retained artifact tree are checked in together
+   with the `Implemented` status flips. `rfcGovernanceCheck` then re-hashes the
+   checked-in artifacts and contract paths on every later change; any mismatch
+   marks the records stale.
 
 ## CI behavior
 

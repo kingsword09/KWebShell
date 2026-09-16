@@ -28,6 +28,7 @@ import kotlinx.serialization.json.put
  *   Upserts one evidence record derived from structured test output and rewrites
  *   the manifest canonically. Regeneration from the same inputs is byte-for-byte
  *   deterministic.
+ *
  */
 public object KWebRfcGovernanceCli {
     @JvmStatic
@@ -133,7 +134,15 @@ public object KWebRfcGovernanceCli {
         val request = KWebRfcEvidenceRecordRequest(
             rfcId = requiredOption(options, "--rfc"),
             providerId = requiredOption(options, "--provider"),
-            target = hostedTargetFromEnvironment(System.getenv()),
+            target = options["--target"]?.singleOrNull()?.also { target ->
+                if (target !in HOSTED_TARGETS) {
+                    throw KWebRfcGovernanceException(
+                        code = "rfc.record.unsupported-runner",
+                        details = mapOf("target" to target),
+                        message = "Evidence records may only target the hosted verification triple.",
+                    )
+                }
+            } ?: hostedTargetFromEnvironment(System.getenv()),
             run = run,
             electronFixtureMajor = requiredOption(options, "--electron-major").toIntOrNull()
                 ?: throw KWebRfcGovernanceException(
@@ -248,6 +257,8 @@ public object KWebRfcGovernanceCli {
             sourceRevision = required("GITHUB_SHA"),
         )
     }
+
+    private val HOSTED_TARGETS: Set<String> = setOf("macos-arm64", "windows-x64", "linux-x64")
 
     internal fun hostedTargetFromEnvironment(environment: Map<String, String>): String {
         val key = "${environment["RUNNER_OS"]}:${environment["RUNNER_ARCH"]}"

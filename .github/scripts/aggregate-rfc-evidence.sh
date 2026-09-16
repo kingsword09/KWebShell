@@ -6,7 +6,7 @@
 # the check-in commit expects it.
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 downloaded="build/rfc-evidence/downloaded"
 input="docs/rfcs/evidence/manifest.json"

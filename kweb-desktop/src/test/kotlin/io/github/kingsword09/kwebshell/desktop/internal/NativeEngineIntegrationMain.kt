@@ -465,18 +465,37 @@ private fun runSuccessfulLifecycle() {
                         append("\"ordered-delivery-8-frames-terminal-completed\", ")
                         append("\"slow-consumer-12-frames-credit-backpressure\", ")
                         append("\"close-abort-cancellation-reached-handler\", ")
-                        append("\"malformed-ack-unknown-stream-typed-failure\"]}")
+                        append("\"malformed-ack-unknown-stream-typed-failure\", ")
+                        append("\"service-error-declared-terminal\", ")
+                        append("\"navigation-cancellation-reached-handler\", ")
+                        append("\"child-frame-and-cross-origin-stream-client-absent\"]}")
                     } + "\n",
                     StandardCharsets.UTF_8,
                 )
                 require(cdp.evaluate("typeof document.getElementById('bridge-frame').contentWindow.__kwebBridgeQuery") == "undefined")
                 require(cdp.evaluate("typeof document.getElementById('bridge-frame').contentWindow.KWebAppPathsBridge") == "undefined")
+                require(
+                    cdp.evaluate(
+                        "typeof document.getElementById('bridge-frame').contentWindow.ConformanceBridge === 'undefined'",
+                    ) == "true",
+                ) { "The bridge-frame child frame must not receive the stream bridge client." }
                 runAppPathsBridgeConformance(cdp, directHome)
+                cdp.evaluate(
+                    """
+                    (async () => {
+                      globalThis.__navStream = "open";
+                      const stream = ConformanceBridge.createClient().openStreamEvents({frames: 1000});
+                      for await (const chunk of stream) { /* owner keeps streaming */ }
+                      globalThis.__navStream = "ended";
+                    })(); "stream-open"
+                    """.trimIndent(),
+                )
                 require(cdp.evaluate("void ConformanceBridge.createClient().wait({delayMs:60000}); 'started'") == "started")
                 bridgeHandler.awaitStarted("navigation")
                 browser.navigate(origin.crossOriginUrl)
                 cdp.awaitPage(origin.crossOriginUrl)
                 bridgeHandler.awaitCancelled("navigation")
+                streamHandler.awaitCancelled(2, "stream navigation")
                 require(cdp.evaluate("typeof globalThis.__kwebBridgeQuery") == "undefined")
                 require(cdp.evaluate("typeof globalThis.ConformanceBridge") == "undefined")
                 require(cdp.evaluate("typeof globalThis.KWebAppPathsBridge") == "undefined")
@@ -1788,6 +1807,12 @@ private class ConformanceStreamTestHandler : ConformanceBridgeStreamHandler {
     val cancelled = java.util.concurrent.atomic.AtomicInteger()
 
     override fun streamEvents(request: StreamStartRequest): Flow<StreamChunk> = flow {
+        if (request.frames == 2) {
+            // The service fails after one frame: the declared terminal result is
+            // one typed error at the renderer, not the remaining frames.
+            emit(StreamChunk(index = 1))
+            throw IllegalStateException("The conformance stream service failed.")
+        }
         repeat(request.frames) { index ->
             emit(StreamChunk(index = index + 1))
             delay(10)
@@ -2932,4 +2957,24 @@ private fun runStreamConformance(cdp: CdpClient, streamHandler: ConformanceStrea
         """.trimIndent(),
     )
     cdp.awaitExpression("globalThis.__badAck === 'bridge.stream.ack-unknown-stream'")
+
+    // 5. Service error mid-stream: the failing service produces exactly one
+    //    declared typed terminal error at the renderer.
+    cdp.evaluate(
+        """
+        (async () => {
+          globalThis.__serviceError = null;
+          try {
+            const stream = ConformanceBridge.createClient().openStreamEvents({frames: 2});
+            for await (const chunk of stream) { /* first chunk arrives */ }
+            globalThis.__serviceError = {code: "unexpected-success"};
+          } catch (error) {
+            globalThis.__serviceError = {code: error && error.code, message: error && error.message};
+          }
+        })(); "started"
+        """.trimIndent(),
+    )
+    cdp.awaitExpression(
+        "globalThis.__serviceError !== null && globalThis.__serviceError.code === 'bridge.handler.failed'",
+    )
 }

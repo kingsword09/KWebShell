@@ -76,12 +76,3 @@ val rfcEvidenceRecord = tasks.register<JavaExec>("rfcEvidenceRecord") {
     workingDir(rootDir)
     args(rfcEvidenceArguments)
 }
-
-val rfcEvidenceMerge = tasks.register<JavaExec>("rfcEvidenceMerge") {
-    group = "governance"
-    description = "Merges per-target RFC evidence manifests into one; pass the command through -PrfcEvidenceArguments (see docs/rfcs/EVIDENCE.md)."
-    classpath = sourceSets["main"].runtimeClasspath
-    mainClass.set("io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCli")
-    workingDir(rootDir)
-    args(rfcEvidenceArguments)
-}

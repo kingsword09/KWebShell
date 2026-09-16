@@ -121,37 +121,18 @@ pattern class; the sensitive value itself is never echoed.
 
 ## Hosted recording flow (RFC 0001-0003)
 
-The three hosted verification targets record their own evidence at the end of a
-green verification run; a single aggregation job then produces the one manifest
-that gets checked in:
+A single aggregation job records all nine hosted records from the retained
+artifacts of the same run's verification jobs:
 
-1. Each verification target runs `.github/scripts/record-rfc-evidence.sh`. The
-   recorder refuses a non-`Implemented` catalog, so the script flips the three
-   RFC statuses in its workspace only; the checked-in status flip lands in the
-   same commit as the checked-in records. Per target it upserts:
-   - RFC 0001 from `kweb-rfc-governance/build/reports/rfc-governance/status.json`
-     (`governance-report`),
-   - RFC 0002 from
-     `kweb-service-window-controls/build/window-controls-integration/provider-lifecycle-report.json`
-     (`provider-lifecycle-report`),
-   - RFC 0003 from
-     `kweb-service-dialogs/build/dialogs-integration/consent-status.json`
-     (`dialogs-consent`),
-   chaining one per-target manifest through the three upserts and retaining each
-   artifact under `docs/rfcs/evidence/artifacts/`. The verification job checks
-   the repository out with `core.eol lf`, so all three targets hash the same
-   committed LF bytes the contract digests bind.
-2. `rfc-evidence`, the aggregation job, downloads the three per-target bundles,
-   collects the retained artifacts, and merges the manifests with:
-
-   ```sh
-   ./gradlew :kweb-rfc-governance:rfcEvidenceMerge \
-     -PrfcEvidenceArguments='merge build/rfc-evidence/downloaded/<bundle>/build/rfc-evidence/manifest-macos-arm64.json ... --output build/rfc-evidence/manifest.json'
-   ```
-
-   `merge` unions records, rejects duplicate record identities, sorts canonically,
-   recomputes `recordsSha256`, and validates the result; the same inputs produce
-   identical bytes in any order.
+1. Each verification target uploads its raw evidence: the governance report
+   (`rfc-governance-*`), the provider lifecycle report
+   (`provider-lifecycle-*`), and the dialogs consent status
+   (`native-dialogs-*`).
+2. The `rfc-evidence` job checks the repository out (LF working tree), downloads
+   those artifacts, and chains three upserts per target through
+   `.github/scripts/aggregate-rfc-evidence.sh`, passing the target explicitly
+   with `--target`; the recorder still requires the `Implemented` catalog, so
+   the check-in commit lands the catalog flip together with the records.
 3. The merged manifest plus the retained artifact tree are checked in together
    with the `Implemented` status flips. `rfcGovernanceCheck` then re-hashes the
    checked-in artifacts and contract paths on every later change; any mismatch

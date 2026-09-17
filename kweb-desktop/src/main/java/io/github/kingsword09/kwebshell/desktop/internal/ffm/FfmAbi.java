@@ -95,6 +95,7 @@ public final class FfmAbi {
         function("kweb_browser_close", STATUS_FROM_HANDLE),
         function("kweb_browser_open_devtools", STATUS_FROM_HANDLE),
         function("kweb_browser_close_devtools", STATUS_FROM_HANDLE),
+        function("kweb_browser_crash_renderer", STATUS_FROM_HANDLE),
         function(
             "kweb_browser_bridge_respond",
             FunctionDescriptor.of(

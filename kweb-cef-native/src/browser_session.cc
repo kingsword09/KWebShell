@@ -1725,6 +1725,9 @@ kweb_status SessionRegistry::CrashRenderer(kweb_browser_handle handle) {
   auto session = Lookup(handle);
   return session ? session->CrashRenderer() : KWEB_STATUS_INVALID_HANDLE;
 }
+kweb_status CrashRendererSession(kweb_browser_handle browser) {
+  return GuardStatus([&] { return Registry().CrashRenderer(browser); });
+}
 
 kweb_status SessionRegistry::BridgeRespond(kweb_browser_handle handle,
                                            uint64_t request_id,
@@ -1770,9 +1773,6 @@ template <typename Operation> kweb_status GuardStatus(Operation operation) {
 
 } // namespace
 
-kweb_status CrashRendererSession(kweb_browser_handle browser) {
-  return GuardStatus([&] { return Registry().CrashRenderer(browser); });
-}
 
 kweb_status OpenDevToolsSession(kweb_browser_handle browser) {
   return GuardStatus([&] { return Registry().OpenDevTools(browser); });

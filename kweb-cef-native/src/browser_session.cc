@@ -838,7 +838,21 @@ public:
   // Test-only: crashes the renderer process so the stream conformance can
   // prove the declared terminal result of a real renderer disconnect.
   kweb_status CrashRenderer() {
-    CEF_REQUIRE_UI_THREAD();
+    // The caller may arrive on any thread; marshal to the CEF UI thread like
+    // the other session operations so the process message is delivered on the
+    // browser process UI thread.
+    if (!CefCurrentlyOn(TID_UI)) {
+      auto self = shared_from_this();
+      if (!CefPostTask(
+              TID_UI, base::BindOnce(
+                          [](std::shared_ptr<BrowserSession> session) {
+                            session->CrashRenderer();
+                          },
+                          std::move(self)))) {
+        return KWEB_STATUS_CEF_UI_TASK_FAILED;
+      }
+      return KWEB_STATUS_OK;
+    }
     if (!browser_ || !ready_.load(std::memory_order_acquire)) {
       return KWEB_STATUS_BROWSER_NOT_READY;
     }

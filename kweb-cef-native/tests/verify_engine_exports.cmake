@@ -10,6 +10,7 @@ set(expected
   kweb_browser_set_surface_state
   kweb_browser_open_devtools
   kweb_browser_close_devtools
+  kweb_browser_crash_renderer
   kweb_browser_bridge_respond
   kweb_browser_bridge_fail
   kweb_engine_abi_version

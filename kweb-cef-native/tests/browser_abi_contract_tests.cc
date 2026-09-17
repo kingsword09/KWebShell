@@ -103,6 +103,9 @@ int main() {
   Check(kweb_browser_close_devtools(KWEB_INVALID_BROWSER_HANDLE) ==
             KWEB_STATUS_INVALID_HANDLE,
         "stale DevTools close must return invalid handle");
+  Check(kweb_browser_crash_renderer(KWEB_INVALID_BROWSER_HANDLE) ==
+            KWEB_STATUS_INVALID_HANDLE,
+        "stale renderer crash must return invalid handle");
   Check(kweb_browser_bridge_respond(KWEB_INVALID_BROWSER_HANDLE, 1, "{}", 2) ==
             KWEB_STATUS_INVALID_HANDLE,
         "stale bridge response must return invalid handle");

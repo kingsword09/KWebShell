@@ -837,14 +837,15 @@ public:
 
   // Test-only: crashes the renderer process so the stream conformance can
   // prove the declared terminal result of a real renderer disconnect.
-  void CrashRenderer() {
+  kweb_status CrashRenderer() {
     CEF_REQUIRE_UI_THREAD();
     if (!browser_ || !ready_.load(std::memory_order_acquire)) {
-      return;
+      return KWEB_STATUS_BROWSER_NOT_READY;
     }
     CefRefPtr<CefProcessMessage> message =
         CefProcessMessage::Create("kweb.test.crash-renderer");
     browser_->GetMainFrame()->SendProcessMessage(PID_RENDERER, message);
+    return KWEB_STATUS_OK;
   }
 
   void RendererTerminated(int status, int error_code,

@@ -118,6 +118,10 @@ final class FfmBrowserCalls {
         return invokeHandleStatus("kweb_browser_close_devtools", handle);
     }
 
+    static int crashRenderer(long handle) {
+        return invokeHandleStatus("kweb_browser_crash_renderer", handle);
+    }
+
     static int bridgeRespond(long handle, long requestId, String response) {
         return invokeUtf8("kweb_browser_bridge_respond", handle, requestId, response, true);
     }

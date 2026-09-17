@@ -1768,6 +1768,9 @@ template <typename Operation> kweb_status GuardStatus(Operation operation) {
   }
 }
 
+kweb_status CrashRendererSession(kweb_browser_handle browser) {
+  return GuardStatus([&] { return Registry().CrashRenderer(browser); });
+}
 } // namespace
 
 kweb_status OpenDevToolsSession(kweb_browser_handle browser) {
@@ -1778,9 +1781,6 @@ kweb_status CloseDevToolsSession(kweb_browser_handle browser) {
   return GuardStatus([&] { return Registry().CloseDevTools(browser); });
 }
 
-kweb_status CrashRendererSession(kweb_browser_handle browser) {
-  return GuardStatus([&] { return Registry().CrashRenderer(browser); });
-}
 
 kweb_status RespondToBridgeSession(kweb_browser_handle browser,
                                    uint64_t request_id,

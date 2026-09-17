@@ -1061,12 +1061,15 @@ private fun runRendererCrashLifecycle() {
                 """.trimIndent(),
             )
 
-            // Kill the renderer through the sanctioned CDP Input path the
-            // conformance probe uses: OnPreKeyEvent observes this exactly like a
-            // physical keystroke, and the browser-process handler crashes the
-            // renderer process on purpose.
-            cdp.evaluate("ConformanceBridge.createClient().crash({reason:'stream-crash'}); 'dispatched'")
-            streamHandler.awaitStreamFailure("internal:stream-crash", "renderer crash")
+            // Crash the renderer through the test-only ABI kill switch: the
+            // renderer process dies like a real crash, so the stream query is
+            // cancelled by the renderer disconnect and the browser reports the
+            // declared FATAL_ERROR terminal event.
+            val crashStatus = NativeBindings.browserCrashRenderer(
+                liveBrowser.requireLiveHandle("renderer-crash"),
+            )
+            requireStatus(crashStatus, NativeStatus.OK, "renderer crash request")
+            streamHandler.awaitCancelled(1, "renderer crash")
             require(
                 events.any { it.type == NativeBrowserEventType.FATAL_ERROR },
             ) { "The renderer crash did not emit the declared FATAL_ERROR browser event: $events" }

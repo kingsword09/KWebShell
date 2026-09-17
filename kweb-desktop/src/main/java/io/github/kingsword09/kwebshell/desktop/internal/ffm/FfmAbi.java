@@ -133,8 +133,8 @@ public final class FfmAbi {
     private static final Map<String, FunctionDescriptor> DESCRIPTORS = descriptorsByName();
 
     static {
-        if (FUNCTIONS.size() != 19 || DESCRIPTORS.size() != 19) {
-            throw new ExceptionInInitializerError("The KWebShell ABI must contain exactly 19 exports.");
+        if (FUNCTIONS.size() != 20 || DESCRIPTORS.size() != 20) {
+            throw new ExceptionInInitializerError("The KWebShell ABI must contain exactly 20 exports.");
         }
     }
 

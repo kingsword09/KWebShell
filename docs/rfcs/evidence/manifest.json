@@ -1,7 +1,94 @@
 {
   "schemaVersion": 2,
-  "recordsSha256": "45cd9abd7a9e7690f24ce28cfd876843e4441f70e31a0608a757ce2bafcc9a15",
+  "recordsSha256": "4f5ad2862b717826387141ba8f5ac0c5fe23099a1f8d346fd190485ca663cf06",
   "records": [
+    {
+      "rfcId": "0001",
+      "rfcStatus": "Implemented",
+      "serviceId": null,
+      "serviceVersion": null,
+      "schemaVersion": 2,
+      "providerId": "governance.hosted",
+      "target": "linux-x64",
+      "cefVersion": "151.3.16+gbe1e15d+chromium-151.0.7922.109",
+      "chromiumVersion": "151.0.7922.109",
+      "electronFixtureMajor": 44,
+      "run": {
+        "repository": "kingsword09/KWebShell",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/48/merge",
+        "runId": "35047138504",
+        "runAttempt": 1,
+        "sourceRevision": "1e31cdf0a7604bd0cdd33bf43de78f700057f124"
+      },
+      "contractSha256": "314179be160954d725c2d804849e8b3318340ebc8b0aba52a26e73db66718cbc",
+      "compatibilityStatus": "READY",
+      "matrixRowIds": [],
+      "artifacts": [
+        {
+          "name": "governance-report",
+          "path": "docs/rfcs/evidence/artifacts/0001/1e31cdf0a7604bd0cdd33bf43de78f700057f124/linux-x64/governance-report/status.json",
+          "sha256": "40fe9e05ce288b79400f8185502b9b05d8e261cefa294ddf14de76d488511690"
+        }
+      ]
+    },
+    {
+      "rfcId": "0001",
+      "rfcStatus": "Implemented",
+      "serviceId": null,
+      "serviceVersion": null,
+      "schemaVersion": 2,
+      "providerId": "governance.hosted",
+      "target": "macos-arm64",
+      "cefVersion": "151.3.16+gbe1e15d+chromium-151.0.7922.109",
+      "chromiumVersion": "151.0.7922.109",
+      "electronFixtureMajor": 44,
+      "run": {
+        "repository": "kingsword09/KWebShell",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/48/merge",
+        "runId": "35047138504",
+        "runAttempt": 1,
+        "sourceRevision": "1e31cdf0a7604bd0cdd33bf43de78f700057f124"
+      },
+      "contractSha256": "314179be160954d725c2d804849e8b3318340ebc8b0aba52a26e73db66718cbc",
+      "compatibilityStatus": "READY",
+      "matrixRowIds": [],
+      "artifacts": [
+        {
+          "name": "governance-report",
+          "path": "docs/rfcs/evidence/artifacts/0001/1e31cdf0a7604bd0cdd33bf43de78f700057f124/macos-arm64/governance-report/status.json",
+          "sha256": "40fe9e05ce288b79400f8185502b9b05d8e261cefa294ddf14de76d488511690"
+        }
+      ]
+    },
+    {
+      "rfcId": "0001",
+      "rfcStatus": "Implemented",
+      "serviceId": null,
+      "serviceVersion": null,
+      "schemaVersion": 2,
+      "providerId": "governance.hosted",
+      "target": "windows-x64",
+      "cefVersion": "151.3.16+gbe1e15d+chromium-151.0.7922.109",
+      "chromiumVersion": "151.0.7922.109",
+      "electronFixtureMajor": 44,
+      "run": {
+        "repository": "kingsword09/KWebShell",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/48/merge",
+        "runId": "35047138504",
+        "runAttempt": 1,
+        "sourceRevision": "1e31cdf0a7604bd0cdd33bf43de78f700057f124"
+      },
+      "contractSha256": "314179be160954d725c2d804849e8b3318340ebc8b0aba52a26e73db66718cbc",
+      "compatibilityStatus": "READY",
+      "matrixRowIds": [],
+      "artifacts": [
+        {
+          "name": "governance-report",
+          "path": "docs/rfcs/evidence/artifacts/0001/1e31cdf0a7604bd0cdd33bf43de78f700057f124/windows-x64/governance-report/status.json",
+          "sha256": "40fe9e05ce288b79400f8185502b9b05d8e261cefa294ddf14de76d488511690"
+        }
+      ]
+    },
     {
       "rfcId": "0002",
       "rfcStatus": "Implemented",

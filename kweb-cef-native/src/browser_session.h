@@ -18,6 +18,7 @@ kweb_status SetSurfaceStateBrowserSession(kweb_browser_handle browser,
 kweb_status CloseBrowserSession(kweb_browser_handle browser);
 kweb_status OpenDevToolsSession(kweb_browser_handle browser);
 kweb_status CloseDevToolsSession(kweb_browser_handle browser);
+kweb_status CrashRendererSession(kweb_browser_handle browser);
 kweb_status RespondToBridgeSession(kweb_browser_handle browser,
                                    uint64_t request_id,
                                    const char *response_utf8,

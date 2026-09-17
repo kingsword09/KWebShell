@@ -1768,10 +1768,11 @@ template <typename Operation> kweb_status GuardStatus(Operation operation) {
   }
 }
 
+} // namespace
+
 kweb_status CrashRendererSession(kweb_browser_handle browser) {
   return GuardStatus([&] { return Registry().CrashRenderer(browser); });
 }
-} // namespace
 
 kweb_status OpenDevToolsSession(kweb_browser_handle browser) {
   return GuardStatus([&] { return Registry().OpenDevTools(browser); });

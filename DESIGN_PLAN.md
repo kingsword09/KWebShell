@@ -1852,6 +1852,18 @@ Implementation evidence as of 2026-09-12 (RFC 0002):
   provider lifecycle report (byte-identical modulo the target field, CI run
   34648487702) and the checked-in evidence records carry their digests.
 
+RFC 0003 evidence refresh after renderer-crash ABI delivery (2026-09-18):
+
+- Objective: restore the permission-policy capability claim after the desktop
+  ABI change invalidated its old contract digest.
+- Acceptance: retain the exact three consent artifacts from hosted run
+  35324667909, bind the current desktop contract, restore `Implemented`, and
+  pass `rfcGovernanceCheck` without rerunning native tests for this docs-only
+  change. The renderer-crash implementation itself passed all three hosted
+  targets before squash merge as `aa4d75c`.
+- RFC 0004 remains `Accepted`; this evidence refresh makes no stream capability
+  claim.
+
 Implementation evidence as of 2026-09-12 (RFC 0003):
 
 - `kweb-services-core` publishes the policy engine: typed subjects, exact

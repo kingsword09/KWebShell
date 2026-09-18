@@ -159,6 +159,13 @@ public fun main() {
             require(pathValues == listOf(directHome, directDownloads)) {
                 "Concurrent preload calls crossed responses: $pathValues"
             }
+            val progress = session.evaluateString(
+                "(async()=>{const values=[];for await(const chunk of window.desktop.progress({downloadId:'fixture'})) values.push(chunk);return JSON.stringify(values)})()",
+            )
+            val progressValues = Json.parseToJsonElement(progress).jsonArray
+            require(progressValues.size == 2 && progressValues[0].jsonObject["downloadId"]?.jsonPrimitive?.content == "fixture") {
+                "The named application stream adapter did not deliver its declared AsyncIterable values: $progress"
+            }
             require(session.evaluateString("typeof document.getElementById('fixture-frame').contentWindow.desktop") == "undefined")
             require(session.evaluateString("typeof document.getElementById('fixture-frame').contentWindow.__kwebBridgeQuery") == "undefined")
             require(
@@ -352,7 +359,9 @@ private class MigrationFixtureServer(
     private val index = (
         "<!doctype html><meta charset=\"utf-8\"><title>KWebShell Migration Fixture</title>" +
             "<iframe id=\"fixture-frame\" src=\"/frame\"></iframe>" +
-            "<script>$appPathsBridge</script><script>$preload</script>"
+            "<script>$appPathsBridge</script>" +
+            "<script>globalThis.KWebApplicationStreamsBridge={createClient(){return {openDownloadProgress:async function* (request){yield {downloadId:request.downloadId,done:false};yield {downloadId:request.downloadId,done:true}}}}}</script>" +
+            "<script>$preload</script>"
         ).toByteArray(StandardCharsets.UTF_8)
 
     init {

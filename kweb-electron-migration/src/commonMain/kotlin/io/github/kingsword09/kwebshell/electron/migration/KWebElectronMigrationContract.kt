@@ -16,6 +16,7 @@ public enum class KWebElectronMappingStatus {
 
 public enum class KWebElectronAdapterKind {
     APP_PATHS_GET_PATH,
+    NAMED_APPLICATION_STREAM,
 }
 
 @Serializable
@@ -70,6 +71,18 @@ public data class KWebElectronPreloadMethod(
 )
 
 @Serializable
+public data class KWebElectronStream(
+    public val name: String,
+    public val method: String,
+    public val requestType: String,
+    public val chunkType: String,
+    public val capacity: Int,
+    public val status: KWebElectronMappingStatus,
+    public val adapter: KWebElectronAdapterKind? = null,
+    public val policy: KWebElectronChannelPolicy? = null,
+)
+
+@Serializable
 public data class KWebElectronManifest(
     public val schemaVersion: Int,
     public val applicationId: String,
@@ -87,6 +100,7 @@ public data class KWebElectronManifest(
     public val electronImports: List<KWebElectronImport>,
     public val channels: List<KWebElectronChannel>,
     public val preloadMethods: List<KWebElectronPreloadMethod>,
+    public val streams: List<KWebElectronStream> = emptyList(),
     public val requiredServices: List<KWebElectronServiceRequirement>,
 )
 
@@ -211,6 +225,8 @@ public object KWebElectronManifestValidator {
         )
         requireUnique(manifest.channels.map { it.name }, "channel")
         requireUnique(manifest.preloadMethods.map { it.name }, "preload method")
+        requireUnique(manifest.streams.map { it.name }, "stream")
+        requireUnique(manifest.streams.map { it.method }, "stream method")
         requireUnique(manifest.requiredServices.map { it.id }, "required service")
 
         manifest.electronImports.forEachIndexed { index, item ->
@@ -324,6 +340,28 @@ public object KWebElectronManifestValidator {
                     "method" to method.name,
                     message = "The app-paths preload method shape is incompatible with the generated adapter.",
                 )
+            }
+        }
+
+        manifest.streams.forEachIndexed { index, stream ->
+            if (!LOWER_IDENTIFIER.matches(stream.name) || !LOWER_IDENTIFIER.matches(stream.method)) {
+                invalid("streams[$index]", message = "Stream names and methods are invalid.")
+            }
+            if (!IDENTIFIER.matches(stream.requestType) || !IDENTIFIER.matches(stream.chunkType)) {
+                invalid("streams[$index]", message = "A stream request and chunk type must be identifiers.")
+            }
+            if (stream.capacity !in 1..65536) {
+                invalid("streams[$index].capacity", stream.capacity.toString(), message = "A stream capacity must be between 1 and 65536.")
+            }
+            if (stream.status != KWebElectronMappingStatus.ADAPTER ||
+                stream.adapter != KWebElectronAdapterKind.NAMED_APPLICATION_STREAM
+            ) {
+                invalid("streams[$index]", message = "Only named application stream adapters are publishable.")
+            }
+            val policy = stream.policy
+                ?: invalid("streams[$index]", message = "A stream adapter must declare its policy.")
+            if (policy.rendererGrant == null || policy.requiresUserGesture || policy.requiresOsConsent) {
+                invalid("streams[$index]", message = "A named application stream must declare a renderer grant and explicit native policy.")
             }
         }
     }

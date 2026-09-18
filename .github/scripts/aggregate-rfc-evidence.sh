@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Records the hosted RFC 0001-0003 evidence records for all three targets from
+# Records the hosted RFC 0001-0004 evidence records for all three targets from
 # the retained artifacts of this run's verification jobs. Runs on the
 # aggregation job's LF checkout: each record binds the committed LF contract
 # bytes and one target's retained artifact, and the final manifest lands where
@@ -14,7 +14,7 @@ input="docs/rfcs/evidence/manifest.json"
 # The recorder refuses a non-Implemented catalog: flip the three statuses in
 # this workspace before recording. The checked-in flip lands in the same commit
 # as the checked-in records.
-for rfc in 0001 0002 0003; do
+for rfc in 0001 0002 0003 0004; do
   file=$(ls docs/rfcs/${rfc}-*.md)
   sed 's/^- Status: .*$/- Status: Implemented/' "$file" > "$file.recorded"
   mv "$file.recorded" "$file"
@@ -36,13 +36,14 @@ for target in macos-arm64 windows-x64 linux-x64; do
     "0001|governance-report|status.json|rfc-governance"
     "0002|provider-lifecycle-report|provider-lifecycle-report.json|provider-lifecycle"
     "0003|dialogs-consent|consent-status.json|native-dialogs"
+    "0004|stream-conformance|stream-conformance.json|engine-integration"
   )
   count=0
   for spec in "${specs[@]}"; do
     IFS='|' read -r rfc artifact name family <<< "$spec"
     file=$(find "$downloaded" -type f -name "$name" -path "*${family}-${target}-*" | head -1)
     count=$((count + 1))
-    if [ "$count" -eq 3 ]; then
+    if [ "$count" -eq 4 ]; then
       output="$input"
     else
       output="build/rfc-evidence/chain-${target}-${count}.json"

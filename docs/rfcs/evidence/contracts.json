@@ -32,7 +32,8 @@
         "kweb-bridge-codegen/src",
         "kweb-bridge/src",
         "kweb-cef-native/src",
-        "kweb-desktop/src"
+        "kweb-desktop/src",
+        "kweb-electron-migration/src"
       ]
     }
   ]

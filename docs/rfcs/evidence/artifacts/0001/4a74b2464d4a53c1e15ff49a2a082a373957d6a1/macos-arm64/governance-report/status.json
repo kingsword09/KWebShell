@@ -1,0 +1,706 @@
+{
+  "schemaVersion": 1,
+  "governanceStatus": "READY",
+  "recordsSha256": "4f5ad2862b717826387141ba8f5ac0c5fe23099a1f8d346fd190485ca663cf06",
+  "runtime": {
+    "cefVersion": "151.3.16+gbe1e15d+chromium-151.0.7922.109",
+    "chromiumVersion": "151.0.7922.109"
+  },
+  "matrixRows": [
+    {
+      "rowId": "browser-window",
+      "electron": "BrowserWindow",
+      "mappingStatus": "REWRITE",
+      "backing": "prerequisite:ComposeWindow + KWebPage"
+    },
+    {
+      "rowId": "web-contents",
+      "electron": "webContents",
+      "mappingStatus": "DIRECT",
+      "backing": "prerequisite:KWebPage.events"
+    },
+    {
+      "rowId": "session-partition",
+      "electron": "session.fromPartition",
+      "mappingStatus": "DIRECT",
+      "backing": "prerequisite:KWebProfile"
+    },
+    {
+      "rowId": "profile-protocol",
+      "electron": "protocol.handle",
+      "mappingStatus": "DIRECT",
+      "backing": "prerequisite:Profile-scoped app:// origin"
+    },
+    {
+      "rowId": "ipc-request",
+      "electron": "ipcMain.handle + ipcRenderer.invoke",
+      "mappingStatus": "ADAPTER",
+      "backing": "prerequisite:Versioned service bridge"
+    },
+    {
+      "rowId": "context-bridge",
+      "electron": "contextBridge.exposeInMainWorld",
+      "mappingStatus": "ADAPTER",
+      "backing": "prerequisite:Generated preload facade"
+    },
+    {
+      "rowId": "dialog",
+      "electron": "dialog.showOpenDialog + dialog.showSaveDialog",
+      "mappingStatus": "REWRITE",
+      "backing": "prerequisite:KWebDialogs + DialogsBridge"
+    },
+    {
+      "rowId": "clipboard",
+      "electron": "clipboard",
+      "mappingStatus": "UNSUPPORTED",
+      "backing": "unsupported"
+    },
+    {
+      "rowId": "shell",
+      "electron": "shell",
+      "mappingStatus": "UNSUPPORTED",
+      "backing": "unsupported"
+    },
+    {
+      "rowId": "native-theme",
+      "electron": "nativeTheme",
+      "mappingStatus": "UNSUPPORTED",
+      "backing": "unsupported"
+    },
+    {
+      "rowId": "screen",
+      "electron": "screen",
+      "mappingStatus": "UNSUPPORTED",
+      "backing": "unsupported"
+    },
+    {
+      "rowId": "global-shortcut",
+      "electron": "globalShortcut",
+      "mappingStatus": "UNSUPPORTED",
+      "backing": "unsupported"
+    },
+    {
+      "rowId": "menu-tray",
+      "electron": "Menu + Tray",
+      "mappingStatus": "UNSUPPORTED",
+      "backing": "unsupported"
+    },
+    {
+      "rowId": "process",
+      "electron": "utilityProcess + child_process",
+      "mappingStatus": "UNSUPPORTED",
+      "backing": "unsupported"
+    },
+    {
+      "rowId": "auto-updater",
+      "electron": "autoUpdater",
+      "mappingStatus": "UNSUPPORTED",
+      "backing": "unsupported"
+    },
+    {
+      "rowId": "node-runtime",
+      "electron": "Node fs/path/os and native addons",
+      "mappingStatus": "REWRITE",
+      "backing": "prerequisite:Node fs/path/os and native addons"
+    }
+  ],
+  "rfcs": [
+    {
+      "rfcId": "0001",
+      "title": "RFC governance and capability evidence manifest",
+      "declaredStatus": "Implemented",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "reasons": []
+    },
+    {
+      "rfcId": "0002",
+      "title": "KMP native-service provider SDK and typed dependencies",
+      "declaredStatus": "Implemented",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "reasons": []
+    },
+    {
+      "rfcId": "0003",
+      "title": "Native-service permission, user-gesture, consent, and audit policy",
+      "declaredStatus": "Accepted",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0004",
+      "title": "Typed event, binary stream, and message-port bridge",
+      "declaredStatus": "Accepted",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0005",
+      "title": "Electron migration manifest v2, inventory, and codemod plan",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0006",
+      "title": "Application lifecycle, single instance, deep links, and file open",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0007",
+      "title": "Window hierarchy, modal ownership, fullscreen, and close negotiation",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0008",
+      "title": "Page lifecycle, navigation events, popup policy, and renderer failure",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0009",
+      "title": "Profile cookies, cache, storage, spellcheck, and session state",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0010",
+      "title": "Profile network request policy, proxy, and observation",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0011",
+      "title": "TLS errors, HTTP authentication, and client certificates",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0012",
+      "title": "Profile downloads and scoped results",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0013",
+      "title": "Capability-based files, directories, and workspace access",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0014",
+      "title": "Typed system clipboard",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0015",
+      "title": "External URL, reveal, trash, and shell integration",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0016",
+      "title": "Native notifications and activation",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0017",
+      "title": "Application, window, and context menus",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0018",
+      "title": "Tray and status-item lifecycle",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0019",
+      "title": "Native theme, system preferences, and accessibility state",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0020",
+      "title": "Screen and display topology",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0021",
+      "title": "Owned global shortcuts and media keys",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0022",
+      "title": "Power monitor and bounded sleep blockers",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0023",
+      "title": "OS credential-backed secure storage",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0024",
+      "title": "Policy-controlled managed processes",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0025",
+      "title": "Desktop capture source selection and media grants",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0026",
+      "title": "Native printing and PDF output",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0027",
+      "title": "Bounded native image and icon value model",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0028",
+      "title": "Page find, zoom, capture, save, and source utilities",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0029",
+      "title": "Dock, taskbar, badges, progress, recent items, and autostart",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0030",
+      "title": "Reproducible application identity, signing, installers, and associations",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0031",
+      "title": "Signed atomic updates and recovery",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0032",
+      "title": "Diagnostics, crash reporting, tracing, metrics, and redacted logs",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0033",
+      "title": "macOS Touch Bar and Share menu capabilities",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0034",
+      "title": "Push registration and notification activation",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0035",
+      "title": "Explicit platform commerce capability",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0036",
+      "title": "Real application migration conformance and release matrix",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0037",
+      "title": "Native drag, drop, and promised files",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0038",
+      "title": "Media, USB, HID, serial, and Bluetooth device permissions",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0039",
+      "title": "WebAuthn, passkey, and credential mediation policy",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0040",
+      "title": "Owner-bound native prompts",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0041",
+      "title": "Native window decoration, materials, and hit testing",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    },
+    {
+      "rfcId": "0042",
+      "title": "Window content protection and privacy state",
+      "declaredStatus": "Proposed",
+      "state": "READY",
+      "declaredPlatformTargets": [],
+      "requiredTargets": [
+        "linux-x64",
+        "macos-arm64",
+        "windows-x64"
+      ],
+      "evidenceTargets": [],
+      "reasons": []
+    }
+  ],
+  "findings": []
+}

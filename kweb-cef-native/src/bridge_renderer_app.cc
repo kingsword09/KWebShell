@@ -77,6 +77,15 @@ public:
       CefProcessId source_process,
       CefRefPtr<CefProcessMessage> message) override {
     CEF_REQUIRE_RENDERER_THREAD();
+    if (message && message->GetName() == "kweb.test.crash-renderer") {
+      // Test-only kill switch for the renderer-crash stream terminal
+      // conformance: an intentional null write makes the renderer process die
+      // exactly like a real crash, so the browser process observes
+      // OnRenderProcessTerminated.
+      volatile int *crash = nullptr;
+      *crash = 1;
+      return true;
+    }
     return IsAllowedMainFrame(browser, frame) &&
            router_->OnProcessMessageReceived(browser, frame, source_process,
                                              message);

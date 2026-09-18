@@ -165,6 +165,7 @@ private enum class IntegrationMode(val argument: String) {
     LISTENER_FAILURE("listener-failure"),
     FFM_STRESS("ffm-stress"),
     PUBLIC_FACADE("public-facade"),
+    RENDERER_CRASH("renderer-crash"),
     HOLDER("holder"),
     INITIALIZATION_FAILURE("initialization-failure"),
     PORT_COLLISION("port-collision"),
@@ -193,6 +194,7 @@ fun main(arguments: Array<String>) {
             IntegrationMode.LISTENER_FAILURE -> runListenerFailureLifecycle()
             IntegrationMode.FFM_STRESS -> runFfmStressLifecycle()
             IntegrationMode.PUBLIC_FACADE -> runPublicFacadeLifecycle()
+            IntegrationMode.RENDERER_CRASH -> runRendererCrashLifecycle()
             IntegrationMode.HOLDER -> runHolderLifecycle()
             IntegrationMode.INITIALIZATION_FAILURE -> runInitializationFailureLifecycle()
             IntegrationMode.PORT_COLLISION -> runPortCollisionLifecycle()
@@ -220,6 +222,7 @@ private fun runCoordinator() {
     runChildAndRequireSuccess(IntegrationMode.LISTENER_FAILURE, root.resolve("listener-failure"))
     runChildAndRequireSuccess(IntegrationMode.FFM_STRESS, root.resolve("ffm-stress"))
     runChildAndRequireSuccess(IntegrationMode.PUBLIC_FACADE, root.resolve("public-facade"))
+    runChildAndRequireSuccess(IntegrationMode.RENDERER_CRASH, root.resolve("renderer-crash"))
 
     val sharedRoot = root.resolve("initialization-failure")
     val holder = startChild(IntegrationMode.HOLDER, sharedRoot)
@@ -986,6 +989,126 @@ private fun runPublicFacadeLifecycle() {
     require(NativeEngine.liveNativeEngineCount() == 0L)
     awaitFfmCallbackOwnerCount(0)
     println("KWebShell public desktop facade lifecycle passed.")
+}
+
+private fun runRendererCrashLifecycle() {
+    val configuration = runtimeConfiguration()
+    val gestures = KWebUserGestureRegistry()
+    val engine = KWebDesktop.openEngine(
+        KWebDesktopEngineConfiguration(
+            cefRuntime = configuration.cefRuntime,
+            browserSubprocess = configuration.browserSubprocess,
+            resources = configuration.resources,
+            locales = configuration.locales,
+            rootCache = configuration.rootCache,
+            log = configuration.log,
+            remoteDebuggingPort = configuration.remoteDebuggingPort,
+            userGestureIssuer = gestures,
+        ),
+    )
+    val streamHandler = ConformanceStreamTestHandler()
+    val bridgeHandler = ConformanceBridgeTestHandler()
+    val events = CopyOnWriteArrayList<NativeBrowserEvent>()
+    var surface: ComposeBrowserSurface? = null
+    var browser: NativeBrowser? = null
+    val cdp = CdpClient(configuration.remoteDebuggingPort)
+    try {
+        require(KWebCapability.NATIVE_CHILD in engine.capabilities)
+        require(KWebCapability.CDP in engine.capabilities) {
+            "The renderer-crash child requires the configured CDP capability."
+        }
+        val profile = configuration.rootCache.resolve("renderer-crash-profile")
+        Files.createDirectories(profile)
+        val liveProfile = kotlinx.coroutines.runBlocking { engine.openProfile("renderer-crash") }
+        surface = NativeEngine.onAwtEventDispatchThread { ComposeBrowserSurface.create(800, 600) }
+        val origin = BrowserOrigin(includeAppPathsBridge = false)
+        origin.use {
+            val bridgeDispatcher = KWebBridgeDispatchers.exact(
+                KWebBridgeRoute(
+                    methods = setOf("probe", "fail", "crash", "wait"),
+                    dispatcher = ConformanceBridgeDispatcher(bridgeHandler),
+                ),
+            )
+            browser = NativeBrowser.open(
+                engine = engine.nativeEngine(),
+                nativeParent = surface!!.nativeParent,
+                profilePath = profile,
+                initialUrl = origin.firstUrl,
+                x = 0,
+                y = 0,
+                width = 800,
+                height = 600,
+                bridgeOrigin = origin.origin,
+                bridgeDispatcher = bridgeDispatcher,
+                streamDispatcher = ConformanceBridgeStreamDispatcher(streamHandler),
+            ) { event ->
+                events += event
+            }
+            val liveBrowser = requireNotNull(browser)
+            cdp.awaitPage(origin.firstUrl)
+            cdp.awaitBridge()
+
+            // One long-running stream whose service-side cancellation is the
+            // declared terminal result of the renderer disconnect.
+            cdp.evaluate(
+                """
+                (async () => {
+                  globalThis.__crashStream = "open";
+                  const stream = ConformanceBridge.createClient().openStreamEvents({frames: 1000});
+                  for await (const chunk of stream) { /* streams until the crash */ }
+                  globalThis.__crashStream = "ended";
+                })(); "stream-open"
+                """.trimIndent(),
+            )
+
+            // Crash the renderer through the test-only ABI kill switch: the
+            // renderer process dies like a real crash, so the stream query is
+            // cancelled by the renderer disconnect and the browser reports the
+            // declared FATAL_ERROR terminal event.
+            val crashStatus = NativeBindings.browserCrashRenderer(
+                liveBrowser.requireLiveHandle("renderer-crash"),
+            )
+            requireStatus(crashStatus, NativeStatus.OK, "renderer crash request")
+            streamHandler.awaitCancelled(1, "renderer crash")
+            require(
+                events.any { it.type == NativeBrowserEventType.FATAL_ERROR },
+            ) { "The renderer crash did not emit the declared FATAL_ERROR browser event: $events" }
+            require(liveBrowser.lifecycle.value == KWebLifecycleState.FAILED) {
+                "The native browser did not report FAILED after its renderer crashed."
+            }
+
+            // FATAL_ERROR marks the Kotlin lifecycle as FAILED before CEF has
+            // delivered the asynchronous OnBeforeClose callback. The native
+            // session is already closing; use the owner close path only to
+            // wait for that terminal callback and observe the expected fatal
+            // failure before closing the engine.
+            try {
+                liveBrowser.close()
+                error("A renderer-crashed browser close unexpectedly succeeded.")
+            } catch (error: KWebNativeException) {
+                require(error.code == "native.browser.fatal") {
+                    "Renderer-crash browser close failed with '${error.code}' instead of native.browser.fatal."
+                }
+            }
+            engine.close()
+            require(
+                events.any {
+                    it.type == NativeBrowserEventType.CLOSED || it.type == NativeBrowserEventType.FATAL_ERROR
+                },
+            )
+        }
+    } finally {
+        if (browser?.lifecycle?.value != KWebLifecycleState.CLOSED &&
+            browser?.lifecycle?.value != KWebLifecycleState.FAILED
+        ) {
+            browser?.close()
+        }
+        surface?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
+        engine.close()
+    }
+    require(NativeBrowser.liveNativeBrowserCount() == 0L)
+    require(NativeEngine.liveNativeEngineCount() == 0L)
+    println("KWebShell renderer-crash stream terminal contract passed.")
 }
 
 private fun runExtensionLifecycleStage1() = withExtensionLifecycleBrowsers { engine, alpha, beta, _, origin, cdp, root ->
@@ -1805,6 +1928,7 @@ private class ConformanceBridgeTestHandler : ConformanceBridgeHandler {
 
 private class ConformanceStreamTestHandler : ConformanceBridgeStreamHandler {
     val cancelled = java.util.concurrent.atomic.AtomicInteger()
+    val streamFailures = java.util.concurrent.CopyOnWriteArrayList<String>()
 
     override fun streamEvents(request: StreamStartRequest): Flow<StreamChunk> = flow {
         if (request.frames == 2) {
@@ -1818,7 +1942,11 @@ private class ConformanceStreamTestHandler : ConformanceBridgeStreamHandler {
             delay(10)
         }
     }.onCompletion { error ->
-        if (error is CancellationException) cancelled.incrementAndGet()
+        if (error is CancellationException) {
+            cancelled.incrementAndGet()
+        } else if (error != null) {
+            streamFailures += error.message ?: error::class.qualifiedName.orEmpty()
+        }
     }
 
     fun awaitCancelled(count: Int, operation: String) {
@@ -1828,6 +1956,15 @@ private class ConformanceStreamTestHandler : ConformanceBridgeStreamHandler {
             Thread.sleep(25)
         }
         error("The stream handler was not cancelled $count time(s) for $operation.")
+    }
+
+    fun awaitStreamFailure(fragment: String, operation: String) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+        while (System.nanoTime() < deadline) {
+            if (streamFailures.any { it.contains(fragment) }) return
+            Thread.sleep(25)
+        }
+        error("The stream handler did not observe a '$fragment' failure for $operation: $streamFailures")
     }
 }
 
@@ -2823,6 +2960,7 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
         add("-D$INTEGRATION_ROOT_PROPERTY=$root")
         if (mode == IntegrationMode.SUCCESS ||
             mode == IntegrationMode.PUBLIC_FACADE ||
+            mode == IntegrationMode.RENDERER_CRASH ||
             mode == IntegrationMode.EXTENSION_LIFECYCLE_CRASH ||
             mode.name.startsWith("EXTENSION_LIFECYCLE_STAGE")
         ) {

@@ -158,6 +158,8 @@ internal object NativeBindings {
 
     internal fun browserCloseDevTools(handle: Long): Int = FfmBindings.browserCloseDevTools(handle)
 
+    internal fun browserCrashRenderer(handle: Long): Int = FfmBindings.browserCrashRenderer(handle)
+
     internal fun browserBridgeRespond(handle: Long, requestId: Long, responseJson: String): Int =
         FfmBindings.browserBridgeRespond(handle, requestId, responseJson)
 

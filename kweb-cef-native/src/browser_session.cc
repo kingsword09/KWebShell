@@ -196,6 +196,7 @@ public:
   kweb_status Close(kweb_browser_handle handle);
   kweb_status OpenDevTools(kweb_browser_handle handle);
   kweb_status CloseDevTools(kweb_browser_handle handle);
+  kweb_status CrashRenderer(kweb_browser_handle handle);
   kweb_status BridgeRespond(kweb_browser_handle handle, uint64_t request_id,
                             std::string response, bool success);
   kweb_status ExtensionContext(kweb_browser_handle handle,
@@ -832,6 +833,33 @@ public:
 
   void LoadFailed(const std::string &url, int error_code) {
     Emit(KWEB_BROWSER_EVENT_LOAD_FAILED, 0, url, error_code, 0, 0);
+  }
+
+  // Test-only: crashes the renderer process so the stream conformance can
+  // prove the declared terminal result of a real renderer disconnect.
+  kweb_status CrashRenderer() {
+    // The caller may arrive on any thread; marshal to the CEF UI thread like
+    // the other session operations so the process message is delivered on the
+    // browser process UI thread.
+    if (!CefCurrentlyOn(TID_UI)) {
+      auto self = shared_from_this();
+      if (!CefPostTask(
+              TID_UI, base::BindOnce(
+                          [](std::shared_ptr<BrowserSession> session) {
+                            session->CrashRenderer();
+                          },
+                          std::move(self)))) {
+        return KWEB_STATUS_CEF_UI_TASK_FAILED;
+      }
+      return KWEB_STATUS_OK;
+    }
+    if (!browser_ || !ready_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_BROWSER_NOT_READY;
+    }
+    CefRefPtr<CefProcessMessage> message =
+        CefProcessMessage::Create("kweb.test.crash-renderer");
+    browser_->GetMainFrame()->SendProcessMessage(PID_RENDERER, message);
+    return KWEB_STATUS_OK;
   }
 
   void RendererTerminated(int status, int error_code,
@@ -1693,6 +1721,11 @@ kweb_status SessionRegistry::CloseDevTools(kweb_browser_handle handle) {
   return session ? session->CloseDevTools() : KWEB_STATUS_INVALID_HANDLE;
 }
 
+kweb_status SessionRegistry::CrashRenderer(kweb_browser_handle handle) {
+  auto session = Lookup(handle);
+  return session ? session->CrashRenderer() : KWEB_STATUS_INVALID_HANDLE;
+}
+
 kweb_status SessionRegistry::BridgeRespond(kweb_browser_handle handle,
                                            uint64_t request_id,
                                            std::string response,
@@ -1737,6 +1770,7 @@ template <typename Operation> kweb_status GuardStatus(Operation operation) {
 
 } // namespace
 
+
 kweb_status OpenDevToolsSession(kweb_browser_handle browser) {
   return GuardStatus([&] { return Registry().OpenDevTools(browser); });
 }
@@ -1744,6 +1778,7 @@ kweb_status OpenDevToolsSession(kweb_browser_handle browser) {
 kweb_status CloseDevToolsSession(kweb_browser_handle browser) {
   return GuardStatus([&] { return Registry().CloseDevTools(browser); });
 }
+
 
 kweb_status RespondToBridgeSession(kweb_browser_handle browser,
                                    uint64_t request_id,
@@ -1838,4 +1873,8 @@ kweb_status GetBrowserExtensionContext(
   });
 }
 
+
+kweb_status CrashRendererSession(kweb_browser_handle browser) {
+  return GuardStatus([&] { return Registry().CrashRenderer(browser); });
+}
 } // namespace kwebshell

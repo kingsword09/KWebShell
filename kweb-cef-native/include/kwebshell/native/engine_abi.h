@@ -236,6 +236,9 @@ KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
 kweb_browser_close_devtools(kweb_browser_handle browser);
 
 KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
+kweb_browser_crash_renderer(kweb_browser_handle browser);
+
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
 kweb_browser_bridge_respond(kweb_browser_handle browser, uint64_t request_id,
                             const char *response_utf8, size_t response_size);
 

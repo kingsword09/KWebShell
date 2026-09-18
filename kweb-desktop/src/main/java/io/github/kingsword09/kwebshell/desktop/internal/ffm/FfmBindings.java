@@ -103,6 +103,10 @@ public final class FfmBindings {
         return FfmBrowserCalls.closeDevTools(handle);
     }
 
+    public static int browserCrashRenderer(long handle) {
+        return FfmBrowserCalls.crashRenderer(handle);
+    }
+
     public static int browserBridgeRespond(long handle, long requestId, String responseJson) {
         return FfmBrowserCalls.bridgeRespond(handle, requestId, responseJson);
     }

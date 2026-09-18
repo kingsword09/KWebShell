@@ -247,7 +247,15 @@ internal class NativeBrowser private constructor(
                 )
             } else {
                 val status = NativeBindings.browserClose(ownerHandle)
-                if (status != NativeStatus.OK.value && status != NativeStatus.BROWSER_CLOSING.value) {
+                // A renderer fatal error starts the native close asynchronously;
+                // CEF may remove the session before the terminal callback is
+                // delivered to this owner.
+                val nativeCloseAlreadyCompleted =
+                    status == NativeStatus.INVALID_HANDLE.value && fatalFailure.get() != null
+                if (status != NativeStatus.OK.value &&
+                    status != NativeStatus.BROWSER_CLOSING.value &&
+                    !nativeCloseAlreadyCompleted
+                ) {
                     failure = nativeStatusException(
                         operation = "browser-close",
                         value = status,

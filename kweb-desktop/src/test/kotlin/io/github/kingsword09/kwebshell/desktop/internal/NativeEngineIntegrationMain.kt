@@ -1077,8 +1077,19 @@ private fun runRendererCrashLifecycle() {
                 "The native browser did not report FAILED after its renderer crashed."
             }
 
-            // The crashed page's browser is gone without a Kotlin close call.
-            // The engine must still tear down cleanly.
+            // FATAL_ERROR marks the Kotlin lifecycle as FAILED before CEF has
+            // delivered the asynchronous OnBeforeClose callback. The native
+            // session is already closing; use the owner close path only to
+            // wait for that terminal callback and observe the expected fatal
+            // failure before closing the engine.
+            try {
+                liveBrowser.close()
+                error("A renderer-crashed browser close unexpectedly succeeded.")
+            } catch (error: KWebNativeException) {
+                require(error.code == "native.browser.fatal") {
+                    "Renderer-crash browser close failed with '${error.code}' instead of native.browser.fatal."
+                }
+            }
             engine.close()
             require(
                 events.any {

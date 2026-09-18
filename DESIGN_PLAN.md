@@ -1809,9 +1809,10 @@ RFC 0001 remediation objective and acceptance:
 - The checked-in schema, validator, CLI, contributor guide, and tests must agree
   on evidence schema v2. Fresh three-target hosted records produced through that
   path are now checked in: RFC 0001-0003 are `Implemented` with READY records
-  (hosted run 35047138504) and RFC 0004 remains `Accepted` until its remaining stream
-  scenarios, peak-memory measurement, and named migration stream adapter are
-  delivered.
+  (hosted run 35047138504). RFC 0004 reached `Implemented` after hosted run
+  35342564383 retained stream conformance on all three targets, including bounded
+  queue and heap metrics, terminal transcripts, and the generated named migration
+  stream adapter.
 
 Implementation status (RFC 0001):
 

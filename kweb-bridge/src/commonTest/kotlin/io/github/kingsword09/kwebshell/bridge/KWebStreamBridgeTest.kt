@@ -6,6 +6,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -16,6 +18,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import java.util.concurrent.atomic.AtomicInteger
 
 class KWebStreamBridgeTest {
     private fun dataFrame(sequence: Long, value: String): KWebStreamFrame = KWebStreamFrame(
@@ -84,34 +87,43 @@ class KWebStreamBridgeTest {
     @Test
     fun oneMillionSequencedEventsFlowInOrderWithBoundedInFlight() = runBlocking {
         val total = 1_000_000
-        val gate = KWebStreamCreditGate(initialCredits = 256)
-        val sent = mutableListOf<String>()
-        val consumed = mutableListOf<Long>()
+        val capacity = 256
+        val frames = Channel<String>(capacity)
+        val permits = Semaphore(capacity)
+        val consumed = AtomicInteger()
+        val peakInFlight = AtomicInteger()
+        val inFlight = AtomicInteger()
 
         val publisher = launch(Dispatchers.Default) {
             var sequence = 1L
             while (sequence <= total) {
-                if (!gate.acquire()) break
-                sent += KWebStreamProtocol.encode(dataFrame(sequence, "v$sequence"))
+                permits.acquire()
+                val current = inFlight.incrementAndGet()
+                peakInFlight.updateAndGet { maxOf(it, current) }
+                frames.send(KWebStreamProtocol.encode(dataFrame(sequence, "v$sequence")))
                 sequence += 1
             }
+            frames.close()
         }
         val consumer = launch(Dispatchers.Default) {
-            // The consumer grants one credit per consumed frame: bounded in-flight.
-            while (consumed.size < total) {
-                val frame = sent.getOrNull(consumed.size) ?: continue
-                consumed += KWebStreamProtocol.decode(frame).sequence
-                gate.grant(1)
+            var expected = 1L
+            for (encoded in frames) {
+                val sequence = KWebStreamProtocol.decode(encoded).sequence
+                assertEquals(expected, sequence)
+                expected += 1
+                consumed.incrementAndGet()
+                inFlight.decrementAndGet()
+                permits.release()
             }
         }
         publisher.join()
         consumer.join()
 
-        assertEquals(total, consumed.size)
+        assertEquals(total, consumed.get())
         // Sequenced small events arrive without reordering.
-        assertEquals((1L..total.toLong()).toList(), consumed)
-        // In-flight is bounded by the credit capacity: the publisher never runs ahead.
-        assertTrue(sent.size <= consumed.size + 256, "In-flight frames must stay within the credit capacity.")
+        // The bounded channel never stores more than its declared capacity.
+        assertTrue(peakInFlight.get() <= capacity, "In-flight frames must stay within the channel capacity.")
+        assertEquals(0, inFlight.get())
     }
 
     @Test

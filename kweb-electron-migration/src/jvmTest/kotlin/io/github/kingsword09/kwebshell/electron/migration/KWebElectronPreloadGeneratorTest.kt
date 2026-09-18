@@ -45,6 +45,34 @@ class KWebElectronPreloadGeneratorTest {
         assertEquals(generator.generate(manifest()), generator.generate(manifest()))
     }
 
+    @Test
+    fun namedApplicationStreamsGenerateAsyncIterableFacade() {
+        val streamManifest = manifest().copy(
+            streams = listOf(
+                KWebElectronStream(
+                    name = "progress",
+                    method = "downloadProgress",
+                    requestType = "DownloadRequest",
+                    chunkType = "ProgressChunk",
+                    capacity = 32,
+                    status = KWebElectronMappingStatus.ADAPTER,
+                    adapter = KWebElectronAdapterKind.NAMED_APPLICATION_STREAM,
+                    policy = KWebElectronChannelPolicy(
+                        rendererGrant = "native.downloads.progress",
+                        requiresUserGesture = false,
+                        requiresOsConsent = false,
+                    ),
+                ),
+            ),
+        )
+        val sources = KWebElectronPreloadGenerator().generate(streamManifest)
+        assertContains(sources.typescript, "interface KWebElectronStream<Chunk> extends AsyncIterable<Chunk>")
+        assertContains(sources.typescript, "progress: (request: DownloadRequest")
+        assertContains(sources.typescript, "close(): void")
+        assertContains(sources.declarations, "KWebApplicationStreamsBridge")
+        assertContains(sources.javascript, "bridgeStreams.openDownloadProgress(request, options)")
+    }
+
     private fun manifest(): KWebElectronManifest = KWebElectronMigrationJson.decode(
         """
         {

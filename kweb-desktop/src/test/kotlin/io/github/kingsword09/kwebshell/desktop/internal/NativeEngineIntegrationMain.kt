@@ -462,9 +462,20 @@ private fun runSuccessfulLifecycle() {
                 Files.writeString(
                     requiredPathProperty(INTEGRATION_ROOT_PROPERTY).resolve("stream-conformance.json"),
                     buildString {
+                        val runtime = Runtime.getRuntime()
+                        val heapBefore = runtime.totalMemory() - runtime.freeMemory()
+                        val queuePeak = cdp.evaluate("String(globalThis.__kwebLastStreamQueuePeak || 0)")
+                            .toLongOrNull() ?: 0L
+                        val heapAfter = runtime.totalMemory() - runtime.freeMemory()
                         append("{\"schemaVersion\": 1, \"target\": \"")
                         append(currentTargetId())
-                        append("\", \"cefRuntime\": \"pinned-151\", \"assertions\": [")
+                        append("\", \"cefRuntime\": \"pinned-151\", \"queueCapacity\": 32, \"peakQueueFrames\": ")
+                        append(queuePeak)
+                        append(", \"heapDeltaBytes\": ")
+                        append(heapAfter - heapBefore)
+                        append(", \"durationMillis\": ")
+                        append(lastStreamConformanceDurationNanos / 1_000_000)
+                        append(", \"assertions\": [")
                         append("\"ordered-delivery-8-frames-terminal-completed\", ")
                         append("\"slow-consumer-12-frames-credit-backpressure\", ")
                         append("\"close-abort-cancellation-reached-handler\", ")
@@ -3010,8 +3021,10 @@ private fun findFreePort(): Int = ServerSocket().use { socket ->
  * malformed acknowledgements, and terminal framing over the persistent query.
  */
 private val EMPTY_OR_STRING_EXPRESSION = "String(globalThis.__streamError)"
+private var lastStreamConformanceDurationNanos: Long = 0L
 
 private fun runStreamConformance(cdp: CdpClient, streamHandler: ConformanceStreamTestHandler) {
+    val startedAt = System.nanoTime()
     // 1. Ordered delivery and declared completion: the terminal frame ends the
     //    iteration with no error.
     cdp.evaluate(
@@ -3115,4 +3128,5 @@ private fun runStreamConformance(cdp: CdpClient, streamHandler: ConformanceStrea
     cdp.awaitExpression(
         "globalThis.__serviceError !== null && globalThis.__serviceError.code === 'bridge.handler.failed'",
     )
+    lastStreamConformanceDurationNanos = System.nanoTime() - startedAt
 }

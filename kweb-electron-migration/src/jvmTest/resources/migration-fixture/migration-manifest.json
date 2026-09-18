@@ -35,6 +35,18 @@
       "adapter": "APP_PATHS_GET_PATH"
     }
   ],
+  "streams": [
+    {
+      "name": "progress",
+      "method": "downloadProgress",
+      "requestType": "DownloadRequest",
+      "chunkType": "ProgressChunk",
+      "capacity": 32,
+      "status": "ADAPTER",
+      "adapter": "NAMED_APPLICATION_STREAM",
+      "policy": {"rendererGrant": "native.downloads.progress", "requiresUserGesture": false, "requiresOsConsent": false}
+    }
+  ],
   "requiredServices": [
     { "id": "app-paths", "version": "1.0.0" }
   ]

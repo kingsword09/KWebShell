@@ -119,17 +119,17 @@ runner tokens, cloud credentials, private keys, native pointers, and private
 filesystem paths. A detection is a typed failure that names the field and the
 pattern class; the sensitive value itself is never echoed.
 
-## Hosted recording flow (RFC 0001-0003)
+## Hosted recording flow (RFC 0001-0004)
 
-A single aggregation job records all nine hosted records from the retained
+A single aggregation job records all twelve hosted records from the retained
 artifacts of the same run's verification jobs:
 
-1. Each verification target uploads its raw evidence: the governance report
-   (`rfc-governance-*`), the provider lifecycle report
-   (`provider-lifecycle-*`), and the dialogs consent status
-   (`native-dialogs-*`).
+1. Each verification target uploads its raw evidence: governance contract-test
+   XML (`rfc-governance-*`), provider lifecycle output (`provider-lifecycle-*`),
+   dialogs consent status (`native-dialogs-*`), and stream conformance output
+   (`engine-integration-*`).
 2. The `rfc-evidence` job checks the repository out (LF working tree), downloads
-   those artifacts, and chains three upserts per target through
+   those artifacts, and chains four upserts per target through
    `.github/scripts/aggregate-rfc-evidence.sh`, passing the target explicitly
    with `--target`; the recorder still requires the `Implemented` catalog, so
    the check-in commit lands the catalog flip together with the records.
@@ -142,8 +142,25 @@ artifacts of the same run's verification jobs:
 
 - Documentation-only pull requests (markdown and `docs/rfcs/**`) run
   `git diff --check` and `rfcGovernanceCheck` only — never the native matrix.
-- Every regular verification job runs `rfcGovernanceCheck` as part of `check` on
-  all three hosted targets and uploads the joined report to
-  `kweb-rfc-governance/build/reports/rfc-governance/` as retained evidence.
+- Regular verification jobs run `runtimeCheck` on all three hosted targets.
+  The independent checked-in evidence job runs full governance `check` and
+  retains structured findings from `build/reports/rfc-governance/`.
 - An RFC moves to `Implemented` only after its records are in the manifest and
   the three hosted jobs are green on the same `main` commit.
+
+
+## Refreshing evidence after contract changes
+
+CI runs `runtimeCheck` on all three hosted targets. This includes real native,
+CEF, packaging and unit tests, including governance `contractTest`. The strict
+checked-in repository-evidence test belongs to the separate governance stage;
+`check` still requires both stages. This allows new evidence to be produced when
+old source digests expire without accepting stale evidence for merge.
+
+The recorder depends on successful runtime verification for every target. RFC
+0001 retains the real governance contract-test XML; RFCs 0002–0004 retain their
+provider, consent and stream outputs. After recording, the aggregation job runs
+full governance tests and checks against the fresh manifest, then uploads the
+manifest and retained artifact tree. Import those artifacts and rerun the strict
+checked-in evidence gate before merge. A native/unit failure prevents recording;
+`always()` is used only to retain diagnostics, never to authorize a support claim.

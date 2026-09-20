@@ -43,6 +43,8 @@ kotlin {
 
 tasks.named<Test>("jvmTest") {
     useJUnitPlatform()
+    systemProperty("kweb.migration.typescript", rootProject.layout.projectDirectory.dir("node_modules/typescript-ast").asFile.absolutePath)
+    workingDir(rootProject.projectDir)
 }
 
 val fixtureRoot = layout.projectDirectory.dir("src/jvmTest/resources/migration-fixture")
@@ -131,8 +133,12 @@ val electronMigrationReport = tasks.register<JavaExec>("electronMigrationReport"
         inventoryOutput.get().asFile.absolutePath,
         compatibilityOutput.get().asFile.absolutePath,
     )
-    systemProperty("kweb.migration.cef.version", providers.gradleProperty("kwebMigrationCefVersion").orElse("151.3.16").get())
-    systemProperty("kweb.migration.chromium.version", providers.gradleProperty("kwebMigrationChromiumVersion").orElse("151.0.7922.109").get())
+    systemProperty("kweb.migration.runtime.manifest", rootProject.file("runtime/cef-runtime.json").absolutePath)
+    systemProperty("kweb.migration.rfc.evidence", rootProject.file("docs/rfcs/evidence/manifest.json").absolutePath)
+    systemProperty("kweb.migration.rfc.catalog", rootProject.file("docs/rfcs").absolutePath)
+    inputs.file(rootProject.file("runtime/cef-runtime.json"))
+    inputs.file(rootProject.file("docs/rfcs/evidence/manifest.json"))
+    inputs.files(rootProject.fileTree("docs/rfcs") { include("????-*.md") })
     systemProperty("kweb.migration.target", providers.gradleProperty("kwebMigrationTarget").orElse(currentTarget()).get())
     inputs.file(fixtureManifest)
     inputs.dir(generatedDirectory)
@@ -285,4 +291,9 @@ fun currentTarget(): String {
         else -> error("Unsupported migration target architecture: ${System.getProperty("os.arch")}")
     }
     return "$os-$architecture"
+}
+
+// Inventory is build-time tooling; its pinned parser is supplied explicitly.
+tasks.withType<JavaExec>().configureEach {
+    systemProperty("kweb.migration.typescript", rootProject.layout.projectDirectory.dir("node_modules/typescript-ast").asFile.absolutePath)
 }

@@ -28,6 +28,7 @@ class KWebElectronMigrationCliTest {
             )
             val process = ProcessBuilder(
                 java.toString(),
+                "-Dkweb.migration.typescript=${System.getProperty("kweb.migration.typescript")}",
                 "-cp", System.getProperty("java.class.path"),
                 "io.github.kingsword09.kwebshell.electron.migration.KWebElectronMigrationCli",
                 "inventory", root.toString(), manifestPath.toString(), output.toString(),
@@ -46,7 +47,10 @@ class KWebElectronMigrationCliTest {
 
     private fun manifestJson(): String = """
         {
-          "schemaVersion":1,
+          "schemaVersion":2,
+          "rendererOrigin":"app://fixture",
+          "rendererProfile":"default",
+          "profiles":[{"id":"default","storagePath":"profiles/default","isPersistent":true}],
           "applicationId":"io.github.kwebshell.fixture",
           "rendererGlobal":"desktop",
           "rendererRoot":"renderer",
@@ -54,8 +58,8 @@ class KWebElectronMigrationCliTest {
           "rendererSha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
           "electronFixtureMajor":44,
           "electronImports":[{"module":"electron","symbol":"ipcRenderer","status":"ADAPTER","matrixId":"ipc-request"}],
-          "channels":[{"name":"app.getPath","schemaVersion":1,"requestType":"ElectronPathName","responseType":"string","serviceId":"app-paths","serviceVersion":"1.0.0","operationId":"resolve","status":"ADAPTER","adapter":"APP_PATHS_GET_PATH","policy":{"rendererGrant":"native.app-paths.resolve","requiresUserGesture":false,"requiresOsConsent":false}}],
-          "preloadMethods":[{"name":"getPath","channel":"app.getPath","parameterName":"name","parameterType":"ElectronPathName","returnType":"Promise<string>","status":"ADAPTER","adapter":"APP_PATHS_GET_PATH""adapter":"APP_PATHS_GET_PATH"}],
+          "channels":[{"name":"app.getPath","schemaVersion":2,"requestType":"ElectronPathName","responseType":"string","serviceId":"app-paths","serviceVersion":"1.0.0","operationId":"resolve","status":"ADAPTER","adapter":"APP_PATHS_GET_PATH","policy":{"rendererGrant":"native.app-paths.resolve","requiresUserGesture":false,"requiresOsConsent":false}}],
+          "preloadMethods":[{"name":"getPath","channel":"app.getPath","parameterName":"name","parameterType":"ElectronPathName","returnType":"Promise<string>","status":"ADAPTER","adapter":"APP_PATHS_GET_PATH"}],
           "requiredServices":[{"id":"app-paths","version":"1.0.0"}]
         }
     """.trimIndent()

@@ -73,10 +73,23 @@ class KWebElectronPreloadGeneratorTest {
         assertContains(sources.javascript, "bridgeStreams.openDownloadProgress(request, options)")
     }
 
+    @Test
+    fun generatedArtifactsMatchSharedCrossPlatformGoldenBytes() {
+        val root = java.nio.file.Path.of("kweb-electron-migration/src/jvmTest/resources")
+        val fixture = KWebElectronMigrationJson.decode(java.nio.file.Files.readString(root.resolve("migration-fixture/migration-manifest.json")))
+        val sources = KWebElectronPreloadGenerator().generate(fixture)
+        mapOf("KWebElectronPreload.ts" to sources.typescript, "KWebElectronPreload.d.ts" to sources.declarations, "KWebElectronPreload.js" to sources.javascript, "KWebElectronHostChecklist.md" to sources.checklist).forEach { (name, actual) ->
+            assertEquals(java.nio.file.Files.readString(root.resolve("migration-golden/$name")), actual, name)
+        }
+    }
+
     private fun manifest(): KWebElectronManifest = KWebElectronMigrationJson.decode(
         """
         {
-          "schemaVersion":1,
+          "schemaVersion":2,
+          "rendererOrigin":"app://fixture",
+          "rendererProfile":"default",
+          "profiles":[{"id":"default","storagePath":"profiles/default","isPersistent":true}],
           "applicationId":"io.github.kwebshell.fixture",
           "rendererGlobal":"desktop",
           "rendererRoot":"renderer",
@@ -84,8 +97,8 @@ class KWebElectronPreloadGeneratorTest {
           "rendererSha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
           "electronFixtureMajor":44,
           "electronImports":[{"module":"electron","symbol":"contextBridge","status":"ADAPTER","matrixId":"context-bridge"}],
-          "channels":[{"name":"app.getPath","schemaVersion":1,"requestType":"ElectronPathName","responseType":"string","serviceId":"app-paths","serviceVersion":"1.0.0","operationId":"resolve","status":"ADAPTER","adapter":"APP_PATHS_GET_PATH","policy":{"rendererGrant":"native.app-paths.resolve","requiresUserGesture":false,"requiresOsConsent":false}}],
-          "preloadMethods":[{"name":"getPath","channel":"app.getPath","parameterName":"name","parameterType":"ElectronPathName","returnType":"Promise<string>","status":"ADAPTER","adapter":"APP_PATHS_GET_PATH""adapter":"APP_PATHS_GET_PATH"}],
+          "channels":[{"name":"app.getPath","schemaVersion":2,"requestType":"ElectronPathName","responseType":"string","serviceId":"app-paths","serviceVersion":"1.0.0","operationId":"resolve","status":"ADAPTER","adapter":"APP_PATHS_GET_PATH","policy":{"rendererGrant":"native.app-paths.resolve","requiresUserGesture":false,"requiresOsConsent":false}}],
+          "preloadMethods":[{"name":"getPath","channel":"app.getPath","parameterName":"name","parameterType":"ElectronPathName","returnType":"Promise<string>","status":"ADAPTER","adapter":"APP_PATHS_GET_PATH"}],
           "requiredServices":[{"id":"app-paths","version":"1.0.0"}]
         }
         """.trimIndent(),

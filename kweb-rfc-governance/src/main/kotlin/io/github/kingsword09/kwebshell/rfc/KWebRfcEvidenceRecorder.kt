@@ -63,6 +63,12 @@ internal class KWebRfcEvidenceRecorder {
 
         request.compatibilityReport?.let { report ->
             KWebElectronCompatibilityReportValidator.validate(report)
+            if (report.electronFixtureMajor != request.electronFixtureMajor) {
+                throw KWebRfcGovernanceException(
+                    code = KWebRfcRecorderErrorCode.REPORT_ELECTRON_MISMATCH,
+                    message = "The evidence Electron major must match the compatibility report.",
+                )
+            }
             if (report.target != request.target) {
                 throw KWebRfcGovernanceException(
                     code = KWebRfcRecorderErrorCode.REPORT_TARGET_MISMATCH,
@@ -210,6 +216,7 @@ internal class KWebRfcEvidenceRecorder {
 public object KWebRfcRecorderErrorCode {
     public const val RFC_UNKNOWN: String = "rfc.record.rfc-unknown"
     public const val RFC_NOT_IMPLEMENTED: String = "rfc.record.rfc-not-implemented"
+    public const val REPORT_ELECTRON_MISMATCH: String = "rfc.record.report-electron-mismatch"
     public const val REPORT_TARGET_MISMATCH: String = "rfc.record.report-target-mismatch"
     public const val REPORT_STALE_RUNTIME: String = "rfc.record.report-stale-runtime"
     public const val REPORT_ARTIFACT_MISSING: String = "rfc.record.report-artifact-missing"

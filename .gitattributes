@@ -21,3 +21,6 @@ kweb-example-app-benchmark/src/main/resources/workload/*.txt text eol=lf
 *.png binary
 *.ico binary
 *.icns binary
+
+# Retained hosted XML is hashed as exact runner output, including Windows CRLF.
+docs/rfcs/evidence/artifacts/**/*.xml -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

@@ -13,14 +13,16 @@ subprojects {
     version = rootProject.version
 }
 
-tasks.named("check") {
+tasks.register("runtimeCheck") {
+    group = "verification"
+    description = "Runs all unit, runtime, native and packaging tests before refreshing hosted evidence."
     dependsOn(":kweb-core:check")
     dependsOn(":kweb-services-core:check")
     dependsOn(":kweb-service-app-paths:check")
     dependsOn(":kweb-service-window-controls:check")
     dependsOn(":kweb-service-dialogs:check")
     dependsOn(":kweb-electron-migration:check")
-    dependsOn(":kweb-rfc-governance:check")
+    dependsOn(":kweb-rfc-governance:contractTest")
     dependsOn(":kweb-bridge:check")
     dependsOn(":kweb-bridge-codegen:check")
     dependsOn(":kweb-extensions:check")
@@ -35,4 +37,8 @@ tasks.named("check") {
     dependsOn(":kweb-example-html5-lab:check")
     dependsOn(":kweb-example-support:check")
     dependsOn(":kweb-example-app-benchmark:check")
+}
+
+tasks.named("check") {
+    dependsOn("runtimeCheck", ":kweb-rfc-governance:check")
 }

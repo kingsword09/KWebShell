@@ -16,7 +16,7 @@ class KWebElectronManifestTest {
     @Test
     fun unknownFieldsAreRejectedBeforeValidation() {
         val failure = assertFailsWith<KWebElectronMigrationException> {
-            KWebElectronMigrationJson.decode(MANIFEST.replace("\"schemaVersion\":1", "\"schemaVersion\":1,\"extra\":true"))
+            KWebElectronMigrationJson.decode(MANIFEST.replace("\"schemaVersion\":2", "\"schemaVersion\":2,\"extra\":true"))
         }
         assertEquals(KWebElectronMigrationErrorCode.MANIFEST_INVALID_JSON, failure.code)
     }
@@ -29,7 +29,7 @@ class KWebElectronManifestTest {
         }
         assertEquals(KWebElectronMigrationErrorCode.CHANNEL_UNDECLARED, channelFailure.code)
 
-        val incompatible = MANIFEST.replace("\"schemaVersion\":1,\"requestType\"", "\"schemaVersion\":2,\"requestType\"")
+        val incompatible = MANIFEST.replace("\"schemaVersion\":2,\"requestType\"", "\"schemaVersion\":3,\"requestType\"")
         val schemaFailure = assertFailsWith<KWebElectronMigrationException> {
             KWebElectronMigrationJson.decode(incompatible)
         }
@@ -91,8 +91,9 @@ class KWebElectronManifestTest {
         assertEquals(KWebElectronMigrationErrorCode.MANIFEST_INVALID, channelFailure.code)
     }
 
-    private companion object {
-        val MANIFEST = """
+    @Test
+    fun v1ManifestMigratesDeterministicallyToV2() {
+        val v1 = """
             {
               "schemaVersion": 1,
               "applicationId": "io.github.kwebshell.fixture",
@@ -103,7 +104,57 @@ class KWebElectronManifestTest {
               "electronFixtureMajor": 44,
               "electronImports": [{"module":"electron","symbol":"contextBridge","status":"ADAPTER","matrixId":"context-bridge"}],
               "channels": [{"name":"app.getPath","schemaVersion":1,"requestType":"ElectronPathName","responseType":"string","serviceId":"app-paths","serviceVersion":"1.0.0","operationId":"resolve","status":"ADAPTER","adapter":"APP_PATHS_GET_PATH","policy":{"rendererGrant":"native.app-paths.resolve","requiresUserGesture":false,"requiresOsConsent":false}}],
-              "preloadMethods": [{"name":"getPath","channel":"app.getPath","parameterName":"name","parameterType":"ElectronPathName","returnType":"Promise<string>","status":"ADAPTER","adapter":"APP_PATHS_GET_PATH""adapter":"APP_PATHS_GET_PATH"}],
+              "preloadMethods": [{"name":"getPath","channel":"app.getPath","parameterName":"name","parameterType":"ElectronPathName","returnType":"Promise<string>","status":"ADAPTER","adapter":"APP_PATHS_GET_PATH"}],
+              "requiredServices": [{"id":"app-paths","version":"1.0.0"}]
+            }
+        """.trimIndent()
+        val migrated = KWebElectronManifestMigrator.migrate(v1, "app://fixture")
+        assertEquals(KWebElectronMigrationJson.encode(migrated), KWebElectronMigrationJson.encode(KWebElectronManifestMigrator.migrate(v1, "app://fixture")))
+        val badRevision = v1.replace("\"schemaVersion\":1,\"requestType\"", "\"schemaVersion\":999,\"requestType\"")
+        assertFailsWith<KWebElectronMigrationException> { KWebElectronManifestMigrator.migrate(badRevision, "app://fixture") }
+        assertEquals(2, migrated.schemaVersion)
+        assertEquals("main", migrated.windows.single().id)
+        assertEquals("default", migrated.profiles.single().id)
+    }
+
+    @Test
+    fun invalidV2ReferencesAndDependencyKindsFail() {
+        val base = KWebElectronMigrationJson.decode(MANIFEST)
+        val invalid = listOf(
+            base.copy(windows = listOf(KWebElectronWindowDefinition("main", "Main", profile = "missing"))),
+            base.copy(profiles = listOf(KWebElectronProfileDefinition("default", "profiles/default")), windows = listOf(KWebElectronWindowDefinition("main", "Main", true, "default", true, "ghost"))),
+            base.copy(profiles = listOf(KWebElectronProfileDefinition("a", "shared"), KWebElectronProfileDefinition("b", "shared"))),
+            base.copy(lifecycleEvents = listOf(KWebElectronLifecycleEvent("", "", KWebElectronMappingStatus.DIRECT))),
+            base.copy(nodeDependencies = listOf(KWebElectronNodeDependency("native-addon", KWebElectronDependencyKind.NATIVE_ADDON, KWebElectronMappingStatus.ADAPTER, "missing"))),
+        )
+        invalid.forEach { manifest ->
+            assertFailsWith<KWebElectronMigrationException> { KWebElectronManifestValidator.validate(manifest) }
+        }
+    }
+
+    @Test
+    fun unsupportedNewDeclarationsCannotGenerateReadyFacade() {
+        val base = KWebElectronMigrationJson.decode(MANIFEST)
+        val blocked = base.copy(nodeDependencies = listOf(KWebElectronNodeDependency("better-sqlite3", KWebElectronDependencyKind.NATIVE_ADDON, KWebElectronMappingStatus.UNSUPPORTED)))
+        assertFailsWith<KWebElectronMigrationException> { KWebElectronPreloadGenerator().generate(blocked) }
+    }
+
+    private companion object {
+        val MANIFEST = """
+            {
+              "schemaVersion": 2,
+          "rendererOrigin":"app://fixture",
+          "rendererProfile":"default",
+          "profiles":[{"id":"default","storagePath":"profiles/default","isPersistent":true}],
+              "applicationId": "io.github.kwebshell.fixture",
+              "rendererGlobal": "desktop",
+              "rendererRoot": "renderer",
+              "rendererEntry": "index.html",
+              "rendererSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+              "electronFixtureMajor": 44,
+              "electronImports": [{"module":"electron","symbol":"contextBridge","status":"ADAPTER","matrixId":"context-bridge"}],
+              "channels": [{"name":"app.getPath","schemaVersion":2,"requestType":"ElectronPathName","responseType":"string","serviceId":"app-paths","serviceVersion":"1.0.0","operationId":"resolve","status":"ADAPTER","adapter":"APP_PATHS_GET_PATH","policy":{"rendererGrant":"native.app-paths.resolve","requiresUserGesture":false,"requiresOsConsent":false}}],
+              "preloadMethods": [{"name":"getPath","channel":"app.getPath","parameterName":"name","parameterType":"ElectronPathName","returnType":"Promise<string>","status":"ADAPTER","adapter":"APP_PATHS_GET_PATH"}],
               "requiredServices": [{"id":"app-paths","version":"1.0.0"}]
             }
         """.trimIndent()

@@ -2,6 +2,7 @@
   "name": "kwebshell-build-tools",
   "private": true,
   "devDependencies": {
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "typescript-ast": "npm:typescript@6.0.2"
   }
 }

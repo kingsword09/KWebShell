@@ -1917,6 +1917,29 @@ Breaking changes: report aggregation uses a separate versioned envelope, v2
 requires explicit renderer policy and profile ownership, and runtime report
 creation consumes provenance files rather than unverified version strings.
 
+### RFC review workflow objective: contract review and requirement acceptance
+
+Make RFC implementation readiness and merge acceptance explicit without changing
+runtime APIs, the evidence schema, or historical support claims. Acceptance:
+
+- D1: one review guide defines required contract decisions, applicability,
+  requirement IDs, review records, and blocking conditions for both checks.
+- D2: the RFC template carries concrete implementation-contract tables and one
+  acceptance matrix used before coding and before merge.
+- D3: engineering rules and the PR template require traceable contract review,
+  requirement-by-requirement results, the complete PR diff, and same-PR evidence
+  completion before support publication.
+- D4: RFC 0005 records its existing verified slice, remaining contract/coverage
+  gaps, and an honest readiness decision; no retrospective approval is invented
+  for RFCs 0001-0004 or the remaining Proposed backlog.
+- D5: existing front matter, capability statuses and checked-in evidence bytes
+  remain valid; the lightweight RFC governance check reports zero findings.
+- D6: all changes are Markdown; full-PR `git diff --check`, document/link review
+  and the Documentation workflow pass without starting the CEF matrix.
+
+These checks include a recorded review pass. Automated metadata/evidence checks
+remain necessary but do not certify the semantic completeness of a contract.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.

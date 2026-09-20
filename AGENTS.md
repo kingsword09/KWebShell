@@ -36,6 +36,15 @@ The browser engine is a product boundary, not an implementation detail. The desk
 - A change is complete only after its tests pass, packaging is verified, and the relevant documentation is updated.
 - Never claim support for an API or Manifest V3 capability without a conformance test demonstrating it.
 
+### RFC contract review and acceptance
+
+- Before moving an RFC to `Accepted` or starting its next implementation, follow `docs/rfcs/REVIEW.md`: settle its implementation contract, assign stable requirement IDs, plan falsifiable acceptance scenarios, and record an actual `READY` review pass. Unresolved required behavior or native feasibility blocks implementation.
+- Maintain one acceptance matrix from planning through merge. Every applicable requirement must link to its implementation or explicit code/document review, actual tests, required targets, retained evidence, and reviewed revision. Explain and review each `NOT_APPLICABLE` decision; missing or skipped required verification is blocking.
+- Review the complete PR diff, including added files and retained artifacts. A green build or metadata check does not prove that every RFC requirement was tested. Record the final row-by-row acceptance decision before merge.
+- Keep implementation, real hosted evidence import, documentation, matrix updates and supported-state promotion in the same focused PR. If the scope cannot be delivered that way, split complete objectives before coding; do not publish a partial API.
+- Preserve historical evidence without inventing retrospective approvals. Existing backlog RFCs require the new review before their next implementation; changes to implemented contracts require review and evidence for the affected guarantees.
+- A separate review pass may be performed by the same contributor and must be identified honestly. Routine implementation choices do not require repeated user permission; externally observable contract changes require an updated, reviewed RFC.
+
 ### Commit discipline
 
 - Make one focused implementation objective per commit.
@@ -101,11 +110,11 @@ Do not promise compatibility with every Chrome Web Store extension. Publish a ve
 
 ## Required Workflow
 
-1. Write the objective and acceptance criteria in the design plan.
-2. Add or update tests that express the criteria.
+1. Write the objective and acceptance criteria in the design plan. For RFC work, complete the implementation contract and record readiness review before coding.
+2. Give each requirement a stable acceptance ID and add or update tests that express its normal, negative and boundary criteria.
 3. Implement the smallest complete vertical slice, including native and Kotlin sides.
 4. Run the required tests on every advertised target, or record a blocking platform defect instead of pretending support.
-5. Update documentation and the capability matrix.
-6. Commit the objective as one focused commit and open a single-objective pull request.
+5. Complete the acceptance matrix with actual implementation/test/evidence references and update documentation and the capability matrix.
+6. Commit the objective and keep its implementation and required evidence updates in one single-objective pull request. Review the complete PR diff and record final requirement-by-requirement acceptance before integration.
 7. Squash-merge the green pull request, delete its topic branch, and verify the resulting `main` commit.
 8. Repeat for the next objective.

@@ -32,7 +32,7 @@ The following shipped contracts are prerequisites rather than proposed RFCs:
 | Application paths | `kweb-service-app-paths` |
 | Window controls | `kweb-service-window-controls` |
 | Native file pickers and scoped handles | `kweb-service-dialogs` |
-| Migration inventory and generated preload facade v1 | `kweb-electron-migration` |
+| Migration manifest v2, AST inventory and generated preload facade | `kweb-electron-migration` |
 | Profile-scoped local protocol | Verified `app://` origin |
 
 An RFC must extend these sources of truth. It must not create a second registry,
@@ -61,6 +61,13 @@ The words **MUST**, **MUST NOT**, **SHOULD**, and **MAY** are normative.
    non-goals.
 8. One RFC is one focused implementation objective, commit, and pull request.
    If an RFC cannot satisfy that constraint, it must be split before coding.
+   A topic PR may contain multiple commits; the integrated result is one squash
+   commit. Keep required evidence and status updates inside that PR.
+9. Before implementation, complete the implementation contract and acceptance
+   matrix and record the readiness review defined in [REVIEW.md](REVIEW.md).
+10. Before merge, review every applicable acceptance row against actual code,
+    tests and retained evidence at the reviewed revision. A green metadata check
+    is necessary but does not certify contract completeness.
 
 ## RFC state machine
 
@@ -73,15 +80,32 @@ Proposed -> Accepted -> Implementing -> Implemented
 ```
 
 - **Proposed**: reviewed backlog contract; not a capability claim.
-- **Accepted**: architecture and acceptance are approved; implementation may start.
+- **Accepted**: implementation contract and planned acceptance have a recorded
+  `READY` review; required feasibility probes passed and implementation may start.
 - **Implementing**: one topic branch and pull request own the objective.
 - **Implemented**: code, real platform evidence, packaging, docs, and matrix row
-  are on `main`.
+  are on `main`, with a completed requirement-by-requirement acceptance record.
 - **Rejected/Superseded**: the document records the replacement or reason.
 
 Only one agent may move a given RFC to `Implementing`. Dependencies must already
 be `Implemented`, except when the same pull request supplies an inseparable
 private primitive and the RFC explicitly permits it.
+
+### Required review records
+
+Use the [RFC template](RFC_TEMPLATE.md) and [review guide](REVIEW.md) to maintain
+an implementation contract, one acceptance matrix, a contract review record and
+a merge acceptance record. The first review establishes readiness to implement;
+the second follows every applicable requirement to actual results. The
+[PR template](../../.github/PULL_REQUEST_TEMPLATE.md) links these records.
+
+These records belong in the RFC body; they are not additional front-matter keys.
+The automated checker validates metadata and evidence consistency. Reviewers
+must separately assess semantic completeness, test assertions and scope.
+Existing proposals are not automatically accepted under the new process, and
+historical implemented RFCs are not given invented retrospective approvals.
+Follow the [catalog adoption rules](REVIEW.md#applying-the-checks-to-the-existing-catalog)
+when starting backlog work or changing an implemented contract.
 
 ### Front matter schema
 

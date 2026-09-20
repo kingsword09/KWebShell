@@ -116,6 +116,45 @@ public class KWebElectronCompatibilityReportBuilder public constructor() {
         return report
     }
 
+    public fun merge(reports: List<KWebElectronCompatibilityReport>): KWebElectronCompatibilityReport {
+        require(reports.isNotEmpty()) { "At least one compatibility report is required for merge." }
+        reports.forEach(KWebElectronCompatibilityReportValidator::validate)
+        val first = reports.first()
+        val allBlockedReasons = reports.flatMap { it.blockedReasons }.distinct().sorted()
+        val mergedStatus = if (allBlockedReasons.isEmpty() && reports.all { it.migrationStatus == KWebElectronCompatibilityReport.READY_STATUS }) {
+            KWebElectronCompatibilityReport.READY_STATUS
+        } else {
+            KWebElectronCompatibilityReport.BLOCKED_STATUS
+        }
+        val mergedServiceVersions = reports.flatMap { it.serviceContractVersions.entries }
+            .associate { it.key to it.value }
+            .toSortedMap()
+
+        val combinedRendererSha256 = digestText(reports.map { it.rendererSha256 }.sorted().joinToString(","))
+        val combinedManifestSha256 = digestText(reports.map { it.manifestSha256 }.sorted().joinToString(","))
+        val combinedGeneratedSha256 = digestText(reports.map { it.generatedOutputSha256 }.sorted().joinToString(","))
+        val combinedInventorySha256 = digestText(reports.map { it.inventorySha256 }.sorted().joinToString(","))
+
+        val merged = KWebElectronCompatibilityReport(
+            schemaVersion = KWebElectronCompatibilityReport.CURRENT_SCHEMA_VERSION,
+            migrationStatus = mergedStatus,
+            blockedReasons = allBlockedReasons,
+            rendererSha256 = combinedRendererSha256,
+            manifestSha256 = combinedManifestSha256,
+            generatedOutputSha256 = combinedGeneratedSha256,
+            inventorySha256 = combinedInventorySha256,
+            capabilityMatrixVersion = first.capabilityMatrixVersion,
+            capabilityMatrixSha256 = first.capabilityMatrixSha256,
+            serviceContractVersions = mergedServiceVersions,
+            cefVersion = first.cefVersion,
+            chromiumVersion = first.chromiumVersion,
+            target = first.target,
+            performanceComparison = null,
+        )
+        KWebElectronCompatibilityReportValidator.validate(merged)
+        return merged
+    }
+
     public fun write(report: KWebElectronCompatibilityReport, output: Path) {
         Files.createDirectories(output.toAbsolutePath().normalize().parent)
         Files.writeString(output, KWebElectronMigrationJson.format.encodeToString(report) + "\n")

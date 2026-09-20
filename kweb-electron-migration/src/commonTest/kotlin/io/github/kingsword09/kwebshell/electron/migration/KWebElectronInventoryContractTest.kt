@@ -11,7 +11,7 @@ class KWebElectronInventoryContractTest {
     @Test
     fun inventoryReportExposesBlockingFindings() {
         val report = KWebElectronInventoryReport(
-            schemaVersion = 1,
+            schemaVersion = 2,
             root = "/tmp/fixture",
             filesScanned = 2,
             findings = listOf(
@@ -72,10 +72,36 @@ class KWebElectronInventoryContractTest {
         }
     }
 
+    @Test
+    fun scannerDetectsDynamicExecutionReExportsAndLifecycleEvents() {
+        val root = Files.createTempDirectory("kweb-electron-dynamic")
+        try {
+            root.resolve("src").createDirectories()
+            root.resolve("src/dynamic.ts").writeText(
+                """
+                eval("console.log('dynamic')");
+                const mod = require(computedModule);
+                export { app } from "electron";
+                app.on("ready", () => {});
+                app.on("window-all-closed", () => {});
+                """.trimIndent(),
+            )
+            val report = KWebElectronInventoryScanner().scan(root, manifest())
+            assertEquals(1, report.filesScanned)
+            assertTrue(report.findings.any { it.kind == KWebElectronInventoryFindingKind.DYNAMIC_EXECUTION && it.expression == "eval(...)" && it.blocking })
+            assertTrue(report.findings.any { it.kind == KWebElectronInventoryFindingKind.DYNAMIC_EXECUTION && it.expression.startsWith("require") && it.blocking })
+            assertTrue(report.findings.any { it.kind == KWebElectronInventoryFindingKind.ELECTRON_IMPORT && it.expression.contains("export") && it.blocking })
+            assertTrue(report.findings.any { it.kind == KWebElectronInventoryFindingKind.LIFECYCLE_EVENT && it.expression == "app.ready" })
+            assertTrue(report.findings.any { it.kind == KWebElectronInventoryFindingKind.LIFECYCLE_EVENT && it.expression == "app.window-all-closed" })
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
     private fun manifest(): KWebElectronManifest = KWebElectronMigrationJson.decode(
         """
         {
-          "schemaVersion":1,
+          "schemaVersion":2,
           "applicationId":"io.github.kwebshell.fixture",
           "rendererGlobal":"desktop",
           "rendererRoot":"renderer",
@@ -86,7 +112,7 @@ class KWebElectronInventoryContractTest {
             {"module":"electron","symbol":"contextBridge","status":"ADAPTER","matrixId":"context-bridge"},
             {"module":"electron","symbol":"ipcRenderer","status":"ADAPTER","matrixId":"ipc-request"}
           ],
-          "channels":[{"name":"app.getPath","schemaVersion":1,"requestType":"ElectronPathName","responseType":"string","serviceId":"app-paths","serviceVersion":"1.0.0","operationId":"resolve","status":"ADAPTER","adapter":"APP_PATHS_GET_PATH","policy":{"rendererGrant":"native.app-paths.resolve","requiresUserGesture":false,"requiresOsConsent":false}}],
+          "channels":[{"name":"app.getPath","schemaVersion":2,"requestType":"ElectronPathName","responseType":"string","serviceId":"app-paths","serviceVersion":"1.0.0","operationId":"resolve","status":"ADAPTER","adapter":"APP_PATHS_GET_PATH","policy":{"rendererGrant":"native.app-paths.resolve","requiresUserGesture":false,"requiresOsConsent":false}}],
           "preloadMethods":[{"name":"getPath","channel":"app.getPath","parameterName":"name","parameterType":"ElectronPathName","returnType":"Promise<string>","status":"ADAPTER","adapter":"APP_PATHS_GET_PATH"}],
           "requiredServices":[{"id":"app-paths","version":"1.0.0"}]
         }

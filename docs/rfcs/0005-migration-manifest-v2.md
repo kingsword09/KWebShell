@@ -1,6 +1,6 @@
 # RFC 0005: Electron migration manifest v2, inventory, and codemod plan
 
-- Status: Proposed
+- Status: Implementing
 - Priority: P0
 - Owners: `kweb-electron-migration`
 - Depends on: RFC 0001, RFC 0004

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "applicationId": "io.github.kwebshell.migration.fixture",
   "rendererGlobal": "desktop",
   "rendererRoot": "renderer",
@@ -13,7 +13,7 @@
   "channels": [
     {
       "name": "app.getPath",
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "requestType": "ElectronPathName",
       "responseType": "string",
       "serviceId": "app-paths",
@@ -49,5 +49,19 @@
   ],
   "requiredServices": [
     { "id": "app-paths", "version": "1.0.0" }
+  ],
+  "windows": [
+    {
+      "id": "main",
+      "title": "KWebShell Migration Fixture",
+      "isMainWindow": true,
+      "profile": "default"
+    }
+  ],
+  "profiles": [
+    {
+      "id": "default",
+      "isPersistent": true
+    }
   ]
 }

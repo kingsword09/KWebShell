@@ -32,6 +32,23 @@ public object KWebElectronMigrationCli {
 
     private fun run(arguments: Array<String>) {
         when (arguments.firstOrNull()) {
+            "migrate" -> {
+                require(arguments.size == 3) { "Usage: migrate <input-manifest.json> <output-manifest.json>" }
+                val inputPath = Path.of(arguments[1]).toAbsolutePath().normalize()
+                val outputPath = Path.of(arguments[2]).toAbsolutePath().normalize()
+                val jsonText = Files.readString(inputPath)
+                val migrated = KWebElectronManifestMigrator.migrate(jsonText)
+                writeJson(migrated, outputPath)
+                println("Electron migration manifest migrated to v2.")
+            }
+            "merge-reports" -> {
+                require(arguments.size >= 4) { "Usage: merge-reports <output.json> <report1.json> <report2.json> [report3.json ...]" }
+                val outputPath = Path.of(arguments[1]).toAbsolutePath().normalize()
+                val inputReports = arguments.drop(2).map { readJson<KWebElectronCompatibilityReport>(Path.of(it)) }
+                val merged = KWebElectronCompatibilityReportBuilder().merge(inputReports)
+                writeJson(merged, outputPath)
+                println("Electron migration reports merged: ${merged.migrationStatus}")
+            }
             "manifest" -> {
                 require(arguments.size == 2) { "Usage: manifest <manifest.json>" }
                 loadManifest(Path.of(arguments[1]))

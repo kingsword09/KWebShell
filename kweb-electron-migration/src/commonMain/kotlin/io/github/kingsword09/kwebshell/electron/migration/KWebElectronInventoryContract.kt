@@ -8,17 +8,22 @@ public enum class KWebElectronInventoryFindingKind {
     ELECTRON_CHANNEL,
     PRELOAD_GLOBAL,
     PACKAGE_DEPENDENCY,
+    DYNAMIC_EXECUTION,
+    NATIVE_ADDON,
+    LIFECYCLE_EVENT,
 }
 
 @Serializable
 public data class KWebElectronInventoryFinding(
     public val path: String,
     public val line: Int,
+    public val column: Int = 1,
     public val kind: KWebElectronInventoryFindingKind,
     public val expression: String,
-    public val matrixId: String?,
-    public val status: KWebElectronMappingStatus?,
+    public val matrixId: String? = null,
+    public val status: KWebElectronMappingStatus? = null,
     public val blocking: Boolean,
+    public val detail: String? = null,
 )
 
 @Serializable
@@ -27,6 +32,7 @@ public data class KWebElectronInventoryReport(
     public val root: String,
     public val filesScanned: Int,
     public val findings: List<KWebElectronInventoryFinding>,
+    public val lockfileSha256: String? = null,
 ) {
     public val blockingFindings: List<KWebElectronInventoryFinding>
         get() = findings.filter { it.blocking }
@@ -35,6 +41,6 @@ public data class KWebElectronInventoryReport(
         get() = blockingFindings.isEmpty()
 
     public companion object {
-        public const val CURRENT_SCHEMA_VERSION: Int = 1
+        public const val CURRENT_SCHEMA_VERSION: Int = 2
     }
 }

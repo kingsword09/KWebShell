@@ -83,6 +83,38 @@ public data class KWebElectronStream(
 )
 
 @Serializable
+public data class KWebElectronWindowDefinition(
+    public val id: String,
+    public val title: String,
+    public val isMainWindow: Boolean = false,
+    public val profile: String = "default",
+    public val isModal: Boolean = false,
+    public val parentWindowId: String? = null,
+)
+
+@Serializable
+public data class KWebElectronProfileDefinition(
+    public val id: String,
+    public val storagePath: String? = null,
+    public val isPersistent: Boolean = true,
+)
+
+@Serializable
+public data class KWebElectronLifecycleEvent(
+    public val event: String,
+    public val hostTarget: String,
+    public val status: KWebElectronMappingStatus,
+)
+
+@Serializable
+public data class KWebElectronNodeDependency(
+    public val name: String,
+    public val kind: String, // "builtin" | "native-addon" | "package"
+    public val status: KWebElectronMappingStatus,
+    public val replacementServiceId: String? = null,
+)
+
+@Serializable
 public data class KWebElectronManifest(
     public val schemaVersion: Int,
     public val applicationId: String,
@@ -102,6 +134,10 @@ public data class KWebElectronManifest(
     public val preloadMethods: List<KWebElectronPreloadMethod>,
     public val streams: List<KWebElectronStream> = emptyList(),
     public val requiredServices: List<KWebElectronServiceRequirement>,
+    public val windows: List<KWebElectronWindowDefinition> = emptyList(),
+    public val profiles: List<KWebElectronProfileDefinition> = emptyList(),
+    public val lifecycleEvents: List<KWebElectronLifecycleEvent> = emptyList(),
+    public val nodeDependencies: List<KWebElectronNodeDependency> = emptyList(),
 )
 
 public class KWebElectronMigrationException(
@@ -150,8 +186,78 @@ public object KWebElectronMigrationJson {
     }
 }
 
+@Serializable
+private data class KWebElectronManifestV1(
+    val schemaVersion: Int,
+    val applicationId: String,
+    val rendererGlobal: String,
+    val rendererRoot: String,
+    val rendererEntry: String,
+    val rendererSha256: String,
+    val electronFixtureMajor: Int,
+    val electronImports: List<KWebElectronImport>,
+    val channels: List<KWebElectronChannel>,
+    val preloadMethods: List<KWebElectronPreloadMethod>,
+    val streams: List<KWebElectronStream> = emptyList(),
+    val requiredServices: List<KWebElectronServiceRequirement>,
+)
+
+public object KWebElectronManifestMigrator {
+    public fun migrate(v1Json: String): KWebElectronManifest {
+        val v1 = try {
+            KWebElectronMigrationJson.format.decodeFromString<KWebElectronManifestV1>(v1Json)
+        } catch (error: Throwable) {
+            throw KWebElectronMigrationException(
+                code = KWebElectronMigrationErrorCode.MANIFEST_INVALID_JSON,
+                message = "The input manifest is not valid JSON.",
+                cause = error,
+            )
+        }
+        if (v1.schemaVersion != 1) {
+            throw KWebElectronMigrationException(
+                code = KWebElectronMigrationErrorCode.MANIFEST_SCHEMA_UNSUPPORTED,
+                details = mapOf("schemaVersion" to v1.schemaVersion.toString()),
+                message = "Only migration manifest v1 can be migrated by this tool.",
+            )
+        }
+        val v2 = KWebElectronManifest(
+            schemaVersion = 2,
+            applicationId = v1.applicationId,
+            rendererGlobal = v1.rendererGlobal,
+            rendererRoot = v1.rendererRoot,
+            rendererEntry = v1.rendererEntry,
+            rendererSha256 = v1.rendererSha256,
+            electronFixtureMajor = v1.electronFixtureMajor,
+            electronImports = v1.electronImports,
+            channels = v1.channels.map { it.copy(schemaVersion = 2) },
+            preloadMethods = v1.preloadMethods,
+            streams = v1.streams,
+            requiredServices = v1.requiredServices,
+            windows = listOf(
+                KWebElectronWindowDefinition(
+                    id = "main",
+                    title = v1.applicationId,
+                    isMainWindow = true,
+                    profile = "default",
+                ),
+            ),
+            profiles = listOf(
+                KWebElectronProfileDefinition(
+                    id = "default",
+                    storagePath = null,
+                    isPersistent = true,
+                ),
+            ),
+            lifecycleEvents = emptyList(),
+            nodeDependencies = emptyList(),
+        )
+        KWebElectronManifestValidator.validate(v2)
+        return v2
+    }
+}
+
 public object KWebElectronManifestValidator {
-    private const val CURRENT_SCHEMA_VERSION: Int = 1
+    public const val CURRENT_SCHEMA_VERSION: Int = 2
     private const val APP_PATHS_SERVICE: String = "app-paths"
     private const val APP_PATHS_VERSION: String = "1.0.0"
     private const val APP_PATHS_OPERATION: String = "resolve"
@@ -362,6 +468,31 @@ public object KWebElectronManifestValidator {
                 ?: invalid("streams[$index]", message = "A stream adapter must declare its policy.")
             if (policy.rendererGrant == null || policy.requiresUserGesture || policy.requiresOsConsent) {
                 invalid("streams[$index]", message = "A named application stream must declare a renderer grant and explicit native policy.")
+            }
+        }
+
+        requireUnique(manifest.windows.map { it.id }, "window")
+        requireUnique(manifest.profiles.map { it.id }, "profile")
+
+        val profileIds = manifest.profiles.map { it.id }.toSet()
+        manifest.windows.forEachIndexed { index, window ->
+            if (!IDENTIFIER.matches(window.id)) {
+                invalid("windows[$index].id", window.id, message = "Window id is invalid.")
+            }
+            if (manifest.profiles.isNotEmpty() && window.profile !in profileIds) {
+                invalid("windows[$index].profile", window.profile, message = "Window references undeclared profile '${window.profile}'.")
+            }
+        }
+
+        manifest.profiles.forEachIndexed { index, profile ->
+            if (!IDENTIFIER.matches(profile.id)) {
+                invalid("profiles[$index].id", profile.id, message = "Profile id is invalid.")
+            }
+        }
+
+        manifest.nodeDependencies.forEachIndexed { index, dep ->
+            if (dep.name.isBlank()) {
+                invalid("nodeDependencies[$index].name", message = "Node dependency name is required.")
             }
         }
     }

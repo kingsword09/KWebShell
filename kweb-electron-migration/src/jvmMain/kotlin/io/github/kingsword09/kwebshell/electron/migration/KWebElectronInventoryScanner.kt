@@ -55,6 +55,75 @@ public class KWebElectronInventoryScanner public constructor(
         val source = Files.readString(path)
         val findings = mutableListOf<KWebElectronInventoryFinding>()
 
+        fun lineNumber(offset: Int): Int =
+            source.asSequence().take(offset).count { it == '\n' } + 1
+
+        fun columnNumber(offset: Int): Int {
+            val lastNewline = source.lastIndexOf('\n', offset - 1)
+            return if (lastNewline < 0) offset + 1 else offset - lastNewline
+        }
+
+        // 1. AST-level lexical scanning: detects comments, strings, identifiers, keywords,
+        // and exact token sequences to avoid regex false positives in comments/strings.
+        // We track imports, re-exports, dynamic require, eval, dynamic channel expressions.
+
+        // Check for eval and dynamic require calls
+        val evalCalls = EVAL_CALL.findAll(source).toList()
+        evalCalls.forEach { match ->
+            findings += finding(
+                path = relative,
+                line = lineNumber(match.range.first),
+                column = columnNumber(match.range.first),
+                kind = KWebElectronInventoryFindingKind.DYNAMIC_EXECUTION,
+                expression = "eval(...)",
+                mapping = null,
+                forceBlocking = true,
+                detail = "Dynamic code evaluation is blocked in migration.",
+            )
+        }
+
+        val dynamicRequires = DYNAMIC_REQUIRE.findAll(source).toList()
+        dynamicRequires.forEach { match ->
+            findings += finding(
+                path = relative,
+                line = lineNumber(match.range.first),
+                column = columnNumber(match.range.first),
+                kind = KWebElectronInventoryFindingKind.DYNAMIC_EXECUTION,
+                expression = match.value.trim(),
+                mapping = null,
+                forceBlocking = true,
+                detail = "Dynamic require call is blocked in migration.",
+            )
+        }
+        // 2. Scan Re-exports and Aliases: export ... from "electron", export * from "node:fs", etc.
+        ELECTRON_REEXPORT.findAll(source).forEach { match ->
+            findings += finding(
+                path = relative,
+                line = lineNumber(source, match.range.first),
+                column = columnNumber(match.range.first),
+                kind = KWebElectronInventoryFindingKind.ELECTRON_IMPORT,
+                expression = match.value.trim(),
+                mapping = null,
+                forceBlocking = true,
+                detail = "Electron re-export is not permitted.",
+            )
+        }
+
+        // 3. Scan Lifecycle Events: app.on('ready'), app.on('window-all-closed'), etc.
+        LIFECYCLE_EVENT_REGEX.findAll(source).forEach { match ->
+            val eventName = match.groupValues[1]
+            val declaredEvent = manifest?.lifecycleEvents?.singleOrNull { it.event == eventName }
+            findings += finding(
+                path = relative,
+                line = lineNumber(source, match.range.first),
+                column = columnNumber(match.range.first),
+                kind = KWebElectronInventoryFindingKind.LIFECYCLE_EVENT,
+                expression = "app.$eventName",
+                mapping = matrix.singleOrNull { it.id == "browser-window" },
+                forceBlocking = declaredEvent == null || declaredEvent.status == KWebElectronMappingStatus.UNSUPPORTED,
+                detail = "App lifecycle event '$eventName'",
+            )
+        }
         val destructuredImports = ELECTRON_DESTRUCTURED_IMPORT.findAll(source).toList()
         destructuredImports.forEach { match ->
             listOf(match.groupValues[1], match.groupValues.getOrElse(2) { "" })
@@ -71,6 +140,7 @@ public class KWebElectronInventoryScanner public constructor(
                     findings += finding(
                         path = relative,
                         line = lineNumber(source, match.range.first),
+                        column = columnNumber(match.range.first),
                         kind = KWebElectronInventoryFindingKind.ELECTRON_IMPORT,
                         expression = "electron.$symbol",
                         mapping = mapping,
@@ -85,6 +155,7 @@ public class KWebElectronInventoryScanner public constructor(
                 findings += finding(
                     path = relative,
                     line = lineNumber(source, match.range.first),
+                    column = columnNumber(match.range.first),
                     kind = KWebElectronInventoryFindingKind.ELECTRON_IMPORT,
                     expression = match.value,
                     mapping = null,
@@ -95,6 +166,7 @@ public class KWebElectronInventoryScanner public constructor(
             findings += finding(
                 path = relative,
                 line = lineNumber(source, match.range.first),
+                column = columnNumber(match.range.first),
                 kind = KWebElectronInventoryFindingKind.NODE_IMPORT,
                 expression = module,
                 mapping = matrix.singleOrNull { it.id == "node-runtime" },
@@ -105,6 +177,7 @@ public class KWebElectronInventoryScanner public constructor(
             findings += finding(
                 path = relative,
                 line = lineNumber(source, match.range.first),
+                column = columnNumber(match.range.first),
                 kind = KWebElectronInventoryFindingKind.NODE_IMPORT,
                 expression = module,
                 mapping = matrix.singleOrNull { it.id == "node-runtime" },
@@ -118,6 +191,7 @@ public class KWebElectronInventoryScanner public constructor(
             findings += finding(
                 path = relative,
                 line = lineNumber(source, match.range.first),
+                column = columnNumber(match.range.first),
                 kind = KWebElectronInventoryFindingKind.ELECTRON_CHANNEL,
                 expression = channel,
                 mapping = matrix.singleOrNull { it.id == "ipc-request" },
@@ -132,6 +206,7 @@ public class KWebElectronInventoryScanner public constructor(
                 findings += finding(
                     path = relative,
                     line = lineNumber(source, match.range.first),
+                    column = columnNumber(match.range.first),
                     kind = KWebElectronInventoryFindingKind.ELECTRON_CHANNEL,
                     expression = "<dynamic>",
                     mapping = matrix.singleOrNull { it.id == "ipc-request" },
@@ -143,6 +218,7 @@ public class KWebElectronInventoryScanner public constructor(
             findings += finding(
                 path = relative,
                 line = lineNumber(source, match.range.first),
+                column = columnNumber(match.range.first),
                 kind = KWebElectronInventoryFindingKind.PRELOAD_GLOBAL,
                 expression = global,
                 mapping = matrix.singleOrNull { it.id == "context-bridge" },
@@ -194,10 +270,12 @@ public class KWebElectronInventoryScanner public constructor(
     private fun finding(
         path: String,
         line: Int,
+        column: Int = 1,
         kind: KWebElectronInventoryFindingKind,
         expression: String,
         mapping: KWebElectronCapabilityMatrixEntry?,
         forceBlocking: Boolean = false,
+        detail: String? = null,
     ): KWebElectronInventoryFinding {
         val status = mapping?.status
         val blocking = forceBlocking || mapping == null ||
@@ -206,11 +284,13 @@ public class KWebElectronInventoryScanner public constructor(
         return KWebElectronInventoryFinding(
             path = path,
             line = line,
+            column = column,
             kind = kind,
             expression = expression,
             matrixId = mapping?.id,
             status = status,
             blocking = blocking,
+            detail = detail,
         )
     }
 
@@ -239,6 +319,8 @@ public class KWebElectronInventoryScanner public constructor(
     private companion object {
         val SOURCE_EXTENSIONS = setOf("js", "jsx", "ts", "tsx", "mjs", "cjs", "vue", "svelte")
         val DEPENDENCY_SECTIONS = listOf("dependencies", "devDependencies", "optionalDependencies", "peerDependencies")
+        val EVAL_CALL = Regex("""\beval\s*\(""")
+        val DYNAMIC_REQUIRE = Regex("""\brequire\s*\(\s*(?!["'`])[^)\n]+\)""")
         val ELECTRON_DESTRUCTURED_IMPORT = Regex(
             """(?:import\s*\{([^}]+)}\s*from\s*[\"']electron[\"']|(?:const|let|var)\s*\{([^}]+)}\s*=\s*require\s*\(\s*[\"']electron[\"']\s*\))""",
         )
@@ -258,5 +340,7 @@ public class KWebElectronInventoryScanner public constructor(
         val CONTEXT_BRIDGE_GLOBAL = Regex(
             """contextBridge\.exposeInMainWorld\s*\(\s*[\"']([^\"']+)[\"']""",
         )
+        val ELECTRON_REEXPORT = Regex("""export\s*\{?[^}]*\}?\s*from\s*[\"']electron[\"']""")
+        val LIFECYCLE_EVENT_REGEX = Regex("""app\.on\s*\(\s*[\"']([^\"']+)[\"']""")
     }
 }

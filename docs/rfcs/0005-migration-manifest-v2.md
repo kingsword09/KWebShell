@@ -45,3 +45,15 @@ for schema-declared methods/events.
 
 No Electron main-process runtime, universal preload polyfill, automatic semantic
 rewrite of arbitrary JavaScript, or claim that compilation equals migration.
+
+
+## Implementation verification
+
+Manifest/report v2 enforce explicit renderer profile/origin ownership and closed
+metadata. Inventory uses the separately pinned TypeScript AST API, conservatively
+blocks unresolved packages/native addons and preserves source coordinates.
+Aggregates retain complete entry reports and reject incompatible shared
+contracts. The conformance fixtures cover shadowing, aliases, relative workspace
+re-exports, dynamic execution, dependency evidence, stale inventory, policies,
+nonzero CLI exits and shared generated golden files. The implementation remains
+`Implementing` until its hosted evidence and final packaging gates are green.

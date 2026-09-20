@@ -73,10 +73,23 @@ class KWebElectronPreloadGeneratorTest {
         assertContains(sources.javascript, "bridgeStreams.openDownloadProgress(request, options)")
     }
 
+    @Test
+    fun generatedArtifactsMatchSharedCrossPlatformGoldenBytes() {
+        val root = java.nio.file.Path.of("kweb-electron-migration/src/jvmTest/resources")
+        val fixture = KWebElectronMigrationJson.decode(java.nio.file.Files.readString(root.resolve("migration-fixture/migration-manifest.json")))
+        val sources = KWebElectronPreloadGenerator().generate(fixture)
+        mapOf("KWebElectronPreload.ts" to sources.typescript, "KWebElectronPreload.d.ts" to sources.declarations, "KWebElectronPreload.js" to sources.javascript, "KWebElectronHostChecklist.md" to sources.checklist).forEach { (name, actual) ->
+            assertEquals(java.nio.file.Files.readString(root.resolve("migration-golden/$name")), actual, name)
+        }
+    }
+
     private fun manifest(): KWebElectronManifest = KWebElectronMigrationJson.decode(
         """
         {
           "schemaVersion":2,
+          "rendererOrigin":"app://fixture",
+          "rendererProfile":"default",
+          "profiles":[{"id":"default","storagePath":"profiles/default","isPersistent":true}],
           "applicationId":"io.github.kwebshell.fixture",
           "rendererGlobal":"desktop",
           "rendererRoot":"renderer",

@@ -107,9 +107,16 @@ public data class KWebElectronLifecycleEvent(
 )
 
 @Serializable
+public enum class KWebElectronDependencyKind {
+    @SerialName("builtin") BUILTIN,
+    @SerialName("native-addon") NATIVE_ADDON,
+    @SerialName("package") PACKAGE,
+}
+
+@Serializable
 public data class KWebElectronNodeDependency(
     public val name: String,
-    public val kind: String, // "builtin" | "native-addon" | "package"
+    public val kind: KWebElectronDependencyKind,
     public val status: KWebElectronMappingStatus,
     public val replacementServiceId: String? = null,
 )
@@ -119,6 +126,8 @@ public data class KWebElectronManifest(
     public val schemaVersion: Int,
     public val applicationId: String,
     public val rendererGlobal: String,
+    public val rendererOrigin: String,
+    public val rendererProfile: String,
     public val rendererRoot: String,
     public val rendererEntry: String,
     public val rendererSha256: String,
@@ -154,6 +163,8 @@ public object KWebElectronMigrationErrorCode {
     public const val CHANNEL_UNDECLARED: String = "migration.channel.undeclared"
     public const val SCHEMA_INCOMPATIBLE: String = "migration.schema.incompatible"
     public const val MAPPING_UNRESOLVED: String = "migration.mapping.unresolved"
+    public const val REPORT_CONFLICT: String = "migration.report.conflict"
+    public const val PARSER_UNAVAILABLE: String = "migration.parser.unavailable"
     public const val INVENTORY_BLOCKED: String = "migration.inventory.blocked"
 }
 
@@ -203,10 +214,10 @@ private data class KWebElectronManifestV1(
 )
 
 public object KWebElectronManifestMigrator {
-    public fun migrate(v1Json: String): KWebElectronManifest {
+    public fun migrate(v1Json: String, rendererOrigin: String): KWebElectronManifest {
         val v1 = try {
             KWebElectronMigrationJson.format.decodeFromString<KWebElectronManifestV1>(v1Json)
-        } catch (error: Throwable) {
+        } catch (error: SerializationException) {
             throw KWebElectronMigrationException(
                 code = KWebElectronMigrationErrorCode.MANIFEST_INVALID_JSON,
                 message = "The input manifest is not valid JSON.",
@@ -220,10 +231,15 @@ public object KWebElectronManifestMigrator {
                 message = "Only migration manifest v1 can be migrated by this tool.",
             )
         }
+        if (v1.channels.any { it.schemaVersion != 1 }) {
+            throw KWebElectronMigrationException(KWebElectronMigrationErrorCode.SCHEMA_INCOMPATIBLE, "A v1 manifest must contain v1 channel contracts; unknown revisions cannot be migrated.")
+        }
         val v2 = KWebElectronManifest(
             schemaVersion = 2,
             applicationId = v1.applicationId,
             rendererGlobal = v1.rendererGlobal,
+            rendererOrigin = rendererOrigin,
+            rendererProfile = "default",
             rendererRoot = v1.rendererRoot,
             rendererEntry = v1.rendererEntry,
             rendererSha256 = v1.rendererSha256,
@@ -244,7 +260,7 @@ public object KWebElectronManifestMigrator {
             profiles = listOf(
                 KWebElectronProfileDefinition(
                     id = "default",
-                    storagePath = null,
+                    storagePath = "profiles/default",
                     isPersistent = true,
                 ),
             ),
@@ -310,6 +326,9 @@ public object KWebElectronManifestValidator {
         if (!LOWER_IDENTIFIER.matches(manifest.rendererGlobal) || manifest.rendererGlobal in RESERVED_GLOBALS) {
             invalid("rendererGlobal", manifest.rendererGlobal, message = "The renderer global is not a safe identifier.")
         }
+        if (!Regex("(?:https?|app)://[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[1-9][0-9]{0,4})?").matches(manifest.rendererOrigin) ||
+            manifest.rendererOrigin.substringAfterLast(':', "").toIntOrNull()?.let { it > 65535 } == true
+        ) invalid("rendererOrigin", message = "Declare one exact canonical http, https or app origin without a path, wildcard or credentials.")
         validateRelativePath(manifest.rendererRoot, "rendererRoot")
         validateRelativePath(manifest.rendererEntry, "rendererEntry")
         if (!DIGEST.matches(manifest.rendererSha256)) {
@@ -473,28 +492,56 @@ public object KWebElectronManifestValidator {
 
         requireUnique(manifest.windows.map { it.id }, "window")
         requireUnique(manifest.profiles.map { it.id }, "profile")
-
-        val profileIds = manifest.profiles.map { it.id }.toSet()
+        requireUnique(manifest.lifecycleEvents.map { it.event }, "lifecycle event")
+        requireUnique(manifest.nodeDependencies.map { it.name }, "Node dependency")
+        val profiles = manifest.profiles.associateBy { it.id }
+        if (manifest.rendererProfile !in profiles) invalid("rendererProfile", message = "The renderer must reference an explicitly declared profile.")
+        val windows = manifest.windows.associateBy { it.id }
+        if (manifest.windows.isNotEmpty() && manifest.windows.count { it.isMainWindow } != 1) invalid("windows", message = "Declare exactly one main window.")
         manifest.windows.forEachIndexed { index, window ->
-            if (!IDENTIFIER.matches(window.id)) {
-                invalid("windows[$index].id", window.id, message = "Window id is invalid.")
-            }
-            if (manifest.profiles.isNotEmpty() && window.profile !in profileIds) {
-                invalid("windows[$index].profile", window.profile, message = "Window references undeclared profile '${window.profile}'.")
+            if (!IDENTIFIER.matches(window.id) || window.title.isBlank()) invalid("windows[$index]", message = "Window id and title must be valid.")
+            if (window.profile !in profiles) invalid("windows[$index].profile", message = "Window references an undeclared profile.")
+            if (window.isModal && window.parentWindowId == null) invalid("windows[$index].parentWindowId", message = "A modal window must declare its parent.")
+            if (window.isMainWindow && (window.parentWindowId != null || window.isModal)) invalid("windows[$index]", message = "The main window must be a non-modal root.")
+            val visited = mutableSetOf(window.id)
+            var parent = window.parentWindowId
+            while (parent != null) {
+                if (!visited.add(parent)) invalid("windows[$index].parentWindowId", message = "Window ownership must be acyclic.")
+                val owner = windows[parent] ?: invalid("windows[$index].parentWindowId", message = "Window parent is undeclared.")
+                parent = owner.parentWindowId
             }
         }
-
         manifest.profiles.forEachIndexed { index, profile ->
-            if (!IDENTIFIER.matches(profile.id)) {
-                invalid("profiles[$index].id", profile.id, message = "Profile id is invalid.")
-            }
+            if (!IDENTIFIER.matches(profile.id)) invalid("profiles[$index].id", message = "Profile id is invalid.")
+            if (profile.isPersistent) validateRelativePath(profile.storagePath ?: invalid("profiles[$index].storagePath", message = "A persistent profile requires an explicit storage directory."), "profiles[$index].storagePath")
+            else if (profile.storagePath != null) invalid("profiles[$index].storagePath", message = "An in-memory profile cannot declare persistent storage.")
         }
-
+        val storage = manifest.profiles.mapNotNull { it.storagePath?.lowercase() }
+        storage.forEachIndexed { index, path ->
+            if (storage.drop(index + 1).any { it == path || it.startsWith("$path/") || path.startsWith("$it/") }) invalid("profiles", message = "Profile storage directories must be isolated on every target.")
+        }
+        manifest.lifecycleEvents.forEachIndexed { index, event ->
+            if (!Regex("[a-z][a-z-]*").matches(event.event) || event.hostTarget.isBlank()) invalid("lifecycleEvents[$index]", message = "Lifecycle events require a stable name and an explicit host target.")
+            if (event.status !in setOf(KWebElectronMappingStatus.REWRITE, KWebElectronMappingStatus.UNSUPPORTED)) invalid("lifecycleEvents[$index].status", message = "Application lifecycle adapters are not implemented; declare REWRITE or UNSUPPORTED.")
+        }
         manifest.nodeDependencies.forEachIndexed { index, dep ->
-            if (dep.name.isBlank()) {
-                invalid("nodeDependencies[$index].name", message = "Node dependency name is required.")
-            }
+            if (dep.name.isBlank()) invalid("nodeDependencies[$index].name", message = "Node dependency name is required.")
+            if (dep.status !in setOf(KWebElectronMappingStatus.REWRITE, KWebElectronMappingStatus.UNSUPPORTED)) invalid("nodeDependencies[$index].status", message = "Node/native dependencies have no published automatic adapter.")
+            if (dep.replacementServiceId != null && dep.replacementServiceId !in services) invalid("nodeDependencies[$index].replacementServiceId", message = "A proposed replacement must reference a declared versioned service.")
         }
+    }
+
+    public fun blockingReasons(manifest: KWebElectronManifest): List<String> {
+        validate(manifest)
+        return buildList {
+            manifest.electronImports.filter { it.status in setOf(KWebElectronMappingStatus.REWRITE, KWebElectronMappingStatus.UNSUPPORTED) }.forEach { add("manifest-import:${it.module}#${it.symbol}:${it.status}") }
+            manifest.channels.filter { it.status != KWebElectronMappingStatus.ADAPTER }.forEach { add("manifest-channel:${it.name}:${it.status}") }
+            manifest.preloadMethods.filter { it.status != KWebElectronMappingStatus.ADAPTER }.forEach { add("manifest-preload:${it.name}:${it.status}") }
+            manifest.lifecycleEvents.forEach { add("manifest-lifecycle:${it.event}:${it.status}") }
+            manifest.nodeDependencies.forEach { add("manifest-dependency:${it.name}:${it.status}") }
+            manifest.windows.filter { it.isModal || it.parentWindowId != null }.forEach { add("manifest-window-hierarchy:${it.id}:rfc-0007-unimplemented") }
+            manifest.profiles.filter { !it.isPersistent }.forEach { add("manifest-profile:${it.id}:ephemeral-unimplemented") }
+        }.sorted()
     }
 
     private fun validateMapping(

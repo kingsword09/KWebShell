@@ -1885,6 +1885,38 @@ Implementation evidence as of 2026-09-12 (RFC 0003):
   requires every ADAPTER channel to declare grant, gesture, and consent policy
   before generation.
 
+### RFC 0005 repair objective: trustworthy migration inventory and packaging evidence
+
+Complete the migration-manifest v2 vertical slice before treating its reports as
+packaging approval. Acceptance criteria:
+
+1. A pinned TypeScript parser inventories ESM/CommonJS, lexical aliases and
+   re-exports, preload exports, IPC direction, computed imports/calls, Node
+   built-ins, package metadata and native addons with exact source coordinates.
+   Comments and strings are not executable code; unresolved analysis is blocking.
+2. V2 validates explicit window/profile references, hierarchy and storage
+   isolation, lifecycle and dependency mappings, and renderer-origin policy.
+   Standalone v1 migration rejects invalid old revisions and has stable output.
+3. Every unsupported or unclassified declaration blocks generation/reporting.
+   Generated facades and host checklists have checked-in golden bytes; the same
+   artifacts are compared on each hosted target.
+4. Reports bind application sources, lockfiles, manifest, generated artifacts,
+   inventory, RFC evidence, Electron major, services and pinned CEF artifacts.
+   Merging retains complete entry reports and policies, rejects shared-contract
+   conflicts and returns a nonzero CLI exit for any blocked entry.
+5. Runtime/unit/native verification and checked-in evidence verification are
+   separate CI stages. Fresh evidence is recorded only after all real hosted
+   tests pass, then strict governance verifies the recorded artifacts. No stale
+   digest is rewritten by hand and no actual test failure can enable recording.
+6. The public tooling documentation and migration matrix describe the delivered
+   surface and explicit Node/TypeScript tooling prerequisites. Run unit, CLI,
+   JavaScript/TypeScript, packaging and hosted CEF gates before merge; retain a
+   blocking platform defect if any hosted target cannot pass.
+
+Breaking changes: report aggregation uses a separate versioned envelope, v2
+requires explicit renderer policy and profile ownership, and runtime report
+creation consumes provenance files rather than unverified version strings.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.

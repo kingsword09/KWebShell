@@ -28,6 +28,7 @@ class KWebElectronMigrationCliTest {
             )
             val process = ProcessBuilder(
                 java.toString(),
+                "-Dkweb.migration.typescript=${System.getProperty("kweb.migration.typescript")}",
                 "-cp", System.getProperty("java.class.path"),
                 "io.github.kingsword09.kwebshell.electron.migration.KWebElectronMigrationCli",
                 "inventory", root.toString(), manifestPath.toString(), output.toString(),
@@ -47,6 +48,9 @@ class KWebElectronMigrationCliTest {
     private fun manifestJson(): String = """
         {
           "schemaVersion":2,
+          "rendererOrigin":"app://fixture",
+          "rendererProfile":"default",
+          "profiles":[{"id":"default","storagePath":"profiles/default","isPersistent":true}],
           "applicationId":"io.github.kwebshell.fixture",
           "rendererGlobal":"desktop",
           "rendererRoot":"renderer",

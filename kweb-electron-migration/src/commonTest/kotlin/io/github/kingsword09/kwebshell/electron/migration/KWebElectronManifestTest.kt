@@ -108,16 +108,44 @@ class KWebElectronManifestTest {
               "requiredServices": [{"id":"app-paths","version":"1.0.0"}]
             }
         """.trimIndent()
-        val migrated = KWebElectronManifestMigrator.migrate(v1)
+        val migrated = KWebElectronManifestMigrator.migrate(v1, "app://fixture")
+        assertEquals(KWebElectronMigrationJson.encode(migrated), KWebElectronMigrationJson.encode(KWebElectronManifestMigrator.migrate(v1, "app://fixture")))
+        val badRevision = v1.replace("\"schemaVersion\":1,\"requestType\"", "\"schemaVersion\":999,\"requestType\"")
+        assertFailsWith<KWebElectronMigrationException> { KWebElectronManifestMigrator.migrate(badRevision, "app://fixture") }
         assertEquals(2, migrated.schemaVersion)
         assertEquals("main", migrated.windows.single().id)
         assertEquals("default", migrated.profiles.single().id)
+    }
+
+    @Test
+    fun invalidV2ReferencesAndDependencyKindsFail() {
+        val base = KWebElectronMigrationJson.decode(MANIFEST)
+        val invalid = listOf(
+            base.copy(windows = listOf(KWebElectronWindowDefinition("main", "Main", profile = "missing"))),
+            base.copy(profiles = listOf(KWebElectronProfileDefinition("default", "profiles/default")), windows = listOf(KWebElectronWindowDefinition("main", "Main", true, "default", true, "ghost"))),
+            base.copy(profiles = listOf(KWebElectronProfileDefinition("a", "shared"), KWebElectronProfileDefinition("b", "shared"))),
+            base.copy(lifecycleEvents = listOf(KWebElectronLifecycleEvent("", "", KWebElectronMappingStatus.DIRECT))),
+            base.copy(nodeDependencies = listOf(KWebElectronNodeDependency("native-addon", KWebElectronDependencyKind.NATIVE_ADDON, KWebElectronMappingStatus.ADAPTER, "missing"))),
+        )
+        invalid.forEach { manifest ->
+            assertFailsWith<KWebElectronMigrationException> { KWebElectronManifestValidator.validate(manifest) }
+        }
+    }
+
+    @Test
+    fun unsupportedNewDeclarationsCannotGenerateReadyFacade() {
+        val base = KWebElectronMigrationJson.decode(MANIFEST)
+        val blocked = base.copy(nodeDependencies = listOf(KWebElectronNodeDependency("better-sqlite3", KWebElectronDependencyKind.NATIVE_ADDON, KWebElectronMappingStatus.UNSUPPORTED)))
+        assertFailsWith<KWebElectronMigrationException> { KWebElectronPreloadGenerator().generate(blocked) }
     }
 
     private companion object {
         val MANIFEST = """
             {
               "schemaVersion": 2,
+          "rendererOrigin":"app://fixture",
+          "rendererProfile":"default",
+          "profiles":[{"id":"default","storagePath":"profiles/default","isPersistent":true}],
               "applicationId": "io.github.kwebshell.fixture",
               "rendererGlobal": "desktop",
               "rendererRoot": "renderer",

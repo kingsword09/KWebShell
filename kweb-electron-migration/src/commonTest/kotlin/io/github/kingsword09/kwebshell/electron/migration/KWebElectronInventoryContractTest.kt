@@ -12,6 +12,8 @@ class KWebElectronInventoryContractTest {
     fun inventoryReportExposesBlockingFindings() {
         val report = KWebElectronInventoryReport(
             schemaVersion = 2,
+            sourceSha256 = "a".repeat(64),
+            lockfileSha256 = "b".repeat(64),
             root = "/tmp/fixture",
             filesScanned = 2,
             findings = listOf(
@@ -102,6 +104,9 @@ class KWebElectronInventoryContractTest {
         """
         {
           "schemaVersion":2,
+          "rendererOrigin":"app://fixture",
+          "rendererProfile":"default",
+          "profiles":[{"id":"default","storagePath":"profiles/default","isPersistent":true}],
           "applicationId":"io.github.kwebshell.fixture",
           "rendererGlobal":"desktop",
           "rendererRoot":"renderer",

@@ -147,3 +147,20 @@ artifacts of the same run's verification jobs:
   `kweb-rfc-governance/build/reports/rfc-governance/` as retained evidence.
 - An RFC moves to `Implemented` only after its records are in the manifest and
   the three hosted jobs are green on the same `main` commit.
+
+
+## Refreshing evidence after contract changes
+
+CI runs `runtimeCheck` on all three hosted targets. This includes real native,
+CEF, packaging and unit tests, including governance `contractTest`. The strict
+checked-in repository-evidence test belongs to the separate governance stage;
+`check` still requires both stages. This allows new evidence to be produced when
+old source digests expire without accepting stale evidence for merge.
+
+The recorder depends on successful runtime verification for every target. RFC
+0001 retains the real governance contract-test XML; RFCs 0002–0004 retain their
+provider, consent and stream outputs. After recording, the aggregation job runs
+full governance tests and checks against the fresh manifest, then uploads the
+manifest and retained artifact tree. Import those artifacts and rerun the strict
+checked-in evidence gate before merge. A native/unit failure prevents recording;
+`always()` is used only to retain diagnostics, never to authorize a support claim.

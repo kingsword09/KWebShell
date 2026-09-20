@@ -179,13 +179,13 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Run complete verification
+      - name: Run runtime, native, unit and packaging verification
         shell: bash
         run: |
           arguments=(
             --no-daemon
             --max-workers=1
-            check
+            runtimeCheck
             "-PcefRoot=$PWD/.cef-ci/source/$CEF_DIRECTORY"
             "-PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}"
           )
@@ -235,15 +235,37 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload RFC governance evidence
+      - name: Upload RFC governance contract-test evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: rfc-governance-${{ matrix.target }}-${{ github.sha }}
-          path: kweb-rfc-governance/build/reports/rfc-governance/
+          path: kweb-rfc-governance/build/test-results/contractTest/
           if-no-files-found: error
           retention-days: 14
 
+
+  governance:
+    name: Verify checked-in RFC evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Check strict governance and repository evidence
+        run: ./gradlew --no-daemon :kweb-rfc-governance:check
+      - name: Retain governance findings
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: checked-in-rfc-governance-${{ github.sha }}
+          path: kweb-rfc-governance/build/reports/rfc-governance/
+          if-no-files-found: error
+          retention-days: 14
 
   rfc-evidence:
     name: Record hosted RFC evidence
@@ -283,6 +305,9 @@ jobs:
       - name: Record hosted RFC evidence
         shell: bash
         run: .github/scripts/aggregate-rfc-evidence.sh
+
+      - name: Verify freshly recorded evidence
+        run: ./gradlew --no-daemon :kweb-rfc-governance:check
 
       - name: Upload merged RFC evidence manifest
         uses: actions/upload-artifact@v6

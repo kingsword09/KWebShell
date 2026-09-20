@@ -31,6 +31,16 @@ tasks.withType<Test>().configureEach {
     systemProperty("kweb.rfc.repository.root", rootProject.layout.projectDirectory.asFile.absolutePath)
 }
 
+// Unit/contract tests run before evidence exists; the complete test task still
+// includes the strict repository-evidence test after hosted recording.
+val contractTest = tasks.register<Test>("contractTest") {
+    group = "verification"
+    description = "Tests governance contracts independently of checked-in evidence freshness."
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform { excludeTags("repository-evidence") }
+}
+
 val rfcCatalogDirectory = rootProject.layout.projectDirectory.dir("docs/rfcs")
 val rfcEvidenceManifest = rootProject.layout.projectDirectory.file("docs/rfcs/evidence/manifest.json")
 val rfcRuntimeIdentity = rootProject.layout.projectDirectory.file("runtime/cef-runtime.json")

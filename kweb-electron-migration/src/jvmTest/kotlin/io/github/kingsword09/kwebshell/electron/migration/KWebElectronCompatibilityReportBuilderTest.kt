@@ -22,6 +22,8 @@ class KWebElectronCompatibilityReportBuilderTest {
             generated.resolve("KWebElectronPreload.js").writeText("generated")
             val inventory = KWebElectronInventoryReport(
                 schemaVersion = 2,
+            sourceSha256 = "a".repeat(64),
+            lockfileSha256 = "b".repeat(64),
                 root = root.toString(),
                 filesScanned = 1,
                 findings = listOf(
@@ -41,7 +43,7 @@ class KWebElectronCompatibilityReportBuilderTest {
                 manifest = manifest,
                 generatedOutput = generated,
                 inventory = inventory,
-                runtime = KWebElectronRuntimeIdentity("151.3.16", "151.0.7922.109", "macos-arm64"),
+                provenance = KWebElectronReportProvenance(java.nio.file.Path.of("runtime/cef-runtime.json"), java.nio.file.Path.of("docs/rfcs/evidence/manifest.json"), java.nio.file.Path.of("docs/rfcs"), "macos-arm64"),
             )
             assertEquals(KWebElectronCompatibilityReport.BLOCKED_STATUS, report.migrationStatus)
             assertTrue(report.blockedReasons.any { it.startsWith("renderer-digest-mismatch") })
@@ -57,7 +59,19 @@ class KWebElectronCompatibilityReportBuilderTest {
         val validDigest1 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         val validDigest2 = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
         val report1 = KWebElectronCompatibilityReport(
-            schemaVersion = 1,
+            schemaVersion = 2,
+            applicationId = "io.github.kwebshell.fixture",
+            entryId = "entry-1",
+            rendererOrigin = "app://fixture",
+            rendererProfile = "default",
+            policies = mapOf("channel:app.getPath" to io.github.kingsword09.kwebshell.electron.migration.KWebElectronChannelPolicy("native.app-paths.resolve", false, false)),
+            sourceSha256 = "a".repeat(64),
+            lockfileSha256 = "b".repeat(64),
+            rfcEvidenceSha256 = "c".repeat(64),
+            rfcCatalogSha256 = "d".repeat(64),
+            runtimeSha256 = "e".repeat(64),
+            runtimeArtifactSha256 = "f".repeat(64),
+            electronFixtureMajor = 44,
             migrationStatus = KWebElectronCompatibilityReport.READY_STATUS,
             blockedReasons = emptyList(),
             rendererSha256 = validDigest1,
@@ -72,7 +86,19 @@ class KWebElectronCompatibilityReportBuilderTest {
             target = "macos-arm64",
         )
         val report2 = KWebElectronCompatibilityReport(
-            schemaVersion = 1,
+            schemaVersion = 2,
+            applicationId = "io.github.kwebshell.fixture",
+            entryId = "entry-2",
+            rendererOrigin = "app://fixture",
+            rendererProfile = "default",
+            policies = mapOf("channel:app.getPath" to io.github.kingsword09.kwebshell.electron.migration.KWebElectronChannelPolicy("native.app-paths.resolve", false, false)),
+            sourceSha256 = "a".repeat(64),
+            lockfileSha256 = "b".repeat(64),
+            rfcEvidenceSha256 = "c".repeat(64),
+            rfcCatalogSha256 = "d".repeat(64),
+            runtimeSha256 = "e".repeat(64),
+            runtimeArtifactSha256 = "f".repeat(64),
+            electronFixtureMajor = 44,
             migrationStatus = KWebElectronCompatibilityReport.BLOCKED_STATUS,
             blockedReasons = listOf("renderer-entry-missing:sub.html"),
             rendererSha256 = validDigest2,
@@ -86,9 +112,15 @@ class KWebElectronCompatibilityReportBuilderTest {
             chromiumVersion = "151.0.7922.109",
             target = "macos-arm64",
         )
+        assertFailsWith<KWebElectronMigrationException> {
+            KWebElectronCompatibilityReportBuilder().merge(listOf(report1, report2.copy(target = "windows-x64")))
+        }
+        assertFailsWith<KWebElectronMigrationException> {
+            KWebElectronCompatibilityReportBuilder().merge(listOf(report1, report2.copy(serviceContractVersions = mapOf("app-paths" to "2.0.0"))))
+        }
         val merged = KWebElectronCompatibilityReportBuilder().merge(listOf(report1, report2))
         assertEquals(KWebElectronCompatibilityReport.BLOCKED_STATUS, merged.migrationStatus)
-        assertEquals(listOf("renderer-entry-missing:sub.html"), merged.blockedReasons)
+        assertEquals(listOf("entry-2:renderer-entry-missing:sub.html"), merged.blockedReasons)
         assertTrue(!merged.migrationReady)
     }
 
@@ -96,7 +128,19 @@ class KWebElectronCompatibilityReportBuilderTest {
     fun blockedReportCannotCarryPerformanceComparison() {
         val validDigest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         val report = KWebElectronCompatibilityReport(
-            schemaVersion = 1,
+            schemaVersion = 2,
+            applicationId = "io.github.kwebshell.fixture",
+            entryId = "entry-3",
+            rendererOrigin = "app://fixture",
+            rendererProfile = "default",
+            policies = mapOf("channel:app.getPath" to io.github.kingsword09.kwebshell.electron.migration.KWebElectronChannelPolicy("native.app-paths.resolve", false, false)),
+            sourceSha256 = "a".repeat(64),
+            lockfileSha256 = "b".repeat(64),
+            rfcEvidenceSha256 = "c".repeat(64),
+            rfcCatalogSha256 = "d".repeat(64),
+            runtimeSha256 = "e".repeat(64),
+            runtimeArtifactSha256 = "f".repeat(64),
+            electronFixtureMajor = 44,
             migrationStatus = KWebElectronCompatibilityReport.BLOCKED_STATUS,
             blockedReasons = listOf("unresolved"),
             rendererSha256 = validDigest,
@@ -119,6 +163,9 @@ class KWebElectronCompatibilityReportBuilderTest {
     private fun manifestJson(): String = """
         {
           "schemaVersion":2,
+          "rendererOrigin":"app://fixture",
+          "rendererProfile":"default",
+          "profiles":[{"id":"default","storagePath":"profiles/default","isPersistent":true}],
           "applicationId":"io.github.kwebshell.fixture",
           "rendererGlobal":"desktop",
           "rendererRoot":"renderer",

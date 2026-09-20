@@ -12,6 +12,18 @@ public data class KWebElectronPerformanceComparison(
 @Serializable
 public data class KWebElectronCompatibilityReport(
     public val schemaVersion: Int,
+    public val applicationId: String,
+    public val entryId: String,
+    public val rendererOrigin: String,
+    public val rendererProfile: String,
+    public val policies: Map<String, KWebElectronChannelPolicy>,
+    public val sourceSha256: String,
+    public val lockfileSha256: String,
+    public val rfcEvidenceSha256: String,
+    public val rfcCatalogSha256: String,
+    public val runtimeSha256: String,
+    public val runtimeArtifactSha256: String,
+    public val electronFixtureMajor: Int,
     public val migrationStatus: String,
     public val blockedReasons: List<String>,
     public val rendererSha256: String,
@@ -30,7 +42,7 @@ public data class KWebElectronCompatibilityReport(
         get() = migrationStatus == READY_STATUS && blockedReasons.isEmpty()
 
     public companion object {
-        public const val CURRENT_SCHEMA_VERSION: Int = 1
+        public const val CURRENT_SCHEMA_VERSION: Int = 2
         public const val READY_STATUS: String = "READY"
         public const val BLOCKED_STATUS: String = "BLOCKED"
     }
@@ -50,6 +62,11 @@ public object KWebElectronCompatibilityReportValidator {
         ) {
             "The Electron compatibility report status is invalid."
         }
+        require(report.applicationId.isNotBlank() && report.entryId.isNotBlank() && report.rendererProfile.isNotBlank()) { "A report must identify its application, entry and profile." }
+        require(Regex("(?:https?|app)://[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[1-9][0-9]{0,4})?").matches(report.rendererOrigin)) { "A report must preserve its exact renderer origin." }
+        require(report.electronFixtureMajor in 1..999) { "The report Electron major is invalid." }
+        require(listOf(report.sourceSha256, report.lockfileSha256, report.rfcEvidenceSha256, report.rfcCatalogSha256, report.runtimeSha256, report.runtimeArtifactSha256).all(DIGEST::matches)) { "The report provenance digests are invalid." }
+        require(report.policies.all { (name, policy) -> name.isNotBlank() && !policy.rendererGrant.isNullOrBlank() }) { "The report must preserve declared privileged policies." }
         require(DIGEST.matches(report.rendererSha256)) { "The report renderer digest is invalid." }
         require(DIGEST.matches(report.manifestSha256)) { "The report manifest digest is invalid." }
         require(DIGEST.matches(report.generatedOutputSha256)) { "The report generated-output digest is invalid." }
@@ -79,4 +96,18 @@ public object KWebElectronCompatibilityReportValidator {
             }
         }
     }
+}
+
+
+/** Aggregate envelopes retain entire entry reports; their individual proofs never get flattened. */
+@Serializable
+public data class KWebElectronAggregateReport(
+    public val schemaVersion: Int,
+    public val migrationStatus: String,
+    public val blockedReasons: List<String>,
+    public val entriesSha256: String,
+    public val entries: List<KWebElectronCompatibilityReport>,
+) {
+    public val migrationReady: Boolean
+        get() = migrationStatus == KWebElectronCompatibilityReport.READY_STATUS && blockedReasons.isEmpty() && entries.all { it.migrationReady }
 }

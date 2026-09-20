@@ -24,6 +24,7 @@ class KWebRfcRepositoryGovernanceTest {
         )
 
     @Test
+    @org.junit.jupiter.api.Tag("repository-evidence")
     fun checkedInCatalogAndManifestAreGoverned() {
         val catalog = KWebRfcCatalog.load(repositoryRoot.resolve("docs/rfcs"))
         assertTrue(catalog.size >= 42, "The RFC program defines 42 RFCs; found ${catalog.size}.")
@@ -71,9 +72,9 @@ class KWebRfcRepositoryGovernanceTest {
             assertEquals(expectedTargets, state.evidenceTargets)
         }
         val rfc0004 = report.rfcs.single { it.rfcId == "0004" }
-        assertEquals(KWebRfcStatus.ACCEPTED.label, rfc0004.declaredStatus)
+        assertEquals(KWebRfcStatus.IMPLEMENTED.label, rfc0004.declaredStatus)
         assertEquals(KWebRfcGovernanceState.READY, rfc0004.state)
-        assertTrue(rfc0004.evidenceTargets.isEmpty())
+        assertEquals(hostedTargets, rfc0004.evidenceTargets)
     }
 
     @Test

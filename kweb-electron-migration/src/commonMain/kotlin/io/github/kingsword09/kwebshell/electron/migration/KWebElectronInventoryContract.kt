@@ -3,6 +3,7 @@ package io.github.kingsword09.kwebshell.electron.migration
 import kotlinx.serialization.Serializable
 
 public enum class KWebElectronInventoryFindingKind {
+    UNCLASSIFIED,
     ELECTRON_IMPORT,
     NODE_IMPORT,
     ELECTRON_CHANNEL,
@@ -32,7 +33,8 @@ public data class KWebElectronInventoryReport(
     public val root: String,
     public val filesScanned: Int,
     public val findings: List<KWebElectronInventoryFinding>,
-    public val lockfileSha256: String? = null,
+    public val sourceSha256: String,
+    public val lockfileSha256: String,
 ) {
     public val blockingFindings: List<KWebElectronInventoryFinding>
         get() = findings.filter { it.blocking }

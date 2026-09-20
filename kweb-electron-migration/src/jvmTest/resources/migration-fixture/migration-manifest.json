@@ -7,8 +7,18 @@
   "rendererSha256": "cefbfa5f8441b596c76bbd38e32afa63beccf3387577fec0af47fba0f78a247a",
   "electronFixtureMajor": 44,
   "electronImports": [
-    { "module": "electron", "symbol": "contextBridge", "status": "ADAPTER", "matrixId": "context-bridge" },
-    { "module": "electron", "symbol": "ipcRenderer", "status": "ADAPTER", "matrixId": "ipc-request" }
+    {
+      "module": "electron",
+      "symbol": "contextBridge",
+      "status": "ADAPTER",
+      "matrixId": "context-bridge"
+    },
+    {
+      "module": "electron",
+      "symbol": "ipcRenderer",
+      "status": "ADAPTER",
+      "matrixId": "ipc-request"
+    }
   ],
   "channels": [
     {
@@ -21,7 +31,11 @@
       "operationId": "resolve",
       "status": "ADAPTER",
       "adapter": "APP_PATHS_GET_PATH",
-      "policy": {"rendererGrant": "native.app-paths.resolve", "requiresUserGesture": false, "requiresOsConsent": false}
+      "policy": {
+        "rendererGrant": "native.app-paths.resolve",
+        "requiresUserGesture": false,
+        "requiresOsConsent": false
+      }
     }
   ],
   "preloadMethods": [
@@ -44,11 +58,18 @@
       "capacity": 32,
       "status": "ADAPTER",
       "adapter": "NAMED_APPLICATION_STREAM",
-      "policy": {"rendererGrant": "native.downloads.progress", "requiresUserGesture": false, "requiresOsConsent": false}
+      "policy": {
+        "rendererGrant": "native.downloads.progress",
+        "requiresUserGesture": false,
+        "requiresOsConsent": false
+      }
     }
   ],
   "requiredServices": [
-    { "id": "app-paths", "version": "1.0.0" }
+    {
+      "id": "app-paths",
+      "version": "1.0.0"
+    }
   ],
   "windows": [
     {
@@ -61,7 +82,10 @@
   "profiles": [
     {
       "id": "default",
-      "isPersistent": true
+      "isPersistent": true,
+      "storagePath": "profiles/default"
     }
-  ]
+  ],
+  "rendererOrigin": "app://migration-fixture",
+  "rendererProfile": "default"
 }

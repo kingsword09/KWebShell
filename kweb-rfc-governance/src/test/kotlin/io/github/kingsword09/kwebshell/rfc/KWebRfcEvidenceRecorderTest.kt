@@ -19,7 +19,19 @@ class KWebRfcEvidenceRecorderTest {
     )
 
     private val compatibilityReport = KWebElectronCompatibilityReport(
-        schemaVersion = 1,
+        schemaVersion = 2,
+            applicationId = "io.github.kwebshell.fixture",
+            entryId = "entry-1",
+            rendererOrigin = "app://fixture",
+            rendererProfile = "default",
+            policies = mapOf("channel:app.getPath" to io.github.kingsword09.kwebshell.electron.migration.KWebElectronChannelPolicy("native.app-paths.resolve", false, false)),
+            sourceSha256 = "a".repeat(64),
+            lockfileSha256 = "b".repeat(64),
+            rfcEvidenceSha256 = "c".repeat(64),
+            rfcCatalogSha256 = "d".repeat(64),
+            runtimeSha256 = "e".repeat(64),
+            runtimeArtifactSha256 = "f".repeat(64),
+            electronFixtureMajor = 37,
         migrationStatus = "READY",
         blockedReasons = emptyList(),
         rendererSha256 = "b".repeat(64),
@@ -70,6 +82,14 @@ class KWebRfcEvidenceRecorderTest {
             bindings,
             temporaryDirectory,
         )
+    }
+
+    @Test
+    fun evidenceCannotOverrideTheReportElectronMajor() {
+        val failure = assertFailsWith<KWebRfcGovernanceException> {
+            record(request(report = compatibilityReport.copy(electronFixtureMajor = 99)))
+        }
+        assertEquals(KWebRfcRecorderErrorCode.REPORT_ELECTRON_MISMATCH, failure.code)
     }
 
     @Test

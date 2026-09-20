@@ -33,7 +33,7 @@ record() {
 for target in macos-arm64 windows-x64 linux-x64; do
   chain="$input"
   specs=(
-    "0001|governance-report|status.json|rfc-governance"
+    "0001|governance-contract-tests|TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml|rfc-governance"
     "0002|provider-lifecycle-report|provider-lifecycle-report.json|provider-lifecycle"
     "0003|dialogs-consent|consent-status.json|native-dialogs"
     "0004|stream-conformance|stream-conformance.json|engine-integration"

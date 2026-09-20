@@ -73,6 +73,15 @@ matches the tested PR head `aa4e8bc2a56d932b766b2c0dc1e2983cc50caf7e`.
 passed all three runtime targets and both evidence checks. The review below
 identifies what those checks actually establish for this RFC.
 
+The later [main run 35511032275](https://github.com/kingsword09/KWebShell/actions/runs/35511032275)
+failed on Windows in `applicationBenchmarkIntegrationTest` with
+`Chromium compositor frame timestamps are not strictly increasing.` Linux,
+macOS and strict governance passed; evidence aggregation was skipped. Retain
+this as an unresolved baseline runtime failure, not a passing whole-repository
+run. The PASS rows below cite the earlier successful, explicitly identified
+runs and assertions; the full-RFC/U1 acceptance remains blocked. This
+Markdown-only review does not change or rerun the benchmark implementation.
+
 ### Implementation contract findings
 
 The current [manifest model][manifest-model] records renderer origin/profile,

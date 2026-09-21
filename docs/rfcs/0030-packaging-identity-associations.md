@@ -153,6 +153,7 @@ the OS registration mechanism.
   uninstall rows were split from this packaging objective and assigned to RFC
   0006. The package still emits and signs the exact declarations required by
   that next objective; no unsupported runtime registration claim is made here.
+- Boundary review revision: `2fcf76d`.
 
 ## Evidence
 

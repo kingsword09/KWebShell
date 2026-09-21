@@ -52,6 +52,32 @@
         "kweb-runtime-pack/src/test/kotlin/io/github/kingsword09/kwebshell/runtime/KWebApplicationPackageTest.kt",
         "runtime/application-manifest.json"
       ]
+    },
+    {
+      "rfcId": "0006",
+      "paths": [
+        ".github/scripts/aggregate-rfc-evidence.sh",
+        ".github/workflows/ci.yml",
+        "DESIGN_PLAN.md",
+        "docs/application-lifecycle.md",
+        "docs/application-package-format.md",
+        "docs/rfcs/0006-application-lifecycle.md",
+        "kweb-cef-native/CMakeLists.txt",
+        "kweb-cef-native/build.gradle.kts",
+        "kweb-cef-native/include/kwebshell/native/application_lifecycle_abi.h",
+        "kweb-cef-native/src/application_lifecycle_abi.cc",
+        "kweb-cef-native/tests/application_lifecycle_abi_contract_tests.cc",
+        "kweb-desktop/src/main/kotlin/io/github/kingsword09/kwebshell/desktop/KWebDesktopEngine.kt",
+        "kweb-desktop/src/test/kotlin/io/github/kingsword09/kwebshell/desktop/internal/NativeEngineIntegrationMain.kt",
+        "kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronApplicationLifecycleContract.kt",
+        "kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronApplicationLifecycleContractTest.kt",
+        "kweb-runtime-pack/src/main/kotlin/io/github/kingsword09/kwebshell/runtime/KWebRuntimePayloadContract.kt",
+        "kweb-service-application-lifecycle/build.gradle.kts",
+        "kweb-service-application-lifecycle/src/commonMain",
+        "kweb-service-application-lifecycle/src/commonTest",
+        "kweb-service-application-lifecycle/src/jvmMain",
+        "kweb-service-application-lifecycle/src/jvmTest"
+      ]
     }
   ]
 }

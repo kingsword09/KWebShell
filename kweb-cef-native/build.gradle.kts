@@ -83,6 +83,14 @@ val interopProbeLibraryFileName = providers.systemProperty("os.name").map { oper
         else -> "libkwebshell_interop_probe.so"
     }
 }
+val applicationLifecycleLibraryFileName = providers.systemProperty("os.name").map { operatingSystem ->
+    when {
+        operatingSystem.lowercase(Locale.ROOT).startsWith("windows") -> "kwebshell_application_lifecycle.dll"
+        operatingSystem.lowercase(Locale.ROOT).startsWith("mac") -> "libkwebshell_application_lifecycle.dylib"
+        operatingSystem.lowercase(Locale.ROOT).startsWith("linux") -> "libkwebshell_application_lifecycle.so"
+        else -> throw GradleException("Unsupported native lifecycle operating system '$operatingSystem'.")
+    }
+}
 val projectArchitecture = providers.systemProperty("os.arch").map { architecture ->
     when (architecture.lowercase(Locale.ROOT)) {
         "x86_64", "amd64" -> "x86_64"
@@ -135,6 +143,9 @@ tasks.register<Exec>("buildNative") {
         directory.file(fileName)
     })
     outputs.file(nativeContractDirectory.zip(interopProbeLibraryFileName) { directory, fileName ->
+        directory.file(fileName)
+    })
+    outputs.file(nativeContractDirectory.zip(applicationLifecycleLibraryFileName) { directory, fileName ->
         directory.file(fileName)
     })
     outputs.file(nativeBuildDirectory.zip(nativeUnitTestExecutable) { directory, executable ->

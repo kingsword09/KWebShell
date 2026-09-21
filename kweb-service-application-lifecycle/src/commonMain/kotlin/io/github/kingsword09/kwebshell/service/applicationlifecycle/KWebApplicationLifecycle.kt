@@ -13,6 +13,7 @@ import io.github.kingsword09.kwebshell.services.KWebServiceVersion
 import io.github.kingsword09.kwebshell.services.KWebServiceVersionRange
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.serialization.Serializable
 
 public enum class KWebApplicationLifecycleState {
     NEW,
@@ -24,6 +25,7 @@ public enum class KWebApplicationLifecycleState {
     FAILED,
 }
 
+@Serializable
 public enum class KWebActivationSource {
     INITIAL_ARGUMENTS,
     PROTOCOL,
@@ -63,11 +65,27 @@ public enum class KWebRelaunchResult {
     FAILED,
 }
 
+public enum class KWebApplicationRegistrationOperation {
+    INSTALL,
+    REMOVE,
+}
+
+public data class KWebApplicationRegistrationReport(
+    public val operation: KWebApplicationRegistrationOperation,
+    public val target: KWebTarget,
+    public val applicationId: String,
+    public val provider: String,
+    public val registered: Boolean,
+    public val observedDigest: String,
+)
+
+@Serializable
 public data class KWebOpenedFile(
     public val absolutePath: String,
     public val exists: Boolean,
 )
 
+@Serializable
 public data class KWebActivationBatch(
     public val source: KWebActivationSource,
     public val uris: List<String> = emptyList(),
@@ -123,6 +141,7 @@ public data class KWebApplicationLifecycleConfiguration(
     public val registeredSchemes: Set<String>,
     public val registeredExtensions: Set<String>,
     public val packageRoot: String,
+    public val transportRoot: String,
     public val relaunchExecutable: String?,
     public val isPackaged: Boolean,
     public val activationCapacity: Int = 64,
@@ -134,7 +153,7 @@ public data class KWebApplicationLifecycleConfiguration(
 ) {
     init {
         requireApplicationId(applicationId)
-        if (packageIdentity.isBlank() || packageRoot.isBlank()) {
+        if (packageIdentity.isBlank() || packageRoot.isBlank() || transportRoot.isBlank()) {
             configurationFailure("Application package identity and root are required.")
         }
         if (registeredSchemes.any { !SCHEME.matches(it) || it != it.lowercase() }) {
@@ -212,6 +231,8 @@ public interface KWebApplicationLifecycle : KWebNativeService {
     public suspend fun start(initial: KWebActivationBatch): KWebApplicationStartResult
     public suspend fun requestQuit(reason: KWebQuitReason): KWebQuitResult
     public suspend fun requestRelaunch(): KWebRelaunchResult
+    public suspend fun installAssociations(): KWebApplicationRegistrationReport
+    public suspend fun removeAssociations(): KWebApplicationRegistrationReport
     public fun registerShutdownParticipant(
         participant: KWebApplicationShutdownParticipant,
     ): KWebApplicationShutdownRegistration

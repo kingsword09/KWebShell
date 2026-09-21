@@ -2,6 +2,9 @@ package io.github.kingsword09.kwebshell.service.applicationlifecycle
 
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebTarget
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
@@ -98,6 +101,76 @@ class KWebApplicationLifecycleContractTest {
         assertEquals(null, operation.rendererPermission)
     }
 
+    @Test
+    fun concurrentQuitRequestsCoalesceToOneOrderedClose() = runBlocking {
+        val backend = FakeBackend(releaseDelayMillis = 40)
+        val lifecycle = KWebApplicationLifecycleController(configuration(), backend)
+        lifecycle.start(activation(KWebActivationSource.TEST, "kweb://example/start"))
+
+        val results = coroutineScope {
+            listOf(
+                async { lifecycle.requestQuit(KWebQuitReason.USER_REQUEST) },
+                async { lifecycle.requestQuit(KWebQuitReason.OS_REQUEST) },
+            ).map { it.await() }
+        }
+
+        assertEquals(listOf(KWebQuitResult.GRACEFUL, KWebQuitResult.GRACEFUL), results)
+        assertEquals(1, backend.releaseCalls)
+        assertEquals(KWebApplicationLifecycleState.CLOSED, lifecycle.state.value)
+    }
+
+    @Test
+    fun concurrentNativeActivationsRetainSequenceOrder() = runBlocking {
+        val backend = FakeBackend()
+        val lifecycle = KWebApplicationLifecycleController(configuration(), backend)
+        lifecycle.start(activation(KWebActivationSource.TEST, "kweb://example/start"))
+
+        coroutineScope {
+            (1..16).map { index ->
+                async {
+                    backend.emit(activation(KWebActivationSource.SECOND_INSTANCE, "kweb://example/$index"))
+                }
+            }.forEach { it.await() }
+        }
+        val activations = lifecycle.events.replayCache.filterIsInstance<KWebApplicationEvent.Activation>()
+        assertEquals((1uL..17uL).toList(), activations.map { it.sequence })
+    }
+
+    @Test
+    fun activationCodecRejectsInvalidUtf8() {
+        val error = assertFailsWith<KWebApplicationLifecycleException> {
+            KWebApplicationActivationCodec.decode(byteArrayOf(0x7b, 0x22, 0xc3.toByte(), 0x28))
+        }
+        assertEquals(KWebApplicationLifecycleErrorCode.ACTIVATION_INVALID, error.code)
+    }
+
+    @Test
+    fun canonicalizerRejectsUnpairedSurrogate() {
+        val error = assertFailsWith<KWebApplicationLifecycleException> {
+            KWebApplicationActivationCanonicalizer.canonicalize(
+                configuration(),
+                activation(KWebActivationSource.TEST, "kweb://example/\uD800"),
+            )
+        }
+        assertEquals(KWebApplicationLifecycleErrorCode.ACTIVATION_INVALID, error.code)
+    }
+
+    @Test
+    fun associationMutationIsHostOnlyAndReturnsObservedProviderReport() = runBlocking {
+        val backend = FakeBackend()
+        val lifecycle = KWebApplicationLifecycleController(configuration(), backend)
+        lifecycle.start(activation(KWebActivationSource.TEST, "kweb://example/start"))
+
+        val installed = lifecycle.installAssociations()
+        assertEquals(KWebApplicationRegistrationOperation.INSTALL, installed.operation)
+        assertTrue(installed.registered)
+        assertEquals("test", installed.provider)
+
+        val removed = lifecycle.removeAssociations()
+        assertEquals(KWebApplicationRegistrationOperation.REMOVE, removed.operation)
+        assertTrue(!removed.registered)
+    }
+
     private fun configuration(): KWebApplicationLifecycleConfiguration =
         KWebApplicationLifecycleConfiguration(
             applicationId = "io.github.kingsword09.kwebshell",
@@ -106,6 +179,7 @@ class KWebApplicationLifecycleContractTest {
             registeredSchemes = setOf("kweb"),
             registeredExtensions = setOf(".kweb"),
             packageRoot = "/opt/kwebshell",
+            transportRoot = "/tmp/kwebshell-lifecycle",
             relaunchExecutable = "bin/KWebShell",
             isPackaged = true,
         )
@@ -133,6 +207,7 @@ class KWebApplicationLifecycleContractTest {
 
     private class FakeBackend(
         private val startResult: KWebApplicationBackendStart = KWebApplicationBackendStart.Primary,
+        private val releaseDelayMillis: Long = 0,
     ) : KWebApplicationLifecycleBackend {
         private var sink: (suspend (KWebActivationBatch) -> Unit)? = null
         var releaseCalls: Int = 0
@@ -140,6 +215,7 @@ class KWebApplicationLifecycleContractTest {
 
         override suspend fun acquire(
             configuration: KWebApplicationLifecycleConfiguration,
+            initial: KWebActivationBatch,
             onActivation: suspend (KWebActivationBatch) -> Unit,
         ): KWebApplicationBackendStart {
             sink = onActivation
@@ -152,9 +228,30 @@ class KWebApplicationLifecycleContractTest {
 
         override suspend fun release() {
             releaseCalls += 1
+            if (releaseDelayMillis > 0) delay(releaseDelayMillis)
         }
 
         override suspend fun relaunch(preservePendingActivation: Boolean): KWebRelaunchResult =
             KWebRelaunchResult.ACCEPTED
+
+        override suspend fun installAssociations(): KWebApplicationRegistrationReport =
+            KWebApplicationRegistrationReport(
+                operation = KWebApplicationRegistrationOperation.INSTALL,
+                target = KWebTarget.parse("linux-x64"),
+                applicationId = "io.github.kwebshell.kwebshell",
+                provider = "test",
+                registered = true,
+                observedDigest = "test-install",
+            )
+
+        override suspend fun removeAssociations(): KWebApplicationRegistrationReport =
+            KWebApplicationRegistrationReport(
+                operation = KWebApplicationRegistrationOperation.REMOVE,
+                target = KWebTarget.parse("linux-x64"),
+                applicationId = "io.github.kwebshell.kwebshell",
+                provider = "test",
+                registered = false,
+                observedDigest = "test-remove",
+            )
     }
 }

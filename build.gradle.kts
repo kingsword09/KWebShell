@@ -36,6 +36,7 @@ tasks.register("runtimeCheck") {
     dependsOn(":kweb-runtime-pack:verifyCefSourcePatchManifest")
     dependsOn(":kweb-runtime-pack:verifyHostRuntimePayload")
     dependsOn(":kweb-runtime-pack:applicationPackageIntegrationTest")
+    dependsOn(":kweb-service-application-lifecycle:applicationLifecycleIntegrationTest")
     dependsOn(":kweb-example-html5-lab:check")
     dependsOn(":kweb-example-support:check")
     dependsOn(":kweb-example-app-benchmark:check")

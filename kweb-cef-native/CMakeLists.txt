@@ -40,6 +40,10 @@ option(
 )
 
 find_package(Threads REQUIRED)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(KWEB_GIO REQUIRED IMPORTED_TARGET gio-2.0)
+endif()
 if(WIN32)
   find_program(KWEB_DUMPBIN_EXECUTABLE dumpbin REQUIRED)
 endif()
@@ -178,6 +182,33 @@ set_target_properties(kweb_engine_abi PROPERTIES
   LIBRARY_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
   RUNTIME_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
 )
+
+add_library(kweb_application_lifecycle SHARED
+  src/application_lifecycle_abi.cc
+)
+KWEB_CONFIGURE_CONTRACT_TARGET(kweb_application_lifecycle)
+target_include_directories(kweb_application_lifecycle PRIVATE include)
+target_link_libraries(kweb_application_lifecycle PRIVATE Threads::Threads)
+if(APPLE)
+  set_source_files_properties(src/application_lifecycle_abi.cc PROPERTIES LANGUAGE OBJCXX)
+  target_compile_options(kweb_application_lifecycle PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
+  target_link_libraries(kweb_application_lifecycle PRIVATE
+    "-framework AppKit"
+    "-framework CoreServices"
+  )
+endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_compile_definitions(kweb_application_lifecycle PRIVATE KWEB_HAS_GDBUS=1)
+  target_link_libraries(kweb_application_lifecycle PRIVATE PkgConfig::KWEB_GIO)
+endif()
+set_target_properties(kweb_application_lifecycle PROPERTIES
+  OUTPUT_NAME "kwebshell_application_lifecycle"
+  CXX_VISIBILITY_PRESET hidden
+  VISIBILITY_INLINES_HIDDEN YES
+  ARCHIVE_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
+  LIBRARY_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
+  RUNTIME_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
+)
 add_library(kweb_host_support STATIC
   src/event_recorder.cc
   src/host_configuration.cc
@@ -293,6 +324,36 @@ if(MSVC)
   target_compile_options(kweb_host_unit_tests PRIVATE /EHsc)
 endif()
 add_test(NAME kweb_host_unit_tests COMMAND kweb_host_unit_tests)
+
+add_executable(kweb_application_lifecycle_abi_contract_tests
+  tests/application_lifecycle_abi_contract_tests.cc
+)
+KWEB_CONFIGURE_CONTRACT_TARGET(kweb_application_lifecycle_abi_contract_tests)
+target_link_libraries(kweb_application_lifecycle_abi_contract_tests PRIVATE
+  kweb_application_lifecycle
+)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_compile_definitions(kweb_application_lifecycle_abi_contract_tests PRIVATE KWEB_HAS_GDBUS=1)
+endif()
+set_target_properties(kweb_application_lifecycle_abi_contract_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"
+)
+if(APPLE)
+  set_target_properties(kweb_application_lifecycle_abi_contract_tests PROPERTIES
+    BUILD_RPATH "${KWEB_CONTRACT_OUTPUT_DIR}"
+  )
+elseif(UNIX)
+  set_target_properties(kweb_application_lifecycle_abi_contract_tests PROPERTIES
+    BUILD_RPATH "\$ORIGIN"
+  )
+endif()
+add_test(NAME kweb_application_lifecycle_abi_contract_tests
+  COMMAND kweb_application_lifecycle_abi_contract_tests
+)
+set_tests_properties(kweb_application_lifecycle_abi_contract_tests PROPERTIES
+  LABELS "abi;application;lifecycle;native"
+  TIMEOUT 30
+)
 
 set(KWEB_HOST_COMMON_SOURCES
   src/bridge_protocol.cc

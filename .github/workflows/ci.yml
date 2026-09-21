@@ -244,6 +244,15 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Upload application lifecycle evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: application-lifecycle-${{ matrix.target }}-${{ github.sha }}
+          path: kweb-service-application-lifecycle/build/reports/application-lifecycle/
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload RFC governance contract-test evidence
         if: always()
         uses: actions/upload-artifact@v6
@@ -303,7 +312,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p build/rfc-evidence/downloaded
-          for family in rfc-governance provider-lifecycle native-dialogs engine-integration electron-migration application-package; do
+          for family in rfc-governance provider-lifecycle native-dialogs engine-integration electron-migration application-package application-lifecycle; do
             gh run download "$GITHUB_RUN_ID" \
               --repo "$GITHUB_REPOSITORY" \
               --pattern "$family-*-${{ github.sha }}" \

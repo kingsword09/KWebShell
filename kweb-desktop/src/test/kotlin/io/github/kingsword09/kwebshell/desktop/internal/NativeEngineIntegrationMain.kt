@@ -686,6 +686,24 @@ private fun runSuccessfulLifecycle() {
         require(NativeEngine.liveNativeEngineCount() == 0L)
         requireProfileDiskState(profile)
 
+        Files.writeString(
+            requiredPathProperty(INTEGRATION_ROOT_PROPERTY).resolve("application-shutdown.json"),
+            """
+            {
+              "schemaVersion": 1,
+              "target": "${currentTargetId()}",
+              "outcome": "GRACEFUL",
+              "stages": ["engine-native", "native-services", "profiles"],
+              "cefEngineClosed": true,
+              "liveNativeEngines": ${NativeEngine.liveNativeEngineCount()},
+              "liveNativeBrowsers": ${NativeBrowser.liveNativeBrowserCount()},
+              "liveNativeExtensionOperations": ${NativeExtensionRuntime.liveNativeOperationCount()},
+              "status": "PASS"
+            }
+            """.trimIndent() + "\n",
+            StandardCharsets.UTF_8,
+        )
+
         val staleClose = NativeEngine.onAwtEventDispatchThread { NativeBindings.engineClose(handle) }
         requireStatus(staleClose, NativeStatus.INVALID_HANDLE, "stale engine close")
         val restart = NativeEngine.onAwtEventDispatchThread {

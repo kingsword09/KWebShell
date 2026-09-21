@@ -270,7 +270,10 @@ Hosted lifecycle records live under
 The retained report binds the RFC 0006 contract digest, RFC 0030 manifest and
 package identity digest, native ABI fingerprint, target provider identity,
 two-process transcript digest, registration/cleanup digest, shutdown transcript,
-and final owner counts. Any change to this RFC, the lifecycle module/provider,
+and final owner counts. The hosted lifecycle artifact is accompanied by the
+real CEF `application-shutdown.json` artifact from `kweb-desktop`; the latter
+records the native engine, native services, and Profile close stages and zero
+live CEF owners. Any change to this RFC, the lifecycle module/provider,
 RFC 0030 association metadata, native ABI, or hosted workflow invalidates the
 affected record and requires a fresh three-target aggregation.
 

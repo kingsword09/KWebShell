@@ -28,12 +28,17 @@ public sealed interface KWebApplicationBackendStart {
 public interface KWebApplicationLifecycleBackend {
     public suspend fun acquire(
         configuration: KWebApplicationLifecycleConfiguration,
+        initial: KWebActivationBatch,
         onActivation: suspend (KWebActivationBatch) -> Unit,
     ): KWebApplicationBackendStart
 
     public suspend fun release()
 
     public suspend fun relaunch(preservePendingActivation: Boolean): KWebRelaunchResult
+
+    public suspend fun installAssociations(): KWebApplicationRegistrationReport
+
+    public suspend fun removeAssociations(): KWebApplicationRegistrationReport
 }
 
 public class KWebApplicationLifecycleController(
@@ -41,6 +46,7 @@ public class KWebApplicationLifecycleController(
     private val backend: KWebApplicationLifecycleBackend,
 ) : KWebApplicationLifecycle {
     private val lock = Mutex()
+    private val eventLock = Mutex()
     private val mutableState = MutableStateFlow(KWebApplicationLifecycleState.NEW)
     private val mutableLifecycle = MutableStateFlow(KWebLifecycleState.OPEN)
     private val mutableEvents = MutableSharedFlow<KWebApplicationEvent>(
@@ -52,6 +58,7 @@ public class KWebApplicationLifecycleController(
     private val pendingActivations = mutableListOf<KWebActivationBatch>()
     private var sequence: ULong = 0u
     private var quitResult: CompletableDeferred<KWebQuitResult>? = null
+    private var quitReason: KWebQuitReason? = null
     private var terminalFailure: Throwable? = null
 
     override val descriptor: io.github.kingsword09.kwebshell.services.KWebServiceDescriptor =
@@ -76,7 +83,7 @@ public class KWebApplicationLifecycleController(
         }
 
         val result = try {
-            backend.acquire(configuration) { activation ->
+            backend.acquire(configuration, canonicalInitial) { activation ->
                 acceptActivation(activation)
             }
         } catch (error: Throwable) {
@@ -100,7 +107,7 @@ public class KWebApplicationLifecycleController(
                     mutableState.value = KWebApplicationLifecycleState.PRIMARY_READY
                     pendingActivations.toList().also { pendingActivations.clear() }
                 }
-                mutableEvents.emit(KWebApplicationEvent.Ready)
+                emitEvent(KWebApplicationEvent.Ready)
                 emitActivation(canonicalInitial)
                 pending.forEach { emitActivation(it) }
                 KWebApplicationStartResult.PRIMARY
@@ -118,42 +125,43 @@ public class KWebApplicationLifecycleController(
     }
 
     override suspend fun requestQuit(reason: KWebQuitReason): KWebQuitResult {
-        val existing = lock.withLock {
+        val decision = lock.withLock {
             when (mutableState.value) {
                 KWebApplicationLifecycleState.NEW -> {
                     mutableState.value = KWebApplicationLifecycleState.CLOSED
                     mutableLifecycle.value = KWebLifecycleState.CLOSED
-                    CompletableDeferred(KWebQuitResult.ALREADY_CLOSED)
+                    QuitDecision(CompletableDeferred(KWebQuitResult.ALREADY_CLOSED), false)
                 }
 
                 KWebApplicationLifecycleState.CLOSED,
                 KWebApplicationLifecycleState.SECONDARY_FORWARDED,
-                -> return@withLock CompletableDeferred(KWebQuitResult.ALREADY_CLOSED)
+                -> QuitDecision(CompletableDeferred(KWebQuitResult.ALREADY_CLOSED), false)
 
                 KWebApplicationLifecycleState.FAILED ->
-                    return@withLock CompletableDeferred(KWebQuitResult.FAILED)
+                    QuitDecision(CompletableDeferred(KWebQuitResult.FAILED), false)
 
                 KWebApplicationLifecycleState.QUIESCING ->
-                    quitResult ?: CompletableDeferred(KWebQuitResult.FAILED)
+                    QuitDecision(quitResult ?: CompletableDeferred(KWebQuitResult.FAILED), false)
 
                 KWebApplicationLifecycleState.STARTING,
                 KWebApplicationLifecycleState.PRIMARY_READY,
                 -> {
                     val deferred = CompletableDeferred<KWebQuitResult>()
                     quitResult = deferred
+                    quitReason = reason
                     mutableState.value = KWebApplicationLifecycleState.QUIESCING
-                    deferred
+                    QuitDecision(deferred, true)
                 }
             }
         }
 
-        if (existing.isCompleted) return existing.await()
-        if (existing !== quitResult) return existing.await()
+        if (!decision.perform) return decision.result.await()
 
-        mutableEvents.emit(KWebApplicationEvent.QuitStarted(reason))
+        val firstReason = checkNotNull(lock.withLock { quitReason })
+        emitEvent(KWebApplicationEvent.QuitStarted(firstReason))
         val result = try {
             withTimeout(configuration.shutdownTimeoutMillis) {
-                shutdownParticipants(reason)
+                shutdownParticipants(firstReason)
                 backend.release()
                 KWebQuitResult.GRACEFUL
             }
@@ -195,8 +203,8 @@ public class KWebApplicationLifecycleController(
                 }
             }
         }
-        mutableEvents.emit(KWebApplicationEvent.Closed(result))
-        existing.complete(result)
+        emitEvent(KWebApplicationEvent.Closed(result))
+        decision.result.complete(result)
         return result
     }
 
@@ -213,6 +221,30 @@ public class KWebApplicationLifecycleController(
             }
         }
         return backend.relaunch(preservePendingActivation = false)
+    }
+
+    override suspend fun installAssociations(): KWebApplicationRegistrationReport {
+        lock.withLock {
+            if (mutableState.value != KWebApplicationLifecycleState.PRIMARY_READY) {
+                lifecycleFailure(
+                    code = KWebApplicationLifecycleErrorCode.CLOSING,
+                    message = "Application associations can be installed only by the primary ready owner.",
+                )
+            }
+        }
+        return backend.installAssociations()
+    }
+
+    override suspend fun removeAssociations(): KWebApplicationRegistrationReport {
+        lock.withLock {
+            if (mutableState.value != KWebApplicationLifecycleState.PRIMARY_READY) {
+                lifecycleFailure(
+                    code = KWebApplicationLifecycleErrorCode.CLOSING,
+                    message = "Application associations can be removed only by the primary ready owner.",
+                )
+            }
+        }
+        return backend.removeAssociations()
     }
 
     override fun registerShutdownParticipant(
@@ -276,11 +308,19 @@ public class KWebApplicationLifecycleController(
     }
 
     private suspend fun emitActivation(batch: KWebActivationBatch) {
-        val event = lock.withLock {
-            sequence += 1u
-            KWebApplicationEvent.Activation(sequence, batch)
+        eventLock.withLock {
+            val event = lock.withLock {
+                sequence += 1u
+                KWebApplicationEvent.Activation(sequence, batch)
+            }
+            mutableEvents.emit(event)
         }
-        mutableEvents.emit(event)
+    }
+
+    private suspend fun emitEvent(event: KWebApplicationEvent) {
+        eventLock.withLock {
+            mutableEvents.emit(event)
+        }
     }
 
     private suspend fun shutdownParticipants(reason: KWebQuitReason) {
@@ -319,6 +359,11 @@ public class KWebApplicationLifecycleController(
             unlock()
         }
     }
+
+    private data class QuitDecision(
+        val result: CompletableDeferred<KWebQuitResult>,
+        val perform: Boolean,
+    )
 }
 
 public object KWebApplicationActivationCanonicalizer {
@@ -338,8 +383,9 @@ public object KWebApplicationActivationCanonicalizer {
     }
 
     private fun canonicalUri(configuration: KWebApplicationLifecycleConfiguration, value: String): String {
+        requireUnicodeScalarString(value)
         val bytes = value.encodeToByteArray()
-        if (bytes.size > configuration.maximumUriBytes || value.any { it == '\u0000' || it.code < 0x20 }) {
+        if (bytes.size > configuration.maximumUriBytes || value.any { it.code <= 0x1f || it.code == 0x7f }) {
             invalid("A URI is oversized or contains a control character.")
         }
         val colon = value.indexOf(':')
@@ -365,12 +411,16 @@ public object KWebApplicationActivationCanonicalizer {
                 index += 1
             }
         }
-        val authority = value.substringAfter("://", "").substringBefore('/').substringBefore('?')
-        if (authority.contains('@')) invalid("A URI containing user-info is not accepted.")
+        val remainder = value.substring(colon + 1)
+        if (remainder.startsWith("//")) {
+            val authority = remainder.substring(2).substringBeforeAny('/', '?', '#')
+            if (authority.contains('@')) invalid("A URI containing user-info is not accepted.")
+        }
         return scheme + ":" + value.substring(colon + 1)
     }
 
     private fun canonicalPath(configuration: KWebApplicationLifecycleConfiguration, value: String): String {
+        requireUnicodeScalarString(value)
         val bytes = value.encodeToByteArray()
         val windowsAbsolute = value.length >= 3 && value[0].isLetter() && value[1] == ':' &&
             (value[2] == '/' || value[2] == '\\')
@@ -384,6 +434,28 @@ public object KWebApplicationActivationCanonicalizer {
             invalid("A file path must already be normalized.")
         }
         return normalized
+    }
+
+    private fun requireUnicodeScalarString(value: String) {
+        var index = 0
+        while (index < value.length) {
+            val code = value[index].code
+            if (code in 0xd800..0xdbff) {
+                if (index + 1 >= value.length || value[index + 1].code !in 0xdc00..0xdfff) {
+                    invalid("Activation text contains an unpaired UTF-16 surrogate.")
+                }
+                index += 2
+            } else if (code in 0xdc00..0xdfff) {
+                invalid("Activation text contains an unpaired UTF-16 surrogate.")
+            } else {
+                index += 1
+            }
+        }
+    }
+
+    private fun String.substringBeforeAny(vararg delimiters: Char): String {
+        val index = indexOfFirst { it in delimiters }
+        return if (index < 0) this else substring(0, index)
     }
 
     private fun invalid(message: String): Nothing = throw KWebApplicationLifecycleException(

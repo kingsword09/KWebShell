@@ -3,6 +3,7 @@ import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Optional
 import org.gradle.process.CommandLineArgumentProvider
+import org.gradle.jvm.toolchain.JavaLanguageVersion
 import java.util.Locale
 
 private class CefRuntimeArtifactArguments(
@@ -283,10 +284,13 @@ val hostRuntimePayloadDirectory = layout.buildDirectory.dir("runtime-payload")
 val hostRuntimePayloadArchive = hostRuntimePayloadDirectory.map {
     it.file("KWebShell-${project.version}-$hostRuntimeTarget.zip")
 }
+val applicationPackageReportDirectory = layout.buildDirectory.dir("reports/application-package")
+val applicationPackageJava = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) }
 val nativeProjectDirectory = rootProject.layout.projectDirectory.dir("kweb-cef-native")
 val nativeReleaseDirectory = nativeProjectDirectory.dir("build/native/Release")
 val nativeContractDirectory = nativeProjectDirectory.dir("build/native/contract")
 val runtimeCatalogPath = rootProject.layout.projectDirectory.file("runtime/cef-runtime.json")
+val applicationManifestPath = rootProject.layout.projectDirectory.file("runtime/application-manifest.json")
 
 tasks.test {
     useJUnitPlatform()
@@ -302,6 +306,16 @@ tasks.register<JavaExec>("verifyCefRuntimeManifest") {
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("io.github.kingsword09.kwebshell.runtime.CefRuntimeManifestCliKt")
     args("manifest", rootProject.layout.projectDirectory.file("runtime/cef-runtime.json").asFile.absolutePath)
+}
+
+tasks.register<JavaExec>("verifyApplicationManifest") {
+    group = "verification"
+    description = "Validates the closed KWebShell application packaging manifest."
+    dependsOn(tasks.classes)
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.kingsword09.kwebshell.runtime.CefRuntimeManifestCliKt")
+    args("application-manifest", applicationManifestPath.asFile.absolutePath)
+    inputs.file(applicationManifestPath)
 }
 
 tasks.register<JavaExec>("verifyCefRuntimeArtifact") {
@@ -349,6 +363,25 @@ val buildHostRuntimePayload = tasks.register<JavaExec>("buildHostRuntimePayload"
             outputArchivePath = hostRuntimePayloadArchive.get().asFile.absolutePath,
         ),
     )
+}
+
+val applicationPackageIntegrationTest = tasks.register<JavaExec>("applicationPackageIntegrationTest") {
+    group = "verification"
+    description = "Builds and verifies the target application package over the real host runtime payload."
+    dependsOn(buildHostRuntimePayload, tasks.named("testClasses"))
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass.set("io.github.kingsword09.kwebshell.runtime.KWebApplicationPackageIntegrationMainKt")
+    javaLauncher.set(applicationPackageJava)
+    systemProperty("kweb.application.package.catalog", runtimeCatalogPath.asFile.absolutePath)
+    systemProperty("kweb.application.package.manifest", applicationManifestPath.asFile.absolutePath)
+    systemProperty("kweb.application.package.payload", hostRuntimePayloadArchive.get().asFile.absolutePath)
+    systemProperty("kweb.application.package.target", hostRuntimeTarget)
+    systemProperty("kweb.application.package.version", project.version.toString())
+    systemProperty("kweb.application.package.output-directory", applicationPackageReportDirectory.get().asFile.absolutePath)
+    inputs.file(runtimeCatalogPath)
+    inputs.file(applicationManifestPath)
+    inputs.file(hostRuntimePayloadArchive)
+    outputs.dir(applicationPackageReportDirectory)
 }
 
 tasks.register<JavaExec>("verifyHostRuntimePayload") {
@@ -485,6 +518,7 @@ val verifyCefSourceBuildTool = tasks.register<Exec>("verifyCefSourceBuildTool") 
 }
 
 tasks.named("check") {
+    dependsOn("verifyApplicationManifest")
     dependsOn(verifyCefSourcePatchManifest)
     dependsOn(verifyCefSourceBuildTool)
 }

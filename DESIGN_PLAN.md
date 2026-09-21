@@ -1917,6 +1917,34 @@ Breaking changes: report aggregation uses a separate versioned envelope, v2
 requires explicit renderer policy and profile ownership, and runtime report
 creation consumes provenance files rather than unverified version strings.
 
+### RFC 0030 implementation objective: reproducible application packaging
+
+RFC 0030 is the prerequisite for RFC 0006. Its implementation is one focused
+package boundary over the signed RFC 0001 runtime release:
+
+1. `runtime/application-manifest.json` is a closed, canonical, target-complete
+   identity contract. Unknown fields, target omissions, invalid associations,
+   and unsafe paths fail before packaging.
+2. `kweb-runtime-pack` verifies the signed runtime release, creates immutable
+   packaged-state and capability/SBOM records, emits target-specific macOS
+   Launch Services, Windows AppX, or Linux Debian registration metadata, and
+   publishes atomically.
+3. macOS and Windows packages use deterministic ZIP-compatible containers; the
+   Linux provider emits a real Debian `ar` package with deterministic control
+   and data tarballs. All package-level statements are Ed25519-signed with an
+   explicitly supplied key pair and verified before publication.
+4. Electron builder/forge metadata is mapped by a closed migration contract;
+   unsupported hooks are blocking and are never executed.
+5. Unit tests cover manifest schema, identity, six-target metadata generation,
+   deterministic rebuilds, nested runtime verification, package signatures,
+   tampering, and migration blockers. Hosted package evidence is required for
+   `macos-arm64`, `windows-x64`, and `linux-x64`; the manifest and local tests
+   still cover all six `KWebTarget` values.
+
+The objective is complete only after the RFC acceptance matrix, platform package
+transcripts, retained signatures/SBOMs, documentation, and governance evidence
+are updated in the same PR.
+
 ### RFC review workflow objective: contract review and requirement acceptance
 
 Make RFC implementation readiness and merge acceptance explicit without changing

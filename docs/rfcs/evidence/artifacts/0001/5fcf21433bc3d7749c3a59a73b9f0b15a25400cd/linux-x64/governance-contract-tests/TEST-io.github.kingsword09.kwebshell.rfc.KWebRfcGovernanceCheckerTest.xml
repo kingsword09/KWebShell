@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest" tests="20" skipped="0" failures="0" errors="0" timestamp="2026-09-21T17:24:06.333Z" hostname="runnervmlun5p" time="0.057">
+  <properties/>
+  <testcase name="reportContainsNoPrivatePaths()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest" time="0.017"/>
+  <testcase name="evidenceForUnknownRfcIsRejected()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest" time="0.003"/>
+  <testcase name="duplicateMatrixBackingIsRejected()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest" time="0.003"/>
+  <testcase name="evidenceForProposedRfcIsRejected()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest" time="0.002"/>
+  <testcase name="blockedCompatibilityRecordIsRejected()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest" time="0.001"/>
+  <testcase name="partiallyCoveredTargetsAreBlocked()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest" time="0.001"/>
+  <testcase name="brokenManifestProducesFailureReport()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest" time="0.001"/>
+  <testcase name="prerequisiteRowsAreReportedWithTheirContract()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest" time="0.001"/>
+  <testcase name="recordClaimingUnknownRowFails()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest" time="0.002"/>
+  <testcase name="implementedRfcWithoutEvidenceIsBlocked()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest" time="0.001"/>
+  <testcase name="unknownServiceContractFails()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest" time="0.002"/>
+  <testcase name="recordClaimingUnsupportedRowFails()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest" time="0.002"/>
+  <testcase name="staleServiceVersionMakesEvidenceStale()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest" time="0.002"/>
+  <testcase name="unsupportedToSupportedPromotionWithoutEvidenceFails()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest" time="0.001"/>
+  <testcase name="staleRuntimeIdentityMakesEvidenceStale()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest" time="0.003"/>
+  <testcase name="changedBoundContractMakesEvidenceStale()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest" time="0.002"/>
+  <testcase name="implementedEvidenceBacksSupportedMatrixRow()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest" time="0.001"/>
+  <testcase name="missingOrChangedRetainedArtifactMakesEvidenceStale()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest" time="0.002"/>
+  <testcase name="platformSpecificRfcRequiresOnlyDeclaredTarget()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest" time="0.001"/>
+  <testcase name="implementedRfcWithAllHostedEvidenceIsReady()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

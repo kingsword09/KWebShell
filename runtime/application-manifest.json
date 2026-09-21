@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "applicationId": "io.github.kingsword09.kwebshell",
+  "displayName": "KWebShell",
+  "productVersion": "0.1.0-SNAPSHOT",
+  "publisher": "KWebShell Authors",
+  "mainExecutable": "KWebShell",
+  "helperExecutables": [
+    "KWebShell Helper"
+  ],
+  "icons": [],
+  "protocols": [
+    {
+      "scheme": "kweb",
+      "role": "viewer"
+    }
+  ],
+  "fileTypes": [
+    {
+      "extension": ".kweb",
+      "mimeType": "application/x-kwebshell",
+      "description": "KWebShell document"
+    }
+  ],
+  "targets": {
+    "linux-arm64": {
+      "minimumOs": "glibc-2.35",
+      "format": "linux-deb",
+      "desktopId": "io.github.kingsword09.kwebshell.desktop"
+    },
+    "linux-x64": {
+      "minimumOs": "glibc-2.35",
+      "format": "linux-deb",
+      "desktopId": "io.github.kingsword09.kwebshell.desktop"
+    },
+    "macos-arm64": {
+      "minimumOs": "13.0",
+      "format": "macos-app-zip",
+      "bundleId": "io.github.kingsword09.kwebshell"
+    },
+    "macos-x64": {
+      "minimumOs": "13.0",
+      "format": "macos-app-zip",
+      "bundleId": "io.github.kingsword09.kwebshell"
+    },
+    "windows-arm64": {
+      "minimumOs": "10.0.17763",
+      "format": "windows-msix",
+      "aumid": "io.github.kingsword09.kwebshell"
+    },
+    "windows-x64": {
+      "minimumOs": "10.0.17763",
+      "format": "windows-msix",
+      "aumid": "io.github.kingsword09.kwebshell"
+    }
+  },
+  "capabilities": [],
+  "providerResources": [],
+  "update": {
+    "channel": "stable",
+    "keyId": ""
+  }
+}

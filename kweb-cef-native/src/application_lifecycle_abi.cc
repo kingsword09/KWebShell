@@ -22,6 +22,8 @@
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
+#endif
+
 #if defined(KWEB_HAS_GDBUS)
 #include <gio/gio.h>
 #endif
@@ -30,7 +32,6 @@
 #include <unistd.h>
 #else
 #include <pwd.h>
-#endif
 #endif
 
 #if defined(__APPLE__)
@@ -501,6 +502,8 @@ int32_t MacRegisterAssociations(const std::string &package_root, bool remove) {
 
 #endif
 
+#if !defined(KWEB_HAS_GDBUS)
+
 bool SameUser(int socket_fd) {
 #if defined(__APPLE__)
   uid_t uid = 0;
@@ -554,6 +557,8 @@ bool WriteSocket(int fd, const uint8_t *payload, size_t size) {
          WriteAll(fd, payload, size);
 }
 
+#endif
+
 #if defined(KWEB_HAS_GDBUS)
 
 constexpr const char *kApplicationInterfaceXml =
@@ -570,16 +575,26 @@ constexpr const char *kApplicationInterfaceXml =
     "</node>";
 
 bool VerifyDbusSender(GDBusConnection *connection, const gchar *sender) {
+  (void)connection;
   if (sender == nullptr || sender[0] != ':') return false;
+  GError *connection_error = nullptr;
+  GDBusConnection *credentials = g_bus_get_sync(
+      G_BUS_TYPE_SESSION, nullptr, &connection_error);
+  if (connection_error != nullptr || credentials == nullptr) {
+    if (connection_error != nullptr) g_error_free(connection_error);
+    if (credentials != nullptr) g_object_unref(credentials);
+    return false;
+  }
   GError *error = nullptr;
   GVariant *reply = g_dbus_connection_call_sync(
-      connection, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+      credentials, "org.freedesktop.DBus", "/org/freedesktop/DBus",
       "org.freedesktop.DBus", "GetConnectionUnixUser",
       g_variant_new("(s)", sender), G_VARIANT_TYPE("(u)"),
       G_DBUS_CALL_FLAGS_NONE, 2000, nullptr, &error);
   if (error != nullptr || reply == nullptr) {
     if (error != nullptr) g_error_free(error);
     if (reply != nullptr) g_variant_unref(reply);
+    g_object_unref(credentials);
     return false;
   }
   guint32 uid = 0;
@@ -589,18 +604,20 @@ bool VerifyDbusSender(GDBusConnection *connection, const gchar *sender) {
 
   error = nullptr;
   reply = g_dbus_connection_call_sync(
-      connection, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+      credentials, "org.freedesktop.DBus", "/org/freedesktop/DBus",
       "org.freedesktop.DBus", "GetConnectionUnixProcessID",
       g_variant_new("(s)", sender), G_VARIANT_TYPE("(u)"),
       G_DBUS_CALL_FLAGS_NONE, 2000, nullptr, &error);
   if (error != nullptr || reply == nullptr) {
     if (error != nullptr) g_error_free(error);
     if (reply != nullptr) g_variant_unref(reply);
+    g_object_unref(credentials);
     return false;
   }
   guint32 pid = 0;
   g_variant_get(reply, "(u)", &pid);
   g_variant_unref(reply);
+  g_object_unref(credentials);
   return pid != 0;
 }
 
@@ -872,6 +889,8 @@ int32_t LinuxRegisterAssociations(const std::string &application_id,
 
 #endif
 
+#if !defined(KWEB_HAS_GDBUS)
+
 bool MakeAddress(const std::string &path, sockaddr_un *address) {
   if (path.size() >= sizeof(address->sun_path)) return false;
   std::memset(address, 0, sizeof(*address));
@@ -921,6 +940,8 @@ int ConnectAndSend(const std::string &socket_path, const uint8_t *payload, size_
   }
   return KWEB_APPLICATION_LIFECYCLE_TRANSPORT_FAILED;
 }
+
+#endif
 
 int32_t PosixAcquire(NativeLifecycle *lifecycle,
                      const uint8_t *initial_payload,

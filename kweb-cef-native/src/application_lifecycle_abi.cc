@@ -284,6 +284,7 @@ bool SameUser(HANDLE pipe) {
   if (!GetNamedPipeClientProcessId(pipe, &client_pid) || client_pid == 0) {
     return false;
   }
+  if (client_pid == GetCurrentProcessId()) return true;
   HANDLE client_process = OpenProcess(
       PROCESS_QUERY_LIMITED_INFORMATION, FALSE, client_pid);
   if (client_process == nullptr) return false;

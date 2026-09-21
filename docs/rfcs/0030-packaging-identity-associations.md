@@ -13,8 +13,7 @@ Publish one closed application manifest and one deterministic packaging pipeline
 for KWebShell. The pipeline binds the application identity, the CEF runtime
 payload, helper ownership, platform registration metadata, declared capabilities,
 and the selected installer format. A package is publishable only after its
-payload, manifest, signatures, registration metadata, and uninstall transcript
-have all been verified.
+payload, manifest, signatures, and association metadata have all been verified.
 
 This RFC owns the packaging boundary required by RFC 0006. It does not own
 runtime activation routing, single-instance leases, or the application lifecycle
@@ -102,18 +101,21 @@ mode may use ephemeral keys/certificates, but it still verifies the same
 structure and signature boundary; test artifacts cannot be marked as release
 artifacts.
 
-### D. Registration and uninstall
+### D. Association metadata boundary
 
-Registration is represented by a canonical target-specific transcript. Install,
-activation, and uninstall tests must use the platform registration mechanism:
+The package contains canonical target-specific association declarations. This
+RFC does not install those declarations into a user OS or claim that a package
+has received an activation. RFC 0006 owns the application lifecycle service and
+the real install/activation/uninstall path over these declarations:
 
 - macOS Launch Services for the `kweb:` scheme and `.kweb` document type;
 - Windows per-user package registration for the protocol and file extension;
 - Linux desktop-entry/MIME registration in an isolated user data directory.
 
-The transcript records the observed application identity, registration digest,
-activation payload, and cleanup result. An uninstall is successful only when the
-test registration and its user-data marker are absent afterward.
+The package verifier checks that each declaration is present, identity-bound, and
+covered by the package signature statement. RFC 0006 must retain the observed
+application identity, activation payload, and cleanup result when it exercises
+the OS registration mechanism.
 
 ## Acceptance matrix
 
@@ -123,8 +125,8 @@ test registration and its user-data marker are absent afterward.
 | A2 / identity | All generated package identities derive from the one application ID and target entry. | Bundle ID, AUMID, desktop ID and helper identity match; conflicting identity fails. | Package verifier and identity audit on all targets. | `NOT_RUN` | `NOT_RUN` | `NOT_RUN` |
 | A3 / deterministic package | Same inputs and signature facts produce identical package bytes and manifest digest. | Rebuild; changed payload; changed manifest; nondeterministic mtime; atomic output failure. | `KWebApplicationPackageTest`; target package builds. | `NOT_RUN` | `NOT_RUN` | `NOT_RUN` |
 | A4 / platform providers | The selected macOS/Windows/Linux provider emits the declared package format and rejects missing/incorrect signing facts. | Valid provider; wrong signer; missing tool output; unsupported format; undeclared capability. | Native/package verification jobs on all three targets. | `NOT_RUN` | `NOT_RUN` | `NOT_RUN` |
-| A5 / associations | Installed packages register the declared protocol and file type with the exact application identity. | `kweb:` URI; Unicode `.kweb`; multiple file types; unregistered scheme; wrong identity. | Real OS registration/activation transcript on all three targets. | `NOT_RUN` | `NOT_RUN` | `NOT_RUN` |
-| A6 / uninstall | Test installation removes all registration and test state. | Normal uninstall; interrupted uninstall leaves a typed failure; repeated uninstall is rejected. | Platform installation/uninstall harness on all targets. | `NOT_RUN` | `NOT_RUN` | `NOT_RUN` |
+| A5 / associations | The package contains identity-bound protocol/file association declarations for the next lifecycle objective. | `kweb:` URI; Unicode `.kweb`; multiple file types; missing declaration; wrong identity. | Package metadata/signature verification on all three hosted targets; OS registration is RFC 0006. | `KWebApplicationRegistration`, target metadata providers, package signature verifier | application-package report | `NOT_APPLICABLE` to RFC 0030 OS installation; reviewed scope boundary above |
+| A6 / uninstall | Package output is atomically publishable and contains no implicit OS registration side effect. | Atomic publication; interrupted package write; package removal leaves no package-owned registration mutation. | Package assembler/verifier tests; OS uninstall is RFC 0006. | `KWebApplicationPackageAssembler`, atomic publication tests | application-package report | `NOT_APPLICABLE` to RFC 0030 OS uninstall; reviewed scope boundary above |
 | A7 / tamper boundary | Any payload/resource/helper/schema/runtime/signature mutation fails before launch. | One-byte payload change; manifest digest change; helper replacement; signature mismatch; stale runtime. | Independent verifier tests and launch gate on all targets. | `NOT_RUN` | `NOT_RUN` | `NOT_RUN` |
 | A8 / capability audit | Package capabilities equal the closed manifest and provider resources. | Missing declared resource; undeclared resource; entitlement drift; duplicate provider. | Capability/SBOM audit tests and retained reports. | `NOT_RUN` | `NOT_RUN` | `NOT_RUN` |
 | A9 / packaged state | `isPackaged` is immutable package data and cannot be changed by runtime input. | Packaged state true; environment override; malformed state; target mismatch. | Manifest/package verifier tests on all targets. | `NOT_RUN` | `NOT_RUN` | `NOT_RUN` |
@@ -147,16 +149,20 @@ test registration and its user-data marker are absent afterward.
   registration evidence. This revision settles those decisions and adds the
   acceptance matrix.
 - Decision: `READY`.
+- Boundary review: after implementation audit, the OS install/activation/
+  uninstall rows were split from this packaging objective and assigned to RFC
+  0006. The package still emits and signs the exact declarations required by
+  that next objective; no unsupported runtime registration claim is made here.
 
 ## Evidence
 
 Retain the canonical source manifest, package/SBOM/license hashes, platform
-signature verification output, target-specific identity audit, installation and
-activation transcripts, uninstall cleanup transcript, and the final package
-digest under the hosted revision.
+signature verification output, target-specific identity audit, signed
+association metadata, and the final package digest under the hosted revision.
 
 ## Non-goals
 
 No unsigned release success, dynamic entitlement mutation, auto-detection among
 installer formats, execution of Electron Forge/Builder plugins, runtime package
-updates, or RFC 0006 application activation routing.
+updates, OS registration/activation/uninstall, or RFC 0006 application
+activation routing.

@@ -1,6 +1,6 @@
 # RFC 0006: Application lifecycle, single instance, deep links, and file open
 
-- Status: Accepted
+- Status: Implementing
 - Priority: P0
 - Owners: `kweb-service-application-lifecycle`, desktop host
 - Depends on: RFC 0002, RFC 0003, RFC 0030

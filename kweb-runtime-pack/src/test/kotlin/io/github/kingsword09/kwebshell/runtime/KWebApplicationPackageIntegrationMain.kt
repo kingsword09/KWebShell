@@ -49,6 +49,17 @@ internal fun main() {
             KWebApplicationPackageFormat.LINUX_DEB -> "deb"
         }
         val packagePath = outputDirectory.resolve("KWebShell-$productVersion-${target.id}.$extension")
+        val platformSignature = KWebApplicationPlatformSignature(
+            schemaVersion = 1,
+            target = target.id,
+            format = format,
+            mode = KWebApplicationSigningMode.TEST,
+            identity = identity,
+            signer = "hosted-test-ed25519",
+            signatureStatus = "VERIFIED",
+            notarizationStatus = "NOT_APPLICABLE",
+            registrationDigest = "0".repeat(64),
+        )
         val result = KWebApplicationPackageAssembler.build(
             KWebApplicationPackageBuildRequest(
                 applicationManifest = manifestPath,
@@ -58,20 +69,32 @@ internal fun main() {
                 productVersion = productVersion,
                 trustedPublicKey = publicKey,
                 packageSigningPrivateKey = privateKey,
-                platformSignature = KWebApplicationPlatformSignature(
-                    schemaVersion = 1,
-                    target = target.id,
-                    format = format,
-                    mode = KWebApplicationSigningMode.TEST,
-                    identity = identity,
-                    signer = "hosted-test-ed25519",
-                    signatureStatus = "VERIFIED",
-                    notarizationStatus = "NOT_APPLICABLE",
-                    registrationDigest = "0".repeat(64),
-                ),
+                platformSignature = platformSignature,
                 outputPackage = packagePath,
             ),
         )
+        val verified = KWebApplicationPackageVerifier.verify(
+            KWebApplicationPackageVerificationRequest(
+                applicationPackage = packagePath,
+                applicationManifest = manifestPath,
+                catalog = catalog,
+                target = target,
+                productVersion = productVersion,
+                trustedPublicKey = publicKey,
+            ),
+        )
+        check(verified.packageSha256 == result.packageSha256) {
+            "The independently verified package digest does not match the build result."
+        }
+        check(verified.manifest.productVersion == productVersion) {
+            "The independently verified package manifest version does not match the build request."
+        }
+        check(verified.platformSignature == platformSignature) {
+            "The independently verified platform signature facts do not match the build request."
+        }
+        check(verified.runtimeReleaseSha256 == result.runtimeReleaseSha256) {
+            "The independently verified nested runtime release digest does not match the build result."
+        }
         val reportPath = outputDirectory.resolve("application-package-report.json")
         Files.writeString(
             reportPath,

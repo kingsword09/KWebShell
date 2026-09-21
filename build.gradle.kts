@@ -18,6 +18,7 @@ tasks.register("runtimeCheck") {
     description = "Runs all unit, runtime, native and packaging tests before refreshing hosted evidence."
     dependsOn(":kweb-core:check")
     dependsOn(":kweb-services-core:check")
+    dependsOn(":kweb-service-application-lifecycle:check")
     dependsOn(":kweb-service-app-paths:check")
     dependsOn(":kweb-service-window-controls:check")
     dependsOn(":kweb-service-dialogs:check")

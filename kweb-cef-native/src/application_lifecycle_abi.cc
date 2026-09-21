@@ -280,10 +280,16 @@ std::wstring Utf8ToWide(const std::string &value) {
 }
 
 bool SameUser(HANDLE pipe) {
-  if (!ImpersonateNamedPipeClient(pipe)) return false;
+  DWORD client_pid = 0;
+  if (!GetNamedPipeClientProcessId(pipe, &client_pid) || client_pid == 0) {
+    return false;
+  }
+  HANDLE client_process = OpenProcess(
+      PROCESS_QUERY_LIMITED_INFORMATION, FALSE, client_pid);
+  if (client_process == nullptr) return false;
   HANDLE client_token = nullptr;
-  const bool opened = OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, TRUE,
-                                      &client_token) != FALSE;
+  const bool opened =
+      OpenProcessToken(client_process, TOKEN_QUERY, &client_token) != FALSE;
   bool same_user = false;
   if (opened) {
     HANDLE process_token = nullptr;
@@ -306,7 +312,7 @@ bool SameUser(HANDLE pipe) {
     }
     CloseHandle(client_token);
   }
-  RevertToSelf();
+  CloseHandle(client_process);
   return same_user;
 }
 

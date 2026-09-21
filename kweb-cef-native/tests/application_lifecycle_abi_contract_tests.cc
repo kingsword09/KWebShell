@@ -96,6 +96,7 @@ int main() {
     if (!callback.condition.wait_for(lock, std::chrono::seconds(2), [&callback] {
           return callback.payload == std::vector<uint8_t>{'s', 'e', 'c', 'o', 'n', 'd'};
         })) {
+      std::fprintf(stderr, "activation callback timed out after secondary acquire\n");
       kweb_application_lifecycle_release(primary);
       return 5;
     }

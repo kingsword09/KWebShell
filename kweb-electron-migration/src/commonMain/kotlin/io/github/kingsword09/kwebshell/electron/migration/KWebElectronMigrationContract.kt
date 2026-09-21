@@ -166,6 +166,8 @@ public object KWebElectronMigrationErrorCode {
     public const val REPORT_CONFLICT: String = "migration.report.conflict"
     public const val PARSER_UNAVAILABLE: String = "migration.parser.unavailable"
     public const val INVENTORY_BLOCKED: String = "migration.inventory.blocked"
+    public const val PACKAGING_INVALID: String = "migration.packaging.invalid"
+    public const val PACKAGING_NON_CANONICAL: String = "migration.packaging.non-canonical"
 }
 
 public object KWebElectronMigrationJson {

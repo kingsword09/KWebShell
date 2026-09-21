@@ -2,6 +2,7 @@ package io.github.kingsword09.kwebshell.runtime
 
 import io.github.kingsword09.kwebshell.core.KWebConfigurationException
 import io.github.kingsword09.kwebshell.core.KWebTarget
+import java.nio.file.Files
 import java.nio.file.Path
 
 internal fun main(arguments: Array<String>) {
@@ -12,6 +13,9 @@ internal fun main(arguments: Array<String>) {
         "payload-verify" -> verifyPayload(arguments)
         "release-build" -> buildRelease(arguments)
         "release-verify" -> verifyRelease(arguments)
+        "application-manifest" -> verifyApplicationManifest(arguments)
+        "application-package-build" -> buildApplicationPackage(arguments)
+        "application-package-verify" -> verifyApplicationPackage(arguments)
         else -> invalidArguments(arguments)
     }
 }
@@ -114,6 +118,61 @@ private fun verifyRelease(arguments: Array<String>) {
     )
 }
 
+private fun verifyApplicationManifest(arguments: Array<String>) {
+    requireArgumentCount(arguments, 2)
+    val manifest = KWebApplicationManifestLoader.load(Path.of(arguments[1]))
+    println(
+        "Verified application ${manifest.applicationId} ${manifest.productVersion}; " +
+            "${manifest.targets.size} target entries.",
+    )
+}
+
+private fun buildApplicationPackage(arguments: Array<String>) {
+    requireArgumentCount(arguments, 10)
+    val catalog = CefRuntimeCatalogLoader.load(Path.of(arguments[2]))
+    val target = KWebTarget.parse(arguments[3])
+    val signature = KWebApplicationPlatformSignatureCodec.decode(
+        Files.readAllBytes(Path.of(arguments[8])),
+    )
+    val result = KWebApplicationPackageAssembler.build(
+        KWebApplicationPackageBuildRequest(
+            applicationManifest = Path.of(arguments[1]),
+            runtimeRelease = Path.of(arguments[5]),
+            catalog = catalog,
+            target = target,
+            productVersion = arguments[4],
+            trustedPublicKey = Path.of(arguments[6]),
+            packageSigningPrivateKey = Path.of(arguments[7]),
+            platformSignature = signature,
+            outputPackage = Path.of(arguments[9]),
+        ),
+    )
+    println(
+        "Built application package ${result.packagePath.toAbsolutePath()} for ${target.id}; " +
+            "package SHA-256 ${result.packageSha256}.",
+    )
+}
+
+private fun verifyApplicationPackage(arguments: Array<String>) {
+    requireArgumentCount(arguments, 7)
+    val catalog = CefRuntimeCatalogLoader.load(Path.of(arguments[2]))
+    val target = KWebTarget.parse(arguments[3])
+    val result = KWebApplicationPackageVerifier.verify(
+        KWebApplicationPackageVerificationRequest(
+            applicationPackage = Path.of(arguments[5]),
+            applicationManifest = Path.of(arguments[1]),
+            catalog = catalog,
+            target = target,
+            productVersion = arguments[4],
+            trustedPublicKey = Path.of(arguments[6]),
+        ),
+    )
+    println(
+        "Verified application package ${arguments[5]} for ${target.id}; " +
+            "package SHA-256 ${result.packageSha256}.",
+    )
+}
+
 private fun requireArgumentCount(arguments: Array<String>, expected: Int) {
     if (arguments.size != expected) {
         invalidArguments(arguments)
@@ -133,6 +192,12 @@ private fun invalidArguments(arguments: Array<String>): Nothing {
                 "release-build <manifest-path> <target> <product-version> <payload-archive> " +
                 "<private-key-pkcs8-der> <public-key-x509-der> <output-pack> or " +
                 "release-verify <manifest-path> <target> <product-version> <pack> " +
-                "<trusted-public-key-x509-der>.",
+                "<trusted-public-key-x509-der> or " +
+                "application-manifest <application-manifest-path> or " +
+                "application-package-build <application-manifest> <runtime-catalog> <target> " +
+                "<product-version> <runtime-release> <trusted-public-key> <package-private-key> <platform-signature> " +
+                "<output-package> or " +
+                "application-package-verify <application-manifest> <runtime-catalog> <target> " +
+                "<product-version> <package> <trusted-public-key>.",
     )
 }

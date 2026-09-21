@@ -35,6 +35,23 @@
         "kweb-desktop/src",
         "kweb-electron-migration/src"
       ]
+    },
+    {
+      "rfcId": "0030",
+      "paths": [
+        "docs/application-package-format.md",
+        "docs/rfcs/0030-packaging-identity-associations.md",
+        "kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronMigrationContract.kt",
+        "kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronPackagingContract.kt",
+        "kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronPackagingContractTest.kt",
+        "kweb-runtime-pack/build.gradle.kts",
+        "kweb-runtime-pack/src/main/kotlin/io/github/kingsword09/kwebshell/runtime/CefRuntimeManifestCli.kt",
+        "kweb-runtime-pack/src/main/kotlin/io/github/kingsword09/kwebshell/runtime/KWebApplicationManifest.kt",
+        "kweb-runtime-pack/src/main/kotlin/io/github/kingsword09/kwebshell/runtime/KWebApplicationPackage.kt",
+        "kweb-runtime-pack/src/test/kotlin/io/github/kingsword09/kwebshell/runtime/KWebApplicationManifestTest.kt",
+        "kweb-runtime-pack/src/test/kotlin/io/github/kingsword09/kwebshell/runtime/KWebApplicationPackageTest.kt",
+        "runtime/application-manifest.json"
+      ]
     }
   ]
 }

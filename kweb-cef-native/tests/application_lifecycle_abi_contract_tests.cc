@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdio>
 #include <filesystem>
 #include <mutex>
 #include <string>
@@ -72,6 +73,8 @@ int main() {
       transport_root.size(), initial.data(), initial.size(), Activation,
       &callback, &primary);
   if (primary_status != KWEB_APPLICATION_LIFECYCLE_OK_PRIMARY || primary == 0) {
+    std::fprintf(stderr, "primary acquire failed: status=%d handle=%llu\n",
+                 primary_status, static_cast<unsigned long long>(primary));
     return 3;
   }
 
@@ -82,6 +85,8 @@ int main() {
       transport_root.size(), forwarded.data(), forwarded.size(), Activation,
       &callback, &secondary);
   if (secondary_status != KWEB_APPLICATION_LIFECYCLE_OK_SECONDARY || secondary != 0) {
+    std::fprintf(stderr, "secondary acquire failed: status=%d handle=%llu\n",
+                 secondary_status, static_cast<unsigned long long>(secondary));
     kweb_application_lifecycle_release(primary);
     return 4;
   }

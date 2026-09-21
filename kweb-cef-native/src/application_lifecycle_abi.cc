@@ -29,9 +29,6 @@
 #endif
 #if defined(__APPLE__)
 #include <sys/types.h>
-#include <unistd.h>
-#else
-#include <pwd.h>
 #endif
 
 #if defined(__APPLE__)
@@ -764,7 +761,7 @@ bool DbusSend(NativeLifecycle *lifecycle, const uint8_t *payload, size_t size) {
   g_variant_builder_add(&options, "{sv}", "kweb-payload", array);
   GError *error = nullptr;
   GVariant *reply = g_dbus_connection_call_sync(
-      lifecycle->bus, lifecycle->bus_name.c_str(), "/org/freedesktop/Application",
+      lifecycle->bus, lifecycle->bus_name.c_str(), "/org/kwebshell/Application",
       "org.freedesktop.Application", "Activate",
       g_variant_new("(@a{sv})", g_variant_builder_end(&options)), nullptr,
       G_DBUS_CALL_FLAGS_NONE, 2000, nullptr, &error);

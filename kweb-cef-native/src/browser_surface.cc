@@ -395,10 +395,37 @@ public:
     if (display_ == nullptr || browser_window_ == None) {
       return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
     }
+    Window root = None;
+    Window actual_parent = None;
+    Window *children = nullptr;
+    unsigned int child_count = 0;
+    const Status queried = XQueryTree(display_, browser_window_, &root,
+                                      &actual_parent, &children, &child_count);
+    if (children != nullptr) {
+      XFree(children);
+    }
+    if (queried == 0) {
+      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    }
+    if (actual_parent != parent_) {
+      XReparentWindow(display_, browser_window_, parent_, x, y);
+    }
     XMoveResizeWindow(display_, browser_window_, x, y,
                       static_cast<unsigned int>(width),
                       static_cast<unsigned int>(height));
     XSync(display_, False);
+    Window verified_root = None;
+    Window verified_parent = None;
+    children = nullptr;
+    child_count = 0;
+    const Status verified = XQueryTree(display_, browser_window_, &verified_root,
+                                       &verified_parent, &children, &child_count);
+    if (children != nullptr) {
+      XFree(children);
+    }
+    if (verified == 0 || verified_parent != parent_) {
+      return KWEB_STATUS_PARENT_SURFACE_INVALID;
+    }
     XWindowAttributes attributes{};
     if (XGetWindowAttributes(display_, browser_window_, &attributes) == 0) {
       return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;

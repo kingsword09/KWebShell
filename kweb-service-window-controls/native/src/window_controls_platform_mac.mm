@@ -67,6 +67,7 @@ kweb_window_controls_status Attach(kweb_window_handle child,
                                    kweb_window_modality modality) {
   (void)modality;
   return OnAppKitThread([child, parent] {
+    @try {
     NSWindow *child_window = WindowForHandle(child);
     NSWindow *parent_window = WindowForHandle(parent);
     const kweb_window_controls_status child_status = Validate(child_window);
@@ -94,6 +95,10 @@ kweb_window_controls_status Attach(kweb_window_handle child,
     return [parent_window.childWindows containsObject:child_window]
                ? KWEB_WINDOW_CONTROLS_STATUS_OK
                : KWEB_WINDOW_CONTROLS_STATUS_STATE_UNOBSERVED;
+    } @catch (NSException *exception) {
+      (void)exception;
+      return KWEB_WINDOW_CONTROLS_STATUS_NATIVE_FAILED;
+    }
   });
 }
 
@@ -102,6 +107,7 @@ kweb_window_controls_status Detach(kweb_window_handle child,
                                    kweb_window_modality modality) {
   (void)modality;
   return OnAppKitThread([child, parent] {
+    @try {
     NSWindow *child_window = WindowForHandle(child);
     NSWindow *parent_window = WindowForHandle(parent);
     const kweb_window_controls_status child_status = Validate(child_window);
@@ -118,6 +124,10 @@ kweb_window_controls_status Detach(kweb_window_handle child,
     return [parent_window.childWindows containsObject:child_window]
                ? KWEB_WINDOW_CONTROLS_STATUS_STATE_UNOBSERVED
                : KWEB_WINDOW_CONTROLS_STATUS_OK;
+    } @catch (NSException *exception) {
+      (void)exception;
+      return KWEB_WINDOW_CONTROLS_STATUS_NATIVE_FAILED;
+    }
   });
 }
 

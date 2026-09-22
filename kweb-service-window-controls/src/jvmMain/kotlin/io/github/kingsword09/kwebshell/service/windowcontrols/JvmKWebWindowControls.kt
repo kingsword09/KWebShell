@@ -26,6 +26,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.awt.Dimension
 import java.awt.EventQueue
+import java.awt.Frame
 import java.awt.GraphicsConfiguration
 import java.awt.Window
 import java.awt.event.ComponentAdapter
@@ -301,6 +302,7 @@ internal class ComposeKWebWindowControls private constructor(
     private var maximizable = initialState.maximizable
     private var closable = initialState.closable
     private var attention = initialState.attention
+    private var alwaysOnTop = initialState.alwaysOnTop
     private var nativeParentHandle: Long? = null
     private var nativeAttachJob: Job? = null
     private var nativeDetachJob: Job? = null
@@ -405,7 +407,7 @@ internal class ComposeKWebWindowControls private constructor(
 
     override suspend fun minimize(): KWebWindowState = mutateAndAwait("minimize", { it.placement == KWebWindowPlacement.MINIMIZED }) {
         if (!minimizable) throw unavailable("minimize", "Minimization is disabled for this window.")
-        if (window.placement != WindowPlacement.Fullscreen) placementBeforeMinimize = currentPlacement()
+        if (!nativeFullscreenObserved()) placementBeforeMinimize = currentPlacement()
         window.isMinimized = true
     }
 
@@ -437,7 +439,10 @@ internal class ComposeKWebWindowControls private constructor(
 
     override suspend fun setFullscreen(mode: KWebWindowFullscreenMode): KWebWindowState = mutateAndAwait(
         "set-fullscreen",
-        { it.fullscreen == mode },
+        {
+            it.fullscreen == mode &&
+                onAwtThread { nativeFullscreenObserved() == (mode != KWebWindowFullscreenMode.WINDOWED) }
+        },
     ) {
         if (fullscreenMode == KWebWindowFullscreenMode.KIOSK && mode != KWebWindowFullscreenMode.WINDOWED) {
             throw unavailable("set-fullscreen", "Kiosk mode must be exited before another fullscreen mode can be selected.")
@@ -476,7 +481,13 @@ internal class ComposeKWebWindowControls private constructor(
             "set-always-on-top",
             "The current desktop cannot keep this window always on top.",
         )
-        window.isAlwaysOnTop = alwaysOnTop
+        if (native.providerId() == "macos.AppKit") {
+            requireNativeStatus("set-always-on-top", native.setAlwaysOnTop(window.windowHandle, alwaysOnTop))
+            this@ComposeKWebWindowControls.alwaysOnTop = alwaysOnTop
+        } else {
+            window.isAlwaysOnTop = alwaysOnTop
+            this@ComposeKWebWindowControls.alwaysOnTop = window.isAlwaysOnTop
+        }
         readAndPublish()
     }
 
@@ -673,12 +684,20 @@ internal class ComposeKWebWindowControls private constructor(
     ): KWebWindowState = withContext(Dispatchers.IO) {
         onAwtThread { synchronized(lock) { requireOpen(name); requireWindow(name); mutation() } }
         val deadline = System.nanoTime() + TRANSITION_TIMEOUT_NANOS
+        var stableObservations = 0
+        var previous: KWebWindowState? = null
         while (System.nanoTime() < deadline) {
             val current = onAwtThread { synchronized(lock) { requireOpen(name); requireWindow(name); readState() } }
             if (expected(current)) {
-                onAwtThread { synchronized(lock) { publish(current) } }
-                return@withContext current
+                stableObservations = if (current == previous) stableObservations + 1 else 1
+                if (stableObservations >= REQUIRED_STABLE_OBSERVATIONS) {
+                    onAwtThread { synchronized(lock) { publish(current) } }
+                    return@withContext current
+                }
+            } else {
+                stableObservations = 0
             }
+            previous = current
             delay(TRANSITION_POLL_MILLIS)
         }
         throw nativeFailure(name, "The Compose window did not reach the requested state in time.", null)
@@ -759,7 +778,7 @@ internal class ComposeKWebWindowControls private constructor(
                 maximizable = maximizable,
                 closable = closable,
                 resizable = window.isResizable,
-                alwaysOnTop = window.isAlwaysOnTop,
+                alwaysOnTop = readState().alwaysOnTop,
             )
         }
         if (mode == KWebWindowFullscreenMode.KIOSK) {
@@ -771,20 +790,45 @@ internal class ComposeKWebWindowControls private constructor(
             if (!window.isAlwaysOnTopSupported) {
                 throw unavailable("set-fullscreen", "The current desktop cannot enforce kiosk always-on-top state.")
             }
-            window.isAlwaysOnTop = true
+            applyAlwaysOnTop(true)
         }
         internalStateChange = true
         try {
             fullscreenMode = mode
-            window.placement = WindowPlacement.Fullscreen
+            if (native.providerId() == "macos.AppKit") {
+                val device = window.graphicsConfiguration?.device
+                    ?: unavailable("set-fullscreen", "The owner window has no available display device.")
+                device.fullScreenWindow = window
+            } else {
+                window.placement = WindowPlacement.Fullscreen
+            }
         } finally { internalStateChange = false }
     }
 
     private fun exitFullscreenInternal() {
         internalStateChange = true
         try {
+            val kioskRestoreAlwaysOnTop =
+                if (fullscreenMode == KWebWindowFullscreenMode.KIOSK) {
+                    capabilitiesBeforeKiosk?.alwaysOnTop
+                } else {
+                    null
+                }
+            if (fullscreenMode == KWebWindowFullscreenMode.KIOSK) {
+                applyAlwaysOnTop(false)
+            }
             fullscreenMode = KWebWindowFullscreenMode.WINDOWED
-            window.placement = restoredPlacement.toComposePlacement()
+            if (native.providerId() == "macos.AppKit") {
+                window.graphicsConfiguration?.device?.let { device ->
+                    if (device.fullScreenWindow === window) device.fullScreenWindow = null
+                }
+                window.extendedState = when (restoredPlacement) {
+                    KWebWindowPlacement.MAXIMIZED -> Frame.MAXIMIZED_BOTH
+                    else -> Frame.NORMAL
+                }
+            } else {
+                window.placement = restoredPlacement.toComposePlacement()
+            }
             restoredBounds?.let { bounds ->
                 internalMove = true
                 try { window.setBounds(bounds.x, bounds.y, bounds.width, bounds.height) }
@@ -798,7 +842,7 @@ internal class ComposeKWebWindowControls private constructor(
                 maximizable = capabilities.maximizable
                 closable = capabilities.closable
                 window.isResizable = capabilities.resizable
-                window.isAlwaysOnTop = capabilities.alwaysOnTop
+                applyAlwaysOnTop(kioskRestoreAlwaysOnTop ?: capabilities.alwaysOnTop)
             }
             capabilitiesBeforeKiosk = null
         } finally {
@@ -815,6 +859,16 @@ internal class ComposeKWebWindowControls private constructor(
     }
 
     private fun readAndPublish(): KWebWindowState = readState().also(::publish)
+
+    private fun applyAlwaysOnTop(enabled: Boolean) {
+        if (native.providerId() == "macos.AppKit") {
+            requireNativeStatus("set-always-on-top", native.setAlwaysOnTop(window.windowHandle, enabled))
+            alwaysOnTop = enabled
+        } else {
+            window.isAlwaysOnTop = enabled
+            alwaysOnTop = window.isAlwaysOnTop
+        }
+    }
 
     private fun readState(): KWebWindowState {
         val configuration: GraphicsConfiguration? = window.graphicsConfiguration
@@ -836,7 +890,7 @@ internal class ComposeKWebWindowControls private constructor(
             maximizable = maximizable,
             closable = closable,
             resizable = window.isResizable,
-            alwaysOnTop = window.isAlwaysOnTop,
+            alwaysOnTop = if (native.providerId() == "macos.AppKit") alwaysOnTop else window.isAlwaysOnTop,
             constraints = KWebWindowConstraints(
                 minimumWidth = window.minimumSize.width.coerceIn(1, MAXIMUM_DIMENSION),
                 minimumHeight = window.minimumSize.height.coerceIn(1, MAXIMUM_DIMENSION),
@@ -902,6 +956,15 @@ internal class ComposeKWebWindowControls private constructor(
         else -> KWebWindowPlacement.FLOATING
     }
 
+    private fun nativeFullscreenObserved(): Boolean {
+        check(EventQueue.isDispatchThread())
+        return if (native.providerId() == "macos.AppKit") {
+            window.graphicsConfiguration?.device?.fullScreenWindow === window
+        } else {
+            window.placement == WindowPlacement.Fullscreen
+        }
+    }
+
     private fun unavailable(operation: String, message: String): Nothing =
         throw nativeFailure(operation, message, null, KWebServiceErrorCode.OPERATION_UNAVAILABLE)
 
@@ -940,6 +1003,7 @@ internal class ComposeKWebWindowControls private constructor(
         const val MAXIMUM_TITLE_LENGTH: Int = 4096
         const val TRANSITION_POLL_MILLIS: Long = 25L
         const val TRANSITION_TIMEOUT_NANOS: Long = 10_000_000_000L
+        const val REQUIRED_STABLE_OBSERVATIONS: Int = 8
         const val CLOSE_DEADLINE_MILLIS: Long = 5_000L
         var nextCloseId: Long = 1L
 

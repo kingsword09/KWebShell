@@ -14,6 +14,8 @@
 #elif defined(OS_LINUX)
 #include <X11/Xlib.h>
 
+#include <unistd.h>
+
 #include "include/internal/cef_types_linux.h"
 #endif
 
@@ -427,20 +429,37 @@ public:
       return KWEB_STATUS_PARENT_SURFACE_INVALID;
     }
     XWindowAttributes attributes{};
-    if (XGetWindowAttributes(display_, browser_window_, &attributes) == 0) {
-      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    bool exact_size_observed = false;
+    constexpr int kBoundsObservationAttempts = 40;
+    for (int attempt = 0; attempt < kBoundsObservationAttempts; ++attempt) {
+      if (XGetWindowAttributes(display_, browser_window_, &attributes) == 0) {
+        return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+      }
+      *actual_width = attributes.width;
+      *actual_height = attributes.height;
+      if (*actual_width == width && *actual_height == height) {
+        exact_size_observed = true;
+        break;
+      }
+      XSync(display_, False);
+      usleep(5000);
     }
-    *actual_width = attributes.width;
-    *actual_height = attributes.height;
     x_ = x;
     y_ = y;
     if (browser_) {
       browser_->GetHost()->NotifyMoveOrResizeStarted();
       browser_->GetHost()->NotifyScreenInfoChanged();
     }
-    return *actual_width == width && *actual_height == height
-               ? KWEB_STATUS_OK
-               : KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    if (!exact_size_observed) {
+      std::fprintf(stderr,
+                   "KWEBSHELL_X11_BOUNDS_UNOBSERVED window=%lu parent=%lu "
+                   "requested=%d,%d actual=%d,%d\n",
+                   static_cast<unsigned long>(browser_window_),
+                   static_cast<unsigned long>(parent_), width, height,
+                   *actual_width, *actual_height);
+      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    }
+    return KWEB_STATUS_OK;
   }
 
   kweb_status SetSurfaceState(bool visible, bool focused) override {

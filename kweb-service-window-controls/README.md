@@ -19,14 +19,21 @@ The published v2 surface contains:
   `requestClose`; hierarchy, fullscreen/kiosk, capabilities, and force-close
   remain host-only.
 
+The JVM provider requires the packaged platform provider library explicitly;
+there is no implicit AWT/WebView fallback. The library is the small JDK 25 FFM
+bridge over the Win32, AppKit, or X11 provider selected for the current target.
+
 Linux support is the hosted X11 contract; Wayland and unsupported window-manager
 operations return typed failures. Native menu/tray ownership, custom title-bar
 hit testing, and window creation remain separate contracts.
 
 ```kotlin
+import java.nio.file.Path
+
 val controls = JvmKWebWindowControls.open(
     composeWindow,
     KWebWindowRegistration(id = "main-window"),
+    nativeLibrary = Path.of("/absolute/path/to/libkwebshell_window_controls"),
 )
 engine.nativeServices.install(KWebWindowControls.Key, controls)
 

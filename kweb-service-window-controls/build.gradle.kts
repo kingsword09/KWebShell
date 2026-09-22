@@ -95,6 +95,65 @@ tasks.named("check") {
 }
 
 val operatingSystem = providers.systemProperty("os.name")
+val nativeProjectDirectory = layout.projectDirectory.dir("native")
+val nativeBuildDirectory = layout.buildDirectory.dir("native")
+val nativeLibrary = operatingSystem.map { name ->
+    val fileName = when {
+        name.lowercase(Locale.ROOT).startsWith("windows") -> "kwebshell_window_controls.dll"
+        name.lowercase(Locale.ROOT).startsWith("mac") -> "libkwebshell_window_controls.dylib"
+        name.lowercase(Locale.ROOT).startsWith("linux") -> "libkwebshell_window_controls.so"
+        else -> throw GradleException("Unsupported desktop operating system '$name'.")
+    }
+    nativeBuildDirectory.get().dir("contract").file(fileName).asFile
+}
+val nativeTestExecutable = operatingSystem.map { name ->
+    if (name.lowercase(Locale.ROOT).startsWith("windows")) {
+        "kweb_window_controls_tests.exe"
+    } else {
+        "kweb_window_controls_tests"
+    }
+}
+val nativeArchitecture = providers.systemProperty("os.arch").map { architecture ->
+    when (architecture.lowercase(Locale.ROOT)) {
+        "x86_64", "amd64" -> "x86_64"
+        "aarch64", "arm64" -> "arm64"
+        else -> throw GradleException("Unsupported desktop architecture '$architecture'.")
+    }
+}
+val configureNative = tasks.register<Exec>("configureNative") {
+    group = "build"
+    description = "Configures the standalone native KWebWindowControls ABI."
+    inputs.file(nativeProjectDirectory.file("CMakeLists.txt"))
+    inputs.dir(nativeProjectDirectory.dir("include"))
+    inputs.dir(nativeProjectDirectory.dir("src"))
+    inputs.dir(nativeProjectDirectory.dir("tests"))
+    outputs.file(nativeBuildDirectory.map { it.file("build.ninja") })
+    commandLine(
+        "cmake",
+        "-S", nativeProjectDirectory.asFile.absolutePath,
+        "-B", nativeBuildDirectory.get().asFile.absolutePath,
+        "-G", "Ninja",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DKWEB_PROJECT_ARCH=${nativeArchitecture.get()}",
+    )
+}
+val buildNative = tasks.register<Exec>("buildNative") {
+    group = "build"
+    description = "Builds the standalone KWebWindowControls native provider and contract tests."
+    dependsOn(configureNative)
+    inputs.file(nativeBuildDirectory.map { it.file("build.ninja") })
+    outputs.dir(nativeBuildDirectory.map { it.dir("contract") })
+    commandLine("cmake", "--build", nativeBuildDirectory.get().asFile.absolutePath, "--config", "Release")
+}
+val nativeTest = tasks.register<Exec>("nativeTest") {
+    group = "verification"
+    description = "Runs the real platform KWebWindowControls ABI contract tests."
+    dependsOn(buildNative)
+    commandLine(nativeBuildDirectory.get().dir("contract").file(nativeTestExecutable.get()).asFile.absolutePath)
+}
+tasks.named("check") {
+    dependsOn(nativeTest)
+}
 val nativeReleaseDirectory = rootProject.layout.projectDirectory.dir("kweb-cef-native/build/native/Release")
 val nativeEngineLibrary = operatingSystem.map { name ->
     val fileName = when {
@@ -168,6 +227,7 @@ val integrationCommand = providers.provider {
         add("-Dkweb.engine.resources.path=${nativeResources.get().absolutePath}")
         add("-Dkweb.engine.locales.path=${nativeLocales.get().absolutePath}")
         add("-Dkweb.window-controls.bridge.javascript=${generatedBridgeDirectory.get().file("WindowControlsBridgeBridge.js").asFile.absolutePath}")
+        add("-Dkweb.window.controls.native.library.path=${nativeLibrary.get().absolutePath}")
         add("-Dkweb.services.native.library.path=${servicesNativeLibrary.get().absolutePath}")
         add("-cp")
         add(integrationClasspath.asPath)
@@ -184,6 +244,7 @@ val windowControlsIntegrationTest = tasks.register<Exec>("windowControlsIntegrat
         cleanIntegration,
         tasks.named("jvmTestClasses"),
         generateWindowControlsBridge,
+        nativeTest,
         ":kweb-desktop:jar",
         ":kweb-cef-native:buildNative",
         ":kweb-service-app-paths:buildNative",
@@ -194,6 +255,7 @@ val windowControlsIntegrationTest = tasks.register<Exec>("windowControlsIntegrat
         ":kweb-electron-migration:electronMigrationIntegrationTest",
     )
     inputs.file(nativeEngineLibrary)
+    inputs.file(nativeLibrary)
     inputs.file(nativeCefRuntime)
     inputs.file(nativeBrowserSubprocess)
     inputs.file(nativeResources.map { it.resolve("resources.pak") })

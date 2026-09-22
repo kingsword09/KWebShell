@@ -6,6 +6,7 @@ import io.github.kingsword09.kwebshell.core.KWebConfigurationException
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 import io.github.kingsword09.kwebshell.services.KWebServiceErrorCode
+import io.github.kingsword09.kwebshell.service.windowcontrols.internal.WindowControlsFfm
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -21,6 +22,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.awt.Dimension
 import java.awt.EventQueue
 import java.awt.GraphicsConfiguration
@@ -34,12 +37,76 @@ import java.awt.event.WindowStateListener
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.FutureTask
 import java.util.concurrent.atomic.AtomicLong
+import java.nio.file.Path
 import javax.swing.JFrame
 import javax.swing.WindowConstants
 
+private val KWebWindowModality.nativeId: Int
+    get() = when (this) {
+        KWebWindowModality.NONE -> 0
+        KWebWindowModality.WINDOW_MODAL -> 1
+        KWebWindowModality.APPLICATION_MODAL -> 2
+    }
+
+private object WindowControlsNativeRegistry {
+    private val lock = Any()
+    private val adapters = linkedMapOf<Path, WindowControlsFfm>()
+
+    fun open(path: Path): WindowControlsFfm {
+        val normalized = path.toAbsolutePath().normalize()
+        synchronized(lock) {
+            return adapters.getOrPut(normalized) {
+                try {
+                    WindowControlsFfm.open(normalized)
+                } catch (error: Throwable) {
+                    throw KWebNativeException(
+                        code = "service.platform-unavailable",
+                        details = mapOf("path" to normalized.toString()),
+                        message = "The RFC 0007 platform window-controls provider could not be loaded.",
+                        cause = error,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun requireNativeStatus(
+    operation: String,
+    native: WindowControlsFfm,
+    status: Int,
+) {
+    if (status == WindowControlsFfm.STATUS_OK) return
+    val statusName = runCatching { native.statusName(status) }.getOrDefault("unknown")
+    val code = when (status) {
+        WindowControlsFfm.STATUS_UNSUPPORTED -> KWebServiceErrorCode.OPERATION_UNAVAILABLE
+        WindowControlsFfm.STATUS_NATIVE_UNAVAILABLE -> "service.platform-unavailable"
+        WindowControlsFfm.STATUS_STALE_HANDLE,
+        WindowControlsFfm.STATUS_STATE_UNOBSERVED -> "window.native-state-unobserved"
+        else -> KWebServiceErrorCode.NATIVE_FAILED
+    }
+    throw KWebNativeException(
+        code = code,
+        details = mapOf(
+            "service" to KWebWindowControls.DESCRIPTOR.id,
+            "operation" to operation,
+            "provider" to native.providerId(),
+            "nativeStatus" to statusName,
+        ),
+        message = "The ${native.providerId()} window-controls operation '$operation' failed.",
+    )
+}
+
 public object JvmKWebWindowControls {
-    public fun open(window: ComposeWindow, registration: KWebWindowRegistration): KWebWindowControls =
-        ComposeKWebWindowControls.open(window, registration)
+    public fun open(
+        window: ComposeWindow,
+        registration: KWebWindowRegistration,
+        nativeLibrary: Path,
+    ): KWebWindowControls = ComposeKWebWindowControls.open(
+        window,
+        registration,
+        WindowControlsNativeRegistry.open(nativeLibrary),
+    )
 }
 
 private object WindowHierarchyRegistry {
@@ -51,7 +118,7 @@ private object WindowHierarchyRegistry {
     private val modalOwnersByChild = linkedMapOf<ComposeKWebWindowControls, Set<ComposeKWebWindowControls>>()
 
     fun register(service: ComposeKWebWindowControls) {
-        val shouldActivateModal = synchronized(lock) {
+        val (parent, shouldActivateModal) = synchronized(lock) {
             val registration = service.registration
             if (services.size >= MAX_APPLICATION_WINDOWS) {
                 throw KWebConfigurationException(
@@ -91,7 +158,20 @@ private object WindowHierarchyRegistry {
                 )
             }
             services[registration.id] = service
-            registration.modality != KWebWindowModality.NONE && service.isVisibleForHierarchy()
+            Pair(
+                parent,
+                registration.modality != KWebWindowModality.NONE && service.isVisibleForHierarchy(),
+            )
+        }
+        try {
+            parent?.let { service.attachNativeParent(it.nativeHandle()) }
+        } catch (error: Throwable) {
+            synchronized(lock) {
+                if (services[service.registration.id] === service) {
+                    services.remove(service.registration.id)
+                }
+            }
+            throw error
         }
         if (shouldActivateModal) activateModal(service)
     }
@@ -105,8 +185,13 @@ private object WindowHierarchyRegistry {
         synchronized(lock) {
             if (services[service.registration.id] !== service) return
             deactivateModal(service)
+            service.detachNativeParent()
             services.remove(service.registration.id)
         }
+    }
+
+    fun detachNativeParent(service: ComposeKWebWindowControls) {
+        service.detachNativeParent()
     }
 
     fun visibilityChanged(service: ComposeKWebWindowControls, visible: Boolean) {
@@ -185,9 +270,12 @@ internal class ComposeKWebWindowControls private constructor(
     private val window: ComposeWindow,
     override val registration: KWebWindowRegistration,
     initialState: KWebWindowState,
+    private val native: WindowControlsFfm,
 ) : KWebWindowControls {
     private val lock = Any()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val nativeRelationshipScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val nativeRelationshipMutex = Mutex()
     private val mutableLifecycle = MutableStateFlow(KWebLifecycleState.OPEN)
     private val mutableState = MutableStateFlow(initialState)
     private val mutableEvents = MutableSharedFlow<KWebWindowEvent>(
@@ -213,6 +301,9 @@ internal class ComposeKWebWindowControls private constructor(
     private var maximizable = initialState.maximizable
     private var closable = initialState.closable
     private var attention = initialState.attention
+    private var nativeParentHandle: Long? = null
+    private var nativeAttachJob: Job? = null
+    private var nativeDetachJob: Job? = null
 
     override val descriptor = KWebWindowControls.DESCRIPTOR
     override val lifecycle: StateFlow<KWebLifecycleState> = mutableLifecycle.asStateFlow()
@@ -438,10 +529,114 @@ internal class ComposeKWebWindowControls private constructor(
     }
 
     internal fun setEnabledFromHierarchy(enabled: Boolean) {
-        onAwtThread { if (window.isDisplayable) window.isEnabled = enabled }
+        onAwtThread {
+            if (window.isDisplayable) {
+                window.isEnabled = enabled
+                if (native.providerId() != "linux.X11" && native.providerId() != "macos.AppKit") {
+                    requireNativeStatus(
+                        "set-modal-enabled",
+                        native.setModalEnabled(window.windowHandle, enabled),
+                    )
+                }
+            }
+        }
     }
 
     internal fun isVisibleForHierarchy(): Boolean = window.isDisplayable && window.isVisible
+
+    internal fun nativeHandle(): Long = window.windowHandle
+
+    internal fun nativeProviderId(): String = native.providerId()
+
+    internal fun attachNativeParent(parentHandle: Long) {
+        check(EventQueue.isDispatchThread())
+        val childHandle = nativeHandle()
+        if (native.providerId() == "macos.AppKit") {
+            nativeParentHandle = parentHandle
+            nativeAttachJob = nativeRelationshipScope.launch {
+                nativeRelationshipMutex.withLock {
+                    runCatching {
+                        requireNativeStatus(
+                            "attach-parent",
+                            native.attach(childHandle, parentHandle, registration.modality.nativeId),
+                        )
+                        requireNativeStatus(
+                            "verify-parent",
+                            native.verifyParent(childHandle, parentHandle),
+                        )
+                    }.onFailure(::recordNativeRelationshipFailure)
+                }
+            }
+            return
+        }
+        requireNativeStatus(
+            "attach-parent",
+            native.attach(childHandle, parentHandle, registration.modality.nativeId),
+        )
+        if (native.providerId() != "macos.AppKit") {
+            requireNativeStatus("verify-parent", native.verifyParent(childHandle, parentHandle))
+        }
+        nativeParentHandle = parentHandle
+    }
+
+    internal fun detachNativeParent() {
+        check(EventQueue.isDispatchThread())
+        val parentHandle = nativeParentHandle ?: return
+        val childHandle = nativeHandle()
+        if (native.providerId() == "macos.AppKit") {
+            nativeParentHandle = null
+            nativeDetachJob = nativeRelationshipScope.launch {
+                nativeRelationshipMutex.withLock {
+                    if (childHandle != 0L) {
+                        runCatching {
+                            requireNativeStatus(
+                                "detach-parent",
+                                native.detach(childHandle, parentHandle, registration.modality.nativeId),
+                            )
+                        }.onFailure(::recordNativeRelationshipFailure)
+                    }
+                }
+            }
+            return
+        }
+        if (childHandle != 0L) {
+            requireNativeStatus(
+                "detach-parent",
+                native.detach(childHandle, parentHandle, registration.modality.nativeId),
+            )
+        }
+        nativeParentHandle = null
+    }
+
+    internal suspend fun awaitNativeParentage() {
+        nativeAttachJob?.join()
+        if (mutableLifecycle.value == KWebLifecycleState.FAILED) {
+            throw nativeFailure(
+                "attach-parent",
+                "The native parent relationship failed to settle.",
+                null,
+            )
+        }
+    }
+
+    internal suspend fun awaitNativeTeardown() {
+        nativeDetachJob?.join()
+    }
+
+    private fun requireNativeStatus(operation: String, status: Int) {
+        requireNativeStatus(operation, native, status)
+    }
+
+    private fun recordNativeRelationshipFailure(error: Throwable) {
+        onAwtThread {
+            synchronized(lock) {
+                if (mutableLifecycle.value == KWebLifecycleState.OPEN) {
+                    mutableLifecycle.value = KWebLifecycleState.FAILED
+                }
+            }
+        }
+        System.err.println("KWEBSHELL_WINDOW_CONTROLS_NATIVE_RELATIONSHIP_FAILED:${error.message}")
+    }
 
     internal fun forceCloseFromHierarchy() {
         check(EventQueue.isDispatchThread())
@@ -544,6 +739,7 @@ internal class ComposeKWebWindowControls private constructor(
         val terminalState = readState().copy(visible = false, focused = false)
         mutableLifecycle.value = KWebLifecycleState.CLOSING
         closingFromService = true
+        WindowHierarchyRegistry.detachNativeParent(this)
         window.defaultCloseOperation = JFrame.DISPOSE_ON_CLOSE
         window.dispatchEvent(WindowEvent(window, WindowEvent.WINDOW_CLOSING))
         if (window.isDisplayable) window.dispose()
@@ -747,7 +943,11 @@ internal class ComposeKWebWindowControls private constructor(
         const val CLOSE_DEADLINE_MILLIS: Long = 5_000L
         var nextCloseId: Long = 1L
 
-        fun open(window: ComposeWindow, registration: KWebWindowRegistration): ComposeKWebWindowControls = onAwtThreadStatic {
+        fun open(
+            window: ComposeWindow,
+            registration: KWebWindowRegistration,
+            native: WindowControlsFfm,
+        ): ComposeKWebWindowControls = onAwtThreadStatic {
             if (!window.isDisplayable || window.width <= 0 || window.height <= 0) {
                 throw KWebConfigurationException(
                     code = "window.owner.not-displayable",
@@ -771,6 +971,9 @@ internal class ComposeKWebWindowControls private constructor(
                     details = mapOf("windowId" to registration.id),
                     message = "The caller-owned ComposeWindow has no observable native top-level handle.",
                 )
+            }
+            if (native.providerId() != "macos.AppKit") {
+                requireNativeStatus("probe", native, native.probe(window.windowHandle))
             }
             if (window.defaultCloseOperation != JFrame.DO_NOTHING_ON_CLOSE) {
                 window.defaultCloseOperation = WindowConstants.DO_NOTHING_ON_CLOSE
@@ -806,7 +1009,7 @@ internal class ComposeKWebWindowControls private constructor(
                 registration.initialConstraints.maximumWidth ?: Int.MAX_VALUE,
                 registration.initialConstraints.maximumHeight ?: Int.MAX_VALUE,
             )
-            val service = ComposeKWebWindowControls(window, registration, initial)
+            val service = ComposeKWebWindowControls(window, registration, initial, native)
             WindowHierarchyRegistry.register(service)
             service.installListeners()
             service

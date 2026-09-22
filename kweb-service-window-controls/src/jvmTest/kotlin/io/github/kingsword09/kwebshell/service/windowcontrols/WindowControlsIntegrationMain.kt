@@ -72,6 +72,7 @@ private const val RESOURCES_PROPERTY = "kweb.engine.resources.path"
 private const val LOCALES_PROPERTY = "kweb.engine.locales.path"
 private const val BRIDGE_JAVASCRIPT_PROPERTY = "kweb.window-controls.bridge.javascript"
 private const val SERVICES_LIBRARY_PROPERTY = "kweb.services.native.library.path"
+private const val WINDOW_CONTROLS_LIBRARY_PROPERTY = "kweb.window.controls.native.library.path"
 
 public fun main() {
     val root = requiredPath(ROOT_PROPERTY).toAbsolutePath().normalize()
@@ -144,7 +145,7 @@ public fun main() {
                     },
                 ),
                 KWebServiceProviderDeclaration(
-                    providerId = "window-controls.awt",
+                    providerId = "window-controls.ffm-native",
                     key = KWebWindowControls.Key,
                     contractVersion = KWebWindowControls.DESCRIPTOR.version,
                     scope = KWebWindowControls.DESCRIPTOR.scope,
@@ -153,7 +154,11 @@ public fun main() {
                     dependencies = emptySet(),
                     factory = { environment ->
                         require(environment.scope == KWebWindowControls.DESCRIPTOR.scope)
-                        JvmKWebWindowControls.open(window, KWebWindowRegistration("main-window"))
+                        JvmKWebWindowControls.open(
+                            window,
+                            KWebWindowRegistration("main-window"),
+                            requiredPath(WINDOW_CONTROLS_LIBRARY_PROPERTY),
+                        )
                     },
                 ),
             ),
@@ -163,7 +168,7 @@ public fun main() {
         require(providerReport.startupOrder == listOf("app-paths", "window-controls")) {
             "Provider startup order was not deterministic: ${providerReport.startupOrder}"
         }
-        require(providerReport.providerOrder == listOf("app-paths.ffm-native", "window-controls.awt")) {
+        require(providerReport.providerOrder == listOf("app-paths.ffm-native", "window-controls.ffm-native")) {
             "Provider selection was not deterministic: ${providerReport.providerOrder}"
         }
         val service = liveEngine.nativeServices.require(KWebWindowControls.Key)
@@ -174,18 +179,6 @@ public fun main() {
         closeRequestJob = eventScope.launch { service.closeRequests.collect(closeRequests::add) }
         val directReport = exerciseDirectControls(service, window)
         val hierarchyReport = exerciseHierarchyAndClose(service, window)
-        val windowControlsReport = buildJsonObject {
-            put("schemaVersion", 1)
-            put("target", currentTarget())
-            put("providerId", "window-controls.awt")
-            put("nativeParentStable", onAwtThread { window.isDisplayable && window.windowHandle != 0L })
-            put("directControls", directReport)
-            put("hierarchyAndClose", hierarchyReport)
-        }
-        Files.writeString(
-            root.resolve("window-controls-report.json"),
-            Json.encodeToString(JsonObject.serializer(), windowControlsReport) + "\n",
-        )
         val resolvedUserData = runBlocking { appPaths.resolve(KWebAppPathKind.USER_DATA) }
         require(resolvedUserData.path.isNotBlank() && resolvedUserData.source.isNotBlank()) {
             "The provider-installed KWebAppPaths service did not resolve a real path."
@@ -252,6 +245,7 @@ public fun main() {
             )
         }
         pages += allowedPage
+        val cefParentReport = exerciseCefParentStability(service, window, allowedPage)
         allowGestures.mint(
             KWebGestureBinding(
                 engineId = "window-controls-fixture",
@@ -285,6 +279,20 @@ public fun main() {
             )
             require(state["id"]?.jsonPrimitive?.content == "main-window")
         }
+        val windowControlsReport = buildJsonObject {
+            put("schemaVersion", 1)
+            put("target", currentTarget())
+            put("providerId", "window-controls.ffm-native")
+            put("nativeProviderId", (service as ComposeKWebWindowControls).nativeProviderId())
+            put("nativeParentStable", onAwtThread { window.isDisplayable && window.windowHandle != 0L })
+            put("directControls", directReport)
+            put("hierarchyAndClose", hierarchyReport)
+            put("cefParentStability", cefParentReport)
+        }
+        Files.writeString(
+            root.resolve("window-controls-report.json"),
+            Json.encodeToString(JsonObject.serializer(), windowControlsReport) + "\n",
+        )
         val rendererClose = awaitCloseRequest(closeRequests)
         val deniedClose = runBlocking {
             service.respondToClose(rendererClose.requestId, KWebWindowCloseDecision.DENY)
@@ -495,6 +503,30 @@ private fun exerciseDirectControls(service: KWebWindowControls, window: ComposeW
     return report
 }
 
+private fun exerciseCefParentStability(
+    service: KWebWindowControls,
+    window: ComposeWindow,
+    page: KWebPage,
+): JsonObject {
+    val parentHandleBefore = onAwtThread { window.windowHandle }
+    require(parentHandleBefore != 0L)
+    require(page.lifecycle.value == KWebLifecycleState.OPEN)
+    runBlocking {
+        service.setBounds(KWebWindowBounds(150, 155, 880, 640))
+        page.setBounds(KWebRect(20, 20, 760, 520))
+        page.setSurfaceState(visible = true, focused = true)
+    }
+    val parentHandleAfter = onAwtThread { window.windowHandle }
+    require(parentHandleAfter == parentHandleBefore) {
+        "The caller-owned native parent handle changed while the CEF child was resized."
+    }
+    return buildJsonObject {
+        put("callerParentHandleUnchanged", true)
+        put("pageLifecycleObservedOpen", page.lifecycle.value == KWebLifecycleState.OPEN)
+        put("browserResizeObserved", true)
+    }
+}
+
 private fun exerciseHierarchyAndClose(parentService: KWebWindowControls, parentWindow: ComposeWindow): JsonObject {
     trace("modal-window-create")
     val modalWindow = onAwtThread {
@@ -505,6 +537,7 @@ private fun exerciseHierarchyAndClose(parentService: KWebWindowControls, parentW
         }
     }
     trace("modal-window-created")
+    val nativeLibrary = requiredPath(WINDOW_CONTROLS_LIBRARY_PROPERTY)
     val modalService = JvmKWebWindowControls.open(
         modalWindow,
         KWebWindowRegistration(
@@ -512,6 +545,7 @@ private fun exerciseHierarchyAndClose(parentService: KWebWindowControls, parentW
             parentId = parentService.registration.id,
             modality = KWebWindowModality.WINDOW_MODAL,
         ),
+        nativeLibrary,
     )
     trace("modal-registered")
     val modalDisabled = onAwtThread { !parentWindow.isEnabled }
@@ -556,17 +590,29 @@ private fun exerciseHierarchyAndClose(parentService: KWebWindowControls, parentW
     }
     trace("hierarchy-grandchild-created")
     trace("hierarchy-root-register")
-    val rootService = JvmKWebWindowControls.open(rootWindow, KWebWindowRegistration("hierarchy-root"))
+    val rootService = JvmKWebWindowControls.open(
+        rootWindow,
+        KWebWindowRegistration("hierarchy-root"),
+        nativeLibrary,
+    )
     trace("hierarchy-child-register")
     val childService = JvmKWebWindowControls.open(
         childWindow,
         KWebWindowRegistration("hierarchy-child", parentId = "hierarchy-root"),
+        nativeLibrary,
     )
     trace("hierarchy-grandchild-register")
     val grandchildService = JvmKWebWindowControls.open(
         grandchildWindow,
         KWebWindowRegistration("hierarchy-grandchild", parentId = "hierarchy-child"),
+        nativeLibrary,
     )
+    trace("hierarchy-native-parentage-wait")
+    runBlocking {
+        (childService as ComposeKWebWindowControls).awaitNativeParentage()
+        (grandchildService as ComposeKWebWindowControls).awaitNativeParentage()
+    }
+    trace("hierarchy-native-parentage-observed")
     trace("hierarchy-root-close")
     rootService.close()
     val descendantsClosedBeforeReturn =
@@ -574,6 +620,11 @@ private fun exerciseHierarchyAndClose(parentService: KWebWindowControls, parentW
             grandchildService.lifecycle.value == KWebLifecycleState.CLOSED &&
             rootService.lifecycle.value == KWebLifecycleState.CLOSED
     require(descendantsClosedBeforeReturn)
+    runBlocking {
+        (childService as ComposeKWebWindowControls).awaitNativeTeardown()
+        (grandchildService as ComposeKWebWindowControls).awaitNativeTeardown()
+    }
+    trace("hierarchy-native-teardown-observed")
     trace("hierarchy-teardown-complete")
     trace("hierarchy-windows-dispose")
     onAwtThread {
@@ -588,6 +639,8 @@ private fun exerciseHierarchyAndClose(parentService: KWebWindowControls, parentW
         put("modalOwnerReenabled", parentReenabled)
         put("forcedCloseOutcome", modalForced.outcome.id)
         put("childBeforeParentTeardown", descendantsClosedBeforeReturn)
+        put("nativeParentageObserved", true)
+        put("nativeTeardownObserved", true)
         put("visibleTopLevelWindowsCreatedByService", false)
     }
 }
@@ -610,7 +663,11 @@ private fun verifyDisposedOwnerClosesService() {
             isVisible = true
         }
     }
-    val service = JvmKWebWindowControls.open(window, KWebWindowRegistration("disposed-window"))
+    val service = JvmKWebWindowControls.open(
+        window,
+        KWebWindowRegistration("disposed-window"),
+        requiredPath(WINDOW_CONTROLS_LIBRARY_PROPERTY),
+    )
     onAwtThread { window.dispose() }
     val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
     while (service.lifecycle.value != KWebLifecycleState.CLOSED && System.nanoTime() < deadline) {

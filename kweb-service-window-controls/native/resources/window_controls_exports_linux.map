@@ -1,0 +1,14 @@
+{
+  global:
+    kweb_window_controls_abi_version;
+    kweb_window_controls_status_name;
+    kweb_window_controls_provider_id;
+    kweb_window_controls_probe;
+    kweb_window_controls_attach;
+    kweb_window_controls_detach;
+    kweb_window_controls_set_modal_enabled;
+    kweb_window_controls_set_always_on_top;
+    kweb_window_controls_request_attention;
+    kweb_window_controls_verify_parent;
+  local: *;
+};

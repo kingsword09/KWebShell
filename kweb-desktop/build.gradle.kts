@@ -46,6 +46,7 @@ val skikoTarget = providers.systemProperty("os.name").zip(
 dependencies {
     api(project(":kweb-core"))
     api(project(":kweb-services-core"))
+    api(project(":kweb-service-application-lifecycle"))
     api(project(":kweb-bridge"))
     implementation(project(":kweb-extensions"))
     implementation(libs.compose.ui.desktop)

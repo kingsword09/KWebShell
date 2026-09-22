@@ -44,6 +44,10 @@ internal object KWebRuntimePayloadContract {
                     name = "kwebshell_engine.dll",
                     type = KWebRuntimePayloadEntryType.FILE,
                 ),
+                KWebRuntimePayloadNativeSpec(
+                    name = "kwebshell_application_lifecycle.dll",
+                    type = KWebRuntimePayloadEntryType.FILE,
+                ),
             )
 
             KWebOperatingSystem.MACOS -> listOf(
@@ -61,6 +65,10 @@ internal object KWebRuntimePayloadContract {
                     type = KWebRuntimePayloadEntryType.SYMLINK,
                     linkTarget = "libkwebshell_engine.1.dylib",
                 ),
+                KWebRuntimePayloadNativeSpec(
+                    name = "libkwebshell_application_lifecycle.dylib",
+                    type = KWebRuntimePayloadEntryType.FILE,
+                ),
             )
 
             KWebOperatingSystem.LINUX -> listOf(
@@ -77,6 +85,10 @@ internal object KWebRuntimePayloadContract {
                     name = "libkwebshell_engine.so",
                     type = KWebRuntimePayloadEntryType.SYMLINK,
                     linkTarget = "libkwebshell_engine.so.1",
+                ),
+                KWebRuntimePayloadNativeSpec(
+                    name = "libkwebshell_application_lifecycle.so",
+                    type = KWebRuntimePayloadEntryType.FILE,
                 ),
             )
         }

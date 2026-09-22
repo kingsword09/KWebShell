@@ -1945,6 +1945,32 @@ The objective is complete only after the RFC acceptance matrix, platform package
 transcripts, retained signatures/SBOMs, documentation, and governance evidence
 are updated in the same PR.
 
+### RFC 0006 implementation objective: application lifecycle ownership
+
+RFC 0006 is the lifecycle objective enabled by RFC 0030. Its readiness review
+is recorded in `docs/rfcs/0006-application-lifecycle.md` at `90f79fd`; coding
+must stay within that accepted contract:
+
+1. `kweb-service-application-lifecycle` publishes one typed application-scoped
+   owner with a bounded, ordered activation stream, explicit state machine,
+   single-instance lease, quit negotiation, relaunch, and stable errors.
+2. Windows, macOS, and Linux use explicit native providers (named mutex/pipe,
+   AppKit/Launch Services, and session D-Bus respectively). Missing facilities,
+   wrong identities, unauthenticated senders, and unavailable sessions fail
+   immediately; no transport or backend fallback exists.
+3. RFC 0030 association metadata is installed and removed only by explicit host
+   operations. Real packaged two-process tests exercise URI and Unicode file
+   activation through OS registration on every hosted target.
+4. The desktop host registers a shutdown participant that closes Page, Profile,
+   Engine, native services, and the lifecycle lease before reporting graceful
+   quit. Forced termination, watchdog expiry, and native failure remain distinct.
+5. The Electron lifecycle mapper accepts only the closed `app` declarations and
+   blocks raw arguments, dynamic listeners, arbitrary relaunch targets, and
+   renderer-controlled quit/relaunch.
+6. Completion requires common tests, native ABI/provider tests, real CEF
+   shutdown integration, three-target process/registration evidence, docs,
+   capability/evidence updates, and a final A1-A11 acceptance review in one PR.
+
 ### RFC review workflow objective: contract review and requirement acceptance
 
 Make RFC implementation readiness and merge acceptance explicit without changing

@@ -17,6 +17,9 @@ import io.github.kingsword09.kwebshell.core.KWebPageEventType
 import io.github.kingsword09.kwebshell.core.KWebPageHost
 import io.github.kingsword09.kwebshell.core.KWebProfile
 import io.github.kingsword09.kwebshell.services.KWebNativeServiceRegistry
+import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebApplicationShutdownParticipant
+import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebQuitReason
+import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebShutdownVote
 import io.github.kingsword09.kwebshell.desktop.internal.NativeBrowser
 import io.github.kingsword09.kwebshell.desktop.internal.NativeBrowserEvent
 import io.github.kingsword09.kwebshell.desktop.internal.NativeBrowserEventType
@@ -36,6 +39,16 @@ import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
 
+public data class KWebDesktopShutdownStage(
+    public val id: String,
+    public val elapsedMillis: Long,
+)
+
+public data class KWebDesktopShutdownReport(
+    public val outcome: String,
+    public val stages: List<KWebDesktopShutdownStage>,
+)
+
 public class KWebDesktopEngine private constructor(
     private val native: NativeEngine,
     private val configuration: KWebDesktopEngineConfiguration,
@@ -47,8 +60,30 @@ public class KWebDesktopEngine private constructor(
     private val profiles = linkedMapOf<Path, KWebDesktopProfile>()
     private val closed = AtomicBoolean(false)
     private var closeFailure: Throwable? = null
+    private var shutdownReport: KWebDesktopShutdownReport? = null
 
     public val nativeServices: KWebNativeServiceRegistry = KWebNativeServiceRegistry()
+
+    public val lastApplicationShutdownReport: KWebDesktopShutdownReport?
+        get() = synchronized(lock) { shutdownReport }
+
+    /**
+     * Registers the complete desktop owner as one application-lifecycle
+     * shutdown participant. The lifecycle service calls this after all
+     * application vetoes have been resolved and before releasing its lease.
+     */
+    public fun applicationShutdownParticipant(): KWebApplicationShutdownParticipant =
+        object : KWebApplicationShutdownParticipant {
+            override val id: String = "desktop-engine"
+            override val order: Int = 100
+
+            override suspend fun requestClose(reason: KWebQuitReason): KWebShutdownVote =
+                KWebShutdownVote.ALLOW
+
+            override suspend fun close(reason: KWebQuitReason) {
+                this@KWebDesktopEngine.close()
+            }
+        }
 
     override val lifecycle: StateFlow<KWebLifecycleState> = native.lifecycle
     override val capabilities: Set<KWebCapability> = buildSet {
@@ -94,36 +129,48 @@ public class KWebDesktopEngine private constructor(
                 return
             }
             requireEngineOpen("close-engine")
+            val startedAt = System.nanoTime()
+            val stages = mutableListOf<KWebDesktopShutdownStage>()
             var nativeFailure: Throwable? = null
             try {
                 native.close()
+                stages += KWebDesktopShutdownStage("engine-native", elapsedMillis(startedAt))
             } catch (error: Throwable) {
                 nativeFailure = error
                 if (lifecycle.value == KWebLifecycleState.OPEN) {
+                    shutdownReport = KWebDesktopShutdownReport("FAILED", stages.toList())
                     throw error
                 }
             }
             var serviceFailure: Throwable? = null
             try {
                 nativeServices.close()
+                stages += KWebDesktopShutdownStage("native-services", elapsedMillis(startedAt))
             } catch (error: Throwable) {
                 serviceFailure = error
             } finally {
                 closed.set(true)
                 profiles.values.toList().forEach { it.markClosedByEngine() }
                 profiles.clear()
+                stages += KWebDesktopShutdownStage("profiles", elapsedMillis(startedAt))
             }
             if (nativeFailure != null) {
                 serviceFailure?.let { nativeFailure.addSuppressed(it) }
                 closeFailure = nativeFailure
+                shutdownReport = KWebDesktopShutdownReport("FAILED", stages.toList())
                 throw nativeFailure
             }
             serviceFailure?.let {
                 closeFailure = it
+                shutdownReport = KWebDesktopShutdownReport("FAILED", stages.toList())
                 throw it
             }
+            shutdownReport = KWebDesktopShutdownReport("GRACEFUL", stages.toList())
         }
     }
+
+    private fun elapsedMillis(startedAt: Long): Long =
+        (System.nanoTime() - startedAt) / 1_000_000L
 
     internal fun <T> withEngineLock(block: () -> T): T = synchronized(lock) { block() }
 

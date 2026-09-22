@@ -168,6 +168,7 @@ public object KWebElectronMigrationErrorCode {
     public const val INVENTORY_BLOCKED: String = "migration.inventory.blocked"
     public const val PACKAGING_INVALID: String = "migration.packaging.invalid"
     public const val PACKAGING_NON_CANONICAL: String = "migration.packaging.non-canonical"
+    public const val LIFECYCLE_INVALID: String = "migration.lifecycle.invalid"
 }
 
 public object KWebElectronMigrationJson {

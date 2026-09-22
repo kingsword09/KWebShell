@@ -18,6 +18,7 @@ tasks.register("runtimeCheck") {
     description = "Runs all unit, runtime, native and packaging tests before refreshing hosted evidence."
     dependsOn(":kweb-core:check")
     dependsOn(":kweb-services-core:check")
+    dependsOn(":kweb-service-application-lifecycle:check")
     dependsOn(":kweb-service-app-paths:check")
     dependsOn(":kweb-service-window-controls:check")
     dependsOn(":kweb-service-dialogs:check")
@@ -35,6 +36,7 @@ tasks.register("runtimeCheck") {
     dependsOn(":kweb-runtime-pack:verifyCefSourcePatchManifest")
     dependsOn(":kweb-runtime-pack:verifyHostRuntimePayload")
     dependsOn(":kweb-runtime-pack:applicationPackageIntegrationTest")
+    dependsOn(":kweb-service-application-lifecycle:applicationLifecycleIntegrationTest")
     dependsOn(":kweb-example-html5-lab:check")
     dependsOn(":kweb-example-support:check")
     dependsOn(":kweb-example-app-benchmark:check")

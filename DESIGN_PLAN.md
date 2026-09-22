@@ -1761,6 +1761,45 @@ ABI. Real open, save, cancellation, owner shutdown, scoped I/O, and exact-origin
 CEF integration passed the hosted macOS arm64, Windows x64, and Linux x64 gates
 before Objective 11.6 was merged.
 
+#### Objective 11.7: Publish window hierarchy, fullscreen, and close ownership
+
+RFC 0007 extends the caller-owned `kweb-service-window-controls` contract to
+parent/modal relationships, native focus and z-order, fullscreen/kiosk state,
+observed capability constraints, attention, and bounded close negotiation.
+Compose remains the creator and disposer of every top-level window. The service
+must consume the existing native parent, use Win32/AppKit/X11 providers on the
+declared targets, preserve the CEF native-child parent through every transition,
+and fail explicitly when the platform session cannot enforce the requested
+state. It must not create hidden windows or fall back to another renderer or
+window backend.
+
+Acceptance criteria:
+
+1. The v2 common contract publishes immutable window identity/parent/modality,
+   bounded bounds and constraints, observed capability state, distinct
+   fullscreen/kiosk modes, ordered events, and stable close request/result
+   semantics. Parent cycles, invalid limits, stale requests, duplicate close
+   responses, and owner disposal fail through typed errors.
+2. Real caller-owned Compose windows prove parent/child ownership, modal owner
+   disable/reenable, focus and z-order, child-before-parent teardown, and no
+   hidden or service-created top-level window on macOS, Windows, and Linux/X11.
+3. Native fullscreen and kiosk transitions survive a monitor/DPI change and
+   restore exact prior logical bounds and placement. The result is observed
+   native state, not an accepted setter request; unsupported display/session
+   operations fail immediately without fallback.
+4. Close requests are one-at-a-time, five-second bounded, coalesced, and
+   terminal. Renderer access can request close only through exact-origin,
+   main-frame, grant, and user-gesture checks; application force-close wins and
+   cannot be vetoed.
+5. Real CEF integration proves native child parentage remains stable through
+   hierarchy, modal, fullscreen, DPI, close, and shutdown transitions, with zero
+   live native owners after completion.
+6. The closed Electron BrowserWindow declarations map to Compose ownership and
+   typed controls; dynamic construction, arbitrary reparenting, raw handles,
+   renderer kiosk/force-close, and arbitrary close listeners block generation.
+   Complete evidence, docs, migration, capability metadata, and A1-A11 review
+   records are delivered in one focused PR.
+
 ### Phase 12: Electron-class capability RFC program
 
 Phase 12 turns the remaining Electron migration surface into a dependency-ordered

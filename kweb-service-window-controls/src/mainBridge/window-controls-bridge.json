@@ -1,7 +1,7 @@
 {
   "namespace": "WindowControlsBridge",
   "kotlinPackage": "io.github.kingsword09.kwebshell.service.windowcontrols.generated",
-  "version": 2,
+  "version": 1,
   "types": [
     { "name": "StateRequest", "fields": [{ "name": "enabled", "type": "boolean" }] },
     { "name": "TitleRequest", "fields": [{ "name": "title", "type": "string" }] },

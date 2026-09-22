@@ -1,24 +1,31 @@
 # KWebShell Window Controls Service
 
 `kweb-service-window-controls` binds one caller-owned Compose Desktop
-`ComposeWindow` to a typed KMP native-service contract. It does not create,
-replace, or dispose that window, and it does not add a second window backend.
+`ComposeWindow` to the RFC 0007 v2 typed KMP native-service contract. It does
+not create, replace, or dispose that window, and it does not add a second
+window backend.
 
-The published version-1 surface contains:
+The published v2 surface contains:
 
+- immutable parent and modality registration;
 - state snapshots and ordered state events;
 - title and positive screen bounds;
 - show/hide and focus requests;
 - minimize/restore and maximize/restore;
+- fullscreen and kiosk transitions with restored bounds;
+- observed constraints, capabilities, attention, and bounded close negotiation;
 - always-on-top and resizable state; and
 - an exact-origin generated renderer bridge with operation-level grants.
 
-Fullscreen control, native menu/tray ownership, custom title-bar hit testing,
-and window creation are absent. They are not implemented as fallbacks or fake
-success responses.
+Linux support is the hosted X11 contract; Wayland and unsupported window-manager
+operations return typed failures. Native menu/tray ownership, custom title-bar
+hit testing, and window creation remain separate contracts.
 
 ```kotlin
-val controls = JvmKWebWindowControls.open(composeWindow)
+val controls = JvmKWebWindowControls.open(
+    composeWindow,
+    KWebWindowRegistration(id = "main-window"),
+)
 engine.nativeServices.install(KWebWindowControls.Key, controls)
 
 controls.setTitle("KWebShell")

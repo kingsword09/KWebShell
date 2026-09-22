@@ -150,7 +150,7 @@ public fun main() {
                     dependencies = emptySet(),
                     factory = { environment ->
                         require(environment.scope == KWebWindowControls.DESCRIPTOR.scope)
-                        JvmKWebWindowControls.open(window)
+                        JvmKWebWindowControls.open(window, KWebWindowRegistration("main-window"))
                     },
                 ),
             ),
@@ -408,9 +408,9 @@ private fun exerciseDirectControls(service: KWebWindowControls, window: ComposeW
         require(hiddenFocus is KWebNativeException && hiddenFocus.code == KWebServiceErrorCode.OPERATION_UNAVAILABLE)
         require(service.setVisible(true).visible)
         service.focus()
-        require(service.minimize().minimized)
+        require(service.minimize().placement == KWebWindowPlacement.MINIMIZED)
         val restored = service.restore()
-        require(!restored.minimized && restored.placement == KWebWindowPlacement.FLOATING)
+        require(restored.placement == KWebWindowPlacement.FLOATING)
         require(service.setMaximized(true).placement == KWebWindowPlacement.MAXIMIZED)
         val maximizedBounds = runCatching {
             service.setBounds(KWebWindowBounds(100, 100, 800, 600))
@@ -436,7 +436,7 @@ private fun verifyDisposedOwnerClosesService() {
             isVisible = true
         }
     }
-    val service = JvmKWebWindowControls.open(window)
+    val service = JvmKWebWindowControls.open(window, KWebWindowRegistration("disposed-window"))
     onAwtThread { window.dispose() }
     val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
     while (service.lifecycle.value != KWebLifecycleState.CLOSED && System.nanoTime() < deadline) {

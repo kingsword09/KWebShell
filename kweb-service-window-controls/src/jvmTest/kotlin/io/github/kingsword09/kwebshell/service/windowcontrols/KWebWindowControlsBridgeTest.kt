@@ -85,8 +85,10 @@ class KWebWindowControlsBridgeTest {
     private class RecordingWindowControls : KWebWindowControls {
         override val descriptor = KWebWindowControls.DESCRIPTOR
         override val lifecycle = MutableStateFlow(KWebLifecycleState.OPEN)
+        override val registration = KWebWindowRegistration("bridge-test-window")
         override val state = MutableStateFlow(initialState())
         override val events = emptyFlow<KWebWindowEvent>()
+        override val closeRequests = emptyFlow<KWebWindowCloseRequest>()
         var setTitleCalls: Int = 0
         var cancelSnapshot: Boolean = false
 
@@ -101,14 +103,27 @@ class KWebWindowControlsBridgeTest {
         }
 
         override suspend fun setBounds(bounds: KWebWindowBounds): KWebWindowState = update { copy(bounds = bounds) }
+        override suspend fun setConstraints(constraints: KWebWindowConstraints): KWebWindowState = update { copy(constraints = constraints) }
         override suspend fun setVisible(visible: Boolean): KWebWindowState = update { copy(visible = visible) }
         override suspend fun focus(): KWebWindowState = update { copy(focused = true) }
-        override suspend fun minimize(): KWebWindowState = update { copy(minimized = true) }
-        override suspend fun restore(): KWebWindowState = update { copy(minimized = false) }
+        override suspend fun minimize(): KWebWindowState = update { copy(placement = KWebWindowPlacement.MINIMIZED) }
+        override suspend fun restore(): KWebWindowState = update { copy(placement = KWebWindowPlacement.FLOATING) }
         override suspend fun setMaximized(maximized: Boolean): KWebWindowState =
             update { copy(placement = if (maximized) KWebWindowPlacement.MAXIMIZED else KWebWindowPlacement.FLOATING) }
+        override suspend fun setFullscreen(mode: KWebWindowFullscreenMode): KWebWindowState = update { copy(fullscreen = mode) }
+        override suspend fun setMovable(movable: Boolean): KWebWindowState = update { copy(movable = movable) }
+        override suspend fun setMinimizable(minimizable: Boolean): KWebWindowState = update { copy(minimizable = minimizable) }
+        override suspend fun setMaximizable(maximizable: Boolean): KWebWindowState = update { copy(maximizable = maximizable) }
+        override suspend fun setClosable(closable: Boolean): KWebWindowState = update { copy(closable = closable) }
         override suspend fun setAlwaysOnTop(alwaysOnTop: Boolean): KWebWindowState = update { copy(alwaysOnTop = alwaysOnTop) }
         override suspend fun setResizable(resizable: Boolean): KWebWindowState = update { copy(resizable = resizable) }
+        override suspend fun requestAttention(): KWebWindowState = update { copy(attention = KWebWindowAttention.REQUESTED) }
+        override suspend fun clearAttention(): KWebWindowState = update { copy(attention = KWebWindowAttention.NONE) }
+        override suspend fun requestClose(): KWebWindowCloseResult = KWebWindowCloseResult(1, KWebWindowCloseOutcome.PENDING, state.value)
+        override suspend fun respondToClose(requestId: Long, decision: KWebWindowCloseDecision): KWebWindowCloseResult =
+            KWebWindowCloseResult(requestId, if (decision == KWebWindowCloseDecision.ALLOW) KWebWindowCloseOutcome.ALLOWED else KWebWindowCloseOutcome.DENIED, state.value)
+        override suspend fun forceClose(reason: KWebWindowForceCloseReason): KWebWindowCloseResult =
+            KWebWindowCloseResult(1, KWebWindowCloseOutcome.FORCED, state.value)
         override fun close() {
             lifecycle.value = KWebLifecycleState.CLOSED
         }
@@ -118,14 +133,26 @@ class KWebWindowControlsBridgeTest {
 
         companion object {
             fun initialState(): KWebWindowState = KWebWindowState(
+                id = "bridge-test-window",
+                parentId = null,
+                modality = KWebWindowModality.NONE,
                 title = "fixture",
                 bounds = KWebWindowBounds(10, 20, 800, 600),
+                restoredBounds = null,
+                placement = KWebWindowPlacement.FLOATING,
+                fullscreen = KWebWindowFullscreenMode.WINDOWED,
                 visible = true,
                 focused = false,
-                minimized = false,
-                placement = KWebWindowPlacement.FLOATING,
+                movable = true,
+                minimizable = true,
+                maximizable = true,
+                closable = true,
                 alwaysOnTop = false,
                 resizable = true,
+                constraints = KWebWindowConstraints(),
+                attention = KWebWindowAttention.NONE,
+                displayId = null,
+                displayScale = null,
             )
         }
     }

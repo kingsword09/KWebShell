@@ -237,6 +237,7 @@ return `NONE`. Attention does not create a new window or alter focus policy.
 public enum class KWebWindowCloseSource { USER, OS, RENDERER, APPLICATION }
 public enum class KWebWindowCloseDecision { ALLOW, DENY }
 public enum class KWebWindowCloseOutcome {
+    PENDING,
     ALLOWED,
     DENIED,
     TIMED_OUT,
@@ -259,7 +260,9 @@ public data class KWebWindowCloseResult(
 ```
 
 There is at most one pending close request per window. Repeated user/OS close
-signals coalesce to that request. A pending request has a 5-second deadline;
+signals coalesce to that request. The initial operation result is `PENDING`
+and the `closeRequests` flow carries the request for host resolution. A pending
+request has a 5-second deadline;
 `DENY` before the deadline keeps the window open and emits the resulting state.
 If no decision arrives, the provider closes the window and returns `TIMED_OUT`.
 `ALLOW` closes it and returns `ALLOWED`. An application `forceClose` wins over

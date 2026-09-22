@@ -38,6 +38,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -178,6 +179,8 @@ public fun main() {
         eventJob = eventScope.launch { service.events.collect(events::add) }
         closeRequestJob = eventScope.launch { service.closeRequests.collect(closeRequests::add) }
         val directReport = exerciseDirectControls(service, window)
+        trace("native-transition-quiescence")
+        runBlocking { delay(750L) }
         val hierarchyReport = exerciseHierarchyAndClose(service, window)
         val resolvedUserData = runBlocking { appPaths.resolve(KWebAppPathKind.USER_DATA) }
         require(resolvedUserData.path.isNotBlank() && resolvedUserData.source.isNotBlank()) {

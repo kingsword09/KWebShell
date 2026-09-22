@@ -81,8 +81,15 @@ kweb_window_controls_status Attach(kweb_window_handle child,
         [child_window parentWindow] != parent_window) {
       return KWEB_WINDOW_CONTROLS_STATUS_NATIVE_FAILED;
     }
+    const BOOL was_visible = child_window.isVisible;
+    if (was_visible) {
+      [child_window orderOut:nil];
+    }
     if (![parent_window.childWindows containsObject:child_window]) {
       [parent_window addChildWindow:child_window ordered:NSWindowAbove];
+    }
+    if (was_visible) {
+      [child_window orderFront:nil];
     }
     return [parent_window.childWindows containsObject:child_window]
                ? KWEB_WINDOW_CONTROLS_STATUS_OK

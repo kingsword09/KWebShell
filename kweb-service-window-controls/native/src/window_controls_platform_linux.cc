@@ -22,11 +22,11 @@ kweb_window_controls_status Opened(DisplayGuard *display) {
 }
 
 kweb_window_controls_status Validate(Display *display, Window window) {
-  if (display == nullptr || display->value == nullptr) {
+  if (display == nullptr) {
     return KWEB_WINDOW_CONTROLS_STATUS_NATIVE_UNAVAILABLE;
   }
   XWindowAttributes attributes{};
-  return XGetWindowAttributes(display->value, window, &attributes) != 0
+  return XGetWindowAttributes(display, window, &attributes) != 0
              ? KWEB_WINDOW_CONTROLS_STATUS_OK
              : KWEB_WINDOW_CONTROLS_STATUS_STALE_HANDLE;
 }

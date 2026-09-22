@@ -541,6 +541,7 @@ internal class ComposeKWebWindowControls private constructor(
     private fun finalizeClose(request: KWebWindowCloseRequest, outcome: KWebWindowCloseOutcome): KWebWindowCloseResult {
         closeTimeoutJob?.cancel()
         pendingClose = null
+        val terminalState = readState().copy(visible = false, focused = false)
         mutableLifecycle.value = KWebLifecycleState.CLOSING
         closingFromService = true
         window.defaultCloseOperation = JFrame.DISPOSE_ON_CLOSE
@@ -548,7 +549,7 @@ internal class ComposeKWebWindowControls private constructor(
         if (window.isDisplayable) window.dispose()
         closingFromService = false
         if (mutableLifecycle.value != KWebLifecycleState.CLOSED && !window.isDisplayable) closeFromWindow()
-        return KWebWindowCloseResult(request.requestId, outcome, readState())
+        return KWebWindowCloseResult(request.requestId, outcome, terminalState)
     }
 
     private fun enterFullscreenInternal(mode: KWebWindowFullscreenMode) {

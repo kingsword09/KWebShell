@@ -15,7 +15,9 @@ The published v2 surface contains:
 - fullscreen and kiosk transitions with restored bounds;
 - observed constraints, capabilities, attention, and bounded close negotiation;
 - always-on-top and resizable state; and
-- an exact-origin generated renderer bridge with operation-level grants.
+- an exact-origin generated renderer bridge whose only renderer operation is
+  `requestClose`; hierarchy, fullscreen/kiosk, capabilities, and force-close
+  remain host-only.
 
 Linux support is the hosted X11 contract; Wayland and unsupported window-manager
 operations return typed failures. Native menu/tray ownership, custom title-bar
@@ -47,8 +49,9 @@ npm ci
 
 The task runs common and JVM contract tests, strict generated TypeScript, and a
 real ComposeWindow/CEF fixture. The fixture validates direct Kotlin controls,
-renderer calls, exact-origin policy, permission denial, child-frame transport
-isolation, cross-origin and unconfigured Pages, contiguous state events,
-external window ownership, and deterministic Engine/CDP shutdown. Linux uses
-the explicit Xvfb path; no system WebView or alternate window implementation is
-selected.
+renderer request-only close access, exact-origin policy, permission denial,
+child-frame transport isolation, cross-origin and unconfigured Pages,
+hierarchy/modal teardown, fullscreen/kiosk restoration, contiguous state
+events, external window ownership, CEF parent stability, and deterministic
+Engine/CDP shutdown. Linux uses the explicit Xvfb path; no system WebView or
+alternate window implementation is selected.

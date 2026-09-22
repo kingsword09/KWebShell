@@ -1800,6 +1800,12 @@ Acceptance criteria:
    Complete evidence, docs, migration, capability metadata, and A1-A11 review
    records are delivered in one focused PR.
 
+Implementation status: in progress on `rfc/0007-window-hierarchy-and-fullscreen`.
+The v2 common/JVM contract, exact-origin renderer request-only bridge, migration
+window mapping, and hosted window-controls report fixture are implemented; the
+three-target native CEF evidence and final A1-A11 acceptance review remain
+required before promotion to `Implemented`.
+
 ### Phase 12: Electron-class capability RFC program
 
 Phase 12 turns the remaining Electron migration surface into a dependency-ordered

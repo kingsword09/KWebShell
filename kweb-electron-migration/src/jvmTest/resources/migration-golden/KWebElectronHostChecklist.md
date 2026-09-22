@@ -9,6 +9,8 @@ Renderer origin: `app://migration-fixture`; profile: `default`.
 
 ## 2. Window & Hierarchy Definitions
 - [ ] Window `main`: "KWebShell Migration Fixture" [Main] (Profile: `default`)
+  - [ ] Register immutable parent/modality and call `setFullscreen(WINDOWED)` from host code.
+  - [ ] Apply typed capabilities: closable=true, movable=true, minimizable=true, maximizable=true, resizable=true, alwaysOnTop=false.
 
 ## 3. Profiles
 - [ ] Profile `default` (persistent, storage: `profiles/default`)

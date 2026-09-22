@@ -43,13 +43,23 @@ public object JvmKWebWindowControls {
 }
 
 private object WindowHierarchyRegistry {
+    private const val MAX_HIERARCHY_DEPTH: Int = 64
+    private const val MAX_APPLICATION_WINDOWS: Int = 256
     private val lock = Any()
     private val services = linkedMapOf<KWebWindowId, ComposeKWebWindowControls>()
     private val modalDisableCounts = linkedMapOf<ComposeKWebWindowControls, Int>()
+    private val modalOwnersByChild = linkedMapOf<ComposeKWebWindowControls, Set<ComposeKWebWindowControls>>()
 
     fun register(service: ComposeKWebWindowControls) {
-        synchronized(lock) {
+        val shouldActivateModal = synchronized(lock) {
             val registration = service.registration
+            if (services.size >= MAX_APPLICATION_WINDOWS) {
+                throw KWebConfigurationException(
+                    code = "window.registration-invalid",
+                    details = mapOf("limit" to MAX_APPLICATION_WINDOWS.toString()),
+                    message = "The application window registration limit has been reached.",
+                )
+            }
             if (services.containsKey(registration.id)) {
                 throw KWebConfigurationException(
                     code = "window.registration-invalid",
@@ -72,24 +82,42 @@ private object WindowHierarchyRegistry {
                     message = "A window cannot be its own parent.",
                 )
             }
-            services[registration.id] = service
-            if (parent != null && registration.modality != KWebWindowModality.NONE) {
-                disableOwnersFor(service)
+            val depth = parent?.let { depthOf(it.registration.id) + 1 } ?: 1
+            if (depth > MAX_HIERARCHY_DEPTH) {
+                throw KWebConfigurationException(
+                    code = "window.registration-invalid",
+                    details = mapOf("depth" to depth.toString(), "limit" to MAX_HIERARCHY_DEPTH.toString()),
+                    message = "The window hierarchy exceeds the published depth limit.",
+                )
             }
+            services[registration.id] = service
+            registration.modality != KWebWindowModality.NONE && service.isVisibleForHierarchy()
         }
+        if (shouldActivateModal) activateModal(service)
     }
 
     fun unregister(service: ComposeKWebWindowControls) {
+        val descendants = synchronized(lock) {
+            if (services[service.registration.id] !== service) return
+            descendantsLocked(service)
+        }
+        descendants.forEach { it.forceCloseFromHierarchy() }
         synchronized(lock) {
+            if (services[service.registration.id] !== service) return
+            deactivateModal(service)
             services.remove(service.registration.id)
-            enableOwnersFor(service)
-            services.values
-                .filter { it.registration.parentId == service.registration.id }
-                .forEach { child -> child.parentBecameUnavailable() }
         }
     }
 
+    fun visibilityChanged(service: ComposeKWebWindowControls, visible: Boolean) {
+        if (visible) activateModal(service) else deactivateModal(service)
+    }
+
     fun descendants(service: ComposeKWebWindowControls): List<ComposeKWebWindowControls> = synchronized(lock) {
+        descendantsLocked(service)
+    }
+
+    private fun descendantsLocked(service: ComposeKWebWindowControls): List<ComposeKWebWindowControls> {
         val result = mutableListOf<ComposeKWebWindowControls>()
         fun visit(parentId: KWebWindowId) {
             services.values.filter { it.registration.parentId == parentId }.forEach { child ->
@@ -98,38 +126,57 @@ private object WindowHierarchyRegistry {
             }
         }
         visit(service.registration.id)
-        result.asReversed()
+        return result.asReversed()
     }
 
-    private fun disableOwnersFor(service: ComposeKWebWindowControls) {
-        val registration = service.registration
-        val owners = when (registration.modality) {
-            KWebWindowModality.NONE -> emptyList()
-            KWebWindowModality.WINDOW_MODAL -> listOfNotNull(registration.parentId?.let(services::get))
-            KWebWindowModality.APPLICATION_MODAL -> services.values.filter { it !== service }
+    private fun depthOf(id: KWebWindowId): Int {
+        var current = services[id]
+        var depth = 1
+        while (current?.registration?.parentId != null) {
+            depth += 1
+            current = services[current.registration.parentId]
         }
-        owners.forEach { owner ->
-            val count = modalDisableCounts.getOrDefault(owner, 0)
-            modalDisableCounts[owner] = count + 1
-            if (count == 0) owner.setEnabledFromHierarchy(false)
-        }
+        return depth
     }
 
-    private fun enableOwnersFor(service: ComposeKWebWindowControls) {
-        val registration = service.registration
-        val owners = when (registration.modality) {
-            KWebWindowModality.NONE -> emptyList()
-            KWebWindowModality.WINDOW_MODAL -> listOfNotNull(registration.parentId?.let(services::get))
-            KWebWindowModality.APPLICATION_MODAL -> services.values.filter { it !== service }
-        }
-        owners.forEach { owner ->
-            val count = modalDisableCounts.getOrDefault(owner, 0)
-            if (count <= 1) {
-                modalDisableCounts.remove(owner)
-                owner.setEnabledFromHierarchy(true)
-            } else {
-                modalDisableCounts[owner] = count - 1
+    private fun activateModal(service: ComposeKWebWindowControls) {
+        synchronized(lock) {
+            if (service.registration.modality == KWebWindowModality.NONE ||
+                !service.isVisibleForHierarchy() ||
+                services[service.registration.id] !== service ||
+                modalOwnersByChild.containsKey(service)
+            ) return
+            val owners = ownersFor(service).toSet()
+            modalOwnersByChild[service] = owners
+            owners.forEach { owner ->
+                val count = modalDisableCounts.getOrDefault(owner, 0)
+                modalDisableCounts[owner] = count + 1
+                if (count == 0) owner.setEnabledFromHierarchy(false)
             }
+        }
+    }
+
+    private fun deactivateModal(service: ComposeKWebWindowControls) {
+        val owners = synchronized(lock) { modalOwnersByChild.remove(service).orEmpty() }
+        owners.forEach { owner ->
+            synchronized(lock) {
+                val count = modalDisableCounts.getOrDefault(owner, 0)
+                if (count <= 1) {
+                    modalDisableCounts.remove(owner)
+                    owner.setEnabledFromHierarchy(true)
+                } else {
+                    modalDisableCounts[owner] = count - 1
+                }
+            }
+        }
+    }
+
+    private fun ownersFor(service: ComposeKWebWindowControls): List<ComposeKWebWindowControls> {
+        val registration = service.registration
+        return when (registration.modality) {
+            KWebWindowModality.NONE -> emptyList()
+            KWebWindowModality.WINDOW_MODAL -> listOfNotNull(registration.parentId?.let(services::get))
+            KWebWindowModality.APPLICATION_MODAL -> services.values.filter { it !== service }
         }
     }
 }
@@ -153,6 +200,8 @@ internal class ComposeKWebWindowControls private constructor(
     private var placementBeforeMinimize = initialState.placement
     private var restoredBounds: KWebWindowBounds? = initialState.restoredBounds
     private var restoredConstraints: KWebWindowConstraints = initialState.constraints
+    private var restoredPlacement: KWebWindowPlacement = initialState.placement
+    private var capabilitiesBeforeKiosk: CapabilitySnapshot? = null
     private var fullscreenMode: KWebWindowFullscreenMode = initialState.fullscreen
     private var pendingClose: PendingClose? = null
     private var closeTimeoutJob: Job? = null
@@ -209,7 +258,6 @@ internal class ComposeKWebWindowControls private constructor(
     private val closeListener = object : WindowAdapter() {
         override fun windowClosing(event: WindowEvent) {
             if (closingFromService) return
-            event.consume()
             if (!closable || mutableState.value.fullscreen == KWebWindowFullscreenMode.KIOSK) return
             requestCloseInternal(KWebWindowCloseSource.USER)
         }
@@ -251,6 +299,7 @@ internal class ComposeKWebWindowControls private constructor(
 
     override suspend fun setVisible(visible: Boolean): KWebWindowState = operation("set-visible") {
         window.isVisible = visible
+        WindowHierarchyRegistry.visibilityChanged(this@ComposeKWebWindowControls, visible)
         readAndPublish()
     }
 
@@ -297,6 +346,9 @@ internal class ComposeKWebWindowControls private constructor(
         "set-fullscreen",
         { it.fullscreen == mode },
     ) {
+        if (fullscreenMode == KWebWindowFullscreenMode.KIOSK && mode != KWebWindowFullscreenMode.WINDOWED) {
+            throw unavailable("set-fullscreen", "Kiosk mode must be exited before another fullscreen mode can be selected.")
+        }
         if (mode == KWebWindowFullscreenMode.KIOSK && registration.parentId != null) {
             throw unavailable("set-fullscreen", "A child window cannot enter kiosk mode.")
         }
@@ -387,8 +439,22 @@ internal class ComposeKWebWindowControls private constructor(
         onAwtThread { if (window.isDisplayable) window.isEnabled = enabled }
     }
 
-    internal fun parentBecameUnavailable() {
-        scope.launch { forceClose(KWebWindowForceCloseReason.PARENT_CLOSED) }
+    internal fun isVisibleForHierarchy(): Boolean = window.isDisplayable && window.isVisible
+
+    internal fun forceCloseFromHierarchy() {
+        check(EventQueue.isDispatchThread())
+        synchronized(lock) {
+            if (mutableLifecycle.value == KWebLifecycleState.CLOSED) return
+            if (!window.isDisplayable) {
+                mutableLifecycle.value = KWebLifecycleState.FAILED
+                throw nativeFailure(
+                    "force-close",
+                    "A registered child window was disposed before its parent.",
+                    null,
+                )
+            }
+            forceCloseInternal(KWebWindowForceCloseReason.PARENT_CLOSED)
+        }
     }
 
     private suspend fun operation(name: String, action: () -> KWebWindowState): KWebWindowState = withContext(Dispatchers.IO) {
@@ -473,10 +539,11 @@ internal class ComposeKWebWindowControls private constructor(
     private fun finalizeClose(request: KWebWindowCloseRequest, outcome: KWebWindowCloseOutcome): KWebWindowCloseResult {
         closeTimeoutJob?.cancel()
         pendingClose = null
-        mutableLifecycle.value = KWebLifecycleState.QUIESCING
+        mutableLifecycle.value = KWebLifecycleState.CLOSING
         closingFromService = true
         window.defaultCloseOperation = JFrame.DISPOSE_ON_CLOSE
         window.dispatchEvent(WindowEvent(window, WindowEvent.WINDOW_CLOSING))
+        if (window.isDisplayable) window.dispose()
         closingFromService = false
         if (mutableLifecycle.value != KWebLifecycleState.CLOSED && !window.isDisplayable) closeFromWindow()
         return KWebWindowCloseResult(request.requestId, outcome, readState())
@@ -486,6 +553,15 @@ internal class ComposeKWebWindowControls private constructor(
         if (fullscreenMode == KWebWindowFullscreenMode.WINDOWED) {
             restoredBounds = mutableState.value.bounds
             restoredConstraints = mutableState.value.constraints
+            restoredPlacement = mutableState.value.placement
+            capabilitiesBeforeKiosk = CapabilitySnapshot(
+                movable = movable,
+                minimizable = minimizable,
+                maximizable = maximizable,
+                closable = closable,
+                resizable = window.isResizable,
+                alwaysOnTop = window.isAlwaysOnTop,
+            )
         }
         if (mode == KWebWindowFullscreenMode.KIOSK) {
             movable = false
@@ -493,6 +569,9 @@ internal class ComposeKWebWindowControls private constructor(
             maximizable = false
             closable = false
             window.isResizable = false
+            if (!window.isAlwaysOnTopSupported) {
+                throw unavailable("set-fullscreen", "The current desktop cannot enforce kiosk always-on-top state.")
+            }
             window.isAlwaysOnTop = true
         }
         internalStateChange = true
@@ -506,7 +585,7 @@ internal class ComposeKWebWindowControls private constructor(
         internalStateChange = true
         try {
             fullscreenMode = KWebWindowFullscreenMode.WINDOWED
-            window.placement = WindowPlacement.Floating
+            window.placement = restoredPlacement.toComposePlacement()
             restoredBounds?.let { bounds ->
                 internalMove = true
                 try { window.setBounds(bounds.x, bounds.y, bounds.width, bounds.height) }
@@ -514,6 +593,15 @@ internal class ComposeKWebWindowControls private constructor(
             }
             window.minimumSize = Dimension(restoredConstraints.minimumWidth, restoredConstraints.minimumHeight)
             window.maximumSize = Dimension(restoredConstraints.maximumWidth ?: Int.MAX_VALUE, restoredConstraints.maximumHeight ?: Int.MAX_VALUE)
+            capabilitiesBeforeKiosk?.let { capabilities ->
+                movable = capabilities.movable
+                minimizable = capabilities.minimizable
+                maximizable = capabilities.maximizable
+                closable = capabilities.closable
+                window.isResizable = capabilities.resizable
+                window.isAlwaysOnTop = capabilities.alwaysOnTop
+            }
+            capabilitiesBeforeKiosk = null
         } finally {
             internalStateChange = false
         }
@@ -531,7 +619,7 @@ internal class ComposeKWebWindowControls private constructor(
 
     private fun readState(): KWebWindowState {
         val configuration: GraphicsConfiguration? = window.graphicsConfiguration
-        val displayId = configuration?.device?.idString
+        val displayId = configuration?.device?.getIDstring()
         val scale = configuration?.defaultTransform?.scaleX
         return KWebWindowState(
             id = registration.id,
@@ -639,7 +727,16 @@ internal class ComposeKWebWindowControls private constructor(
 
     private data class PendingClose(val request: KWebWindowCloseRequest)
 
-    private companion object {
+    private data class CapabilitySnapshot(
+        val movable: Boolean,
+        val minimizable: Boolean,
+        val maximizable: Boolean,
+        val closable: Boolean,
+        val resizable: Boolean,
+        val alwaysOnTop: Boolean,
+    )
+
+    companion object {
         const val EVENT_REPLAY: Int = 64
         const val MAXIMUM_TITLE_LENGTH: Int = 4096
         const val TRANSITION_POLL_MILLIS: Long = 25L
@@ -653,6 +750,23 @@ internal class ComposeKWebWindowControls private constructor(
                     code = "window.owner.not-displayable",
                     details = mapOf("id" to registration.id),
                     message = "RFC 0007 requires a displayable caller-owned ComposeWindow with positive bounds.",
+                )
+            }
+            val operatingSystem = System.getProperty("os.name").lowercase()
+            if (operatingSystem.contains("linux") &&
+                !System.getenv("WAYLAND_DISPLAY").isNullOrBlank()
+            ) {
+                throw KWebNativeException(
+                    code = "service.platform-unavailable",
+                    details = mapOf("platform" to "linux-x11", "session" to "wayland"),
+                    message = "RFC 0007 requires an X11 session; Wayland is not silently substituted.",
+                )
+            }
+            if (window.windowHandle == 0L) {
+                throw KWebNativeException(
+                    code = "window.native-state-unobserved",
+                    details = mapOf("windowId" to registration.id),
+                    message = "The caller-owned ComposeWindow has no observable native top-level handle.",
                 )
             }
             if (window.defaultCloseOperation != JFrame.DO_NOTHING_ON_CLOSE) {
@@ -681,7 +795,7 @@ internal class ComposeKWebWindowControls private constructor(
                 alwaysOnTop = window.isAlwaysOnTop,
                 constraints = registration.initialConstraints,
                 attention = KWebWindowAttention.NONE,
-                displayId = window.graphicsConfiguration?.device?.idString,
+                displayId = window.graphicsConfiguration?.device?.getIDstring(),
                 displayScale = window.graphicsConfiguration?.defaultTransform?.scaleX,
             )
             window.minimumSize = Dimension(registration.initialConstraints.minimumWidth, registration.initialConstraints.minimumHeight)

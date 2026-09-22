@@ -83,6 +83,14 @@ public data class KWebElectronStream(
 )
 
 @Serializable
+public data class KWebElectronWindowBounds(
+    public val x: Int,
+    public val y: Int,
+    public val width: Int,
+    public val height: Int,
+)
+
+@Serializable
 public data class KWebElectronWindowDefinition(
     public val id: String,
     public val title: String,
@@ -90,6 +98,15 @@ public data class KWebElectronWindowDefinition(
     public val profile: String = "default",
     public val isModal: Boolean = false,
     public val parentWindowId: String? = null,
+    public val fullscreen: Boolean = false,
+    public val kiosk: Boolean = false,
+    public val closable: Boolean = true,
+    public val movable: Boolean = true,
+    public val minimizable: Boolean = true,
+    public val maximizable: Boolean = true,
+    public val resizable: Boolean = true,
+    public val alwaysOnTop: Boolean = false,
+    public val bounds: KWebElectronWindowBounds? = null,
 )
 
 @Serializable
@@ -506,6 +523,12 @@ public object KWebElectronManifestValidator {
             if (window.profile !in profiles) invalid("windows[$index].profile", message = "Window references an undeclared profile.")
             if (window.isModal && window.parentWindowId == null) invalid("windows[$index].parentWindowId", message = "A modal window must declare its parent.")
             if (window.isMainWindow && (window.parentWindowId != null || window.isModal)) invalid("windows[$index]", message = "The main window must be a non-modal root.")
+            if (window.kiosk && window.parentWindowId != null) invalid("windows[$index].kiosk", message = "A child window cannot enter kiosk mode through the migration declaration.")
+            window.bounds?.let { bounds ->
+                if (bounds.x !in -1_000_000..1_000_000 || bounds.y !in -1_000_000..1_000_000 ||
+                    bounds.width !in 1..16_384 || bounds.height !in 1..16_384
+                ) invalid("windows[$index].bounds", message = "Window bounds are outside the RFC 0007 published range.")
+            }
             val visited = mutableSetOf(window.id)
             var parent = window.parentWindowId
             while (parent != null) {
@@ -542,7 +565,6 @@ public object KWebElectronManifestValidator {
             manifest.preloadMethods.filter { it.status != KWebElectronMappingStatus.ADAPTER }.forEach { add("manifest-preload:${it.name}:${it.status}") }
             manifest.lifecycleEvents.forEach { add("manifest-lifecycle:${it.event}:${it.status}") }
             manifest.nodeDependencies.forEach { add("manifest-dependency:${it.name}:${it.status}") }
-            manifest.windows.filter { it.isModal || it.parentWindowId != null }.forEach { add("manifest-window-hierarchy:${it.id}:rfc-0007-unimplemented") }
             manifest.profiles.filter { !it.isPersistent }.forEach { add("manifest-profile:${it.id}:ephemeral-unimplemented") }
         }.sorted()
     }

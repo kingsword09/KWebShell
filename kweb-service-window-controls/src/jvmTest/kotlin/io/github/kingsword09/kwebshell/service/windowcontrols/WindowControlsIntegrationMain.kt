@@ -29,6 +29,7 @@ import io.github.kingsword09.kwebshell.services.KWebServiceGrant
 import io.github.kingsword09.kwebshell.services.KWebServicePermissionPolicy
 import io.github.kingsword09.kwebshell.services.KWebServiceScope
 import io.github.kingsword09.kwebshell.services.policy.KWebInMemoryConsentStore
+import io.github.kingsword09.kwebshell.services.policy.KWebGestureBinding
 import io.github.kingsword09.kwebshell.services.policy.KWebPolicyAudit
 import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
 import io.github.kingsword09.kwebshell.services.policy.KWebUserGestureRegistry
@@ -89,7 +90,9 @@ public fun main() {
     val visibleWindows = visibleWindows()
     val eventScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val events = CopyOnWriteArrayList<KWebWindowEvent>()
+    val closeRequests = CopyOnWriteArrayList<KWebWindowCloseRequest>()
     var eventJob: Job? = null
+    var closeRequestJob: Job? = null
     var installedService: KWebWindowControls? = null
     var installedAppPaths: KWebAppPaths? = null
     var engine: KWebDesktopEngine? = null
@@ -168,6 +171,21 @@ public fun main() {
         val appPaths = liveEngine.nativeServices.require(KWebAppPaths.Key)
         installedAppPaths = appPaths
         eventJob = eventScope.launch { service.events.collect(events::add) }
+        closeRequestJob = eventScope.launch { service.closeRequests.collect(closeRequests::add) }
+        val directReport = exerciseDirectControls(service, window)
+        val hierarchyReport = exerciseHierarchyAndClose(service, window)
+        val windowControlsReport = buildJsonObject {
+            put("schemaVersion", 1)
+            put("target", currentTarget())
+            put("providerId", "window-controls.awt")
+            put("nativeParentStable", onAwtThread { window.isDisplayable && window.windowHandle != 0L })
+            put("directControls", directReport)
+            put("hierarchyAndClose", hierarchyReport)
+        }
+        Files.writeString(
+            root.resolve("window-controls-report.json"),
+            Json.encodeToString(JsonObject.serializer(), windowControlsReport) + "\n",
+        )
         val resolvedUserData = runBlocking { appPaths.resolve(KWebAppPathKind.USER_DATA) }
         require(resolvedUserData.path.isNotBlank() && resolvedUserData.source.isNotBlank()) {
             "The provider-installed KWebAppPaths service did not resolve a real path."
@@ -188,6 +206,8 @@ public fun main() {
         val liveProfile = runBlocking { liveEngine.openProfile("window-controls") }
         profile = liveProfile
         val cdp = KWebExampleCdpClient(cdpPort, 30_000)
+        val allowGestures = KWebUserGestureRegistry()
+        var allowedPageId = ""
         val allowPolicy = KWebServicePermissionPolicy.exact(
             KWebWindowControls.DESCRIPTOR.operations.map { operation ->
                 KWebServiceGrant(KWebWindowControls.DESCRIPTOR.id, operation.id)
@@ -196,7 +216,7 @@ public fun main() {
         val denyPolicy = KWebServicePermissionPolicy.exact(emptySet())
         val policyEngine = KWebServicePolicyEngine(
             rendererGrants = allowPolicy,
-            gestures = KWebUserGestureRegistry(),
+            gestures = allowGestures,
             consentStore = KWebInMemoryConsentStore("window-controls-fixture"),
             osConsent = null,
             audit = KWebPolicyAudit(),
@@ -214,6 +234,7 @@ public fun main() {
                     window,
                     server.origin,
                     KWebPageDispatcherFactory { pageId ->
+                        allowedPageId = pageId
                         service.bridgeDispatcher(
                             policyEngine,
                             KWebPolicySubject(
@@ -231,23 +252,19 @@ public fun main() {
             )
         }
         pages += allowedPage
+        allowGestures.mint(
+            KWebGestureBinding(
+                engineId = "window-controls-fixture",
+                profileId = "window-controls",
+                pageId = allowedPageId,
+                origin = server.origin,
+            ),
+        )
         cdp.awaitPage(server.indexUrl)
         cdp.openPageSession(server.indexUrl).use { session ->
             session.awaitTrue("typeof globalThis.WindowControlsBridge === 'object'")
-            val title = "Renderer-controlled title🙂"
-            val titleState = session.evaluateJson(
-                "WindowControlsBridge.createClient().setTitle({title:${Json.encodeToString(title)}})",
-            )
-            require(titleState["title"]?.jsonPrimitive?.content == title)
-            val floatingState = session.evaluateJson(
-                "WindowControlsBridge.createClient().setMaximized({enabled:false})",
-            )
-            require(floatingState["placement"]?.jsonPrimitive?.content == "floating")
-            val boundsState = session.evaluateJson(
-                "WindowControlsBridge.createClient().setBounds({x:160,y:170,width:940,height:700})",
-            )
-            require(boundsState["width"]?.jsonPrimitive?.content == "940")
-            require(boundsState["height"]?.jsonPrimitive?.content == "700")
+            require(session.evaluateString("typeof WindowControlsBridge.createClient().requestClose") == "function")
+            require(session.evaluateString("typeof WindowControlsBridge.createClient().setTitle") == "undefined")
             require(
                 session.evaluateString(
                     "typeof document.getElementById('window-frame').contentWindow.WindowControlsBridge",
@@ -260,15 +277,20 @@ public fun main() {
             )
             require(
                 session.evaluateString(
-                    "(async()=>{try{await document.getElementById('window-frame').contentWindow.WindowControlsBridge.createClient().getState({enabled:true});return 'unexpected'}catch(e){return e.code}})()",
+                    "(async()=>{try{await document.getElementById('window-frame').contentWindow.WindowControlsBridge.createClient().requestClose({enabled:true});return 'unexpected'}catch(e){return e.code}})()",
                 ) == "bridge.transport.failed",
             )
             val state = session.evaluateJson(
-                "WindowControlsBridge.createClient().getState({enabled:true})",
+                "WindowControlsBridge.createClient().requestClose({enabled:true})",
             )
-            require(state["placement"]?.jsonPrimitive?.content == "floating")
-            require(state["resizable"]?.jsonPrimitive?.content == "true")
+            require(state["id"]?.jsonPrimitive?.content == "main-window")
         }
+        val rendererClose = awaitCloseRequest(closeRequests)
+        val deniedClose = runBlocking {
+            service.respondToClose(rendererClose.requestId, KWebWindowCloseDecision.DENY)
+        }
+        require(deniedClose.outcome == KWebWindowCloseOutcome.DENIED)
+        require(service.lifecycle.value == KWebLifecycleState.OPEN)
 
         val deniedPage = runBlocking {
             liveProfile.openPage(
@@ -298,7 +320,7 @@ public fun main() {
             session.awaitTrue("typeof globalThis.WindowControlsBridge === 'object'")
             require(
                 session.evaluateString(
-                    "(async()=>{try{await WindowControlsBridge.createClient().setTitle({title:'denied'});return 'unexpected'}catch(e){return e.code}})()",
+                    "(async()=>{try{await WindowControlsBridge.createClient().requestClose({enabled:true});return 'unexpected'}catch(e){return e.code}})()",
                 ) == KWebServiceErrorCode.PERMISSION_DENIED,
             )
         }
@@ -375,6 +397,7 @@ public fun main() {
             failure = failure.append(error)
         }
         runBlocking { eventJob?.cancelAndJoin() }
+        runBlocking { closeRequestJob?.cancelAndJoin() }
         eventScope.cancel()
         try {
             onAwtThread { window.dispose() }
@@ -392,7 +415,8 @@ public fun main() {
     println("KWebShell Compose window controls passed direct and exact-origin CEF integration.")
 }
 
-private fun exerciseDirectControls(service: KWebWindowControls, window: ComposeWindow) {
+private fun exerciseDirectControls(service: KWebWindowControls, window: ComposeWindow): JsonObject {
+    lateinit var report: JsonObject
     runBlocking {
         require(service.snapshot().placement == KWebWindowPlacement.FLOATING)
         val invalidTitle = runCatching { service.setTitle("invalid\u0000title") }.exceptionOrNull()
@@ -426,7 +450,118 @@ private fun exerciseDirectControls(service: KWebWindowControls, window: ComposeW
             val failure = runCatching { service.setAlwaysOnTop(true) }.exceptionOrNull()
             require(failure is KWebNativeException && failure.code == KWebServiceErrorCode.OPERATION_UNAVAILABLE)
         }
+        val beforeFullscreen = service.snapshot()
+        val fullscreen = service.setFullscreen(KWebWindowFullscreenMode.FULLSCREEN)
+        require(fullscreen.fullscreen == KWebWindowFullscreenMode.FULLSCREEN)
+        val afterFullscreen = service.setFullscreen(KWebWindowFullscreenMode.WINDOWED)
+        require(afterFullscreen.fullscreen == KWebWindowFullscreenMode.WINDOWED)
+        require(afterFullscreen.bounds == beforeFullscreen.bounds) {
+            "Fullscreen exit did not restore the caller-owned logical bounds."
+        }
+        val kiosk = service.setFullscreen(KWebWindowFullscreenMode.KIOSK)
+        require(!kiosk.movable && !kiosk.minimizable && !kiosk.maximizable && !kiosk.closable && !kiosk.resizable)
+        val afterKiosk = service.setFullscreen(KWebWindowFullscreenMode.WINDOWED)
+        require(afterKiosk.movable && afterKiosk.minimizable && afterKiosk.maximizable && afterKiosk.closable)
+        val firstClose = service.requestClose()
+        val repeatedClose = service.requestClose()
+        require(firstClose.outcome == KWebWindowCloseOutcome.PENDING)
+        require(repeatedClose.requestId == firstClose.requestId && repeatedClose.outcome == KWebWindowCloseOutcome.PENDING)
+        val deniedClose = service.respondToClose(firstClose.requestId, KWebWindowCloseDecision.DENY)
+        require(deniedClose.outcome == KWebWindowCloseOutcome.DENIED)
+        report = buildJsonObject {
+            put("initialBounds", boundsJson(beforeFullscreen.bounds))
+            put("fullscreenRestoredBounds", boundsJson(afterFullscreen.bounds))
+            put("fullscreenModeObserved", fullscreen.fullscreen.id)
+            put("kioskCapabilitiesRestricted", !kiosk.movable && !kiosk.resizable)
+            put("kioskCapabilitiesRestored", afterKiosk.movable && afterKiosk.closable)
+            put("closeRequestsCoalesced", repeatedClose.requestId == firstClose.requestId)
+            put("closeDeniedWithoutDisposal", service.lifecycle.value == KWebLifecycleState.OPEN)
+        }
     }
+    return report
+}
+
+private fun exerciseHierarchyAndClose(parentService: KWebWindowControls, parentWindow: ComposeWindow): JsonObject {
+    val modalWindow = onAwtThread {
+        ComposeWindow().apply {
+            title = "KWebShell modal fixture"
+            setBounds(180, 180, 420, 280)
+            isVisible = true
+        }
+    }
+    val modalService = JvmKWebWindowControls.open(
+        modalWindow,
+        KWebWindowRegistration(
+            id = "modal-fixture",
+            parentId = parentService.registration.id,
+            modality = KWebWindowModality.WINDOW_MODAL,
+        ),
+    )
+    val modalDisabled = onAwtThread { !parentWindow.isEnabled }
+    val modalPending = runBlocking { modalService.requestClose() }
+    require(modalPending.outcome == KWebWindowCloseOutcome.PENDING)
+    runBlocking { modalService.respondToClose(modalPending.requestId, KWebWindowCloseDecision.DENY) }
+    val modalForced = runBlocking { modalService.forceClose(KWebWindowForceCloseReason.TEST) }
+    require(modalForced.outcome == KWebWindowCloseOutcome.FORCED)
+    require(modalService.lifecycle.value == KWebLifecycleState.CLOSED)
+    val parentReenabled = onAwtThread { parentWindow.isEnabled }
+
+    val rootWindow = onAwtThread {
+        ComposeWindow().apply {
+            title = "KWebShell hierarchy root fixture"
+            setBounds(220, 220, 440, 300)
+            isVisible = true
+        }
+    }
+    val childWindow = onAwtThread {
+        ComposeWindow().apply {
+            title = "KWebShell hierarchy child fixture"
+            setBounds(240, 240, 360, 240)
+            isVisible = true
+        }
+    }
+    val grandchildWindow = onAwtThread {
+        ComposeWindow().apply {
+            title = "KWebShell hierarchy grandchild fixture"
+            setBounds(260, 260, 320, 220)
+            isVisible = true
+        }
+    }
+    val rootService = JvmKWebWindowControls.open(rootWindow, KWebWindowRegistration("hierarchy-root"))
+    val childService = JvmKWebWindowControls.open(
+        childWindow,
+        KWebWindowRegistration("hierarchy-child", parentId = "hierarchy-root"),
+    )
+    val grandchildService = JvmKWebWindowControls.open(
+        grandchildWindow,
+        KWebWindowRegistration("hierarchy-grandchild", parentId = "hierarchy-child"),
+    )
+    rootService.close()
+    val descendantsClosedBeforeReturn =
+        childService.lifecycle.value == KWebLifecycleState.CLOSED &&
+            grandchildService.lifecycle.value == KWebLifecycleState.CLOSED &&
+            rootService.lifecycle.value == KWebLifecycleState.CLOSED
+    require(descendantsClosedBeforeReturn)
+    onAwtThread {
+        rootWindow.dispose()
+        childWindow.dispose()
+        grandchildWindow.dispose()
+        modalWindow.dispose()
+    }
+    return buildJsonObject {
+        put("modalOwnerDisabled", modalDisabled)
+        put("modalOwnerReenabled", parentReenabled)
+        put("forcedCloseOutcome", modalForced.outcome.id)
+        put("childBeforeParentTeardown", descendantsClosedBeforeReturn)
+        put("visibleTopLevelWindowsCreatedByService", false)
+    }
+}
+
+private fun boundsJson(bounds: KWebWindowBounds): JsonObject = buildJsonObject {
+    put("x", bounds.x)
+    put("y", bounds.y)
+    put("width", bounds.width)
+    put("height", bounds.height)
 }
 
 private fun verifyDisposedOwnerClosesService() {
@@ -522,6 +657,15 @@ private fun KWebExampleCdpSession.evaluateJson(call: String): kotlinx.serializat
 
 private fun visibleWindows(): Set<Window> = onAwtThread {
     Window.getWindows().filterTo(linkedSetOf()) { it.isShowing }
+}
+
+private fun awaitCloseRequest(requests: List<KWebWindowCloseRequest>): KWebWindowCloseRequest {
+    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+    while (System.nanoTime() < deadline) {
+        requests.lastOrNull()?.let { return it }
+        Thread.sleep(25)
+    }
+    error("The renderer close request was not observed.")
 }
 
 private fun requiredPath(name: String): Path =

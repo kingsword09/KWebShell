@@ -4,26 +4,6 @@
   "version": 1,
   "types": [
     { "name": "StateRequest", "fields": [{ "name": "enabled", "type": "boolean" }] },
-    { "name": "TitleRequest", "fields": [{ "name": "title", "type": "string" }] },
-    {
-      "name": "BoundsRequest",
-      "fields": [
-        { "name": "x", "type": "int32" },
-        { "name": "y", "type": "int32" },
-        { "name": "width", "type": "int32" },
-        { "name": "height", "type": "int32" }
-      ]
-    },
-    {
-      "name": "ConstraintsRequest",
-      "fields": [
-        { "name": "minimumWidth", "type": "int32" },
-        { "name": "minimumHeight", "type": "int32" },
-        { "name": "maximumWidth", "type": "int32", "nullable": true },
-        { "name": "maximumHeight", "type": "int32", "nullable": true }
-      ]
-    },
-    { "name": "FullscreenRequest", "fields": [{ "name": "mode", "type": "string" }] },
     {
       "name": "WindowStateResponse",
       "fields": [
@@ -60,24 +40,6 @@
     }
   ],
   "methods": [
-    { "name": "getState", "request": "StateRequest", "response": "WindowStateResponse" },
-    { "name": "setTitle", "request": "TitleRequest", "response": "WindowStateResponse" },
-    { "name": "setBounds", "request": "BoundsRequest", "response": "WindowStateResponse" },
-    { "name": "setConstraints", "request": "ConstraintsRequest", "response": "WindowStateResponse" },
-    { "name": "setVisible", "request": "StateRequest", "response": "WindowStateResponse" },
-    { "name": "focus", "request": "StateRequest", "response": "WindowStateResponse" },
-    { "name": "minimize", "request": "StateRequest", "response": "WindowStateResponse" },
-    { "name": "restore", "request": "StateRequest", "response": "WindowStateResponse" },
-    { "name": "setMaximized", "request": "StateRequest", "response": "WindowStateResponse" },
-    { "name": "setFullscreen", "request": "FullscreenRequest", "response": "WindowStateResponse" },
-    { "name": "setMovable", "request": "StateRequest", "response": "WindowStateResponse" },
-    { "name": "setMinimizable", "request": "StateRequest", "response": "WindowStateResponse" },
-    { "name": "setMaximizable", "request": "StateRequest", "response": "WindowStateResponse" },
-    { "name": "setClosable", "request": "StateRequest", "response": "WindowStateResponse" },
-    { "name": "setAlwaysOnTop", "request": "StateRequest", "response": "WindowStateResponse" },
-    { "name": "setResizable", "request": "StateRequest", "response": "WindowStateResponse" },
-    { "name": "requestAttention", "request": "StateRequest", "response": "WindowStateResponse" },
-    { "name": "clearAttention", "request": "StateRequest", "response": "WindowStateResponse" },
     { "name": "requestClose", "request": "StateRequest", "response": "WindowStateResponse" }
   ]
 }

@@ -10,6 +10,7 @@ import io.github.kingsword09.kwebshell.services.KWebServiceScope
 import io.github.kingsword09.kwebshell.services.policy.KWebInMemoryConsentStore
 import io.github.kingsword09.kwebshell.services.policy.KWebPolicyAudit
 import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
+import io.github.kingsword09.kwebshell.services.policy.KWebGestureBinding
 import io.github.kingsword09.kwebshell.services.policy.KWebUserGestureRegistry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,10 +23,11 @@ import kotlin.test.assertFailsWith
 private fun policyDispatcher(
     service: KWebWindowControls,
     grants: Set<KWebServiceGrant>,
+    gestures: KWebUserGestureRegistry = KWebUserGestureRegistry(),
 ): KWebBridgeDispatcher {
     val engine = KWebServicePolicyEngine(
         rendererGrants = KWebServicePermissionPolicy.exact(grants),
-        gestures = KWebUserGestureRegistry(),
+        gestures = gestures,
         consentStore = KWebInMemoryConsentStore("bridge-test"),
         osConsent = null,
         audit = KWebPolicyAudit(),
@@ -50,34 +52,38 @@ class KWebWindowControlsBridgeTest {
 
         val failure = assertFailsWith<KWebBridgeException> {
             runBlocking {
-                dispatcher.dispatch("""{"version":1,"method":"setTitle","payload":{"title":"denied"}}""")
+                dispatcher.dispatch("""{"version":1,"method":"requestClose","payload":{"enabled":true}}""")
             }
         }
         assertEquals("service.permission-denied", failure.code)
-        assertEquals(0, service.setTitleCalls)
+        assertEquals(0, service.requestCloseCalls)
     }
 
     @Test
     fun bridgeMapsTypedRequestsAndPreservesCancellation() {
         val service = RecordingWindowControls()
+        val gestures = KWebUserGestureRegistry()
         val dispatcher = policyDispatcher(
             service,
             setOf(
-                KWebServiceGrant(KWebWindowControls.DESCRIPTOR.id, "set-title"),
-                KWebServiceGrant(KWebWindowControls.DESCRIPTOR.id, "get-state"),
+                KWebServiceGrant(KWebWindowControls.DESCRIPTOR.id, "request-close"),
             ),
+            gestures,
         )
+        val binding = KWebGestureBinding("engine-bridge-test", "bridge-test", "page-1", "https://app.example")
+        gestures.mint(binding)
 
         val response = runBlocking {
-            dispatcher.dispatch("""{"version":1,"method":"setTitle","payload":{"title":"KWebShell"}}""")
+            dispatcher.dispatch("""{"version":1,"method":"requestClose","payload":{"enabled":true}}""")
         }
-        assertEquals(1, service.setTitleCalls)
-        kotlin.test.assertTrue(response.contains("KWebShell"))
+        assertEquals(1, service.requestCloseCalls)
+        kotlin.test.assertTrue(response.contains("bridge-test-window"))
 
-        service.cancelSnapshot = true
+        service.cancelRequest = true
+        gestures.mint(binding)
         assertFailsWith<CancellationException> {
             runBlocking {
-                dispatcher.dispatch("""{"version":1,"method":"getState","payload":{"enabled":true}}""")
+                dispatcher.dispatch("""{"version":1,"method":"requestClose","payload":{"enabled":true}}""")
             }
         }
     }
@@ -89,17 +95,21 @@ class KWebWindowControlsBridgeTest {
         override val state = MutableStateFlow(initialState())
         override val events = emptyFlow<KWebWindowEvent>()
         override val closeRequests = emptyFlow<KWebWindowCloseRequest>()
-        var setTitleCalls: Int = 0
-        var cancelSnapshot: Boolean = false
+        var requestCloseCalls: Int = 0
+        var cancelRequest: Boolean = false
 
         override suspend fun snapshot(): KWebWindowState {
-            if (cancelSnapshot) throw CancellationException("cancelled")
             return state.value
         }
 
         override suspend fun setTitle(title: String): KWebWindowState {
-            setTitleCalls += 1
             return state.value.copy(title = title).also { state.value = it }
+        }
+
+        override suspend fun requestClose(): KWebWindowCloseResult {
+            if (cancelRequest) throw CancellationException("cancelled")
+            requestCloseCalls += 1
+            return KWebWindowCloseResult(1L, KWebWindowCloseOutcome.PENDING, state.value)
         }
 
         override suspend fun setBounds(bounds: KWebWindowBounds): KWebWindowState = update { copy(bounds = bounds) }
@@ -119,7 +129,6 @@ class KWebWindowControlsBridgeTest {
         override suspend fun setResizable(resizable: Boolean): KWebWindowState = update { copy(resizable = resizable) }
         override suspend fun requestAttention(): KWebWindowState = update { copy(attention = KWebWindowAttention.REQUESTED) }
         override suspend fun clearAttention(): KWebWindowState = update { copy(attention = KWebWindowAttention.NONE) }
-        override suspend fun requestClose(): KWebWindowCloseResult = KWebWindowCloseResult(1, KWebWindowCloseOutcome.PENDING, state.value)
         override suspend fun respondToClose(requestId: Long, decision: KWebWindowCloseDecision): KWebWindowCloseResult =
             KWebWindowCloseResult(requestId, if (decision == KWebWindowCloseDecision.ALLOW) KWebWindowCloseOutcome.ALLOWED else KWebWindowCloseOutcome.DENIED, state.value)
         override suspend fun forceClose(reason: KWebWindowForceCloseReason): KWebWindowCloseResult =

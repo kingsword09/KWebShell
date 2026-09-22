@@ -304,7 +304,7 @@ internal class ComposeKWebWindowControls private constructor(
     }
 
     override suspend fun focus(): KWebWindowState = operation("focus") {
-        if (!window.isVisible) throw unavailable("focus", "A hidden window cannot receive focus.")
+        if (!window.isVisible || !window.isShowing) throw unavailable("focus", "A hidden window cannot receive focus.")
         window.toFront()
         window.requestFocus()
         readAndPublish()

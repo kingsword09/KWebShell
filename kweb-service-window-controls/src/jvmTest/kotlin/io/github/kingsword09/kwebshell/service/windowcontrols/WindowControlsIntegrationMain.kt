@@ -496,6 +496,7 @@ private fun exerciseDirectControls(service: KWebWindowControls, window: ComposeW
 }
 
 private fun exerciseHierarchyAndClose(parentService: KWebWindowControls, parentWindow: ComposeWindow): JsonObject {
+    trace("modal-window-create")
     val modalWindow = onAwtThread {
         ComposeWindow().apply {
             title = "KWebShell modal fixture"
@@ -503,6 +504,7 @@ private fun exerciseHierarchyAndClose(parentService: KWebWindowControls, parentW
             isVisible = true
         }
     }
+    trace("modal-window-created")
     val modalService = JvmKWebWindowControls.open(
         modalWindow,
         KWebWindowRegistration(
@@ -511,15 +513,22 @@ private fun exerciseHierarchyAndClose(parentService: KWebWindowControls, parentW
             modality = KWebWindowModality.WINDOW_MODAL,
         ),
     )
+    trace("modal-registered")
     val modalDisabled = onAwtThread { !parentWindow.isEnabled }
+    trace("modal-owner-disabled")
     val modalPending = runBlocking { modalService.requestClose() }
     require(modalPending.outcome == KWebWindowCloseOutcome.PENDING)
+    trace("modal-close-pending")
     runBlocking { modalService.respondToClose(modalPending.requestId, KWebWindowCloseDecision.DENY) }
+    trace("modal-deny")
     val modalForced = runBlocking { modalService.forceClose(KWebWindowForceCloseReason.TEST) }
+    trace("modal-force-close")
     require(modalForced.outcome == KWebWindowCloseOutcome.FORCED)
     require(modalService.lifecycle.value == KWebLifecycleState.CLOSED)
     val parentReenabled = onAwtThread { parentWindow.isEnabled }
+    trace("modal-owner-reenabled")
 
+    trace("hierarchy-root-create")
     val rootWindow = onAwtThread {
         ComposeWindow().apply {
             title = "KWebShell hierarchy root fixture"
@@ -527,6 +536,8 @@ private fun exerciseHierarchyAndClose(parentService: KWebWindowControls, parentW
             isVisible = true
         }
     }
+    trace("hierarchy-root-created")
+    trace("hierarchy-child-create")
     val childWindow = onAwtThread {
         ComposeWindow().apply {
             title = "KWebShell hierarchy child fixture"
@@ -534,6 +545,8 @@ private fun exerciseHierarchyAndClose(parentService: KWebWindowControls, parentW
             isVisible = true
         }
     }
+    trace("hierarchy-child-created")
+    trace("hierarchy-grandchild-create")
     val grandchildWindow = onAwtThread {
         ComposeWindow().apply {
             title = "KWebShell hierarchy grandchild fixture"
@@ -541,27 +554,35 @@ private fun exerciseHierarchyAndClose(parentService: KWebWindowControls, parentW
             isVisible = true
         }
     }
+    trace("hierarchy-grandchild-created")
+    trace("hierarchy-root-register")
     val rootService = JvmKWebWindowControls.open(rootWindow, KWebWindowRegistration("hierarchy-root"))
+    trace("hierarchy-child-register")
     val childService = JvmKWebWindowControls.open(
         childWindow,
         KWebWindowRegistration("hierarchy-child", parentId = "hierarchy-root"),
     )
+    trace("hierarchy-grandchild-register")
     val grandchildService = JvmKWebWindowControls.open(
         grandchildWindow,
         KWebWindowRegistration("hierarchy-grandchild", parentId = "hierarchy-child"),
     )
+    trace("hierarchy-root-close")
     rootService.close()
     val descendantsClosedBeforeReturn =
         childService.lifecycle.value == KWebLifecycleState.CLOSED &&
             grandchildService.lifecycle.value == KWebLifecycleState.CLOSED &&
             rootService.lifecycle.value == KWebLifecycleState.CLOSED
     require(descendantsClosedBeforeReturn)
+    trace("hierarchy-teardown-complete")
+    trace("hierarchy-windows-dispose")
     onAwtThread {
         rootWindow.dispose()
         childWindow.dispose()
         grandchildWindow.dispose()
         modalWindow.dispose()
     }
+    trace("hierarchy-windows-disposed")
     return buildJsonObject {
         put("modalOwnerDisabled", modalDisabled)
         put("modalOwnerReenabled", parentReenabled)

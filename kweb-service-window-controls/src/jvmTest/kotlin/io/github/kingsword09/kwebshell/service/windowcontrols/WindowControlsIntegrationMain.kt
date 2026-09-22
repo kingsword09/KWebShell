@@ -418,23 +418,31 @@ public fun main() {
 private fun exerciseDirectControls(service: KWebWindowControls, window: ComposeWindow): JsonObject {
     lateinit var report: JsonObject
     runBlocking {
+        trace("snapshot-open")
         require(service.snapshot().placement == KWebWindowPlacement.FLOATING)
+        trace("invalid-title")
         val invalidTitle = runCatching { service.setTitle("invalid\u0000title") }.exceptionOrNull()
         require(invalidTitle is io.github.kingsword09.kwebshell.core.KWebConfigurationException &&
             invalidTitle.code == KWebServiceErrorCode.REQUEST_INVALID
         )
+        trace("title-and-bounds")
         require(service.setTitle("KWebShell direct title").title == "KWebShell direct title")
         require(service.setBounds(KWebWindowBounds(140, 145, 920, 680)).bounds == KWebWindowBounds(140, 145, 920, 680))
+        trace("resizable")
         require(!service.setResizable(false).resizable)
         require(service.setResizable(true).resizable)
+        trace("hidden-focus")
         require(!service.setVisible(false).visible)
         val hiddenFocus = runCatching { service.focus() }.exceptionOrNull()
         require(hiddenFocus is KWebNativeException && hiddenFocus.code == KWebServiceErrorCode.OPERATION_UNAVAILABLE)
+        trace("visible-focus")
         require(service.setVisible(true).visible)
         service.focus()
+        trace("minimize-restore")
         require(service.minimize().placement == KWebWindowPlacement.MINIMIZED)
         val restored = service.restore()
         require(restored.placement == KWebWindowPlacement.FLOATING)
+        trace("maximize-restore")
         require(service.setMaximized(true).placement == KWebWindowPlacement.MAXIMIZED)
         val maximizedBounds = runCatching {
             service.setBounds(KWebWindowBounds(100, 100, 800, 600))
@@ -443,6 +451,7 @@ private fun exerciseDirectControls(service: KWebWindowControls, window: ComposeW
             maximizedBounds.code == KWebServiceErrorCode.OPERATION_UNAVAILABLE
         )
         require(service.setMaximized(false).placement == KWebWindowPlacement.FLOATING)
+        trace("always-on-top")
         if (onAwtThread { window.isAlwaysOnTopSupported }) {
             require(service.setAlwaysOnTop(true).alwaysOnTop)
             require(!service.setAlwaysOnTop(false).alwaysOnTop)
@@ -450,18 +459,23 @@ private fun exerciseDirectControls(service: KWebWindowControls, window: ComposeW
             val failure = runCatching { service.setAlwaysOnTop(true) }.exceptionOrNull()
             require(failure is KWebNativeException && failure.code == KWebServiceErrorCode.OPERATION_UNAVAILABLE)
         }
+        trace("fullscreen-enter")
         val beforeFullscreen = service.snapshot()
         val fullscreen = service.setFullscreen(KWebWindowFullscreenMode.FULLSCREEN)
         require(fullscreen.fullscreen == KWebWindowFullscreenMode.FULLSCREEN)
+        trace("fullscreen-exit")
         val afterFullscreen = service.setFullscreen(KWebWindowFullscreenMode.WINDOWED)
         require(afterFullscreen.fullscreen == KWebWindowFullscreenMode.WINDOWED)
         require(afterFullscreen.bounds == beforeFullscreen.bounds) {
             "Fullscreen exit did not restore the caller-owned logical bounds."
         }
+        trace("kiosk-enter")
         val kiosk = service.setFullscreen(KWebWindowFullscreenMode.KIOSK)
         require(!kiosk.movable && !kiosk.minimizable && !kiosk.maximizable && !kiosk.closable && !kiosk.resizable)
+        trace("kiosk-exit")
         val afterKiosk = service.setFullscreen(KWebWindowFullscreenMode.WINDOWED)
         require(afterKiosk.movable && afterKiosk.minimizable && afterKiosk.maximizable && afterKiosk.closable)
+        trace("close-negotiate")
         val firstClose = service.requestClose()
         val repeatedClose = service.requestClose()
         require(firstClose.outcome == KWebWindowCloseOutcome.PENDING)
@@ -562,6 +576,10 @@ private fun boundsJson(bounds: KWebWindowBounds): JsonObject = buildJsonObject {
     put("y", bounds.y)
     put("width", bounds.width)
     put("height", bounds.height)
+}
+
+private fun trace(step: String) {
+    println("KWEBSHELL_WINDOW_CONTROLS_STEP:$step")
 }
 
 private fun verifyDisposedOwnerClosesService() {

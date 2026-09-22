@@ -834,8 +834,20 @@ internal class ComposeKWebWindowControls private constructor(
     private fun <T> onAwtThread(action: () -> T): T {
         if (EventQueue.isDispatchThread()) return action()
         val task = FutureTask(action)
-        EventQueue.invokeAndWait(task)
-        return task.get()
+        try {
+            EventQueue.invokeAndWait(task)
+            return task.get()
+        } catch (error: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw KWebNativeException(
+                code = KWebServiceErrorCode.CANCELLED,
+                details = mapOf("service" to KWebWindowControls.DESCRIPTOR.id),
+                message = "The window control operation was interrupted.",
+                cause = error,
+            )
+        } catch (error: ExecutionException) {
+            throw error.cause ?: error
+        }
     }
 }
 

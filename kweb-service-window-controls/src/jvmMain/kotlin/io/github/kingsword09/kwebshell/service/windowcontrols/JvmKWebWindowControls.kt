@@ -292,7 +292,7 @@ private class BoundedWindowEventStream(
     private val subscribers = linkedMapOf<Long, Channel<KWebWindowEvent>>()
 
     override suspend fun collect(collector: FlowCollector<KWebWindowEvent>) {
-        val channel = Channel<KWebWindowEvent>(capacity)
+        val channel = Channel<KWebWindowEvent>(capacity - 1)
         val (id, replay) = synchronized(lock) {
             val id = nextSubscriberId++
             subscribers[id] = channel

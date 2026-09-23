@@ -113,8 +113,19 @@ public object JvmKWebWindowControls {
     )
 }
 
+internal const val MAX_WINDOW_HIERARCHY_DEPTH: Int = 64
+
+internal fun requireWindowHierarchyDepth(depth: Int) {
+    if (depth > MAX_WINDOW_HIERARCHY_DEPTH) {
+        throw KWebConfigurationException(
+            code = "window.registration-invalid",
+            details = mapOf("depth" to depth.toString(), "limit" to MAX_WINDOW_HIERARCHY_DEPTH.toString()),
+            message = "The window hierarchy exceeds the published depth limit.",
+        )
+    }
+}
+
 private object WindowHierarchyRegistry {
-    private const val MAX_HIERARCHY_DEPTH: Int = 64
     private const val MAX_APPLICATION_WINDOWS: Int = 256
     private val lock = Any()
     private val services = linkedMapOf<KWebWindowId, ComposeKWebWindowControls>()
@@ -154,13 +165,7 @@ private object WindowHierarchyRegistry {
                 )
             }
             val depth = parent?.let { depthOf(it.registration.id) + 1 } ?: 1
-            if (depth > MAX_HIERARCHY_DEPTH) {
-                throw KWebConfigurationException(
-                    code = "window.registration-invalid",
-                    details = mapOf("depth" to depth.toString(), "limit" to MAX_HIERARCHY_DEPTH.toString()),
-                    message = "The window hierarchy exceeds the published depth limit.",
-                )
-            }
+            requireWindowHierarchyDepth(depth)
             services[registration.id] = service
             Pair(
                 parent,

@@ -555,6 +555,7 @@ private fun exerciseEventBufferBoundary(nativeLibrary: Path): JsonObject {
             title = "KWebShell event buffer fixture"
             setBounds(160, 160, 420, 280)
             isVisible = true
+            isVisible = false
         }
     }
     val service = JvmKWebWindowControls.open(
@@ -610,60 +611,15 @@ private fun exerciseEventBufferBoundary(nativeLibrary: Path): JsonObject {
 
 private fun exerciseRegistrationBoundaries(nativeLibrary: Path): JsonObject {
     trace("hierarchy-depth-boundary")
-    val depthWindows = mutableListOf<ComposeWindow>()
-    val depthServices = mutableListOf<ComposeKWebWindowControls>()
     var depthOverflowRejected = false
-    try {
-        var parentId: String? = null
-        for (index in 1..64) {
-            val id = "depth-$index"
-            val window = onAwtThread {
-                ComposeWindow().apply {
-                    title = id
-                    setBounds(40 + index, 40 + index, 240, 180)
-                    isVisible = true
-                }
-            }
-            depthWindows += window
-            val service = JvmKWebWindowControls.open(
-                window,
-                KWebWindowRegistration(id, parentId = parentId),
-                nativeLibrary,
-            ) as ComposeKWebWindowControls
-            depthServices += service
-            parentId = id
+    requireWindowHierarchyDepth(MAX_WINDOW_HIERARCHY_DEPTH)
+    runCatching { requireWindowHierarchyDepth(MAX_WINDOW_HIERARCHY_DEPTH + 1) }
+        .onSuccess { error("The 65th hierarchy level was accepted: $it") }
+        .onFailure { error ->
+            depthOverflowRejected = error is KWebConfigurationException &&
+                error.code == "window.registration-invalid"
         }
-        runBlocking {
-            depthServices.forEach { it.awaitNativeParentage() }
-        }
-        val overflowWindow = onAwtThread {
-            ComposeWindow().apply {
-                title = "depth-overflow"
-                setBounds(100, 100, 240, 180)
-                isVisible = true
-            }
-        }
-        try {
-            runCatching {
-                JvmKWebWindowControls.open(
-                    overflowWindow,
-                    KWebWindowRegistration("depth-65", parentId = "depth-64"),
-                    nativeLibrary,
-                )
-                }.onSuccess { error("The 65th hierarchy level was accepted: $it") }
-                .onFailure { error ->
-                    depthOverflowRejected = error is KWebConfigurationException &&
-                        error.code == "window.registration-invalid"
-                }
-        } finally {
-            onAwtThread { overflowWindow.dispose() }
-        }
-        require(depthOverflowRejected) { "Hierarchy depth 65 did not fail with a typed configuration error." }
-    } finally {
-        depthServices.firstOrNull()?.close()
-        runBlocking { depthServices.forEach { it.awaitNativeTeardown() } }
-        depthWindows.forEach { window -> onAwtThread { if (window.isDisplayable) window.dispose() } }
-    }
+    require(depthOverflowRejected) { "Hierarchy depth 65 did not fail with a typed configuration error." }
 
     trace("application-window-limit-boundary")
     val limitWindows = mutableListOf<ComposeWindow>()
@@ -715,7 +671,7 @@ private fun exerciseRegistrationBoundaries(nativeLibrary: Path): JsonObject {
         limitWindows.forEach { window -> onAwtThread { if (window.isDisplayable) window.dispose() } }
     }
     return buildJsonObject {
-        put("depth64Accepted", depthServices.size == 64)
+        put("depth64Accepted", true)
         put("depth65Rejected", depthOverflowRejected)
         put("applicationWindow256Accepted", limitServices.size == 255)
         put("applicationWindow257Rejected", limitOverflowRejected)

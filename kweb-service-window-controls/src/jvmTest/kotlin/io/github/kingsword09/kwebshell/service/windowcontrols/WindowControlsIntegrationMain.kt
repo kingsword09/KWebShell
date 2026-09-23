@@ -185,7 +185,6 @@ public fun main() {
         val eventBufferReport = exerciseEventBufferBoundary(requiredPath(WINDOW_CONTROLS_LIBRARY_PROPERTY))
         trace("native-transition-quiescence")
         runBlocking { delay(750L) }
-        val hierarchyReport = exerciseHierarchyAndClose(service, window)
         val resolvedUserData = runBlocking { appPaths.resolve(KWebAppPathKind.USER_DATA) }
         require(resolvedUserData.path.isNotBlank() && resolvedUserData.source.isNotBlank()) {
             "The provider-installed KWebAppPaths service did not resolve a real path."
@@ -365,6 +364,21 @@ public fun main() {
         require(onAwtThread { window.isDisplayable && window.isShowing }) {
             "Closing the Engine disposed the caller-owned ComposeWindow."
         }
+        val hierarchyOwnerWindow = onAwtThread {
+            ComposeWindow().apply {
+                title = "KWebShell post-CEF hierarchy parent"
+                setBounds(220, 220, 440, 300)
+                isVisible = true
+            }
+        }
+        val hierarchyOwnerService = JvmKWebWindowControls.open(
+            hierarchyOwnerWindow,
+            KWebWindowRegistration("post-cef-hierarchy-parent"),
+            requiredPath(WINDOW_CONTROLS_LIBRARY_PROPERTY),
+        )
+        val hierarchyReport = exerciseHierarchyAndClose(hierarchyOwnerService, hierarchyOwnerWindow)
+        hierarchyOwnerService.close()
+        onAwtThread { hierarchyOwnerWindow.dispose() }
         val registrationBoundaryReport = exerciseRegistrationBoundaries(
             requiredPath(WINDOW_CONTROLS_LIBRARY_PROPERTY),
         )

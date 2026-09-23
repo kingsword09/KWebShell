@@ -7,6 +7,7 @@ import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 import io.github.kingsword09.kwebshell.services.KWebServiceErrorCode
 import io.github.kingsword09.kwebshell.service.windowcontrols.internal.WindowControlsFfm
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -15,6 +16,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,6 +37,7 @@ import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import java.awt.event.WindowFocusListener
 import java.awt.event.WindowStateListener
+import java.util.ArrayDeque
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.FutureTask
 import java.util.concurrent.atomic.AtomicLong
@@ -280,6 +283,40 @@ private object WindowHierarchyRegistry {
     }
 }
 
+private class BoundedWindowEventStream(
+    private val capacity: Int,
+) : Flow<KWebWindowEvent> {
+    private val lock = Any()
+    private var nextSubscriberId: Long = 1L
+    private val history = ArrayDeque<KWebWindowEvent>(capacity)
+    private val subscribers = linkedMapOf<Long, Channel<KWebWindowEvent>>()
+
+    override suspend fun collect(collector: FlowCollector<KWebWindowEvent>) {
+        val channel = Channel<KWebWindowEvent>(capacity)
+        val (id, replay) = synchronized(lock) {
+            val id = nextSubscriberId++
+            subscribers[id] = channel
+            id to history.toList()
+        }
+        try {
+            for (event in replay) collector.emit(event)
+            for (event in channel) collector.emit(event)
+        } finally {
+            synchronized(lock) { subscribers.remove(id) }
+            channel.close()
+        }
+    }
+
+    fun publish(event: KWebWindowEvent): Boolean {
+        val channels = synchronized(lock) {
+            if (history.size == capacity) history.removeFirst()
+            history.addLast(event)
+            subscribers.values.toList()
+        }
+        return channels.all { it.trySend(event).isSuccess }
+    }
+}
+
 internal class ComposeKWebWindowControls private constructor(
     private val window: ComposeWindow,
     override val registration: KWebWindowRegistration,
@@ -292,10 +329,7 @@ internal class ComposeKWebWindowControls private constructor(
     private val nativeRelationshipMutex = Mutex()
     private val mutableLifecycle = MutableStateFlow(KWebLifecycleState.OPEN)
     private val mutableState = MutableStateFlow(initialState)
-    private val mutableEvents = MutableSharedFlow<KWebWindowEvent>(
-        replay = EVENT_REPLAY,
-        extraBufferCapacity = 0,
-    )
+    private val mutableEvents = BoundedWindowEventStream(EVENT_REPLAY)
     private val mutableCloseRequests = MutableSharedFlow<KWebWindowCloseRequest>(replay = 1, extraBufferCapacity = 1)
     private val nextSequence = AtomicLong(1L)
     private var listenersInstalled = false
@@ -324,7 +358,7 @@ internal class ComposeKWebWindowControls private constructor(
     override val descriptor = KWebWindowControls.DESCRIPTOR
     override val lifecycle: StateFlow<KWebLifecycleState> = mutableLifecycle.asStateFlow()
     override val state: StateFlow<KWebWindowState> = mutableState.asStateFlow()
-    override val events: Flow<KWebWindowEvent> = mutableEvents.asSharedFlow()
+    override val events: Flow<KWebWindowEvent> = mutableEvents
     override val closeRequests: Flow<KWebWindowCloseRequest> = mutableCloseRequests.asSharedFlow()
 
     private val componentListener = object : ComponentAdapter() {
@@ -1004,7 +1038,7 @@ internal class ComposeKWebWindowControls private constructor(
     private fun publish(value: KWebWindowState) {
         if (mutableState.value == value) return
         mutableState.value = value
-        if (!mutableEvents.tryEmit(KWebWindowEvent(nextSequence.getAndIncrement(), value))) {
+        if (!mutableEvents.publish(KWebWindowEvent(nextSequence.getAndIncrement(), value))) {
             mutableLifecycle.value = KWebLifecycleState.FAILED
             scope.cancel()
             throw nativeFailure(

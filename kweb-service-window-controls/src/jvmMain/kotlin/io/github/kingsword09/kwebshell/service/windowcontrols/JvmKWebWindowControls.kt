@@ -199,6 +199,19 @@ private object WindowHierarchyRegistry {
         if (visible) activateModal(service) else deactivateModal(service)
     }
 
+    fun raiseOwnerChain(service: ComposeKWebWindowControls) {
+        val owners = synchronized(lock) {
+            val chain = mutableListOf<ComposeKWebWindowControls>()
+            var parent = service.registration.parentId?.let(services::get)
+            while (parent != null) {
+                chain += parent
+                parent = parent.registration.parentId?.let(services::get)
+            }
+            chain.asReversed()
+        }
+        owners.forEach(ComposeKWebWindowControls::raiseForHierarchy)
+    }
+
     fun descendants(service: ComposeKWebWindowControls): List<ComposeKWebWindowControls> = synchronized(lock) {
         descendantsLocked(service)
     }
@@ -281,7 +294,7 @@ internal class ComposeKWebWindowControls private constructor(
     private val mutableState = MutableStateFlow(initialState)
     private val mutableEvents = MutableSharedFlow<KWebWindowEvent>(
         replay = EVENT_REPLAY,
-        extraBufferCapacity = EVENT_REPLAY,
+        extraBufferCapacity = 0,
     )
     private val mutableCloseRequests = MutableSharedFlow<KWebWindowCloseRequest>(replay = 1, extraBufferCapacity = 1)
     private val nextSequence = AtomicLong(1L)
@@ -306,6 +319,7 @@ internal class ComposeKWebWindowControls private constructor(
     private var nativeParentHandle: Long? = null
     private var nativeAttachJob: Job? = null
     private var nativeDetachJob: Job? = null
+    private var transitionPending: Boolean = false
 
     override val descriptor = KWebWindowControls.DESCRIPTOR
     override val lifecycle: StateFlow<KWebLifecycleState> = mutableLifecycle.asStateFlow()
@@ -400,6 +414,7 @@ internal class ComposeKWebWindowControls private constructor(
         if (!mutableState.value.visible || !window.isVisible || !window.isShowing) {
             throw unavailable("focus", "A hidden window cannot receive focus.")
         }
+        WindowHierarchyRegistry.raiseOwnerChain(this@ComposeKWebWindowControls)
         window.toFront()
         window.requestFocus()
         readAndPublish()
@@ -503,6 +518,7 @@ internal class ComposeKWebWindowControls private constructor(
     }
 
     override suspend fun requestAttention(): KWebWindowState = operation("request-attention") {
+        requireNativeStatus("request-attention", native.requestAttention(window.windowHandle))
         attention = KWebWindowAttention.REQUESTED
         window.toFront()
         readAndPublish()
@@ -557,6 +573,11 @@ internal class ComposeKWebWindowControls private constructor(
                 }
             }
         }
+    }
+
+    internal fun raiseForHierarchy() {
+        check(EventQueue.isDispatchThread())
+        if (window.isDisplayable && window.isVisible) window.toFront()
     }
 
     internal fun isVisibleForHierarchy(): Boolean = window.isDisplayable && window.isVisible
@@ -690,30 +711,49 @@ internal class ComposeKWebWindowControls private constructor(
         requiredStableObservations: Int = REQUIRED_STABLE_OBSERVATIONS,
         mutation: () -> Unit,
     ): KWebWindowState = withContext(Dispatchers.IO) {
-        onAwtThread { synchronized(lock) { requireOpen(name); requireWindow(name); mutation() } }
-        val deadline = System.nanoTime() + TRANSITION_TIMEOUT_NANOS
-        var stableObservations = 0
-        while (System.nanoTime() < deadline) {
-            val current = onAwtThread {
-                synchronized(lock) {
-                    requireOpen(name)
-                    requireWindow(name)
-                    settle?.invoke()
-                    readState()
+        onAwtThread {
+            synchronized(lock) {
+                requireOpen(name)
+                requireWindow(name)
+                if (transitionPending) {
+                    throw unavailable(name, "Another native window transition is still pending.")
+                }
+                transitionPending = true
+                try {
+                    mutation()
+                } catch (error: Throwable) {
+                    transitionPending = false
+                    throw error
                 }
             }
-            if (expected(current)) {
-                stableObservations += 1
-                if (stableObservations >= requiredStableObservations) {
-                    onAwtThread { synchronized(lock) { publish(current) } }
-                    return@withContext current
-                }
-            } else {
-                stableObservations = 0
-            }
-            delay(TRANSITION_POLL_MILLIS)
         }
-        throw nativeFailure(name, "The Compose window did not reach the requested state in time.", null)
+        try {
+            val deadline = System.nanoTime() + TRANSITION_TIMEOUT_NANOS
+            var stableObservations = 0
+            while (System.nanoTime() < deadline) {
+                val current = onAwtThread {
+                    synchronized(lock) {
+                        requireOpen(name)
+                        requireWindow(name)
+                        settle?.invoke()
+                        readState()
+                    }
+                }
+                if (expected(current)) {
+                    stableObservations += 1
+                    if (stableObservations >= requiredStableObservations) {
+                        onAwtThread { synchronized(lock) { publish(current) } }
+                        return@withContext current
+                    }
+                } else {
+                    stableObservations = 0
+                }
+                delay(TRANSITION_POLL_MILLIS)
+            }
+            throw nativeFailure(name, "The Compose window did not reach the requested state in time.", null)
+        } finally {
+            onAwtThread { synchronized(lock) { transitionPending = false } }
+        }
     }
 
     private fun requestCloseInternal(source: KWebWindowCloseSource): KWebWindowCloseResult {
@@ -965,7 +1005,13 @@ internal class ComposeKWebWindowControls private constructor(
         if (mutableState.value == value) return
         mutableState.value = value
         if (!mutableEvents.tryEmit(KWebWindowEvent(nextSequence.getAndIncrement(), value))) {
-            throw nativeFailure("publish-event", "The window state event buffer is exhausted.", null)
+            mutableLifecycle.value = KWebLifecycleState.FAILED
+            scope.cancel()
+            throw nativeFailure(
+                "publish-event",
+                "The window state event buffer is exhausted; the service is terminally failed.",
+                null,
+            )
         }
     }
 

@@ -253,9 +253,6 @@ public fun main() {
         }
         pages += allowedPage
         val cefParentReport = exerciseCefParentStability(service, window, allowedPage)
-        val registrationBoundaryReport = exerciseRegistrationBoundaries(
-            requiredPath(WINDOW_CONTROLS_LIBRARY_PROPERTY),
-        )
         allowGestures.mint(
             KWebGestureBinding(
                 engineId = "window-controls-fixture",
@@ -289,22 +286,6 @@ public fun main() {
             )
             require(state["id"]?.jsonPrimitive?.content == "main-window")
         }
-        val windowControlsReport = buildJsonObject {
-            put("schemaVersion", 1)
-            put("target", currentTarget())
-            put("providerId", "window-controls.ffm-native")
-            put("nativeProviderId", (service as ComposeKWebWindowControls).nativeProviderId())
-            put("nativeParentStable", onAwtThread { window.isDisplayable && window.windowHandle != 0L })
-            put("directControls", directReport)
-            put("eventBuffer", eventBufferReport)
-            put("hierarchyAndClose", hierarchyReport)
-            put("registrationBoundaries", registrationBoundaryReport)
-            put("cefParentStability", cefParentReport)
-        }
-        Files.writeString(
-            root.resolve("window-controls-report.json"),
-            Json.encodeToString(JsonObject.serializer(), windowControlsReport) + "\n",
-        )
         val rendererClose = awaitCloseRequest(closeRequests)
         val deniedClose = runBlocking {
             service.respondToClose(rendererClose.requestId, KWebWindowCloseDecision.DENY)
@@ -384,6 +365,25 @@ public fun main() {
         require(onAwtThread { window.isDisplayable && window.isShowing }) {
             "Closing the Engine disposed the caller-owned ComposeWindow."
         }
+        val registrationBoundaryReport = exerciseRegistrationBoundaries(
+            requiredPath(WINDOW_CONTROLS_LIBRARY_PROPERTY),
+        )
+        val windowControlsReport = buildJsonObject {
+            put("schemaVersion", 1)
+            put("target", currentTarget())
+            put("providerId", "window-controls.ffm-native")
+            put("nativeProviderId", (service as ComposeKWebWindowControls).nativeProviderId())
+            put("nativeParentStable", onAwtThread { window.isDisplayable && window.windowHandle != 0L })
+            put("directControls", directReport)
+            put("eventBuffer", eventBufferReport)
+            put("hierarchyAndClose", hierarchyReport)
+            put("registrationBoundaries", registrationBoundaryReport)
+            put("cefParentStability", cefParentReport)
+        }
+        Files.writeString(
+            root.resolve("window-controls-report.json"),
+            Json.encodeToString(JsonObject.serializer(), windowControlsReport) + "\n",
+        )
         require(visibleWindows() == visibleWindows) {
             "Window controls or CEF created an unexpected visible top-level window."
         }
@@ -626,7 +626,7 @@ private fun exerciseRegistrationBoundaries(nativeLibrary: Path): JsonObject {
     val limitServices = mutableListOf<KWebWindowControls>()
     var limitOverflowRejected = false
     try {
-        repeat(255) { index ->
+        repeat(256) { index ->
             val window = onAwtThread {
                 ComposeWindow().apply {
                     title = "limit-$index"
@@ -673,7 +673,7 @@ private fun exerciseRegistrationBoundaries(nativeLibrary: Path): JsonObject {
     return buildJsonObject {
         put("depth64Accepted", true)
         put("depth65Rejected", depthOverflowRejected)
-        put("applicationWindow256Accepted", limitServices.size == 255)
+        put("applicationWindow256Accepted", limitServices.size == 256)
         put("applicationWindow257Rejected", limitOverflowRejected)
     }
 }

@@ -1,10 +1,9 @@
 # RFC 0007: Window hierarchy, modal ownership, fullscreen, and close negotiation
 
-- Status: Implementing
+- Status: Implemented
 - Priority: P0
 - Owners: `kweb-service-window-controls`, `kweb-compose`, desktop host
 - Depends on: RFC 0002, RFC 0003
-- Platform targets: macos, windows, linux
 - Electron migration surface: `BrowserWindow` parent/child/modal/fullscreen/kiosk/closable/movable/minimizable/maximizable/alwaysOnTop APIs
 - Target mapping: `REWRITE`
 

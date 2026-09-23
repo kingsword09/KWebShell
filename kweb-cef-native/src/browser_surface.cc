@@ -479,12 +479,21 @@ public:
     }
     XSync(display_, False);
     XWindowAttributes attributes{};
-    if (XGetWindowAttributes(display_, browser_window_, &attributes) == 0) {
-      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    bool expected_map_state_observed = false;
+    constexpr int kMapStateObservationAttempts = 40;
+    for (int attempt = 0; attempt < kMapStateObservationAttempts; ++attempt) {
+      if (XGetWindowAttributes(display_, browser_window_, &attributes) == 0) {
+        return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+      }
+      if ((attributes.map_state != IsUnmapped) == visible) {
+        expected_map_state_observed = true;
+        break;
+      }
+      XSync(display_, False);
+      usleep(5000);
     }
-    return (attributes.map_state != IsUnmapped) == visible
-               ? KWEB_STATUS_OK
-               : KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    return expected_map_state_observed ? KWEB_STATUS_OK
+                                       : KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
   }
 
   bool ValidateParentage() const override {

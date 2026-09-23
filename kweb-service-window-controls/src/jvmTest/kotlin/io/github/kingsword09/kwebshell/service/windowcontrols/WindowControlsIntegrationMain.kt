@@ -461,6 +461,11 @@ private fun exerciseDirectControls(service: KWebWindowControls, window: ComposeW
         require(maximizedBounds is KWebNativeException &&
             maximizedBounds.code == KWebServiceErrorCode.OPERATION_UNAVAILABLE
         )
+        trace("maximized-fullscreen")
+        val maximizedFullscreen = service.setFullscreen(KWebWindowFullscreenMode.FULLSCREEN)
+        require(maximizedFullscreen.fullscreen == KWebWindowFullscreenMode.FULLSCREEN)
+        val afterMaximizedFullscreen = service.setFullscreen(KWebWindowFullscreenMode.WINDOWED)
+        require(afterMaximizedFullscreen.placement == KWebWindowPlacement.MAXIMIZED)
         require(service.setMaximized(false).placement == KWebWindowPlacement.FLOATING)
         trace("always-on-top")
         if (onAwtThread { window.isAlwaysOnTopSupported }) {
@@ -474,6 +479,14 @@ private fun exerciseDirectControls(service: KWebWindowControls, window: ComposeW
         val beforeFullscreen = service.snapshot()
         val fullscreen = service.setFullscreen(KWebWindowFullscreenMode.FULLSCREEN)
         require(fullscreen.fullscreen == KWebWindowFullscreenMode.FULLSCREEN)
+        trace("fullscreen-to-kiosk-denied")
+        val fullscreenToKiosk = runCatching {
+            service.setFullscreen(KWebWindowFullscreenMode.KIOSK)
+        }.exceptionOrNull()
+        require(fullscreenToKiosk is KWebNativeException &&
+            fullscreenToKiosk.code == KWebServiceErrorCode.OPERATION_UNAVAILABLE &&
+            service.snapshot().fullscreen == KWebWindowFullscreenMode.FULLSCREEN
+        )
         trace("fullscreen-exit")
         val afterFullscreen = service.setFullscreen(KWebWindowFullscreenMode.WINDOWED)
         require(afterFullscreen.fullscreen == KWebWindowFullscreenMode.WINDOWED)

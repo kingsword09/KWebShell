@@ -440,12 +440,23 @@ internal class ComposeKWebWindowControls private constructor(
     override suspend fun setFullscreen(mode: KWebWindowFullscreenMode): KWebWindowState = mutateAndAwait(
         "set-fullscreen",
         {
-            it.fullscreen == mode &&
-                onAwtThread { nativeFullscreenObserved() == (mode != KWebWindowFullscreenMode.WINDOWED) }
+            it.fullscreen == mode && onAwtThread {
+                nativeFullscreenObserved() == (mode != KWebWindowFullscreenMode.WINDOWED) &&
+                    (mode != KWebWindowFullscreenMode.WINDOWED || windowedFullscreenStateObserved(it))
+            }
         },
+        settle = if (mode == KWebWindowFullscreenMode.WINDOWED) {
+            { settleWindowedFullscreenState() }
+        } else {
+            null
+        },
+        requiredStableObservations = FULLSCREEN_STABLE_OBSERVATIONS,
     ) {
         if (fullscreenMode == KWebWindowFullscreenMode.KIOSK && mode != KWebWindowFullscreenMode.WINDOWED) {
             throw unavailable("set-fullscreen", "Kiosk mode must be exited before another fullscreen mode can be selected.")
+        }
+        if (fullscreenMode == KWebWindowFullscreenMode.FULLSCREEN && mode == KWebWindowFullscreenMode.KIOSK) {
+            throw unavailable("set-fullscreen", "Fullscreen mode must be exited before kiosk mode can be selected.")
         }
         if (mode == KWebWindowFullscreenMode.KIOSK && registration.parentId != null) {
             throw unavailable("set-fullscreen", "A child window cannot enter kiosk mode.")
@@ -481,13 +492,8 @@ internal class ComposeKWebWindowControls private constructor(
             "set-always-on-top",
             "The current desktop cannot keep this window always on top.",
         )
-        if (native.providerId() == "macos.AppKit") {
-            requireNativeStatus("set-always-on-top", native.setAlwaysOnTop(window.windowHandle, alwaysOnTop))
-            this@ComposeKWebWindowControls.alwaysOnTop = alwaysOnTop
-        } else {
-            window.isAlwaysOnTop = alwaysOnTop
-            this@ComposeKWebWindowControls.alwaysOnTop = window.isAlwaysOnTop
-        }
+        window.isAlwaysOnTop = alwaysOnTop
+        this@ComposeKWebWindowControls.alwaysOnTop = window.isAlwaysOnTop
         readAndPublish()
     }
 
@@ -680,24 +686,31 @@ internal class ComposeKWebWindowControls private constructor(
     private suspend fun mutateAndAwait(
         name: String,
         expected: (KWebWindowState) -> Boolean,
+        settle: (() -> Unit)? = null,
+        requiredStableObservations: Int = REQUIRED_STABLE_OBSERVATIONS,
         mutation: () -> Unit,
     ): KWebWindowState = withContext(Dispatchers.IO) {
         onAwtThread { synchronized(lock) { requireOpen(name); requireWindow(name); mutation() } }
         val deadline = System.nanoTime() + TRANSITION_TIMEOUT_NANOS
         var stableObservations = 0
-        var previous: KWebWindowState? = null
         while (System.nanoTime() < deadline) {
-            val current = onAwtThread { synchronized(lock) { requireOpen(name); requireWindow(name); readState() } }
+            val current = onAwtThread {
+                synchronized(lock) {
+                    requireOpen(name)
+                    requireWindow(name)
+                    settle?.invoke()
+                    readState()
+                }
+            }
             if (expected(current)) {
-                stableObservations = if (current == previous) stableObservations + 1 else 1
-                if (stableObservations >= REQUIRED_STABLE_OBSERVATIONS) {
+                stableObservations += 1
+                if (stableObservations >= requiredStableObservations) {
                     onAwtThread { synchronized(lock) { publish(current) } }
                     return@withContext current
                 }
             } else {
                 stableObservations = 0
             }
-            previous = current
             delay(TRANSITION_POLL_MILLIS)
         }
         throw nativeFailure(name, "The Compose window did not reach the requested state in time.", null)
@@ -822,20 +835,10 @@ internal class ComposeKWebWindowControls private constructor(
                 window.graphicsConfiguration?.device?.let { device ->
                     if (device.fullScreenWindow === window) device.fullScreenWindow = null
                 }
-                window.extendedState = when (restoredPlacement) {
-                    KWebWindowPlacement.MAXIMIZED -> Frame.MAXIMIZED_BOTH
-                    else -> Frame.NORMAL
-                }
             } else {
-                window.placement = restoredPlacement.toComposePlacement()
+                window.placement = WindowPlacement.Floating
             }
-            restoredBounds?.let { bounds ->
-                internalMove = true
-                try { window.setBounds(bounds.x, bounds.y, bounds.width, bounds.height) }
-                finally { internalMove = false }
-            }
-            window.minimumSize = Dimension(restoredConstraints.minimumWidth, restoredConstraints.minimumHeight)
-            window.maximumSize = Dimension(restoredConstraints.maximumWidth ?: Int.MAX_VALUE, restoredConstraints.maximumHeight ?: Int.MAX_VALUE)
+            settleWindowedFullscreenState()
             capabilitiesBeforeKiosk?.let { capabilities ->
                 movable = capabilities.movable
                 minimizable = capabilities.minimizable
@@ -861,13 +864,61 @@ internal class ComposeKWebWindowControls private constructor(
     private fun readAndPublish(): KWebWindowState = readState().also(::publish)
 
     private fun applyAlwaysOnTop(enabled: Boolean) {
-        if (native.providerId() == "macos.AppKit") {
-            requireNativeStatus("set-always-on-top", native.setAlwaysOnTop(window.windowHandle, enabled))
-            alwaysOnTop = enabled
-        } else {
-            window.isAlwaysOnTop = enabled
-            alwaysOnTop = window.isAlwaysOnTop
+        window.isAlwaysOnTop = enabled
+        alwaysOnTop = window.isAlwaysOnTop
+    }
+
+    private fun settleWindowedFullscreenState() {
+        check(EventQueue.isDispatchThread())
+        if (nativeFullscreenObserved()) return
+        window.minimumSize = Dimension(restoredConstraints.minimumWidth, restoredConstraints.minimumHeight)
+        window.maximumSize = Dimension(
+            restoredConstraints.maximumWidth ?: Int.MAX_VALUE,
+            restoredConstraints.maximumHeight ?: Int.MAX_VALUE,
+        )
+        val targetBounds = restoredBounds
+        if (restoredPlacement == KWebWindowPlacement.MAXIMIZED) {
+            if (window.placement != WindowPlacement.Maximized) {
+                if (native.providerId() == "macos.AppKit" && window.extendedState != Frame.NORMAL) {
+                    window.extendedState = Frame.NORMAL
+                }
+                window.placement = WindowPlacement.Floating
+                targetBounds?.let { bounds ->
+                    internalMove = true
+                    try { window.setBounds(bounds.x, bounds.y, bounds.width, bounds.height) }
+                    finally { internalMove = false }
+                }
+                if (native.providerId() == "macos.AppKit") {
+                    window.extendedState = Frame.MAXIMIZED_BOTH
+                } else {
+                    window.placement = WindowPlacement.Maximized
+                }
+            }
+            return
         }
+        if (native.providerId() == "macos.AppKit" && window.extendedState != Frame.NORMAL) {
+            window.extendedState = Frame.NORMAL
+        }
+        if (window.placement != WindowPlacement.Floating) {
+            window.placement = WindowPlacement.Floating
+        }
+        targetBounds?.let { bounds ->
+            if (window.x != bounds.x || window.y != bounds.y ||
+                window.width != bounds.width || window.height != bounds.height
+            ) {
+                internalMove = true
+                try { window.setBounds(bounds.x, bounds.y, bounds.width, bounds.height) }
+                finally { internalMove = false }
+            }
+        }
+    }
+
+    private fun windowedFullscreenStateObserved(state: KWebWindowState): Boolean = when (restoredPlacement) {
+        KWebWindowPlacement.MAXIMIZED -> state.placement == KWebWindowPlacement.MAXIMIZED
+        KWebWindowPlacement.FLOATING,
+        KWebWindowPlacement.MINIMIZED,
+        -> state.placement == KWebWindowPlacement.FLOATING &&
+            (restoredBounds == null || state.bounds == restoredBounds)
     }
 
     private fun readState(): KWebWindowState {
@@ -1003,7 +1054,8 @@ internal class ComposeKWebWindowControls private constructor(
         const val MAXIMUM_TITLE_LENGTH: Int = 4096
         const val TRANSITION_POLL_MILLIS: Long = 25L
         const val TRANSITION_TIMEOUT_NANOS: Long = 10_000_000_000L
-        const val REQUIRED_STABLE_OBSERVATIONS: Int = 8
+        const val REQUIRED_STABLE_OBSERVATIONS: Int = 2
+        const val FULLSCREEN_STABLE_OBSERVATIONS: Int = 8
         const val CLOSE_DEADLINE_MILLIS: Long = 5_000L
         var nextCloseId: Long = 1L
 

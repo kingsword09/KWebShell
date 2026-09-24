@@ -101,6 +101,32 @@
         "kweb-service-window-controls/native",
         "kweb-service-window-controls/src"
       ]
+    },
+    {
+      "rfcId": "0008",
+      "paths": [
+        ".github/scripts/aggregate-rfc-evidence.sh",
+        ".github/workflows/ci.yml",
+        "DESIGN_PLAN.md",
+        "docs/rfcs/0008-page-lifecycle-and-popups.md",
+        "docs/rfcs/README.md",
+        "kweb-cef-native/include/kwebshell/native/engine_abi.h",
+        "kweb-cef-native/src/browser_client.cc",
+        "kweb-cef-native/src/browser_client.h",
+        "kweb-cef-native/src/browser_session.cc",
+        "kweb-cef-native/src/browser_session.h",
+        "kweb-cef-native/tests",
+        "kweb-core/src/commonMain/kotlin/io/github/kingsword09/kwebshell/core/KWebPageContract.kt",
+        "kweb-core/src/commonTest/kotlin/io/github/kingsword09/kwebshell/core",
+        "kweb-desktop/src/main/kotlin/io/github/kingsword09/kwebshell/desktop/KWebDesktopEngine.kt",
+        "kweb-desktop/src/main/kotlin/io/github/kingsword09/kwebshell/desktop/internal/NativeBindings.kt",
+        "kweb-desktop/src/main/kotlin/io/github/kingsword09/kwebshell/desktop/internal/NativeBrowser.kt",
+        "kweb-desktop/src/test/kotlin/io/github/kingsword09/kwebshell/desktop/internal",
+        "kweb-electron-migration/README.md",
+        "kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronCapabilityMatrix.kt",
+        "kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration",
+        "kweb-electron-migration/src/jvmTest/resources/migration-golden"
+      ]
     }
   ]
 }

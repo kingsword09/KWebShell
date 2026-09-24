@@ -1148,6 +1148,49 @@ private fun runRendererCrashLifecycle() {
             require(
                 events.none { it.type == NativeBrowserEventType.FATAL_ERROR },
             )
+            val rendererTranscript = events.sortedBy { it.sequence }
+            val rendererEvidence = buildJsonObject {
+                put("schemaVersion", 1)
+                put("target", currentTargetId())
+                put("profileId", liveProfile.name)
+                put("eventCount", rendererTranscript.size)
+                put("streamCancellationObserved", true)
+                put("nativeBrowserCountAfterClose", NativeBrowser.liveNativeBrowserCount())
+                put("nativeEngineCountAfterClose", NativeEngine.liveNativeEngineCount())
+                put(
+                    "assertions",
+                    buildJsonArray {
+                        listOf(
+                            "real-renderer-crash",
+                            "stream-cancelled-on-renderer-disconnect",
+                            "renderer-terminated-retains-reason-and-status",
+                            "renderer-terminated-precedes-closed",
+                            "terminal-close-is-idempotent",
+                            "no-fatal-error-after-renderer-termination",
+                        ).forEach { assertion ->
+                            add(kotlinx.serialization.json.JsonPrimitive(assertion))
+                        }
+                    },
+                )
+                put(
+                    "transcript",
+                    buildJsonArray {
+                        rendererTranscript.forEach { event ->
+                            add(buildJsonObject {
+                                put("sequence", event.sequence)
+                                put("type", event.type.name)
+                                put("flags", event.flags)
+                                put("reason", event.reason)
+                                put("statusCode", event.statusCode)
+                                put("text", event.text)
+                            })
+                        }
+                    },
+                )
+            }
+            val evidencePath = requiredPathProperty(INTEGRATION_ROOT_PROPERTY)
+                .resolve("renderer-lifecycle-evidence.json")
+            Files.writeString(evidencePath, rendererEvidence.toString() + "\n", StandardCharsets.UTF_8)
         }
     } finally {
         if (browser?.lifecycle?.value != KWebLifecycleState.CLOSED &&

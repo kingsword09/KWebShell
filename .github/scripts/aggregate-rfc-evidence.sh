@@ -53,7 +53,7 @@ for target in macos-arm64 windows-x64 linux-x64; do
     "0004|governance.hosted|stream-conformance|stream-conformance.json|engine-integration"
     "0030|packaging.hosted|application-package|application-package-report.json|application-package"
     "0006|application.lifecycle.hosted|application-lifecycle|application-lifecycle-report.json|application-lifecycle|application-shutdown|application-shutdown.json|engine-integration"
-    "0008|page.lifecycle.hosted|page-lifecycle|page-lifecycle-evidence.json|engine-integration"
+    "0008|page.lifecycle.hosted|page-lifecycle|page-lifecycle-evidence.json|engine-integration|renderer-lifecycle|renderer-lifecycle-evidence.json|engine-integration"
     "0007|window-controls.hosted|window-controls-report|window-controls-report.json|provider-lifecycle"
   )
   count=0

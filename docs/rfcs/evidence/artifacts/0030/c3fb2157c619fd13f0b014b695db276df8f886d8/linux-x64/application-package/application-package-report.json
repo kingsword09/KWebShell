@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "target": "linux-x64",
+  "format": "LINUX_DEB",
+  "packageSha256": "fbf29da730c9af41f8cdd85533604b6ca51fae62740c47bae90a38cf5108b183",
+  "manifestSha256": "aa97285bb9a2b288dae8d0758cc48286ab157fb87b6c7d5e31650f8c01c96073",
+  "runtimeReleaseSha256": "7a7ab765f7d8330448b05f6a5df241bffddac189f3aec2593c616d3f0c48534f",
+  "signingMode": "TEST",
+  "status": "PASS"
+}

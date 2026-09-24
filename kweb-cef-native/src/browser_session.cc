@@ -351,7 +351,7 @@ public:
                      CefRefPtr<CefFrame> frame, int popup_id,
                      const CefString &target_url,
                      const CefString &target_frame_name,
-                     WindowOpenDisposition target_disposition,
+                     cef_window_open_disposition_t target_disposition,
                      bool user_gesture, const CefPopupFeatures &popup_features,
                      CefWindowInfo &window_info, CefRefPtr<CefClient> &client,
                      CefBrowserSettings &settings,
@@ -1974,7 +1974,7 @@ void SessionClient::OnRenderProcessResponsive(CefRefPtr<CefBrowser> browser) {
 bool SessionClient::OnBeforePopup(
     CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int popup_id,
     const CefString &target_url, const CefString &target_frame_name,
-    WindowOpenDisposition target_disposition, bool user_gesture,
+    cef_window_open_disposition_t target_disposition, bool user_gesture,
     const CefPopupFeatures &popup_features, CefWindowInfo &window_info,
     CefRefPtr<CefClient> &client, CefBrowserSettings &settings,
     CefRefPtr<CefDictionaryValue> &extra_info, bool *no_javascript_access) {

@@ -1,11 +1,21 @@
 package io.github.kingsword09.kwebshell.desktop.internal
 
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
+import io.github.kingsword09.kwebshell.core.KWebException
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 import io.github.kingsword09.kwebshell.core.KWebConfigurationException
+import io.github.kingsword09.kwebshell.core.KWebBeforeUnloadDecision
 import io.github.kingsword09.kwebshell.core.KWebRect
 import io.github.kingsword09.kwebshell.core.KWebCapability
+import io.github.kingsword09.kwebshell.core.KWebPageEvent
+import io.github.kingsword09.kwebshell.core.KWebPageEventFlag
+import io.github.kingsword09.kwebshell.core.KWebPageFrameScope
 import io.github.kingsword09.kwebshell.core.KWebPageEventType
+import io.github.kingsword09.kwebshell.core.KWebPageHost
+import io.github.kingsword09.kwebshell.core.KWebPopupDecision
+import io.github.kingsword09.kwebshell.core.KWebPopupOutcome
+import io.github.kingsword09.kwebshell.core.KWebReloadMode
+import io.github.kingsword09.kwebshell.core.KWebReloadOutcome
 import io.github.kingsword09.kwebshell.desktop.KWebComposeWindowHost
 import io.github.kingsword09.kwebshell.desktop.KWebDesktopPage
 import io.github.kingsword09.kwebshell.desktop.KWebDesktop
@@ -54,6 +64,8 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -165,6 +177,7 @@ private enum class IntegrationMode(val argument: String) {
     LISTENER_FAILURE("listener-failure"),
     FFM_STRESS("ffm-stress"),
     PUBLIC_FACADE("public-facade"),
+    PAGE_LIFECYCLE("page-lifecycle"),
     RENDERER_CRASH("renderer-crash"),
     HOLDER("holder"),
     INITIALIZATION_FAILURE("initialization-failure"),
@@ -194,6 +207,7 @@ fun main(arguments: Array<String>) {
             IntegrationMode.LISTENER_FAILURE -> runListenerFailureLifecycle()
             IntegrationMode.FFM_STRESS -> runFfmStressLifecycle()
             IntegrationMode.PUBLIC_FACADE -> runPublicFacadeLifecycle()
+            IntegrationMode.PAGE_LIFECYCLE -> runPageLifecycleContract()
             IntegrationMode.RENDERER_CRASH -> runRendererCrashLifecycle()
             IntegrationMode.HOLDER -> runHolderLifecycle()
             IntegrationMode.INITIALIZATION_FAILURE -> runInitializationFailureLifecycle()
@@ -222,6 +236,7 @@ private fun runCoordinator() {
     runChildAndRequireSuccess(IntegrationMode.LISTENER_FAILURE, root.resolve("listener-failure"))
     runChildAndRequireSuccess(IntegrationMode.FFM_STRESS, root.resolve("ffm-stress"))
     runChildAndRequireSuccess(IntegrationMode.PUBLIC_FACADE, root.resolve("public-facade"))
+    runChildAndRequireSuccess(IntegrationMode.PAGE_LIFECYCLE, root.resolve("page-lifecycle"))
     runChildAndRequireSuccess(IntegrationMode.RENDERER_CRASH, root.resolve("renderer-crash"))
 
     val sharedRoot = root.resolve("initialization-failure")
@@ -816,7 +831,7 @@ private fun runPublicFacadeLifecycle() {
                 kotlinx.coroutines.runBlocking {
                     withTimeout(30_000) {
                         publicPage.events.first {
-                            it.type == KWebPageEventType.ADDRESS_CHANGED && it.text == origin.secondUrl
+                            it.type == KWebPageEventType.ADDRESS_CHANGED && it.url == origin.secondUrl
                         }
                     }
                 }
@@ -1038,6 +1053,8 @@ private fun runRendererCrashLifecycle() {
     val streamHandler = ConformanceStreamTestHandler()
     val bridgeHandler = ConformanceBridgeTestHandler()
     val events = CopyOnWriteArrayList<NativeBrowserEvent>()
+    val rendererTerminated = CountDownLatch(1)
+    val closed = CountDownLatch(1)
     var surface: ComposeBrowserSurface? = null
     var browser: NativeBrowser? = null
     val cdp = CdpClient(configuration.remoteDebuggingPort)
@@ -1072,6 +1089,11 @@ private fun runRendererCrashLifecycle() {
                 streamDispatcher = ConformanceBridgeStreamDispatcher(streamHandler),
             ) { event ->
                 events += event
+                when (event.type) {
+                    NativeBrowserEventType.RENDERER_TERMINATED -> rendererTerminated.countDown()
+                    NativeBrowserEventType.CLOSED -> closed.countDown()
+                    else -> Unit
+                }
             }
             val liveBrowser = requireNotNull(browser)
             cdp.awaitPage(origin.firstUrl)
@@ -1093,37 +1115,38 @@ private fun runRendererCrashLifecycle() {
             // Crash the renderer through the test-only ABI kill switch: the
             // renderer process dies like a real crash, so the stream query is
             // cancelled by the renderer disconnect and the browser reports the
-            // declared FATAL_ERROR terminal event.
+            // declared renderer-terminal event before closing the native child.
             val crashStatus = NativeBindings.browserCrashRenderer(
                 liveBrowser.requireLiveHandle("renderer-crash"),
             )
             requireStatus(crashStatus, NativeStatus.OK, "renderer crash request")
             streamHandler.awaitCancelled(1, "renderer crash")
+            require(rendererTerminated.await(30, TimeUnit.SECONDS)) {
+                "The renderer crash did not emit the declared RENDERER_TERMINATED event: $events"
+            }
+            val termination = events.single { it.type == NativeBrowserEventType.RENDERER_TERMINATED }
+            require(termination.reason == 5 && termination.statusCode != 0) {
+                "The renderer termination did not retain the crash reason and native status: $termination"
+            }
             require(
-                events.any { it.type == NativeBrowserEventType.FATAL_ERROR },
-            ) { "The renderer crash did not emit the declared FATAL_ERROR browser event: $events" }
-            require(liveBrowser.lifecycle.value == KWebLifecycleState.FAILED) {
-                "The native browser did not report FAILED after its renderer crashed."
+                liveBrowser.lifecycle.value == KWebLifecycleState.FAILED ||
+                    liveBrowser.lifecycle.value == KWebLifecycleState.CLOSED,
+            ) {
+                "The native browser did not report a failed or terminal state after its renderer crashed."
             }
 
-            // FATAL_ERROR marks the Kotlin lifecycle as FAILED before CEF has
-            // delivered the asynchronous OnBeforeClose callback. The native
-            // session is already closing; use the owner close path only to
-            // wait for that terminal callback and observe the expected fatal
-            // failure before closing the engine.
-            try {
-                liveBrowser.close()
-                error("A renderer-crashed browser close unexpectedly succeeded.")
-            } catch (error: KWebNativeException) {
-                require(error.code == "native.browser.fatal") {
-                    "Renderer-crash browser close failed with '${error.code}' instead of native.browser.fatal."
-                }
+            require(closed.await(30, TimeUnit.SECONDS)) {
+                "The renderer crash did not emit the terminal CLOSED event: $events"
             }
+            val terminalIndex = events.indexOfFirst { it.type == NativeBrowserEventType.RENDERER_TERMINATED }
+            val closedIndex = events.indexOfFirst { it.type == NativeBrowserEventType.CLOSED }
+            require(terminalIndex >= 0 && closedIndex > terminalIndex) {
+                "Renderer terminal ownership ordering was not preserved: $events"
+            }
+            liveBrowser.close()
             engine.close()
             require(
-                events.any {
-                    it.type == NativeBrowserEventType.CLOSED || it.type == NativeBrowserEventType.FATAL_ERROR
-                },
+                events.none { it.type == NativeBrowserEventType.FATAL_ERROR },
             )
         }
     } finally {
@@ -1138,6 +1161,474 @@ private fun runRendererCrashLifecycle() {
     require(NativeBrowser.liveNativeBrowserCount() == 0L)
     require(NativeEngine.liveNativeEngineCount() == 0L)
     println("KWebShell renderer-crash stream terminal contract passed.")
+}
+
+private fun runPageLifecycleContract() {
+    val configuration = runtimeConfiguration()
+    require(configuration.remoteDebuggingPort in 1024..65535) {
+        "The page lifecycle fixture requires the configured CDP capability."
+    }
+    val engine = KWebDesktop.openEngine(
+        KWebDesktopEngineConfiguration(
+            cefRuntime = configuration.cefRuntime,
+            browserSubprocess = configuration.browserSubprocess,
+            resources = configuration.resources,
+            locales = configuration.locales,
+            rootCache = configuration.rootCache,
+            log = configuration.log,
+            remoteDebuggingPort = configuration.remoteDebuggingPort,
+        ),
+    )
+    var surface: ComposeBrowserSurface? = null
+    var popupSurface: ComposeBrowserSurface? = null
+    var profile: io.github.kingsword09.kwebshell.core.KWebProfile? = null
+    var page: io.github.kingsword09.kwebshell.core.KWebPage? = null
+    var popupPage: io.github.kingsword09.kwebshell.core.KWebPage? = null
+    val eventLog = CopyOnWriteArrayList<KWebPageEvent>()
+    var eventJob: kotlinx.coroutines.Job? = null
+    val cdp = CdpClient(configuration.remoteDebuggingPort)
+    val beforeUnloadOutcomes = mutableListOf<String>()
+    val popupOutcomes = mutableListOf<String>()
+    var stage = "open"
+    try {
+        profile = kotlinx.coroutines.runBlocking { engine.openProfile("page-lifecycle") }
+        BrowserOrigin(includeAppPathsBridge = false).use { origin ->
+            surface = NativeEngine.onAwtEventDispatchThread { ComposeBrowserSurface.create(800, 600) }
+            popupSurface = NativeEngine.onAwtEventDispatchThread { ComposeBrowserSurface.create(640, 480) }
+            val openerHost = KWebDesktop.composeWindowHost(requireNotNull(surface).window)
+            val popupHost = KWebDesktop.composeWindowHost(requireNotNull(popupSurface).window)
+            val liveProfile = requireNotNull(profile)
+            page = kotlinx.coroutines.runBlocking {
+                liveProfile.openPage(openerHost, origin.firstUrl, KWebRect(0, 0, 800, 600))
+            }
+            val livePage = requireNotNull(page)
+            eventJob = kotlinx.coroutines.CoroutineScope(
+                kotlinx.coroutines.SupervisorJob() + Dispatchers.Default,
+            ).launch {
+                livePage.events.collect { eventLog += it }
+            }
+
+            fun latestSequence(): Long = eventLog.maxOfOrNull { it.sequence } ?: 0L
+            fun awaitEventAfter(
+                marker: Long,
+                predicate: (KWebPageEvent) -> Boolean,
+            ): KWebPageEvent = kotlinx.coroutines.runBlocking {
+                withTimeout(30_000) {
+                    livePage.events.first { it.sequence > marker && predicate(it) }
+                }
+            }
+
+            stage = "created-envelope"
+            val created = awaitEventAfter(0) { it.type == KWebPageEventType.CREATED }
+            require(created.pageId == livePage.id && created.profileId == liveProfile.name) {
+                "The page event envelope lost its page/profile identity: $created"
+            }
+            require(created.frameId.isNotBlank() && created.frameScope == KWebPageFrameScope.MAIN) {
+                "The created event did not carry main-frame identity: $created"
+            }
+            cdp.awaitPage(origin.firstUrl)
+            stage = "title"
+            val title = awaitEventAfter(0) {
+                it.type == KWebPageEventType.TITLE_CHANGED && it.title == FIRST_TITLE
+            }
+            require(title.origin == "${origin.origin}/" && title.url == origin.firstUrl) {
+                "The title event did not retain its canonical origin and URL: $title"
+            }
+            stage = "favicon"
+            val favicon = awaitEventAfter(0) {
+                it.type == KWebPageEventType.FAVICON_CHANGED && it.faviconUrls.isNotEmpty()
+            }
+            require(favicon.faviconUrls.size <= 8 && favicon.faviconUrls.all { it.startsWith(origin.origin) }) {
+                "The favicon event violated its bounded canonical URL contract: $favicon"
+            }
+            stage = "subframe"
+            val subframeLoad = awaitEventAfter(0) {
+                it.type == KWebPageEventType.LOAD_ENDED && it.frameScope == KWebPageFrameScope.SUBFRAME
+            }
+            require(subframeLoad.frameId != created.frameId) {
+                "The subframe load reused the main-frame identity: $subframeLoad"
+            }
+
+            var marker = latestSequence()
+            stage = "same-document"
+            kotlinx.coroutines.runBlocking {
+                livePage.navigate("${origin.firstUrl}#same-document")
+            }
+            val sameDocument = awaitEventAfter(marker) {
+                it.type == KWebPageEventType.SAME_DOCUMENT_NAVIGATION &&
+                    it.url?.endsWith("/first#same-document") == true
+            }
+            val sameDocumentAddress = awaitEventAfter(marker) {
+                it.type == KWebPageEventType.ADDRESS_CHANGED &&
+                    it.url?.endsWith("/first#same-document") == true
+            }
+            require(sameDocument.sequence < sameDocumentAddress.sequence) {
+                "Same-document navigation did not precede its address event."
+            }
+
+            marker = latestSequence()
+            stage = "redirect"
+            kotlinx.coroutines.runBlocking { livePage.navigate(origin.redirectUrl) }
+            val redirectedStart = awaitEventAfter(marker) {
+                it.type == KWebPageEventType.NAVIGATION_STARTED &&
+                    KWebPageEventFlag.REDIRECT in it.flags
+            }
+            val redirectedCommit = awaitEventAfter(marker) {
+                it.type == KWebPageEventType.NAVIGATION_COMMITTED && it.url == origin.redirectTargetUrl
+            }
+            require(redirectedStart.sequence < redirectedCommit.sequence) {
+                "Redirect navigation did not preserve started-before-committed order."
+            }
+            cdp.awaitPage(origin.redirectTargetUrl)
+
+            marker = latestSequence()
+            stage = "before-unload-load"
+            kotlinx.coroutines.runBlocking { livePage.navigate(origin.beforeUnloadUrl) }
+            awaitEventAfter(marker) {
+                it.type == KWebPageEventType.LOAD_ENDED && it.url == origin.beforeUnloadUrl
+            }
+            cdp.awaitPage(origin.beforeUnloadUrl)
+            cdp.dispatchTrustedKeyDown()
+
+            marker = latestSequence()
+            stage = "before-unload-cancel"
+            kotlinx.coroutines.runBlocking { livePage.navigate(origin.secondUrl) }
+            val cancelRequest = awaitEventAfter(marker) {
+                it.type == KWebPageEventType.BEFORE_UNLOAD_REQUESTED
+            }
+            val cancelResult = kotlinx.coroutines.runBlocking {
+                livePage.respondToBeforeUnload(
+                    requireNotNull(cancelRequest.beforeUnloadRequest).requestId,
+                    KWebBeforeUnloadDecision.CANCEL,
+                )
+            }
+            require(!cancelResult.timedOut && cancelResult.decision == KWebBeforeUnloadDecision.CANCEL) {
+                "Before-unload cancel did not return its typed result: $cancelResult"
+            }
+            beforeUnloadOutcomes += "cancel"
+            val staleBeforeUnload = try {
+                kotlinx.coroutines.runBlocking {
+                    livePage.respondToBeforeUnload(
+                        cancelResult.requestId,
+                        KWebBeforeUnloadDecision.PROCEED,
+                    )
+                }
+                null
+            } catch (error: KWebNativeException) {
+                error
+            }
+            require(staleBeforeUnload?.code == "page.before-unload-stale") {
+                "A duplicate before-unload response was not typed as stale: $staleBeforeUnload"
+            }
+
+            Thread.sleep(500)
+            cdp.dispatchTrustedKeyDown()
+            marker = latestSequence()
+            stage = "before-unload-proceed"
+            kotlinx.coroutines.runBlocking { livePage.navigate(origin.secondUrl) }
+            val proceedRequest = awaitEventAfter(marker) {
+                it.type == KWebPageEventType.BEFORE_UNLOAD_REQUESTED
+            }
+            val proceedResult = kotlinx.coroutines.runBlocking {
+                livePage.respondToBeforeUnload(
+                    requireNotNull(proceedRequest.beforeUnloadRequest).requestId,
+                    KWebBeforeUnloadDecision.PROCEED,
+                )
+            }
+            require(!proceedResult.timedOut && proceedResult.decision == KWebBeforeUnloadDecision.PROCEED) {
+                "Before-unload proceed did not return its typed result: $proceedResult"
+            }
+            beforeUnloadOutcomes += "proceed"
+            awaitEventAfter(marker) {
+                it.type == KWebPageEventType.NAVIGATION_COMMITTED && it.url == origin.secondUrl
+            }
+            cdp.awaitPage(origin.secondUrl)
+
+            stage = "reload"
+            val reloadResult = kotlinx.coroutines.runBlocking { livePage.reload(KWebReloadMode.IGNORE_CACHE) }
+            require(reloadResult.outcome == KWebReloadOutcome.STARTED &&
+                reloadResult.mode == KWebReloadMode.IGNORE_CACHE
+            ) {
+                "Ignore-cache reload did not return its typed started result: $reloadResult"
+            }
+            awaitEventAfter(latestSequence()) { it.type == KWebPageEventType.NAVIGATION_STARTED }
+
+            marker = latestSequence()
+            stage = "before-unload-timeout-load"
+            kotlinx.coroutines.runBlocking { livePage.navigate(origin.beforeUnloadUrl) }
+            awaitEventAfter(marker) {
+                it.type == KWebPageEventType.LOAD_ENDED && it.url == origin.beforeUnloadUrl
+            }
+            cdp.awaitPage(origin.beforeUnloadUrl)
+            cdp.dispatchTrustedKeyDown()
+            marker = latestSequence()
+            stage = "before-unload-timeout"
+            kotlinx.coroutines.runBlocking { livePage.navigate(origin.crossOriginUrl) }
+            val timeoutRequest = awaitEventAfter(marker) {
+                it.type == KWebPageEventType.BEFORE_UNLOAD_REQUESTED
+            }
+            Thread.sleep(5_500)
+            val timeoutResult = kotlinx.coroutines.runBlocking {
+                livePage.respondToBeforeUnload(
+                    requireNotNull(timeoutRequest.beforeUnloadRequest).requestId,
+                    KWebBeforeUnloadDecision.PROCEED,
+                )
+            }
+            require(timeoutResult.timedOut && timeoutResult.decision == KWebBeforeUnloadDecision.CANCEL) {
+                "Before-unload timeout did not default to typed cancel: $timeoutResult"
+            }
+            beforeUnloadOutcomes += "timeout-cancel"
+
+            marker = latestSequence()
+            stage = "popup-opener"
+            kotlinx.coroutines.runBlocking { livePage.navigate(origin.popupUrl) }
+            awaitEventAfter(marker) {
+                it.type == KWebPageEventType.BEFORE_UNLOAD_REQUESTED
+            }.let { request ->
+                val result = kotlinx.coroutines.runBlocking {
+                    livePage.respondToBeforeUnload(
+                        requireNotNull(request.beforeUnloadRequest).requestId,
+                        KWebBeforeUnloadDecision.PROCEED,
+                    )
+                }
+                require(!result.timedOut)
+                beforeUnloadOutcomes += "popup-opener-navigation"
+            }
+            awaitEventAfter(marker) {
+                it.type == KWebPageEventType.LOAD_ENDED && it.url == origin.popupUrl
+            }
+            cdp.awaitPage(origin.popupUrl)
+
+            fun requestPopup(): KWebPageEvent {
+                stage = "popup-request"
+                val popupMarker = latestSequence()
+                cdp.evaluateWithUserGesture(
+                    "document.getElementById('popup-link').click(); 'requested'",
+                )
+                return awaitEventAfter(popupMarker) { it.type == KWebPageEventType.POPUP_REQUESTED }
+            }
+
+            stage = "popup-invalid-owner"
+            val invalidOwnerRequest = requestPopup()
+            val invalidOwner = try {
+                kotlinx.coroutines.runBlocking {
+                    livePage.respondToPopup(
+                        requireNotNull(invalidOwnerRequest.popupRequest).requestId,
+                        KWebPopupDecision.ALLOW(object : KWebPageHost {}, KWebRect(0, 0, 320, 240)),
+                    )
+                }
+                null
+            } catch (error: KWebException) {
+                error
+            }
+            require(invalidOwner?.code == "page.popup-owner-invalid") {
+                "An unmanaged popup owner was not rejected: $invalidOwner"
+            }
+            kotlinx.coroutines.runBlocking {
+                livePage.respondToPopup(
+                    requireNotNull(invalidOwnerRequest.popupRequest).requestId,
+                    KWebPopupDecision.DENY,
+                )
+            }
+            popupOutcomes += "invalid-owner-rejected"
+
+            stage = "popup-invalid-bounds"
+            val invalidBoundsRequest = requestPopup()
+            val invalidBounds = try {
+                kotlinx.coroutines.runBlocking {
+                    livePage.respondToPopup(
+                        requireNotNull(invalidBoundsRequest.popupRequest).requestId,
+                        KWebPopupDecision.ALLOW(popupHost, KWebRect(32769, 0, 320, 240)),
+                    )
+                }
+                null
+            } catch (error: KWebException) {
+                error
+            }
+            require(invalidBounds?.code == "page.popup-bounds-invalid") {
+                "An oversized popup owner bounds was not rejected: $invalidBounds"
+            }
+            kotlinx.coroutines.runBlocking {
+                livePage.respondToPopup(
+                    requireNotNull(invalidBoundsRequest.popupRequest).requestId,
+                    KWebPopupDecision.DENY,
+                )
+            }
+            popupOutcomes += "invalid-bounds-rejected"
+
+            stage = "popup-deny"
+            val denyRequest = requestPopup()
+            val denyResult = kotlinx.coroutines.runBlocking {
+                livePage.respondToPopup(
+                    requireNotNull(denyRequest.popupRequest).requestId,
+                    KWebPopupDecision.DENY,
+                )
+            }
+            require(denyResult.outcome == KWebPopupOutcome.DENIED && denyResult.page == null) {
+                "Popup denial did not return its typed result: $denyResult"
+            }
+            popupOutcomes += "deny"
+            val stalePopup = try {
+                kotlinx.coroutines.runBlocking {
+                    livePage.respondToPopup(
+                        denyResult.requestId,
+                        KWebPopupDecision.DENY,
+                    )
+                }
+                null
+            } catch (error: KWebNativeException) {
+                error
+            }
+            require(stalePopup?.code == "page.popup-stale") {
+                "A duplicate popup response was not typed as stale: $stalePopup"
+            }
+
+            stage = "popup-allow"
+            val allowRequest = requestPopup()
+            val allowResult = kotlinx.coroutines.runBlocking {
+                livePage.respondToPopup(
+                    requireNotNull(allowRequest.popupRequest).requestId,
+                    KWebPopupDecision.ALLOW(popupHost, KWebRect(0, 0, 480, 360)),
+                )
+            }
+            require(allowResult.outcome == KWebPopupOutcome.ALLOWED && allowResult.page != null) {
+                "Popup allow did not create a typed owner-bound page: $allowResult"
+            }
+            popupPage = requireNotNull(allowResult.page)
+            val allowedPage = requireNotNull(popupPage)
+            kotlinx.coroutines.runBlocking {
+                withTimeout(30_000) {
+                    allowedPage.events.first { it.type == KWebPageEventType.CREATED }
+                }
+            }
+            cdp.awaitPage(origin.popupTargetUrl)
+            require(cdp.evaluate("window.opener === null") == "true") {
+                "The rewritten popup unexpectedly retained a window.opener proxy."
+            }
+            popupOutcomes += "allow-owner-bound-no-opener"
+            allowedPage.close()
+            kotlinx.coroutines.runBlocking {
+                withTimeout(30_000) { allowedPage.events.first { it.type == KWebPageEventType.CLOSED } }
+            }
+            popupPage = null
+            cdp.awaitPage(origin.popupUrl)
+
+            stage = "popup-timeout"
+            val timeoutPopupRequest = requestPopup()
+            Thread.sleep(5_500)
+            val timeoutPopup = kotlinx.coroutines.runBlocking {
+                livePage.respondToPopup(
+                    requireNotNull(timeoutPopupRequest.popupRequest).requestId,
+                    KWebPopupDecision.DENY,
+                )
+            }
+            require(timeoutPopup.outcome == KWebPopupOutcome.TIMED_OUT) {
+                "Popup timeout did not return its typed outcome: $timeoutPopup"
+            }
+            popupOutcomes += "timeout"
+
+            stage = "page-close"
+            val beforeClose = latestSequence()
+            livePage.close()
+            val closedEvent = awaitEventAfter(beforeClose) { it.type == KWebPageEventType.CLOSED }
+            val collectorDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+            while (eventLog.lastOrNull()?.sequence != closedEvent.sequence &&
+                System.nanoTime() < collectorDeadline
+            ) {
+                Thread.sleep(25)
+            }
+            require(eventLog.lastOrNull()?.type == KWebPageEventType.CLOSED) {
+                "The page emitted an event after its terminal CLOSED event."
+            }
+            val transcript = eventLog.sortedBy { it.sequence }
+            require(transcript.isNotEmpty() && transcript.first().sequence == 1L) {
+                "The page transcript did not start at sequence one."
+            }
+            require(transcript.map { it.sequence } == (1L..transcript.size.toLong()).toList()) {
+                "The page transcript has a sequence gap: $transcript"
+            }
+            val evidence = buildJsonObject {
+                put("schemaVersion", 1)
+                put("target", currentTargetId())
+                put("pageId", livePage.id)
+                put("profileId", liveProfile.name)
+                put("eventCount", transcript.size)
+                put(
+                    "beforeUnloadOutcomes",
+                    buildJsonArray {
+                        beforeUnloadOutcomes.forEach { outcome ->
+                            add(kotlinx.serialization.json.JsonPrimitive(outcome))
+                        }
+                    },
+                )
+                put(
+                    "popupOutcomes",
+                    buildJsonArray {
+                        popupOutcomes.forEach { outcome ->
+                            add(kotlinx.serialization.json.JsonPrimitive(outcome))
+                        }
+                    },
+                )
+                put(
+                    "assertions",
+                    buildJsonArray {
+                        listOf(
+                            "typed-page-profile-frame-origin-envelope",
+                            "main-and-subframe-identities",
+                            "bounded-canonical-title-and-favicon",
+                            "redirect-same-document-navigation-order",
+                            "before-unload-cancel-proceed-timeout-stale",
+                            "reload-ignore-cache-typed-result",
+                            "popup-deny-allow-timeout-owner-and-bounds-policy",
+                            "popup-rewrite-has-no-window-opener",
+                            "terminal-closed-order-and-contiguous-sequence",
+                        ).forEach { assertion ->
+                            add(kotlinx.serialization.json.JsonPrimitive(assertion))
+                        }
+                    },
+                )
+                put(
+                    "transcript",
+                    buildJsonArray {
+                        transcript.forEach { event ->
+                            add(buildJsonObject {
+                                put("sequence", event.sequence)
+                                put("type", event.type.id)
+                                put("frameId", event.frameId)
+                                put("frameScope", event.frameScope.id)
+                                put("origin", event.origin.orEmpty())
+                                put("url", event.url.orEmpty())
+                                put("title", event.title.orEmpty())
+                                put("reason", event.reason.id)
+                                put("statusCode", event.statusCode)
+                            })
+                        }
+                    },
+                )
+            }
+            val evidencePath = requiredPathProperty(INTEGRATION_ROOT_PROPERTY)
+                .resolve("page-lifecycle-evidence.json")
+            Files.writeString(evidencePath, evidence.toString() + "\n", StandardCharsets.UTF_8)
+            eventJob?.cancel()
+        }
+    } catch (error: Throwable) {
+        throw IllegalArgumentException(
+            "RFC 0008 page lifecycle fixture failed at stage '$stage'; recent events=" +
+                eventLog.takeLast(24),
+            error,
+        )
+    } finally {
+        eventJob?.cancel()
+        popupPage?.let { runCatching { it.close() } }
+        page?.let { runCatching { it.close() } }
+        profile?.let { runCatching { it.close() } }
+        surface?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
+        popupSurface?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
+        engine.close()
+    }
+    require(NativeBrowser.liveNativeBrowserCount() == 0L)
+    require(NativeEngine.liveNativeEngineCount() == 0L)
+    println("KWebShell RFC 0008 page lifecycle and popup contract passed.")
 }
 
 private fun runExtensionLifecycleStage1() = withExtensionLifecycleBrowsers { engine, alpha, beta, _, origin, cdp, root ->
@@ -1845,6 +2336,11 @@ private class BrowserOrigin(
     val origin: String
     val firstUrl: String
     val secondUrl: String
+    val redirectUrl: String
+    val redirectTargetUrl: String
+    val beforeUnloadUrl: String
+    val popupUrl: String
+    val popupTargetUrl: String
     val crossOriginUrl: String
 
     init {
@@ -1868,30 +2364,80 @@ private class BrowserOrigin(
         origin = "http://127.0.0.1:$port"
         firstUrl = "http://127.0.0.1:$port/first"
         secondUrl = URI("http", null, "127.0.0.1", port, "/路径", "q=🙂", null).toASCIIString()
+        redirectUrl = "$origin/redirect"
+        redirectTargetUrl = "$firstUrl?redirected=1"
+        beforeUnloadUrl = "$origin/before-unload"
+        popupUrl = "$origin/popup"
+        popupTargetUrl = "$origin/popup-target"
         crossOriginUrl = "http://127.0.0.1:${crossOriginServer.address.port}/cross"
     }
 
     private fun serve(exchange: HttpExchange) {
-        if (exchange.requestURI.rawPath == "/frame") {
-            val frameBody = "<!doctype html><meta charset=\"utf-8\"><title>frame</title>"
+        when (exchange.requestURI.rawPath) {
+            "/favicon-one.ico", "/favicon-two.ico" -> {
+                val favicon = java.util.Base64.getDecoder().decode(
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+                )
+                exchange.responseHeaders.set("Content-Type", "image/png")
+                exchange.sendResponseHeaders(200, favicon.size.toLong())
+                exchange.responseBody.use { it.write(favicon) }
+                return
+            }
+            "/redirect" -> {
+                exchange.responseHeaders.set("Location", redirectTargetUrl)
+                exchange.sendResponseHeaders(302, -1)
+                exchange.close()
+                return
+            }
+            "/frame" -> {
+                val frameBody = "<!doctype html><meta charset=\"utf-8\"><title>frame</title>"
                 .toByteArray(StandardCharsets.UTF_8)
-            exchange.responseHeaders.set("Content-Type", "text/html; charset=utf-8")
-            exchange.sendResponseHeaders(200, frameBody.size.toLong())
-            exchange.responseBody.use { it.write(frameBody) }
-            return
+                exchange.responseHeaders.set("Content-Type", "text/html; charset=utf-8")
+                exchange.sendResponseHeaders(200, frameBody.size.toLong())
+                exchange.responseBody.use { it.write(frameBody) }
+                return
+            }
         }
-        val second = exchange.requestURI.rawPath != "/first"
-        val title = if (second) SECOND_TITLE else FIRST_TITLE
-        val script = if (second) {
-            "document.title = ${javascriptString(title)};"
-        } else {
-            "localStorage.setItem('kwebshell-integration', 'persisted');" +
-                "document.cookie = 'kwebshell-session=persisted; path=/';" +
-                "document.title = ${javascriptString(title)};"
+        val rawPath = exchange.requestURI.rawPath
+        val title: String
+        val script: String
+        val bodyExtras: String
+        when (rawPath) {
+            "/before-unload" -> {
+                title = "KWebShell before-unload"
+                script = "document.title = ${javascriptString(title)};" +
+                    "window.addEventListener('beforeunload', event => { event.preventDefault(); event.returnValue = 'Leave this page?'; });"
+                bodyExtras = ""
+            }
+            "/popup" -> {
+                title = "KWebShell popup opener"
+                script = ""
+                bodyExtras = "<a id=\"popup-link\" href=\"/popup-target\" target=\"_blank\" " +
+                    "style=\"position:fixed;left:40px;top:220px;z-index:9999;background:white\">popup opener</a>"
+            }
+            "/popup-target" -> {
+                title = "KWebShell popup target"
+                script = ""
+                bodyExtras = "<p id=\"popup-target\">popup target</p>"
+            }
+            else -> {
+                val second = rawPath != "/first"
+                title = if (second) SECOND_TITLE else FIRST_TITLE
+                script = if (second) {
+                    "document.title = ${javascriptString(title)};"
+                } else {
+                    "localStorage.setItem('kwebshell-integration', 'persisted');" +
+                        "document.cookie = 'kwebshell-session=persisted; path=/';" +
+                        "document.title = ${javascriptString(title)};"
+                }
+                bodyExtras = ""
+            }
         }
         val body = (
             "<!doctype html><meta charset=\"utf-8\">" +
+                "<link rel=\"icon\" href=\"/favicon-one.ico\"><link rel=\"icon\" href=\"/favicon-two.ico\">" +
                 "<iframe id=\"bridge-frame\" src=\"/frame\"></iframe>" +
+                bodyExtras +
                 "<script>$bridgeJavascript</script>" +
                 (if (includeAppPathsBridge) "<script>$appPathsBridgeJavascript</script>" else "") +
                 "<script>$script</script>"
@@ -2301,7 +2847,7 @@ private fun runFfmStressLifecycle() {
             val start = CountDownLatch(1)
             val command = executor.submit<Throwable?> {
                 start.await()
-                runCatching { browser.navigate("about:blank#stress-$index") }.exceptionOrNull()
+                runCatching { browser.navigate("https://127.0.0.1:1/stress-$index") }.exceptionOrNull()
             }
             val close = executor.submit {
                 start.await()
@@ -2458,7 +3004,7 @@ private fun runInitializationFailureLifecycle() {
     val failure = try {
         NativeEngine.open(runtimeConfiguration())
         null
-    } catch (error: KWebNativeException) {
+            } catch (error: KWebException) {
         error
     }
     require(failure?.code == "native.abi.cef-initialize-failed") {
@@ -2476,7 +3022,7 @@ private fun runPortCollisionLifecycle() {
         val failure = try {
             NativeEngine.open(configuration)
             null
-        } catch (error: KWebNativeException) {
+            } catch (error: KWebException) {
             error
         }
         require(failure?.code == "native.abi.remote-debugging-port-unavailable") {
@@ -2600,6 +3146,18 @@ private class CdpClient(private val port: Int) {
             ?: error("The selected CDP page target '$targetId' is no longer available: $targets")
         webSocket(page["webSocketDebuggerUrl"]!!.jsonPrimitive.content).use { socket ->
             return socket.evaluate(expression)
+        }
+    }
+
+    fun evaluateWithUserGesture(expression: String): String {
+        val targetId = checkNotNull(activePageTargetId) {
+            "awaitPage must select a browser page before CDP evaluation."
+        }
+        val targets = getArray("/json/list")
+        val page = targets.singleOrNull { it["id"]?.jsonPrimitive?.content == targetId }
+            ?: error("The selected CDP page target '$targetId' is no longer available: $targets")
+        webSocket(page["webSocketDebuggerUrl"]!!.jsonPrimitive.content).use { socket ->
+            return socket.evaluate(expression, userGesture = true)
         }
     }
 
@@ -2757,9 +3315,9 @@ private class CdpWebSocket(url: String) : AutoCloseable {
             }
         }).join()
 
-    fun evaluate(expression: String): String {
+    fun evaluate(expression: String, userGesture: Boolean = false): String {
         socket.sendText(
-            "{\"id\":1,\"method\":\"Runtime.evaluate\",\"params\":{\"expression\":${jsonString(expression)},\"returnByValue\":true,\"awaitPromise\":true}}",
+            "{\"id\":1,\"method\":\"Runtime.evaluate\",\"params\":{\"expression\":${jsonString(expression)},\"returnByValue\":true,\"awaitPromise\":true,\"userGesture\":$userGesture}}",
             true,
         ).join()
         val response = kotlinx.serialization.json.Json.parseToJsonElement(
@@ -2989,6 +3547,7 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
         add("-D$INTEGRATION_ROOT_PROPERTY=$root")
         if (mode == IntegrationMode.SUCCESS ||
             mode == IntegrationMode.PUBLIC_FACADE ||
+            mode == IntegrationMode.PAGE_LIFECYCLE ||
             mode == IntegrationMode.RENDERER_CRASH ||
             mode == IntegrationMode.EXTENSION_LIFECYCLE_CRASH ||
             mode.name.startsWith("EXTENSION_LIFECYCLE_STAGE")

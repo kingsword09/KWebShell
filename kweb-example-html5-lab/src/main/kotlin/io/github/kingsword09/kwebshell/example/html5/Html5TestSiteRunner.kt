@@ -360,17 +360,17 @@ public class Html5TestSiteRunner(
                     if (event.type == KWebPageEventType.LOAD_FAILED || event.type == KWebPageEventType.FATAL_ERROR) {
                         throw Html5TestSiteException(
                             "html5test.page-load-failed",
-                            "The live HTML5test page reported '${event.type.id}': ${event.text}.",
+                            "The live HTML5test page reported '${event.type.id}' with reason '${event.reason.id}'.",
                         )
                     }
                     emit(event)
                     titleSeen = titleSeen ||
-                        (event.type == KWebPageEventType.TITLE_CHANGED && event.text == Html5TestSiteContract.TITLE)
+                        (event.type == KWebPageEventType.TITLE_CHANGED && event.title == Html5TestSiteContract.TITLE)
                     addressSeen = addressSeen ||
-                        (event.type == KWebPageEventType.ADDRESS_CHANGED && event.text == Html5TestSiteContract.URL)
+                        (event.type == KWebPageEventType.ADDRESS_CHANGED && event.url == Html5TestSiteContract.URL)
                     successfulLoadSeen = successfulLoadSeen ||
                         (event.type == KWebPageEventType.LOAD_ENDED &&
-                            event.text == Html5TestSiteContract.URL && event.statusCode == 200)
+                            event.url == Html5TestSiteContract.URL && event.statusCode == 200)
                     !(titleSeen && addressSeen && successfulLoadSeen)
                 }.toList()
             }
@@ -599,7 +599,7 @@ Runtime SHA-256: <code>${escape(report.runtimeSha256)}</code></p>
 private fun KWebPageEvent.toEvidence(): Html5TestSiteEventEvidence = Html5TestSiteEventEvidence(
     sequence = sequence,
     type = type.id,
-    text = text,
+    text = url ?: title ?: beforeUnloadRequest?.message.orEmpty(),
     statusCode = statusCode,
 )
 

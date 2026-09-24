@@ -13,8 +13,21 @@ import io.github.kingsword09.kwebshell.core.KWebNativeException
 import io.github.kingsword09.kwebshell.core.KWebPage
 import io.github.kingsword09.kwebshell.core.KWebPageEvent
 import io.github.kingsword09.kwebshell.core.KWebPageEventFlag
+import io.github.kingsword09.kwebshell.core.KWebPageEventReason
 import io.github.kingsword09.kwebshell.core.KWebPageEventType
+import io.github.kingsword09.kwebshell.core.KWebPageFrameScope
 import io.github.kingsword09.kwebshell.core.KWebPageHost
+import io.github.kingsword09.kwebshell.core.KWebBeforeUnloadDecision
+import io.github.kingsword09.kwebshell.core.KWebBeforeUnloadRequest
+import io.github.kingsword09.kwebshell.core.KWebBeforeUnloadResult
+import io.github.kingsword09.kwebshell.core.KWebPopupDecision
+import io.github.kingsword09.kwebshell.core.KWebPopupFeatures
+import io.github.kingsword09.kwebshell.core.KWebPopupOutcome
+import io.github.kingsword09.kwebshell.core.KWebPopupRequest
+import io.github.kingsword09.kwebshell.core.KWebPopupResult
+import io.github.kingsword09.kwebshell.core.KWebReloadMode
+import io.github.kingsword09.kwebshell.core.KWebReloadOutcome
+import io.github.kingsword09.kwebshell.core.KWebReloadResult
 import io.github.kingsword09.kwebshell.core.KWebProfile
 import io.github.kingsword09.kwebshell.services.KWebNativeServiceRegistry
 import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebApplicationShutdownParticipant
@@ -257,7 +270,7 @@ internal class KWebDesktopProfile(
                         origin = composeHost.bridgeOrigin.orEmpty(),
                     )
                 }
-                val eventStream = KWebPageEventStream(gestureContext)
+                val eventStream = KWebPageEventStream(pageId, name, gestureContext)
                 val nativePage = NativeBrowser.open(
                     engine = engine.nativeEngine(),
                     nativeParent = nativeParent,
@@ -274,6 +287,7 @@ internal class KWebDesktopProfile(
                 )
                 val page = KWebDesktopPage(this@KWebDesktopProfile, nativePage, eventStream, pageId)
                 pages += page
+                page.trackTerminalOwnership()
                 page
             }
         }
@@ -377,6 +391,10 @@ internal class KWebDesktopPage(
 ) : KWebPage {
     private val closeLock = Any()
 
+    internal fun trackTerminalOwnership() {
+        eventStream.setPageClosedListener { owner.removePage(this) }
+    }
+
     override val lifecycle: StateFlow<KWebLifecycleState> = native.lifecycle
     override val events: Flow<KWebPageEvent> = eventStream.events
     override val profile: KWebProfile = owner
@@ -385,6 +403,152 @@ internal class KWebDesktopPage(
         withContext(Dispatchers.IO) {
             requireOpen("navigate")
             native.navigate(url)
+        }
+    }
+
+    override suspend fun reload(mode: KWebReloadMode): KWebReloadResult = withContext(Dispatchers.IO) {
+        if (native.rendererHasTerminated) {
+            throw KWebNativeException(
+                code = "page.renderer-terminated",
+                details = mapOf("pageId" to id),
+                message = "The renderer for this page has terminated.",
+            )
+        }
+        if (lifecycle.value != KWebLifecycleState.OPEN) {
+            throw KWebNativeException(
+                code = "page.closed",
+                details = mapOf("pageId" to id),
+                message = "A closed page cannot be reloaded.",
+            )
+        }
+        val status = native.reload(mode == KWebReloadMode.IGNORE_CACHE)
+        when (status) {
+            io.github.kingsword09.kwebshell.desktop.internal.NativeStatus.OK.value ->
+                KWebReloadResult(mode, KWebReloadOutcome.STARTED)
+            io.github.kingsword09.kwebshell.desktop.internal.NativeStatus.PAGE_OPERATION_PENDING.value ->
+                throw KWebNativeException(
+                    code = "page.operation-pending",
+                    details = mapOf("operation" to "reload", "pageId" to id),
+                    message = "A before-unload decision is still pending for this page.",
+                )
+            io.github.kingsword09.kwebshell.desktop.internal.NativeStatus.BROWSER_NOT_READY.value,
+            io.github.kingsword09.kwebshell.desktop.internal.NativeStatus.BROWSER_CLOSING.value ->
+                throw KWebNativeException(
+                    code = "page.closed",
+                    details = mapOf("pageId" to id),
+                    message = "The page cannot accept a reload while it is closing.",
+                )
+            else -> throw io.github.kingsword09.kwebshell.desktop.internal.nativeStatusException(
+                "browser-reload",
+                status,
+                mapOf("pageId" to id),
+            )
+        }
+    }
+
+    override suspend fun respondToBeforeUnload(
+        requestId: Long,
+        decision: KWebBeforeUnloadDecision,
+    ): KWebBeforeUnloadResult = withContext(Dispatchers.IO) {
+        val deadlineNanos = eventStream.takeBeforeUnload(requestId)
+        if (System.nanoTime() >= deadlineNanos) {
+            return@withContext KWebBeforeUnloadResult(
+                requestId,
+                KWebBeforeUnloadDecision.CANCEL,
+                timedOut = true,
+            )
+        }
+        val status = native.respondToBeforeUnload(
+            requestId,
+            decision == KWebBeforeUnloadDecision.PROCEED,
+        )
+        when (status) {
+            io.github.kingsword09.kwebshell.desktop.internal.NativeStatus.OK.value ->
+                KWebBeforeUnloadResult(requestId, decision, timedOut = false)
+            io.github.kingsword09.kwebshell.desktop.internal.NativeStatus.PAGE_REQUEST_NOT_FOUND.value ->
+                if (System.nanoTime() >= deadlineNanos) {
+                    KWebBeforeUnloadResult(
+                        requestId,
+                        KWebBeforeUnloadDecision.CANCEL,
+                        timedOut = true,
+                    )
+                } else {
+                    throw KWebNativeException(
+                        code = "page.before-unload-stale",
+                        details = mapOf("requestId" to requestId.toString()),
+                        message = "The before-unload request is stale or belongs to another page.",
+                    )
+                }
+            else -> throw io.github.kingsword09.kwebshell.desktop.internal.nativeStatusException(
+                "browser-before-unload-respond",
+                status,
+                mapOf("requestId" to requestId.toString()),
+            )
+        }
+    }
+
+    override suspend fun respondToPopup(
+        requestId: Long,
+        decision: KWebPopupDecision,
+    ): KWebPopupResult = withContext(Dispatchers.IO) {
+        // Resolve the page-bound request first. This makes a stale or forged
+        // request fail with the contract error even when the supplied decision
+        // also contains an invalid owner or bounds.
+        val requestCandidate = eventStream.requirePopup(requestId)
+        val allowedHost = when (decision) {
+            KWebPopupDecision.DENY -> null
+            is KWebPopupDecision.ALLOW -> {
+                if (decision.bounds.x > 32768 || decision.bounds.y > 32768 ||
+                    decision.bounds.width > 32768 || decision.bounds.height > 32768
+                ) {
+                    throw KWebConfigurationException(
+                        code = "page.popup-bounds-invalid",
+                        details = mapOf(
+                            "x" to decision.bounds.x.toString(),
+                            "y" to decision.bounds.y.toString(),
+                            "width" to decision.bounds.width.toString(),
+                            "height" to decision.bounds.height.toString(),
+                        ),
+                        message = "Popup child dimensions must not exceed the native viewport limit.",
+                    )
+                }
+                decision.owner as? KWebComposeWindowHost ?: throw KWebNativeException(
+                    code = "page.popup-owner-invalid",
+                    details = mapOf("requestId" to requestId.toString()),
+                    message = "An allowed popup requires a caller-owned Compose window host.",
+                )
+            }
+        }
+        val request = eventStream.takePopup(requestId)
+        if (System.nanoTime() >= request.second) {
+            return@withContext KWebPopupResult(requestId, KWebPopupOutcome.TIMED_OUT)
+        }
+        val allow = decision is KWebPopupDecision.ALLOW
+        val status = native.respondToPopup(requestId, allow)
+        if (status == io.github.kingsword09.kwebshell.desktop.internal.NativeStatus.PAGE_REQUEST_NOT_FOUND.value) {
+            return@withContext if (System.nanoTime() >= request.second) {
+                KWebPopupResult(requestId, KWebPopupOutcome.TIMED_OUT)
+            } else {
+                throw KWebNativeException(
+                    code = "page.popup-stale",
+                    details = mapOf("requestId" to requestId.toString()),
+                    message = "The popup request is stale or belongs to another page.",
+                )
+            }
+        }
+        if (status != io.github.kingsword09.kwebshell.desktop.internal.NativeStatus.OK.value) {
+            throw io.github.kingsword09.kwebshell.desktop.internal.nativeStatusException(
+                "browser-popup-respond",
+                status,
+                mapOf("requestId" to requestId.toString()),
+            )
+        }
+        when (decision) {
+            KWebPopupDecision.DENY -> KWebPopupResult(requestId, KWebPopupOutcome.DENIED)
+            is KWebPopupDecision.ALLOW -> {
+                val page = owner.openPage(requireNotNull(allowedHost), requestCandidate.targetUrl, decision.bounds)
+                KWebPopupResult(requestId, KWebPopupOutcome.ALLOWED, page)
+            }
         }
     }
 
@@ -418,11 +582,16 @@ internal class KWebDesktopPage(
 
     override fun close() {
         synchronized(closeLock) {
-            if (lifecycle.value == KWebLifecycleState.CLOSED) return
-            native.close()
             if (lifecycle.value == KWebLifecycleState.CLOSED) {
                 eventStream.onPageClosed()
-                owner.removePage(this)
+                return
+            }
+            try {
+                native.close()
+            } finally {
+                if (lifecycle.value == KWebLifecycleState.CLOSED) {
+                    eventStream.onPageClosed()
+                }
             }
         }
     }
@@ -434,6 +603,13 @@ internal class KWebDesktopPage(
     internal fun requireNativeHandle(operation: String): Long = native.requireLiveHandle(operation)
 
     private fun requireOpen(operation: String) {
+        if (native.rendererHasTerminated) {
+            throw KWebNativeException(
+                code = "page.renderer-terminated",
+                details = mapOf("operation" to operation, "pageId" to id),
+                message = "The renderer for this page has terminated.",
+            )
+        }
         if (lifecycle.value != KWebLifecycleState.OPEN) {
             throw KWebNativeException(
                 code = "desktop.page.closed",
@@ -478,6 +654,8 @@ internal class KWebPageGestureContext(
 }
 
 internal class KWebPageEventStream(
+    private val pageId: String,
+    private val profileId: String,
     private val gestureContext: KWebPageGestureContext? = null,
 ) {
     private val mutableEvents = MutableSharedFlow<KWebPageEvent>(
@@ -486,6 +664,13 @@ internal class KWebPageEventStream(
         onBufferOverflow = BufferOverflow.SUSPEND,
     )
     internal val events: Flow<KWebPageEvent> = mutableEvents.asSharedFlow()
+    private val requestLock = Any()
+    private data class PendingPopup(val request: KWebPopupRequest, val deadlineNanos: Long)
+    private val pendingPopups = linkedMapOf<Long, PendingPopup>()
+    private val pendingBeforeUnload = linkedMapOf<Long, Long>()
+    private var nextPublicSequence = 1L
+    private var pageClosed = false
+    private var pageClosedListener: (() -> Unit)? = null
 
     internal fun accept(event: NativeBrowserEvent) {
         if (event.type == NativeBrowserEventType.INPUT_GESTURE) {
@@ -495,8 +680,28 @@ internal class KWebPageEventStream(
         if (event.type == NativeBrowserEventType.NAVIGATION_STARTED) {
             gestureContext?.onNavigationStarted()
         }
-        val publicEvent = event.toPublicEvent()
-        if (!mutableEvents.tryEmit(publicEvent)) {
+        val publicSequence = synchronized(requestLock) {
+            val sequence = nextPublicSequence
+            nextPublicSequence += 1
+            sequence
+        }
+        val publicEvent = event.toPublicEvent(pageId, profileId, publicSequence)
+        synchronized(requestLock) {
+            publicEvent.popupRequest?.let {
+                pendingPopups[it.requestId] = PendingPopup(
+                    it,
+                    System.nanoTime() + 5_000_000_000L,
+                )
+            }
+            publicEvent.beforeUnloadRequest?.let {
+                pendingBeforeUnload[it.requestId] = System.nanoTime() + 5_000_000_000L
+            }
+        }
+        val emitted = mutableEvents.tryEmit(publicEvent)
+        if (event.type == NativeBrowserEventType.CLOSED) {
+            onPageClosed()
+        }
+        if (!emitted) {
             throw KWebNativeException(
                 code = "desktop.page.event-backpressure",
                 details = mapOf("sequence" to event.sequence.toString()),
@@ -505,15 +710,66 @@ internal class KWebPageEventStream(
         }
     }
 
+    internal fun setPageClosedListener(listener: () -> Unit) {
+        val invokeNow = synchronized(requestLock) {
+            pageClosedListener = listener
+            pageClosed
+        }
+        if (invokeNow) listener()
+    }
+
     internal fun onPageClosed() {
         gestureContext?.onPageClosed()
+        val listener = synchronized(requestLock) {
+            pendingPopups.clear()
+            pendingBeforeUnload.clear()
+            if (pageClosed) null else {
+                pageClosed = true
+                pageClosedListener
+            }
+        }
+        listener?.invoke()
+    }
+
+    internal fun requirePopup(requestId: Long): KWebPopupRequest = synchronized(requestLock) {
+        pendingPopups[requestId]?.request
+    } ?: throw KWebNativeException(
+        code = "page.popup-stale",
+        details = mapOf("requestId" to requestId.toString()),
+        message = "The popup request is stale or belongs to another page.",
+    )
+
+    internal fun takePopup(requestId: Long): Pair<KWebPopupRequest, Long> {
+        val pending = synchronized(requestLock) { pendingPopups.remove(requestId) }
+            ?: throw KWebNativeException(
+                code = "page.popup-stale",
+                details = mapOf("requestId" to requestId.toString()),
+                message = "The popup request is stale or belongs to another page.",
+            )
+        return pending.request to pending.deadlineNanos
+    }
+
+    internal fun takeBeforeUnload(requestId: Long): Long {
+        return synchronized(requestLock) {
+            pendingBeforeUnload.remove(requestId)
+        } ?: throw KWebNativeException(
+            code = "page.before-unload-stale",
+            details = mapOf("requestId" to requestId.toString()),
+            message = "The before-unload request is stale or belongs to another page.",
+        )
     }
 }
 
-private fun NativeBrowserEvent.toPublicEvent(): KWebPageEvent {
+private fun NativeBrowserEvent.toPublicEvent(
+    pageId: String,
+    profileId: String,
+    publicSequence: Long,
+): KWebPageEvent {
     val type = when (type) {
         NativeBrowserEventType.CREATED -> KWebPageEventType.CREATED
         NativeBrowserEventType.NAVIGATION_STARTED -> KWebPageEventType.NAVIGATION_STARTED
+        NativeBrowserEventType.NAVIGATION_COMMITTED -> KWebPageEventType.NAVIGATION_COMMITTED
+        NativeBrowserEventType.SAME_DOCUMENT_NAVIGATION -> KWebPageEventType.SAME_DOCUMENT_NAVIGATION
         NativeBrowserEventType.ADDRESS_CHANGED -> KWebPageEventType.ADDRESS_CHANGED
         NativeBrowserEventType.LOADING_STATE_CHANGED -> KWebPageEventType.LOADING_STATE_CHANGED
         NativeBrowserEventType.LOAD_ENDED -> KWebPageEventType.LOAD_ENDED
@@ -521,6 +777,12 @@ private fun NativeBrowserEvent.toPublicEvent(): KWebPageEvent {
         NativeBrowserEventType.RESIZED -> KWebPageEventType.RESIZED
         NativeBrowserEventType.FATAL_ERROR -> KWebPageEventType.FATAL_ERROR
         NativeBrowserEventType.TITLE_CHANGED -> KWebPageEventType.TITLE_CHANGED
+        NativeBrowserEventType.FAVICON_CHANGED -> KWebPageEventType.FAVICON_CHANGED
+        NativeBrowserEventType.BEFORE_UNLOAD_REQUESTED -> KWebPageEventType.BEFORE_UNLOAD_REQUESTED
+        NativeBrowserEventType.POPUP_REQUESTED -> KWebPageEventType.POPUP_REQUESTED
+        NativeBrowserEventType.RENDERER_UNRESPONSIVE -> KWebPageEventType.RENDERER_UNRESPONSIVE
+        NativeBrowserEventType.RENDERER_RESPONSIVE -> KWebPageEventType.RENDERER_RESPONSIVE
+        NativeBrowserEventType.RENDERER_TERMINATED -> KWebPageEventType.RENDERER_TERMINATED
         NativeBrowserEventType.CLOSED -> KWebPageEventType.CLOSED
         NativeBrowserEventType.DEVTOOLS_OPENED -> KWebPageEventType.DEVTOOLS_OPENED
         NativeBrowserEventType.DEVTOOLS_CLOSED -> KWebPageEventType.DEVTOOLS_CLOSED
@@ -537,7 +799,102 @@ private fun NativeBrowserEvent.toPublicEvent(): KWebPageEvent {
         if (this@toPublicEvent.flags and 16 != 0) add(KWebPageEventFlag.REDIRECT)
     }
     val eventBounds = if (width > 0 && height > 0) KWebBounds(width, height) else null
-    return KWebPageEvent(type, sequence, text, statusCode, eventBounds, flags)
+    val publicOrigin = origin.takeIf { it.isNotEmpty() }
+    val publicUrl = url.ifEmpty {
+        if (type in setOf(
+                KWebPageEventType.NAVIGATION_STARTED,
+                KWebPageEventType.NAVIGATION_COMMITTED,
+                KWebPageEventType.SAME_DOCUMENT_NAVIGATION,
+                KWebPageEventType.ADDRESS_CHANGED,
+                KWebPageEventType.LOAD_ENDED,
+                KWebPageEventType.LOAD_FAILED,
+            )
+        ) text else ""
+    }.takeIf { it.isNotEmpty() }
+    val publicTitle = if (type == KWebPageEventType.TITLE_CHANGED) {
+        boundedPublicText(title.ifEmpty { text }, 4096)
+    } else {
+        null
+    }
+    val publicReason = when (reason) {
+        1 -> KWebPageEventReason.NAVIGATION_FAILED
+        2 -> KWebPageEventReason.NAVIGATION_ABORTED
+        3 -> KWebPageEventReason.BEFORE_UNLOAD_TIMEOUT
+        4 -> KWebPageEventReason.POPUP_TIMEOUT
+        5 -> KWebPageEventReason.RENDERER_CRASH
+        6 -> KWebPageEventReason.RENDERER_KILLED
+        7 -> KWebPageEventReason.RENDERER_OOM
+        8 -> KWebPageEventReason.RENDERER_UNKNOWN
+        9 -> KWebPageEventReason.NATIVE_FAILURE
+        else -> KWebPageEventReason.NONE
+    }
+    val popupFeatures = if (type == KWebPageEventType.POPUP_REQUESTED) {
+        val values = details.split(',')
+        fun valueAt(index: Int): Int? = values.getOrNull(index)?.toIntOrNull()?.takeIf { it >= 0 }
+        KWebPopupFeatures(
+            x = valueAt(0),
+            y = valueAt(1),
+            width = valueAt(2),
+            height = valueAt(3),
+            isPopup = values.getOrNull(4) == "1",
+        )
+    } else {
+        null
+    }
+    val popup = popupFeatures?.let {
+        KWebPopupRequest(
+            requestId = requestId,
+            pageId = pageId,
+            profileId = profileId,
+            frameId = frameId,
+            origin = publicOrigin,
+            targetUrl = publicUrl.orEmpty(),
+            frameName = title,
+            userGesture = KWebPageEventFlag.USER_GESTURE in flags,
+            features = it,
+        )
+    }
+    val beforeUnload = if (type == KWebPageEventType.BEFORE_UNLOAD_REQUESTED) {
+        KWebBeforeUnloadRequest(requestId, pageId, frameId, publicOrigin, text.takeIf { it.isNotEmpty() })
+    } else {
+        null
+    }
+    val rendererReason = when (reason) {
+        5 -> io.github.kingsword09.kwebshell.core.KWebRendererFailureReason.CRASH
+        6 -> io.github.kingsword09.kwebshell.core.KWebRendererFailureReason.KILLED
+        7 -> io.github.kingsword09.kwebshell.core.KWebRendererFailureReason.OOM
+        8 -> io.github.kingsword09.kwebshell.core.KWebRendererFailureReason.UNKNOWN
+        else -> null
+    }
+    return KWebPageEvent(
+        type = type,
+        sequence = publicSequence,
+        statusCode = statusCode,
+        bounds = eventBounds,
+        flags = flags,
+        pageId = pageId,
+        profileId = profileId,
+        frameId = frameId.ifEmpty { "0" },
+        frameScope = if (frameScope == 2) KWebPageFrameScope.SUBFRAME else KWebPageFrameScope.MAIN,
+        origin = publicOrigin,
+        url = publicUrl,
+        title = publicTitle,
+        faviconUrls = if (type == KWebPageEventType.FAVICON_CHANGED && details.isNotEmpty()) details.split('\n') else emptyList(),
+        reason = publicReason,
+        rendererFailureReason = rendererReason,
+        beforeUnloadRequest = beforeUnload,
+        popupRequest = popup,
+    )
+}
+
+private fun boundedPublicText(value: String, maximumBytes: Int): String {
+    val sanitized = value.replace('\u0000', '\uFFFD')
+    if (sanitized.encodeToByteArray().size <= maximumBytes) return sanitized
+    var end = sanitized.length
+    while (end > 0 && sanitized.substring(0, end).encodeToByteArray().size > maximumBytes) {
+        end -= 1
+    }
+    return sanitized.substring(0, end)
 }
 
 internal object KWebProfilePathResolver {

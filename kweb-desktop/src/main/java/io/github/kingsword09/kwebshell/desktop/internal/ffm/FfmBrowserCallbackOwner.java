@@ -22,6 +22,9 @@ final class FfmBrowserCallbackOwner extends FfmCallbackOwner {
     private static final long BROWSER_STATUS = offset(FfmLayouts.BROWSER_EVENT, "status_code");
     private static final long BROWSER_WIDTH = offset(FfmLayouts.BROWSER_EVENT, "width");
     private static final long BROWSER_HEIGHT = offset(FfmLayouts.BROWSER_EVENT, "height");
+    private static final long BROWSER_REQUEST = offset(FfmLayouts.BROWSER_EVENT, "request_id");
+    private static final long BROWSER_SCOPE = offset(FfmLayouts.BROWSER_EVENT, "frame_scope");
+    private static final long BROWSER_REASON = offset(FfmLayouts.BROWSER_EVENT, "reason");
 
     private static final long BRIDGE_STRUCT_SIZE = offset(FfmLayouts.BRIDGE_EVENT, "struct_size");
     private static final long BRIDGE_ABI_VERSION = offset(FfmLayouts.BRIDGE_EVENT, "abi_version");
@@ -94,13 +97,19 @@ final class FfmBrowserCallbackOwner extends FfmCallbackOwner {
             int abiVersion = event.get(FfmLayouts.UINT32, BROWSER_ABI_VERSION);
             int type = event.get(FfmLayouts.UINT32, BROWSER_TYPE);
             int flags = event.get(FfmLayouts.UINT32, BROWSER_FLAGS);
+            long requestId = event.get(FfmLayouts.UINT64, BROWSER_REQUEST);
+            int frameScope = event.get(FfmLayouts.UINT32, BROWSER_SCOPE);
+            int reason = event.get(FfmLayouts.UINT32, BROWSER_REASON);
             long engine = event.get(FfmLayouts.UINT64, BROWSER_ENGINE);
             long browser = event.get(FfmLayouts.UINT64, BROWSER_HANDLE);
             long sequence = event.get(FfmLayouts.UINT64, BROWSER_SEQUENCE);
             if (structureSize < FfmLayouts.BROWSER_EVENT.byteSize()
                 || abiVersion != FfmAbi.VERSION
                 || type < 1
-                || type > 14
+                || type > 22
+                || (frameScope != 1 && frameScope != 2)
+                || reason > 9
+                || ((type == 18 || type == 19) != (requestId > 0))
                 || engine <= 0
                 || browser <= 0
                 || sequence <= 0) {
@@ -128,7 +137,15 @@ final class FfmBrowserCallbackOwner extends FfmCallbackOwner {
                 text,
                 event.get(FfmLayouts.INT32, BROWSER_STATUS),
                 event.get(FfmLayouts.INT32, BROWSER_WIDTH),
-                event.get(FfmLayouts.INT32, BROWSER_HEIGHT)
+                event.get(FfmLayouts.INT32, BROWSER_HEIGHT),
+                requestId,
+                FfmMemory.readStringView(event, FfmLayouts.BROWSER_EVENT, "frame_id", FfmMemory.MAXIMUM_TEXT_SIZE),
+                frameScope,
+                reason,
+                FfmMemory.readStringView(event, FfmLayouts.BROWSER_EVENT, "origin", FfmMemory.MAXIMUM_TEXT_SIZE),
+                FfmMemory.readStringView(event, FfmLayouts.BROWSER_EVENT, "url", FfmMemory.MAXIMUM_TEXT_SIZE),
+                FfmMemory.readStringView(event, FfmLayouts.BROWSER_EVENT, "title", FfmMemory.MAXIMUM_TEXT_SIZE),
+                FfmMemory.readStringView(event, FfmLayouts.BROWSER_EVENT, "details", FfmMemory.MAXIMUM_TEXT_SIZE)
             );
         } catch (Throwable error) {
             owner.recordFailure(

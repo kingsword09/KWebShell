@@ -55,7 +55,15 @@ public final class FfmLayouts {
         INT32.withName("status_code"),
         INT32.withName("width"),
         INT32.withName("height"),
-        UINT32.withName("reserved")
+        UINT32.withName("reserved"),
+        UINT64.withName("request_id"),
+        STRING_VIEW.withName("frame_id"),
+        UINT32.withName("frame_scope"),
+        UINT32.withName("reason"),
+        STRING_VIEW.withName("origin"),
+        STRING_VIEW.withName("url"),
+        STRING_VIEW.withName("title"),
+        STRING_VIEW.withName("details")
     ).withName("kweb_browser_event");
 
     public static final GroupLayout BRIDGE_EVENT = MemoryLayout.structLayout(

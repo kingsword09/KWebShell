@@ -22,7 +22,15 @@ public final class FfmCallbacks {
             String text,
             int statusCode,
             int width,
-            int height
+            int height,
+            long requestId,
+            String frameId,
+            int frameScope,
+            int reason,
+            String origin,
+            String url,
+            String title,
+            String details
         );
     }
 

@@ -6,8 +6,8 @@
 
 _Static_assert(KWEB_INVALID_ENGINE_HANDLE == 0,
                "the invalid engine handle must remain zero");
-_Static_assert(KWEB_ABI_VERSION == 10,
-               "the placement contract requires ABI version 10");
+_Static_assert(KWEB_ABI_VERSION == 11,
+               "the page lifecycle contract requires ABI version 11");
 _Static_assert(KWEB_ENGINE_EVENT_OPENED != KWEB_ENGINE_EVENT_CLOSED,
                "engine lifecycle events must remain distinct");
 _Static_assert(KWEB_INVALID_BROWSER_HANDLE == 0,
@@ -40,6 +40,12 @@ _Static_assert(KWEB_STATUS_EXTENSION_OPERATION_NOT_FOUND == 51,
                "the missing extension operation status is ABI-stable");
 _Static_assert(KWEB_STATUS_EXTENSION_RESULT_INVALID == 52,
                "the invalid extension result status is ABI-stable");
+_Static_assert(KWEB_STATUS_PAGE_REQUEST_NOT_FOUND == 53,
+               "the page request lookup status is ABI-stable");
+_Static_assert(KWEB_STATUS_PAGE_REQUEST_INVALID == 54,
+               "the invalid page request status is ABI-stable");
+_Static_assert(KWEB_STATUS_PAGE_OPERATION_PENDING == 55,
+               "the pending page operation status is ABI-stable");
 _Static_assert(KWEB_INVALID_EXTENSION_OPERATION_HANDLE == 0,
                "the invalid extension operation handle must remain zero");
 _Static_assert(KWEB_EXTENSION_OPERATION_INSTALL == 1,
@@ -92,6 +98,14 @@ _Static_assert(KWEB_BROWSER_EVENT_DEVTOOLS_FAILED == 13,
               "the devtools-failed event id must stay stable");
 _Static_assert(KWEB_BROWSER_EVENT_INPUT_GESTURE == 14,
                "the input-gesture event id is ABI-stable");
+_Static_assert(KWEB_BROWSER_EVENT_RENDERER_TERMINATED == 22,
+               "the renderer terminal event id is ABI-stable");
+_Static_assert(KWEB_BROWSER_EVENT_NAVIGATION_COMMITTED == 15,
+               "the navigation committed event id is ABI-stable");
+_Static_assert(KWEB_BROWSER_EVENT_SAME_DOCUMENT_NAVIGATION == 16,
+               "the same-document event id is ABI-stable");
+_Static_assert(KWEB_BROWSER_EVENT_POPUP_REQUESTED == 19,
+               "the popup request event id is ABI-stable");
 _Static_assert(KWEB_BROWSER_EVENT_CREATED != KWEB_BROWSER_EVENT_CLOSED,
                "browser lifecycle events must remain distinct");
 
@@ -187,7 +201,15 @@ int main(void) {
       0,
       800,
       600,
-                                   0,
+      0,
+      0,
+      {NULL, 0},
+      KWEB_BROWSER_FRAME_MAIN,
+      KWEB_BROWSER_REASON_NONE,
+      {NULL, 0},
+      {NULL, 0},
+      {NULL, 0},
+      {NULL, 0},
   };
   const kweb_bridge_event bridge_event = {
       (uint32_t)sizeof(kweb_bridge_event), KWEB_ABI_VERSION,

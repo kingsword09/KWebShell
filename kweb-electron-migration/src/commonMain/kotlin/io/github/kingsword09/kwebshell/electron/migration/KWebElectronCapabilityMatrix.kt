@@ -24,7 +24,11 @@ public object KWebElectronCapabilityMatrix {
 
     public val entries: List<KWebElectronCapabilityMatrixEntry> = listOf(
         entry("browser-window", "BrowserWindow", "compose-window-page", KWebElectronMappingStatus.REWRITE, "ComposeWindow + KWebPage", "Window lifecycle is owned by Kotlin/Compose and requires host-code migration."),
-        entry("web-contents", "webContents", "page-events", KWebElectronMappingStatus.DIRECT, "KWebPage.events", "CDP is explicit and must be configured."),
+        entry("web-contents", "webContents", "page-events", KWebElectronMappingStatus.DIRECT, "KWebPage.events", "Only typed RFC 0008 page events are mapped; unknown event names and arbitrary event strings block migration. CDP is explicit and must be configured."),
+        entry("web-contents-reload", "webContents.reload", "typed-page-operation", KWebElectronMappingStatus.DIRECT, "KWebPage.reload(NORMAL | IGNORE_CACHE)", "Before-unload and terminal page states produce typed outcomes."),
+        entry("web-contents-before-unload", "beforeunload", "host-decision", KWebElectronMappingStatus.ADAPTER, "KWebPage.respondToBeforeUnload", "The request is page-bound, time-limited, and defaults to cancel."),
+        entry("window-open-handler", "webContents.setWindowOpenHandler + window.open", "host-owned-page", KWebElectronMappingStatus.REWRITE, "KWebPage.respondToPopup", "CEF cancels the renderer popup immediately; an allowed decision creates a separate owner-bound page without a window.opener proxy."),
+        entry("renderer-process-state", "render-process-gone + unresponsive", "typed-page-events", KWebElectronMappingStatus.DIRECT, "RENDERER_UNRESPONSIVE / RESPONSIVE / TERMINATED", "Renderer termination closes the native child and emits one terminal page event."),
         entry("session-partition", "session.fromPartition", "persistent-profile", KWebElectronMappingStatus.DIRECT, "KWebProfile", "Profiles are explicit and persistent."),
         entry("profile-protocol", "protocol.handle", "profile-origin", KWebElectronMappingStatus.DIRECT, "Profile-scoped app:// origin", "Protocol handlers are verified host contracts."),
         entry("ipc-request", "ipcMain.handle + ipcRenderer.invoke", "typed-service", KWebElectronMappingStatus.ADAPTER, "Versioned service bridge", "Only declared channels are generated."),

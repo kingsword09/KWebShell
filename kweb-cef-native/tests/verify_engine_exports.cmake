@@ -6,6 +6,9 @@ set(expected
   kweb_browser_close
   kweb_browser_create
   kweb_browser_navigate
+  kweb_browser_reload
+  kweb_browser_before_unload_respond
+  kweb_browser_popup_respond
   kweb_browser_set_bounds
   kweb_browser_set_surface_state
   kweb_browser_open_devtools

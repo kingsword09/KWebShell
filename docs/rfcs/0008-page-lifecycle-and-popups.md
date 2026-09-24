@@ -16,9 +16,8 @@ and failure, and terminal page ownership. The implementation is one vertical
 slice over the existing Alloy native child and the caller-owned Compose window
 host on macOS, Windows, and Linux/X11.
 
-Browser downloads are not owned by this RFC. A navigation that resolves to a
-download is reported as a typed navigation outcome and handed to RFC 0012's
-download policy; RFC 0008 does not create a second download API.
+Browser downloads are not owned by this RFC. Download selection and results
+remain in RFC 0012; RFC 0008 does not publish a download event or operation.
 
 ## Public contract
 
@@ -35,13 +34,15 @@ Every event carries:
 | `profileId` | `String` | The explicit Profile name that owns the page. |
 | `sequence` | `Long` | Starts at `1`, increments by one, and is never reused. |
 | `type` | `KWebPageEventType` | Closed enum; unknown native values are a typed failure. |
-| `frameId` | `String` | CEF frame identifier encoded as an unsigned decimal string. |
+| `frameId` | `String` | The opaque, globally unique CEF frame identifier; `"0"` means CEF has not created a frame yet. |
 | `frameScope` | `KWebPageFrameScope` | `MAIN` or `SUBFRAME`; main-frame events use the page's main frame. |
 | `origin` | `String?` | Canonical origin of the observed frame, or null before a committed origin exists. |
 | `url` | `String?` | Canonical URL for navigation/address events; never a redacted display label. |
-| `title` | `String?` | Bounded UTF-8 title, or null when the event has no title. |
+| `title` | `String?` | Bounded UTF-8 title, or null when the event has no title. An embedded NUL is replaced with U+FFFD; an empty title event clears the current title. |
 | `faviconUrls` | `List<String>` | At most eight canonical URLs; empty on clear. |
+| `bounds` | `KWebBounds?` | Present only for `RESIZED`. |
 | `reason` | `KWebPageEventReason` | Stable reason for failures, cancellation, terminal state, or policy decisions. |
+| `rendererFailureReason` | `KWebRendererFailureReason?` | Present only on `RENDERER_TERMINATED`; the native termination code remains in `statusCode`. |
 | `statusCode` | `Int` | HTTP or native status when applicable; otherwise `0`. |
 | `flags` | `Set<KWebPageEventFlag>` | Loading, history, redirect, and native-gesture facts. |
 
@@ -94,19 +95,23 @@ suspend fun respondToBeforeUnload(
 ```
 
 The only decisions are `PROCEED` and `CANCEL`. The request has a five-second
-deadline. A missing, duplicate, stale, or cross-page response fails with a
-typed error; timeout is `CANCEL` and returns `before-unload-timeout`. Closing a
-page or Profile cancels every pending request before native teardown. No
-renderer script can resolve the request.
+deadline. A duplicate, stale, or cross-page response fails with a typed error;
+timeout is `CANCEL` and returns a result with `timedOut = true`. Closing a page
+or Profile cancels every pending request before native teardown. No renderer
+script can resolve the request.
 
 ### Popup negotiation
 
-CEF `OnBeforePopup` produces a suspended `KWebPopupRequest` containing:
+CEF 151's `OnBeforePopup` is synchronous and has no continuation callback. It
+cannot suspend the renderer's `window.open` operation while Kotlin waits for a
+decision. KWebShell therefore emits a `KWebPopupRequest` and immediately
+cancels that CEF popup. The event contains:
 
 - opener page/profile/frame identity and exact committed origin;
-- target URL, frame name, user-gesture fact, and redirect fact;
-- immutable bounded `KWebPopupFeatures` (position, size, resizable,
-  fullscreen, menu bar, tool bar, status bar, and always-on-top requests).
+- target URL, frame name, and user-gesture fact;
+- CEF-provided `x`, `y`, `width`, `height`, and `isPopup` values. CEF does not
+  provide redirect, resizable, fullscreen, menu-bar, tool-bar, status-bar, or
+  always-on-top values in this callback, so those fields are not inferred.
 
 The request is resolved by:
 
@@ -120,23 +125,26 @@ suspend fun respondToPopup(
 `DENY` and `ALLOW(owner, bounds)` are the only decisions. `owner` must be an
 explicit caller-created `KWebComposeWindowHost`; the host extracts and checks
 its current native parent on the AWT event thread. KWebShell never creates a
-hidden or unmanaged top-level owner. Allowing a popup creates a normal Alloy
+hidden or unmanaged top-level owner. `ALLOW` creates a separate normal Alloy
 native child attached to that owner and returns the new `KWebPage.id` only
-after its `CREATED` event. Reparenting, renderer-selected owners, raw handles,
-and Chrome top-level popup surfaces are rejected.
+after its `CREATED` event. It does not restore the renderer's canceled popup
+window proxy or `window.opener` relationship; applications that depend on
+those semantics must rewrite that flow. Reparenting, renderer-selected
+owners, raw handles, and Chrome top-level popup surfaces are rejected.
 
 Popup requests have a five-second deadline and default to `DENY`. Profile/page
-close, duplicate resolution, invalid bounds, cross-origin policy denial, and
-native child creation failure each have distinct typed errors. The requested
-features are advisory data; the caller's bounds and capabilities remain the
-authoritative host contract.
+close, duplicate resolution, invalid owners/bounds, policy denial, and native
+child creation failure each have distinct typed errors. Feature positions are
+clamped to the current viewport; unset or invalid dimensions are omitted. The
+requested features are advisory data; the caller's bounds and capabilities
+remain authoritative.
 
 ### Renderer state and terminal ownership
 
 `KWebPageEventType.RENDERER_UNRESPONSIVE` and `RENDERER_RESPONSIVE` reflect
 CEF's real responsiveness callbacks. `RENDERER_TERMINATED` is terminal and
-contains `KWebRendererFailureReason` (`CRASH`, `KILLED`, `OOM`, `HANG_TIMEOUT`,
-or `UNKNOWN`) plus the native termination code. It is emitted once, followed
+contains `KWebRendererFailureReason` (`CRASH`, `KILLED`, `OOM`, or `UNKNOWN`)
+plus the native termination code. It is emitted once, followed
 by one `CLOSED` event after the native child is closed. Browser close, Profile
 close, and engine close each use the same terminal ordering; no event or
 popup/before-unload callback may be delivered after `CLOSED`.
@@ -161,6 +169,7 @@ renderer-evaluation API.
   `page.renderer-terminated`, `page.navigation-invalid`,
   `page.before-unload-stale`, `page.before-unload-timeout`,
   `page.popup-stale`, `page.popup-timeout`, `page.popup-owner-invalid`,
+  `page.popup-bounds-invalid`,
   `page.popup-policy-denied`, `page.event-backpressure`, and
   `native.renderer-failure`.
 
@@ -168,12 +177,12 @@ renderer-evaluation API.
 
 | ID / source clause | Observable requirement | Normal, negative and boundary scenarios | Planned verification / required targets | Implementation and test references | Retained evidence / tested revision | Result / review rationale |
 |---|---|---|---|---|---|---|
-| A1 / typed page envelope | Events expose page/profile/frame/origin identity, typed reason, bounded title/favicon data, and contiguous sequence. | Main/subframe events; NUL/oversized title; eight/9 favicons; sequence starts at 1 and has no gaps. | Common contract tests, generated/native ABI tests, real hosted page fixture on macOS, Windows, Linux/X11. | `KWebPageContract.kt`, `KWebPageEventStream`, C ABI event schema, public contract tests. | NOT_RUN before implementation. | NOT_RUN |
+| A1 / typed page envelope | Events expose page/profile/frame/origin identity, typed reason, bounded title/favicon data, and contiguous sequence. | Main/subframe events; embedded NUL replacement and oversized title; eight/9 canonical favicons; sequence starts at 1 and has no gaps. | Common contract tests, generated/native ABI tests, real hosted page fixture on macOS, Windows, Linux/X11. | `KWebPageContract.kt`, `KWebPageEventStream`, C ABI event schema, public contract tests. | NOT_RUN before implementation. | NOT_RUN |
 | A2 / navigation order | Redirect, HTTP failure, history, reload, same-document and cross-origin navigation produce the declared ordered phases. | Redirect chain; 404; abort superseded navigation; hash/history; subframe navigation excluded from main-frame phases. | Real HTTP/HTTPS fixture and CEF transcript on all hosted targets. | `SessionClient` navigation callbacks; `KWebDesktopPage`; navigation integration fixture. | NOT_RUN before implementation. | NOT_RUN |
 | A3 / title and favicon | Title and favicon changes are bounded, origin-associated, and cleared at a new committed navigation. | Empty title; oversized title; multiple favicon URLs; cross-origin clear; subframe title ignored. | Real CEF display callbacks and event transcript on all hosted targets. | CEF display handler, page event mapping, title/favicon contract tests. | NOT_RUN before implementation. | NOT_RUN |
 | A4 / before-unload | Before-unload requests are single-resolution, page-bound, five-second bounded, and default-cancel on timeout/close. | Proceed/cancel; duplicate/stale response; timeout; page/Profile close while pending; no renderer resolution. | Real JS before-unload fixture and native JS-dialog callback on all hosted targets. | `CefJSDialogHandler`, pending decision registry, `respondToBeforeUnload` tests. | NOT_RUN before implementation. | NOT_RUN |
-| A5 / popup policy | Popup requests suspend CEF, preserve immutable features, deny by default, and allow only with an explicit caller-owned Compose host. | Allow/deny/timeout; invalid owner; invalid bounds; cross-origin target; popup close before opener; no hidden top-level owner. | Real `window.open`/link popup fixture and native child hierarchy evidence on all hosted targets. | `OnBeforePopup`, popup decision registry, `respondToPopup`, RFC 0007 hierarchy integration. | NOT_RUN before implementation. | NOT_RUN |
-| A6 / renderer responsiveness | Unresponsive/responsive/terminated transitions are real, typed, single-terminal, and ordered before page close. | Busy-loop hang/recovery; crash; kill; Profile/Engine close during unresponsive; no callbacks after close. | Real CEF renderer hang/crash fixtures and retained process/lifecycle transcript on all hosted targets. | `OnRenderProcessUnresponsive/Responsive/Terminated`, `NativeBrowser`, renderer failure tests. | NOT_RUN before implementation. | NOT_RUN |
+| A5 / popup policy | CEF popup is canceled immediately; the host request defaults to denial and may create a separate Alloy child only in an explicit Compose owner. | Allow/deny/timeout; invalid owner; invalid bounds; cross-origin target; canceled JS popup proxy; no hidden top-level owner. | Real `window.open`/link fixture, event transcript, and native child hierarchy evidence on all hosted targets. | `OnBeforePopup`, popup decision registry, `respondToPopup`, RFC 0007 hierarchy integration. | NOT_RUN before implementation. | NOT_RUN |
+| A6 / renderer responsiveness | Unresponsive/responsive/terminated transitions are real, typed, single-terminal, and ordered before page close. | Busy-loop hang/recovery; crash; external kill; Profile/Engine close during unresponsive; no callbacks after close. | Real CEF renderer hang/crash fixtures and retained process/lifecycle transcript on all hosted targets. | `OnRenderProcessUnresponsive/Responsive/Terminated`, `NativeBrowser`, renderer failure tests. | NOT_RUN before implementation. | NOT_RUN |
 | A7 / reload and terminal ownership | Controlled reload returns typed outcome, honors before-unload, and terminal page ownership is closed exactly once. | Normal/ignore-cache reload; pending popup/before-unload; renderer terminated; page/Profile/Engine close; duplicate close. | Kotlin lifecycle tests and real CEF reload/close fixture on all hosted targets. | `KWebPage.reload`, native reload ABI, lifecycle state machine. | NOT_RUN before implementation. | NOT_RUN |
 | A8 / backpressure and concurrency | Slow subscribers cannot block CEF UI; popup/before-unload responses remain bounded and ordered. | Slow collector; event capacity boundary; concurrent response; close during callback; native callback after owner release. | RFC 0004 stream tests plus hosted callback stress on all targets. | `KWebPageEventStream`, callback dispatcher, bounded decision registries. | NOT_RUN before implementation. | NOT_RUN |
 | A9 / security and origin policy | No renderer can resolve popup/before-unload, create owners, access another page, or retain a bridge across cross-origin navigation. | Child frame; forged request id; cross-origin navigation; unconfigured page; raw native handle attempt. | Generated bridge inspection and real CEF negative fixtures on all hosted targets. | Desktop host policy, bridge origin reset, typed error tests. | NOT_RUN before implementation. | NOT_RUN |
@@ -207,6 +216,29 @@ renderer-evaluation API.
   adds A1-A11 mapping, explicit limits, stable errors, and evidence inputs.
 - Decision: `READY`.
 
+### Contract re-review after CEF API inspection
+
+- Reviewed revision: the implementation contract revision containing the CEF
+  ABI and page API work in this PR, before continuing implementation.
+- Review pass: Codex readiness re-review by the same contributor; it is not an
+  independent-person approval.
+- Date: 2026-09-24.
+- Findings: the pinned CEF 151 `OnBeforePopup` callback is synchronous and
+  exposes only position, size, and `isPopup`; it cannot preserve an asynchronous
+  renderer popup while awaiting Kotlin. Its type also has no redirect or
+  window-decoration fields. The previous draft promised behavior and fields
+  this CEF callback cannot report.
+- Disposition: revise popup intent to cancel the renderer popup immediately,
+  then let an explicit host decision create a separate owner-bound Alloy page.
+  Document that the new page has no `window.opener` proxy; classify this as a
+  renderer rewrite in migration guidance. Remove unsupported feature fields.
+  `KWebPageEvent` removes the untyped `text` payload in favor of its versioned
+  typed fields and carries a dedicated renderer failure reason.
+- Feasibility: CEF supplies the event, request ID, bounded callback data, and a
+  real Alloy child creation path under the caller's native parent. The
+  separate-page semantics are falsifiable in the real renderer fixture.
+- Decision: `READY` for this revised contract.
+
 ## Evidence lifecycle
 
 RFC 0008 evidence is retained under
@@ -225,8 +257,8 @@ published.
 |---|---|
 | `webContents` navigation/load/title/favicon events | Typed `KWebPageEvent` stream with main/subframe and origin identity. |
 | `webContents.reload()` | `KWebPage.reload(NORMAL)` or `IGNORE_CACHE`. |
-| `webContents.setWindowOpenHandler` | Host-resolved `KWebPopupRequest`; renderer cannot create a window. |
-| `before-unload` | Host-resolved `KWebPageBeforeUnloadRequest`; timeout cancels. |
+| `webContents.setWindowOpenHandler` | Rewrite required: CEF popup is canceled, then the host may create a separate owner-bound page; no `window.opener` proxy is preserved. |
+| `before-unload` | Host-resolved `KWebBeforeUnloadRequest`; timeout cancels. |
 | renderer-process-gone/unresponsive | Typed renderer state/failure events and terminal page lifecycle. |
 | `executeJavaScript` and arbitrary event strings | Not mapped; explicit CDP remains the automation path. |
 | unmanaged popup/top-level BrowserWindow | Not mapped; explicit caller-owned Compose owner is required. |

@@ -11,6 +11,11 @@ kweb_status CreateBrowserSession(const kweb_browser_config *config,
                                  kweb_browser_handle *browser_out);
 kweb_status NavigateBrowserSession(kweb_browser_handle browser,
                                    const char *url_utf8, size_t url_size);
+kweb_status ReloadBrowserSession(kweb_browser_handle browser, bool ignore_cache);
+kweb_status RespondToBeforeUnloadSession(kweb_browser_handle browser,
+                                         uint64_t request_id, bool proceed);
+kweb_status RespondToPopupSession(kweb_browser_handle browser,
+                                  uint64_t request_id, bool allow);
 kweb_status SetBoundsBrowserSession(kweb_browser_handle browser, int32_t x,
                                     int32_t y, int32_t width, int32_t height);
 kweb_status SetSurfaceStateBrowserSession(kweb_browser_handle browser,

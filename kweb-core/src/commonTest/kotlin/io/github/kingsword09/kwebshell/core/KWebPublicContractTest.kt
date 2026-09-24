@@ -39,10 +39,14 @@ class KWebPublicContractTest {
         val event = KWebPageEvent(
             type = KWebPageEventType.RESIZED,
             sequence = 4,
-            text = "",
             statusCode = 0,
             bounds = KWebBounds(800, 600),
             flags = setOf(KWebPageEventFlag.LOADING),
+            pageId = "page-1",
+            profileId = "profile-1",
+            frameId = "0",
+            frameScope = KWebPageFrameScope.MAIN,
+            reason = KWebPageEventReason.NONE,
         )
 
         assertEquals(800, event.bounds?.width)

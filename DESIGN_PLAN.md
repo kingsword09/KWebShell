@@ -2036,12 +2036,16 @@ three-target evidence, and the final A1-A11 acceptance review:
    unresponsive/terminated, and controlled reload behavior on macOS, Windows,
    and Linux/X11. Missing callbacks or native capabilities fail typed; no
    alternate backend or hidden owner is selected.
-4. Allowed popups attach to an explicit caller-created Compose/native owner;
-   denied, stale, timed-out, cross-origin, and owner-close races are covered.
-   Download selection remains RFC 0012 and is not duplicated here.
+4. CEF popup callbacks are synchronous, so the renderer popup is canceled as
+   soon as the request event is emitted. An allowed host response creates a
+   separate Alloy child under an explicit caller-created Compose owner; it does
+   not preserve `window.opener` or the renderer's popup proxy. Denied, stale,
+   timed-out, cross-origin, and owner-close races are covered. Download
+   selection and results remain RFC 0012 and are not duplicated here.
 5. Electron migration classifies each supported `webContents` event and
-   blocks unknown or unrestricted evaluation/event declarations. Golden output,
-   docs, capability metadata, and hosted evidence are updated together.
+   blocks unknown or unrestricted evaluation/event declarations. Popup flows
+   requiring `window.opener` are rewrite-required. Golden output, docs,
+   capability metadata, and hosted evidence are updated together.
 
 ### RFC review workflow objective: contract review and requirement acceptance
 

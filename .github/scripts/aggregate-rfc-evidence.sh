@@ -14,7 +14,7 @@ input="docs/rfcs/evidence/manifest.json"
 # The recorder refuses a non-Implemented catalog: normalize the statuses in
 # this workspace before recording. The checked-in flip lands in the same commit
 # as the checked-in records.
-for rfc in 0001 0002 0003 0004 0006 0030; do
+for rfc in 0001 0002 0003 0004 0006 0007 0030; do
   file=$(ls docs/rfcs/${rfc}-*.md)
   sed 's/^- Status: .*$/- Status: Implemented/' "$file" > "$file.recorded"
   mv "$file.recorded" "$file"
@@ -47,6 +47,7 @@ for target in macos-arm64 windows-x64 linux-x64; do
     "0004|governance.hosted|stream-conformance|stream-conformance.json|engine-integration"
     "0030|packaging.hosted|application-package|application-package-report.json|application-package"
     "0006|application.lifecycle.hosted|application-lifecycle|application-lifecycle-report.json|application-lifecycle|application-shutdown|application-shutdown.json|engine-integration"
+    "0007|window-controls.hosted|window-controls-report|window-controls-report.json|provider-lifecycle"
   )
   count=0
   total=${#specs[@]}

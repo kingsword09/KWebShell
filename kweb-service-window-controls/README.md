@@ -1,24 +1,40 @@
 # KWebShell Window Controls Service
 
 `kweb-service-window-controls` binds one caller-owned Compose Desktop
-`ComposeWindow` to a typed KMP native-service contract. It does not create,
-replace, or dispose that window, and it does not add a second window backend.
+`ComposeWindow` to the RFC 0007 v2 typed KMP native-service contract. It does
+not create, replace, or dispose that window, and it does not add a second
+window backend.
 
-The published version-1 surface contains:
+The published v2 surface contains:
 
+- immutable parent and modality registration;
 - state snapshots and ordered state events;
 - title and positive screen bounds;
 - show/hide and focus requests;
 - minimize/restore and maximize/restore;
+- fullscreen and kiosk transitions with restored bounds;
+- observed constraints, capabilities, attention, and bounded close negotiation;
 - always-on-top and resizable state; and
-- an exact-origin generated renderer bridge with operation-level grants.
+- an exact-origin generated renderer bridge whose only renderer operation is
+  `requestClose`; hierarchy, fullscreen/kiosk, capabilities, and force-close
+  remain host-only.
 
-Fullscreen control, native menu/tray ownership, custom title-bar hit testing,
-and window creation are absent. They are not implemented as fallbacks or fake
-success responses.
+The JVM provider requires the packaged platform provider library explicitly;
+there is no implicit AWT/WebView fallback. The library is the small JDK 25 FFM
+bridge over the Win32, AppKit, or X11 provider selected for the current target.
+
+Linux support is the hosted X11 contract; Wayland and unsupported window-manager
+operations return typed failures. Native menu/tray ownership, custom title-bar
+hit testing, and window creation remain separate contracts.
 
 ```kotlin
-val controls = JvmKWebWindowControls.open(composeWindow)
+import java.nio.file.Path
+
+val controls = JvmKWebWindowControls.open(
+    composeWindow,
+    KWebWindowRegistration(id = "main-window"),
+    nativeLibrary = Path.of("/absolute/path/to/libkwebshell_window_controls"),
+)
 engine.nativeServices.install(KWebWindowControls.Key, controls)
 
 controls.setTitle("KWebShell")
@@ -40,8 +56,9 @@ npm ci
 
 The task runs common and JVM contract tests, strict generated TypeScript, and a
 real ComposeWindow/CEF fixture. The fixture validates direct Kotlin controls,
-renderer calls, exact-origin policy, permission denial, child-frame transport
-isolation, cross-origin and unconfigured Pages, contiguous state events,
-external window ownership, and deterministic Engine/CDP shutdown. Linux uses
-the explicit Xvfb path; no system WebView or alternate window implementation is
-selected.
+renderer request-only close access, exact-origin policy, permission denial,
+child-frame transport isolation, cross-origin and unconfigured Pages,
+hierarchy/modal teardown, fullscreen/kiosk restoration, contiguous state
+events, external window ownership, CEF parent stability, and deterministic
+Engine/CDP shutdown. Linux uses the explicit Xvfb path; no system WebView or
+alternate window implementation is selected.

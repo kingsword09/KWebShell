@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "recordsSha256": "582ce79dcd21e8ddf5628981d32eaed29bdf33353c85454d78c3a2baaab9526a",
+  "recordsSha256": "102480d180ba359e3af7008b5121282b721e87d0ce63375fa8154d0af13b5abb",
   "records": [
     {
       "rfcId": "0001",
@@ -15,10 +15,10 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/57/merge",
-        "runId": "35668321176",
-        "runAttempt": 1,
-        "sourceRevision": "5c86e60d8742ec41a191e30e733d4d5bbe7990a8"
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/58/merge",
+        "runId": "35966462610",
+        "runAttempt": 2,
+        "sourceRevision": "c3fb2157c619fd13f0b014b695db276df8f886d8"
       },
       "contractSha256": "d05e13490605caf948e945651927a81e09e4f2f0248ef183a44aaa1aa1bdc031",
       "compatibilityStatus": "READY",
@@ -26,8 +26,8 @@
       "artifacts": [
         {
           "name": "governance-contract-tests",
-          "path": "docs/rfcs/evidence/artifacts/0001/5c86e60d8742ec41a191e30e733d4d5bbe7990a8/linux-x64/governance-contract-tests/TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml",
-          "sha256": "b11684746713107092db8c9400beffb76322c9d4a44a0857f23d1c76a6019790"
+          "path": "docs/rfcs/evidence/artifacts/0001/c3fb2157c619fd13f0b014b695db276df8f886d8/linux-x64/governance-contract-tests/TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml",
+          "sha256": "0a1db8ebcb6486eb912ebce74a18750b3786386bea092372e36ae0ba028492e9"
         }
       ]
     },
@@ -44,10 +44,10 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/57/merge",
-        "runId": "35668321176",
-        "runAttempt": 1,
-        "sourceRevision": "5c86e60d8742ec41a191e30e733d4d5bbe7990a8"
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/58/merge",
+        "runId": "35966462610",
+        "runAttempt": 2,
+        "sourceRevision": "c3fb2157c619fd13f0b014b695db276df8f886d8"
       },
       "contractSha256": "d05e13490605caf948e945651927a81e09e4f2f0248ef183a44aaa1aa1bdc031",
       "compatibilityStatus": "READY",
@@ -55,8 +55,8 @@
       "artifacts": [
         {
           "name": "governance-contract-tests",
-          "path": "docs/rfcs/evidence/artifacts/0001/5c86e60d8742ec41a191e30e733d4d5bbe7990a8/macos-arm64/governance-contract-tests/TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml",
-          "sha256": "339723406f42c7de659eeaf1416302dd6ac513680de4de1ab4ce81a32d33a96f"
+          "path": "docs/rfcs/evidence/artifacts/0001/c3fb2157c619fd13f0b014b695db276df8f886d8/macos-arm64/governance-contract-tests/TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml",
+          "sha256": "9755fa62a5dc89ace55da289c93564c7848f8b9edd056bfd60c69c0f08960781"
         }
       ]
     },
@@ -73,10 +73,10 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/57/merge",
-        "runId": "35668321176",
-        "runAttempt": 1,
-        "sourceRevision": "5c86e60d8742ec41a191e30e733d4d5bbe7990a8"
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/58/merge",
+        "runId": "35966462610",
+        "runAttempt": 2,
+        "sourceRevision": "c3fb2157c619fd13f0b014b695db276df8f886d8"
       },
       "contractSha256": "d05e13490605caf948e945651927a81e09e4f2f0248ef183a44aaa1aa1bdc031",
       "compatibilityStatus": "READY",
@@ -84,8 +84,8 @@
       "artifacts": [
         {
           "name": "governance-contract-tests",
-          "path": "docs/rfcs/evidence/artifacts/0001/5c86e60d8742ec41a191e30e733d4d5bbe7990a8/windows-x64/governance-contract-tests/TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml",
-          "sha256": "b5f9bb5f44fa72e702aade64e488afe341b6a1cb2ffeddd5b6b8777ed797fa08"
+          "path": "docs/rfcs/evidence/artifacts/0001/c3fb2157c619fd13f0b014b695db276df8f886d8/windows-x64/governance-contract-tests/TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml",
+          "sha256": "c595175a979d0846f9d66ab3c300a3557b77ff83abca9d724c60d6a1f0853cb8"
         }
       ]
     },
@@ -102,10 +102,10 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/57/merge",
-        "runId": "35668321176",
-        "runAttempt": 1,
-        "sourceRevision": "5c86e60d8742ec41a191e30e733d4d5bbe7990a8"
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/58/merge",
+        "runId": "35966462610",
+        "runAttempt": 2,
+        "sourceRevision": "c3fb2157c619fd13f0b014b695db276df8f886d8"
       },
       "contractSha256": "12468f14efb785c726b5021d268b65eadf6bf696d82e8591d654b34d072ee830",
       "compatibilityStatus": "READY",
@@ -113,8 +113,8 @@
       "artifacts": [
         {
           "name": "provider-lifecycle-report",
-          "path": "docs/rfcs/evidence/artifacts/0002/5c86e60d8742ec41a191e30e733d4d5bbe7990a8/linux-x64/provider-lifecycle-report/provider-lifecycle-report.json",
-          "sha256": "19d1b27083f80ebea83d8bf47903f51939473574dbc502ca726e5fbbece78aba"
+          "path": "docs/rfcs/evidence/artifacts/0002/c3fb2157c619fd13f0b014b695db276df8f886d8/linux-x64/provider-lifecycle-report/provider-lifecycle-report.json",
+          "sha256": "ba26d6081db4c695e59aadb4aa621e3dcfa628e7f9876d69ac6b8ee9c63fd9ac"
         }
       ]
     },
@@ -131,10 +131,10 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/57/merge",
-        "runId": "35668321176",
-        "runAttempt": 1,
-        "sourceRevision": "5c86e60d8742ec41a191e30e733d4d5bbe7990a8"
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/58/merge",
+        "runId": "35966462610",
+        "runAttempt": 2,
+        "sourceRevision": "c3fb2157c619fd13f0b014b695db276df8f886d8"
       },
       "contractSha256": "12468f14efb785c726b5021d268b65eadf6bf696d82e8591d654b34d072ee830",
       "compatibilityStatus": "READY",
@@ -142,8 +142,8 @@
       "artifacts": [
         {
           "name": "provider-lifecycle-report",
-          "path": "docs/rfcs/evidence/artifacts/0002/5c86e60d8742ec41a191e30e733d4d5bbe7990a8/macos-arm64/provider-lifecycle-report/provider-lifecycle-report.json",
-          "sha256": "99cd7b494dbfaaf30e2dcd33eff39f4c1c80793c930735a7f91beddf9f882a04"
+          "path": "docs/rfcs/evidence/artifacts/0002/c3fb2157c619fd13f0b014b695db276df8f886d8/macos-arm64/provider-lifecycle-report/provider-lifecycle-report.json",
+          "sha256": "dcf7d703ff4565b744f52dcd5deb684bc20e40a1df4284f3bd3d17d4fdcd273a"
         }
       ]
     },
@@ -160,10 +160,10 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/57/merge",
-        "runId": "35668321176",
-        "runAttempt": 1,
-        "sourceRevision": "5c86e60d8742ec41a191e30e733d4d5bbe7990a8"
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/58/merge",
+        "runId": "35966462610",
+        "runAttempt": 2,
+        "sourceRevision": "c3fb2157c619fd13f0b014b695db276df8f886d8"
       },
       "contractSha256": "12468f14efb785c726b5021d268b65eadf6bf696d82e8591d654b34d072ee830",
       "compatibilityStatus": "READY",
@@ -171,8 +171,8 @@
       "artifacts": [
         {
           "name": "provider-lifecycle-report",
-          "path": "docs/rfcs/evidence/artifacts/0002/5c86e60d8742ec41a191e30e733d4d5bbe7990a8/windows-x64/provider-lifecycle-report/provider-lifecycle-report.json",
-          "sha256": "57d988b8d491cb49363ea8d261be3c4dcc61e60a101b388e6c0bbd9155531dca"
+          "path": "docs/rfcs/evidence/artifacts/0002/c3fb2157c619fd13f0b014b695db276df8f886d8/windows-x64/provider-lifecycle-report/provider-lifecycle-report.json",
+          "sha256": "55f5be5a1ed489ecb7fbd35c3101a6b39378a946e96ab037fc89e3a093cc746e"
         }
       ]
     },
@@ -189,18 +189,18 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/57/merge",
-        "runId": "35668321176",
-        "runAttempt": 1,
-        "sourceRevision": "5c86e60d8742ec41a191e30e733d4d5bbe7990a8"
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/58/merge",
+        "runId": "35966462610",
+        "runAttempt": 2,
+        "sourceRevision": "c3fb2157c619fd13f0b014b695db276df8f886d8"
       },
-      "contractSha256": "fdd4da154243e32f4470209256fc2e4ac8d966ff52a9dae8cfdb8fae793b8a82",
+      "contractSha256": "4e34d8a3fd29382af2b35bf3807e00cc94daf96e579e62a831f9d317a40f255f",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "dialogs-consent",
-          "path": "docs/rfcs/evidence/artifacts/0003/5c86e60d8742ec41a191e30e733d4d5bbe7990a8/linux-x64/dialogs-consent/consent-status.json",
+          "path": "docs/rfcs/evidence/artifacts/0003/c3fb2157c619fd13f0b014b695db276df8f886d8/linux-x64/dialogs-consent/consent-status.json",
           "sha256": "ba76980e7197e763f4baf1071cd04c20060ef39a234c6eb73f7a8df8d72ba87f"
         }
       ]
@@ -218,18 +218,18 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/57/merge",
-        "runId": "35668321176",
-        "runAttempt": 1,
-        "sourceRevision": "5c86e60d8742ec41a191e30e733d4d5bbe7990a8"
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/58/merge",
+        "runId": "35966462610",
+        "runAttempt": 2,
+        "sourceRevision": "c3fb2157c619fd13f0b014b695db276df8f886d8"
       },
-      "contractSha256": "fdd4da154243e32f4470209256fc2e4ac8d966ff52a9dae8cfdb8fae793b8a82",
+      "contractSha256": "4e34d8a3fd29382af2b35bf3807e00cc94daf96e579e62a831f9d317a40f255f",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "dialogs-consent",
-          "path": "docs/rfcs/evidence/artifacts/0003/5c86e60d8742ec41a191e30e733d4d5bbe7990a8/macos-arm64/dialogs-consent/consent-status.json",
+          "path": "docs/rfcs/evidence/artifacts/0003/c3fb2157c619fd13f0b014b695db276df8f886d8/macos-arm64/dialogs-consent/consent-status.json",
           "sha256": "6945def4111675c49dde077fcf40b1f9152a85948f09f2bf80e99fe689ee0abb"
         }
       ]
@@ -247,18 +247,18 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/57/merge",
-        "runId": "35668321176",
-        "runAttempt": 1,
-        "sourceRevision": "5c86e60d8742ec41a191e30e733d4d5bbe7990a8"
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/58/merge",
+        "runId": "35966462610",
+        "runAttempt": 2,
+        "sourceRevision": "c3fb2157c619fd13f0b014b695db276df8f886d8"
       },
-      "contractSha256": "fdd4da154243e32f4470209256fc2e4ac8d966ff52a9dae8cfdb8fae793b8a82",
+      "contractSha256": "4e34d8a3fd29382af2b35bf3807e00cc94daf96e579e62a831f9d317a40f255f",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "dialogs-consent",
-          "path": "docs/rfcs/evidence/artifacts/0003/5c86e60d8742ec41a191e30e733d4d5bbe7990a8/windows-x64/dialogs-consent/consent-status.json",
+          "path": "docs/rfcs/evidence/artifacts/0003/c3fb2157c619fd13f0b014b695db276df8f886d8/windows-x64/dialogs-consent/consent-status.json",
           "sha256": "b324c0c25212b9dedd5072f0eb8e171feac622f055381810f024d21bc945ecf6"
         }
       ]
@@ -276,19 +276,19 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/57/merge",
-        "runId": "35668321176",
-        "runAttempt": 1,
-        "sourceRevision": "5c86e60d8742ec41a191e30e733d4d5bbe7990a8"
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/58/merge",
+        "runId": "35966462610",
+        "runAttempt": 2,
+        "sourceRevision": "c3fb2157c619fd13f0b014b695db276df8f886d8"
       },
-      "contractSha256": "01f538d41856b314c18dc443b1a3e8dadb60295b412ab166444b40706cd185c7",
+      "contractSha256": "c981d312eecaad50ffb39d08dff4baa19d7895403a3c7f35bb7bfe44d5bf152a",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "stream-conformance",
-          "path": "docs/rfcs/evidence/artifacts/0004/5c86e60d8742ec41a191e30e733d4d5bbe7990a8/linux-x64/stream-conformance/stream-conformance.json",
-          "sha256": "27071f91c632d3bb3fd5639476bc9a1b98e7924aff591cb8acb15978845d3978"
+          "path": "docs/rfcs/evidence/artifacts/0004/c3fb2157c619fd13f0b014b695db276df8f886d8/linux-x64/stream-conformance/stream-conformance.json",
+          "sha256": "472cef6fdf0b52a3918038d52991d7b88cea9e7ea5b8a819e8e4dfc60949661a"
         }
       ]
     },
@@ -305,19 +305,19 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/57/merge",
-        "runId": "35668321176",
-        "runAttempt": 1,
-        "sourceRevision": "5c86e60d8742ec41a191e30e733d4d5bbe7990a8"
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/58/merge",
+        "runId": "35966462610",
+        "runAttempt": 2,
+        "sourceRevision": "c3fb2157c619fd13f0b014b695db276df8f886d8"
       },
-      "contractSha256": "01f538d41856b314c18dc443b1a3e8dadb60295b412ab166444b40706cd185c7",
+      "contractSha256": "c981d312eecaad50ffb39d08dff4baa19d7895403a3c7f35bb7bfe44d5bf152a",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "stream-conformance",
-          "path": "docs/rfcs/evidence/artifacts/0004/5c86e60d8742ec41a191e30e733d4d5bbe7990a8/macos-arm64/stream-conformance/stream-conformance.json",
-          "sha256": "02db7f3fed48d2f93a1e61730f3af480308dcb68f333a47b3418ae6e07d07817"
+          "path": "docs/rfcs/evidence/artifacts/0004/c3fb2157c619fd13f0b014b695db276df8f886d8/macos-arm64/stream-conformance/stream-conformance.json",
+          "sha256": "3529e140095e5bc6fca288967b99c7e3ab743818e58249c54616331510bd6a13"
         }
       ]
     },
@@ -334,19 +334,19 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/57/merge",
-        "runId": "35668321176",
-        "runAttempt": 1,
-        "sourceRevision": "5c86e60d8742ec41a191e30e733d4d5bbe7990a8"
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/58/merge",
+        "runId": "35966462610",
+        "runAttempt": 2,
+        "sourceRevision": "c3fb2157c619fd13f0b014b695db276df8f886d8"
       },
-      "contractSha256": "01f538d41856b314c18dc443b1a3e8dadb60295b412ab166444b40706cd185c7",
+      "contractSha256": "c981d312eecaad50ffb39d08dff4baa19d7895403a3c7f35bb7bfe44d5bf152a",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "stream-conformance",
-          "path": "docs/rfcs/evidence/artifacts/0004/5c86e60d8742ec41a191e30e733d4d5bbe7990a8/windows-x64/stream-conformance/stream-conformance.json",
-          "sha256": "6b86aee3f9e483d6d3db3442776912e1cf242e72309f03113f1105cac480bb7b"
+          "path": "docs/rfcs/evidence/artifacts/0004/c3fb2157c619fd13f0b014b695db276df8f886d8/windows-x64/stream-conformance/stream-conformance.json",
+          "sha256": "7d546262c4ec8390950f82c66cab58f19ad5ad37ad15dfcc330aa36846704c14"
         }
       ]
     },
@@ -363,23 +363,23 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/57/merge",
-        "runId": "35668321176",
-        "runAttempt": 1,
-        "sourceRevision": "5c86e60d8742ec41a191e30e733d4d5bbe7990a8"
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/58/merge",
+        "runId": "35966462610",
+        "runAttempt": 2,
+        "sourceRevision": "c3fb2157c619fd13f0b014b695db276df8f886d8"
       },
-      "contractSha256": "63dbd1ba60f3e949368f277d190bfef5b0596c2871e6df919996f005e3868ad0",
+      "contractSha256": "776561d010d6fa6d6373f454598dfe443f10b5f64eeaf80df6145cd2edaa7ff2",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "application-lifecycle",
-          "path": "docs/rfcs/evidence/artifacts/0006/5c86e60d8742ec41a191e30e733d4d5bbe7990a8/linux-x64/application-lifecycle/application-lifecycle-report.json",
-          "sha256": "7f81d1f9c3af905b6043823fb8acc2eb8cf180354aa73251f156d4d5583e4b41"
+          "path": "docs/rfcs/evidence/artifacts/0006/c3fb2157c619fd13f0b014b695db276df8f886d8/linux-x64/application-lifecycle/application-lifecycle-report.json",
+          "sha256": "94cf6dfffb0d9e5262e1ce7e66649e5e245079d4aed8c44540fc514f16536e89"
         },
         {
           "name": "application-shutdown",
-          "path": "docs/rfcs/evidence/artifacts/0006/5c86e60d8742ec41a191e30e733d4d5bbe7990a8/linux-x64/application-shutdown/application-shutdown.json",
+          "path": "docs/rfcs/evidence/artifacts/0006/c3fb2157c619fd13f0b014b695db276df8f886d8/linux-x64/application-shutdown/application-shutdown.json",
           "sha256": "2f0a39c566c3345c40f8edb36425728a4d36932df1cccda045561281d5ca0a53"
         }
       ]
@@ -397,23 +397,23 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/57/merge",
-        "runId": "35668321176",
-        "runAttempt": 1,
-        "sourceRevision": "5c86e60d8742ec41a191e30e733d4d5bbe7990a8"
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/58/merge",
+        "runId": "35966462610",
+        "runAttempt": 2,
+        "sourceRevision": "c3fb2157c619fd13f0b014b695db276df8f886d8"
       },
-      "contractSha256": "63dbd1ba60f3e949368f277d190bfef5b0596c2871e6df919996f005e3868ad0",
+      "contractSha256": "776561d010d6fa6d6373f454598dfe443f10b5f64eeaf80df6145cd2edaa7ff2",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "application-lifecycle",
-          "path": "docs/rfcs/evidence/artifacts/0006/5c86e60d8742ec41a191e30e733d4d5bbe7990a8/macos-arm64/application-lifecycle/application-lifecycle-report.json",
-          "sha256": "7362f5fba95b45634f1b56bbd9daa9362ab219fb2071998d4a82bb55f9deae1f"
+          "path": "docs/rfcs/evidence/artifacts/0006/c3fb2157c619fd13f0b014b695db276df8f886d8/macos-arm64/application-lifecycle/application-lifecycle-report.json",
+          "sha256": "9ed7c877e830d7d06f7f5baa348dfb5595b9e609c5d5cd60676bdf380491badc"
         },
         {
           "name": "application-shutdown",
-          "path": "docs/rfcs/evidence/artifacts/0006/5c86e60d8742ec41a191e30e733d4d5bbe7990a8/macos-arm64/application-shutdown/application-shutdown.json",
+          "path": "docs/rfcs/evidence/artifacts/0006/c3fb2157c619fd13f0b014b695db276df8f886d8/macos-arm64/application-shutdown/application-shutdown.json",
           "sha256": "325cb6b922315cf438af5f4d7745d31c16ab8b61b5613c15d2e8c4ccb1f17c40"
         }
       ]
@@ -431,24 +431,111 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/57/merge",
-        "runId": "35668321176",
-        "runAttempt": 1,
-        "sourceRevision": "5c86e60d8742ec41a191e30e733d4d5bbe7990a8"
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/58/merge",
+        "runId": "35966462610",
+        "runAttempt": 2,
+        "sourceRevision": "c3fb2157c619fd13f0b014b695db276df8f886d8"
       },
-      "contractSha256": "63dbd1ba60f3e949368f277d190bfef5b0596c2871e6df919996f005e3868ad0",
+      "contractSha256": "776561d010d6fa6d6373f454598dfe443f10b5f64eeaf80df6145cd2edaa7ff2",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "application-lifecycle",
-          "path": "docs/rfcs/evidence/artifacts/0006/5c86e60d8742ec41a191e30e733d4d5bbe7990a8/windows-x64/application-lifecycle/application-lifecycle-report.json",
-          "sha256": "7244af8328a25f5f0ab625a4c670a6be74f1c3dc10053a407d5e194fa2d3e49c"
+          "path": "docs/rfcs/evidence/artifacts/0006/c3fb2157c619fd13f0b014b695db276df8f886d8/windows-x64/application-lifecycle/application-lifecycle-report.json",
+          "sha256": "6ddb2c30a005595ad56d59054e41e771bb9cd58cf60c5a6662854ebdb4320731"
         },
         {
           "name": "application-shutdown",
-          "path": "docs/rfcs/evidence/artifacts/0006/5c86e60d8742ec41a191e30e733d4d5bbe7990a8/windows-x64/application-shutdown/application-shutdown.json",
+          "path": "docs/rfcs/evidence/artifacts/0006/c3fb2157c619fd13f0b014b695db276df8f886d8/windows-x64/application-shutdown/application-shutdown.json",
           "sha256": "41b6e0745ae47c28818e13dcd417a7b6c41b36878741e70d12271af9221e86ec"
+        }
+      ]
+    },
+    {
+      "rfcId": "0007",
+      "rfcStatus": "Implemented",
+      "serviceId": null,
+      "serviceVersion": null,
+      "schemaVersion": 2,
+      "providerId": "window-controls.hosted",
+      "target": "linux-x64",
+      "cefVersion": "151.3.16+gbe1e15d+chromium-151.0.7922.109",
+      "chromiumVersion": "151.0.7922.109",
+      "electronFixtureMajor": 44,
+      "run": {
+        "repository": "kingsword09/KWebShell",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/58/merge",
+        "runId": "35966462610",
+        "runAttempt": 2,
+        "sourceRevision": "c3fb2157c619fd13f0b014b695db276df8f886d8"
+      },
+      "contractSha256": "ec63c9e24458e7724a6474007a418a2808076ab9b63623d0fadb4c620ae7da23",
+      "compatibilityStatus": "READY",
+      "matrixRowIds": [],
+      "artifacts": [
+        {
+          "name": "window-controls-report",
+          "path": "docs/rfcs/evidence/artifacts/0007/c3fb2157c619fd13f0b014b695db276df8f886d8/linux-x64/window-controls-report/window-controls-report.json",
+          "sha256": "233bc36bda3a8d3bd0ccf7ba67b64c807b6cd56234848c33497fff3dac494d26"
+        }
+      ]
+    },
+    {
+      "rfcId": "0007",
+      "rfcStatus": "Implemented",
+      "serviceId": null,
+      "serviceVersion": null,
+      "schemaVersion": 2,
+      "providerId": "window-controls.hosted",
+      "target": "macos-arm64",
+      "cefVersion": "151.3.16+gbe1e15d+chromium-151.0.7922.109",
+      "chromiumVersion": "151.0.7922.109",
+      "electronFixtureMajor": 44,
+      "run": {
+        "repository": "kingsword09/KWebShell",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/58/merge",
+        "runId": "35966462610",
+        "runAttempt": 2,
+        "sourceRevision": "c3fb2157c619fd13f0b014b695db276df8f886d8"
+      },
+      "contractSha256": "ec63c9e24458e7724a6474007a418a2808076ab9b63623d0fadb4c620ae7da23",
+      "compatibilityStatus": "READY",
+      "matrixRowIds": [],
+      "artifacts": [
+        {
+          "name": "window-controls-report",
+          "path": "docs/rfcs/evidence/artifacts/0007/c3fb2157c619fd13f0b014b695db276df8f886d8/macos-arm64/window-controls-report/window-controls-report.json",
+          "sha256": "f5ce7ff4d54bca7a0419b3b1a90c2c8c3fdda5a0b8e522c805b69662f480b64b"
+        }
+      ]
+    },
+    {
+      "rfcId": "0007",
+      "rfcStatus": "Implemented",
+      "serviceId": null,
+      "serviceVersion": null,
+      "schemaVersion": 2,
+      "providerId": "window-controls.hosted",
+      "target": "windows-x64",
+      "cefVersion": "151.3.16+gbe1e15d+chromium-151.0.7922.109",
+      "chromiumVersion": "151.0.7922.109",
+      "electronFixtureMajor": 44,
+      "run": {
+        "repository": "kingsword09/KWebShell",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/58/merge",
+        "runId": "35966462610",
+        "runAttempt": 2,
+        "sourceRevision": "c3fb2157c619fd13f0b014b695db276df8f886d8"
+      },
+      "contractSha256": "ec63c9e24458e7724a6474007a418a2808076ab9b63623d0fadb4c620ae7da23",
+      "compatibilityStatus": "READY",
+      "matrixRowIds": [],
+      "artifacts": [
+        {
+          "name": "window-controls-report",
+          "path": "docs/rfcs/evidence/artifacts/0007/c3fb2157c619fd13f0b014b695db276df8f886d8/windows-x64/window-controls-report/window-controls-report.json",
+          "sha256": "796e147647eb5ab01a734c93f0a6093456e73d40f40fb9d1b8640365f2f85c2f"
         }
       ]
     },
@@ -465,19 +552,19 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/57/merge",
-        "runId": "35668321176",
-        "runAttempt": 1,
-        "sourceRevision": "5c86e60d8742ec41a191e30e733d4d5bbe7990a8"
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/58/merge",
+        "runId": "35966462610",
+        "runAttempt": 2,
+        "sourceRevision": "c3fb2157c619fd13f0b014b695db276df8f886d8"
       },
-      "contractSha256": "df78ed10a2dae8112d89201d88a02f5e1436faa131df800e4e5346abf817dfa3",
+      "contractSha256": "aa033e5e2b86ab77acef2a3e1433b3bbe9b2368f161d7acbb1e3f1a11f837355",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "application-package",
-          "path": "docs/rfcs/evidence/artifacts/0030/5c86e60d8742ec41a191e30e733d4d5bbe7990a8/linux-x64/application-package/application-package-report.json",
-          "sha256": "3707ac322a0f353954f91dad2ffde617adc4999a19a0dfb3c25b4cb8bf4af3f6"
+          "path": "docs/rfcs/evidence/artifacts/0030/c3fb2157c619fd13f0b014b695db276df8f886d8/linux-x64/application-package/application-package-report.json",
+          "sha256": "6edb0813e8296c9a53239c864bdd4c0c04d337e0904d82694c162d32630c8031"
         }
       ]
     },
@@ -494,19 +581,19 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/57/merge",
-        "runId": "35668321176",
-        "runAttempt": 1,
-        "sourceRevision": "5c86e60d8742ec41a191e30e733d4d5bbe7990a8"
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/58/merge",
+        "runId": "35966462610",
+        "runAttempt": 2,
+        "sourceRevision": "c3fb2157c619fd13f0b014b695db276df8f886d8"
       },
-      "contractSha256": "df78ed10a2dae8112d89201d88a02f5e1436faa131df800e4e5346abf817dfa3",
+      "contractSha256": "aa033e5e2b86ab77acef2a3e1433b3bbe9b2368f161d7acbb1e3f1a11f837355",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "application-package",
-          "path": "docs/rfcs/evidence/artifacts/0030/5c86e60d8742ec41a191e30e733d4d5bbe7990a8/macos-arm64/application-package/application-package-report.json",
-          "sha256": "5ea19977281368f0056debe02175be838f5da5232428d689b3def88be7cfdd54"
+          "path": "docs/rfcs/evidence/artifacts/0030/c3fb2157c619fd13f0b014b695db276df8f886d8/macos-arm64/application-package/application-package-report.json",
+          "sha256": "c433bb3e0154f0ee87eb7d27fcb5e2c173d7d3223dacf5999bccd3014ad1e6c7"
         }
       ]
     },
@@ -523,19 +610,19 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/57/merge",
-        "runId": "35668321176",
-        "runAttempt": 1,
-        "sourceRevision": "5c86e60d8742ec41a191e30e733d4d5bbe7990a8"
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/58/merge",
+        "runId": "35966462610",
+        "runAttempt": 2,
+        "sourceRevision": "c3fb2157c619fd13f0b014b695db276df8f886d8"
       },
-      "contractSha256": "df78ed10a2dae8112d89201d88a02f5e1436faa131df800e4e5346abf817dfa3",
+      "contractSha256": "aa033e5e2b86ab77acef2a3e1433b3bbe9b2368f161d7acbb1e3f1a11f837355",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "application-package",
-          "path": "docs/rfcs/evidence/artifacts/0030/5c86e60d8742ec41a191e30e733d4d5bbe7990a8/windows-x64/application-package/application-package-report.json",
-          "sha256": "d08766b9780448e9012e69d5d05896638c8b06a7672f76a56d454ec2367eef69"
+          "path": "docs/rfcs/evidence/artifacts/0030/c3fb2157c619fd13f0b014b695db276df8f886d8/windows-x64/application-package/application-package-report.json",
+          "sha256": "4f57cbbe053a150e3124af68969ff7c62af5993e79f74f0ad754a551b00a4f48"
         }
       ]
     }

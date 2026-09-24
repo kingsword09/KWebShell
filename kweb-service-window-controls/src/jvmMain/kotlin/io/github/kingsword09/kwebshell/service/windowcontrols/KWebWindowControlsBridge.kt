@@ -3,24 +3,20 @@ package io.github.kingsword09.kwebshell.service.windowcontrols
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeDispatcher
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeException
 import io.github.kingsword09.kwebshell.core.KWebException
-import io.github.kingsword09.kwebshell.service.windowcontrols.generated.BoundsRequest
-import io.github.kingsword09.kwebshell.service.windowcontrols.generated.FlagRequest
 import io.github.kingsword09.kwebshell.service.windowcontrols.generated.StateRequest
-import io.github.kingsword09.kwebshell.service.windowcontrols.generated.TitleRequest
 import io.github.kingsword09.kwebshell.service.windowcontrols.generated.WindowControlsBridgeDispatcher
 import io.github.kingsword09.kwebshell.service.windowcontrols.generated.WindowControlsBridgeHandler
 import io.github.kingsword09.kwebshell.service.windowcontrols.generated.WindowStateResponse
-import io.github.kingsword09.kwebshell.services.KWebServiceErrorCode
-import io.github.kingsword09.kwebshell.services.KWebServiceOperationDescriptor
 import io.github.kingsword09.kwebshell.services.KWebPolicySubject
+import io.github.kingsword09.kwebshell.services.KWebServiceErrorCode
 import io.github.kingsword09.kwebshell.services.policy.KWebPolicyDecision
 import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
 import kotlinx.coroutines.CancellationException
 
 /**
- * The one bridge entry for KWebWindowControls. Every renderer call is authorized
- * by the policy engine, so a grant-only dispatcher cannot bypass gesture or
- * consent rules.
+ * The one bridge entry for KWebWindowControls. Renderer access is limited to
+ * the generated operation set; hierarchy ownership and forced close remain
+ * host-only operations.
  */
 public fun KWebWindowControls.bridgeDispatcher(
     policyEngine: KWebServicePolicyEngine,
@@ -52,39 +48,17 @@ private suspend fun authorizeOperation(
 
 private fun KWebWindowControls.bridgeDispatcher(
     policyCheck: suspend (String) -> Unit,
-): KWebBridgeDispatcher = WindowControlsBridgeDispatcher(
+): KWebBridgeDispatcher {
+    val service = this
+    return WindowControlsBridgeDispatcher(
     object : WindowControlsBridgeHandler {
-        override suspend fun getState(request: StateRequest): WindowStateResponse =
-            dispatch("get-state") { snapshot().toResponse() }
-
-        override suspend fun setTitle(request: TitleRequest): WindowStateResponse =
-            dispatch("set-title") { setTitle(request.title).toResponse() }
-
-        override suspend fun setBounds(request: BoundsRequest): WindowStateResponse =
-            dispatch("set-bounds") {
-                setBounds(KWebWindowBounds(request.x, request.y, request.width, request.height)).toResponse()
+        override suspend fun requestClose(request: StateRequest): WindowStateResponse =
+            dispatch("request-close") {
+                when (service) {
+                    is ComposeKWebWindowControls -> service.requestRendererClose().state.toResponse()
+                    else -> service.requestClose().state.toResponse()
+                }
             }
-
-        override suspend fun setVisible(request: FlagRequest): WindowStateResponse =
-            dispatch("set-visible") { setVisible(request.enabled).toResponse() }
-
-        override suspend fun focus(request: FlagRequest): WindowStateResponse =
-            dispatch("focus") { focus().toResponse() }
-
-        override suspend fun minimize(request: FlagRequest): WindowStateResponse =
-            dispatch("minimize") { minimize().toResponse() }
-
-        override suspend fun restore(request: FlagRequest): WindowStateResponse =
-            dispatch("restore") { restore().toResponse() }
-
-        override suspend fun setMaximized(request: FlagRequest): WindowStateResponse =
-            dispatch("set-maximized") { setMaximized(request.enabled).toResponse() }
-
-        override suspend fun setAlwaysOnTop(request: FlagRequest): WindowStateResponse =
-            dispatch("set-always-on-top") { setAlwaysOnTop(request.enabled).toResponse() }
-
-        override suspend fun setResizable(request: FlagRequest): WindowStateResponse =
-            dispatch("set-resizable") { setResizable(request.enabled).toResponse() }
 
         private suspend fun dispatch(
             operationId: String,
@@ -110,18 +84,37 @@ private fun KWebWindowControls.bridgeDispatcher(
             }
         }
     },
-)
+    )
+}
 
 private fun KWebWindowState.toResponse(): WindowStateResponse = WindowStateResponse(
+    id = id,
+    parentId = parentId,
+    modality = modality.id,
     title = title,
     x = bounds.x,
     y = bounds.y,
     width = bounds.width,
     height = bounds.height,
+    restoredX = restoredBounds?.x,
+    restoredY = restoredBounds?.y,
+    restoredWidth = restoredBounds?.width,
+    restoredHeight = restoredBounds?.height,
+    placement = placement.id,
+    fullscreen = fullscreen.id,
     visible = visible,
     focused = focused,
-    minimized = minimized,
-    placement = placement.id,
-    alwaysOnTop = alwaysOnTop,
+    movable = movable,
+    minimizable = minimizable,
+    maximizable = maximizable,
+    closable = closable,
     resizable = resizable,
+    alwaysOnTop = alwaysOnTop,
+    minimumWidth = constraints.minimumWidth,
+    minimumHeight = constraints.minimumHeight,
+    maximumWidth = constraints.maximumWidth,
+    maximumHeight = constraints.maximumHeight,
+    attention = attention.id,
+    displayId = displayId,
+    displayScale = displayScale?.toString(),
 )

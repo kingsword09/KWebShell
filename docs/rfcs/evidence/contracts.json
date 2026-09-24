@@ -78,6 +78,29 @@
         "kweb-service-application-lifecycle/src/jvmMain",
         "kweb-service-application-lifecycle/src/jvmTest"
       ]
+    },
+    {
+      "rfcId": "0007",
+      "paths": [
+        ".github/scripts/aggregate-rfc-evidence.sh",
+        ".github/workflows/ci.yml",
+        "DESIGN_PLAN.md",
+        "docs/rfcs/0007-window-hierarchy-and-fullscreen.md",
+        "docs/rfcs/README.md",
+        "kweb-compose/src/main",
+        "kweb-compose/src/test",
+        "kweb-desktop/src/main",
+        "kweb-desktop/src/test",
+        "kweb-electron-migration/README.md",
+        "kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronMigrationContract.kt",
+        "kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronManifestTest.kt",
+        "kweb-electron-migration/src/jvmMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronPreloadGenerator.kt",
+        "kweb-electron-migration/src/jvmTest/resources/migration-golden/KWebElectronHostChecklist.md",
+        "kweb-service-window-controls/README.md",
+        "kweb-service-window-controls/build.gradle.kts",
+        "kweb-service-window-controls/native",
+        "kweb-service-window-controls/src"
+      ]
     }
   ]
 }

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "target": "linux-x64",
+  "provider": "linux-dbus-freedesktop-application",
+  "abiVersion": 1,
+  "secondaryForwarded": true,
+  "unicodeFileForwarded": true,
+  "activationSequence": 2,
+  "activationEvents": ["1:INITIAL_ARGUMENTS","2:SECOND_INSTANCE"],
+  "registrationInstallDigest": "fnv1a64:3de2dcb06d46730a",
+  "registrationRemoveDigest": "fnv1a64:a35f7e01e9caa315",
+  "registrationCleaned": true,
+  "shutdown": "GRACEFUL",
+  "liveNativeOwners": 0,
+  "status": "PASS"
+}

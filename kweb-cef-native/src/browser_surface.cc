@@ -14,6 +14,8 @@
 #elif defined(OS_LINUX)
 #include <X11/Xlib.h>
 
+#include <unistd.h>
+
 #include "include/internal/cef_types_linux.h"
 #endif
 
@@ -368,23 +370,17 @@ public:
     browser_ = browser;
     browser_window_ = browser->GetHost()->GetWindowHandle();
     if (display_ != nullptr && browser_window_ != None) {
-      Window root = None;
-      Window actual_parent = None;
-      Window *children = nullptr;
-      unsigned int child_count = 0;
-      const Status queried = XQueryTree(display_, browser_window_, &root,
-                                        &actual_parent, &children, &child_count);
-      if (children != nullptr) {
-        XFree(children);
+      // A reparenting window manager may claim CEF's newly mapped host before
+      // the creation callback. Restore the declared Compose native child
+      // relationship and wait for that relationship to be observable.
+      if (!EnsureParentage(x_, y_)) {
+        std::fprintf(stderr,
+                     "KWEBSHELL_X11_PARENT_UNOBSERVED browser=%lu "
+                     "parent=%lu\n",
+                     static_cast<unsigned long>(browser_window_),
+                     static_cast<unsigned long>(parent_));
       }
-      if (queried != 0 && actual_parent != parent_) {
-        // A reparenting window manager may claim CEF's newly mapped host before
-        // the creation callback. Restore the declared Compose native child
-        // relationship rather than accepting a detached top-level surface.
-        XReparentWindow(display_, browser_window_, parent_, x_, y_);
-      } else {
-        XMoveWindow(display_, browser_window_, x_, y_);
-      }
+      XMoveWindow(display_, browser_window_, x_, y_);
       XSync(display_, False);
     }
   }
@@ -395,25 +391,48 @@ public:
     if (display_ == nullptr || browser_window_ == None) {
       return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
     }
+    if (!EnsureParentage(x, y)) {
+      return KWEB_STATUS_PARENT_SURFACE_INVALID;
+    }
     XMoveResizeWindow(display_, browser_window_, x, y,
                       static_cast<unsigned int>(width),
                       static_cast<unsigned int>(height));
     XSync(display_, False);
-    XWindowAttributes attributes{};
-    if (XGetWindowAttributes(display_, browser_window_, &attributes) == 0) {
-      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    if (!EnsureParentage(x, y)) {
+      return KWEB_STATUS_PARENT_SURFACE_INVALID;
     }
-    *actual_width = attributes.width;
-    *actual_height = attributes.height;
+    XWindowAttributes attributes{};
+    bool exact_size_observed = false;
+    constexpr int kBoundsObservationAttempts = 40;
+    for (int attempt = 0; attempt < kBoundsObservationAttempts; ++attempt) {
+      if (XGetWindowAttributes(display_, browser_window_, &attributes) == 0) {
+        return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+      }
+      *actual_width = attributes.width;
+      *actual_height = attributes.height;
+      if (*actual_width == width && *actual_height == height) {
+        exact_size_observed = true;
+        break;
+      }
+      XSync(display_, False);
+      usleep(5000);
+    }
     x_ = x;
     y_ = y;
     if (browser_) {
       browser_->GetHost()->NotifyMoveOrResizeStarted();
       browser_->GetHost()->NotifyScreenInfoChanged();
     }
-    return *actual_width == width && *actual_height == height
-               ? KWEB_STATUS_OK
-               : KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    if (!exact_size_observed) {
+      std::fprintf(stderr,
+                   "KWEBSHELL_X11_BOUNDS_UNOBSERVED window=%lu parent=%lu "
+                   "requested=%d,%d actual=%d,%d\n",
+                   static_cast<unsigned long>(browser_window_),
+                   static_cast<unsigned long>(parent_), width, height,
+                   *actual_width, *actual_height);
+      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    }
+    return KWEB_STATUS_OK;
   }
 
   kweb_status SetSurfaceState(bool visible, bool focused) override {
@@ -433,12 +452,21 @@ public:
     }
     XSync(display_, False);
     XWindowAttributes attributes{};
-    if (XGetWindowAttributes(display_, browser_window_, &attributes) == 0) {
-      return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    bool expected_map_state_observed = false;
+    constexpr int kMapStateObservationAttempts = 40;
+    for (int attempt = 0; attempt < kMapStateObservationAttempts; ++attempt) {
+      if (XGetWindowAttributes(display_, browser_window_, &attributes) == 0) {
+        return KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+      }
+      if ((attributes.map_state != IsUnmapped) == visible) {
+        expected_map_state_observed = true;
+        break;
+      }
+      XSync(display_, False);
+      usleep(5000);
     }
-    return (attributes.map_state != IsUnmapped) == visible
-               ? KWEB_STATUS_OK
-               : KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
+    return expected_map_state_observed ? KWEB_STATUS_OK
+                                       : KWEB_STATUS_PLATFORM_INITIALIZATION_FAILED;
   }
 
   bool ValidateParentage() const override {
@@ -480,6 +508,35 @@ public:
   }
 
 private:
+  bool EnsureParentage(int32_t x, int32_t y) {
+    constexpr int kParentObservationAttempts = 40;
+    for (int attempt = 0; attempt < kParentObservationAttempts; ++attempt) {
+      XWindowAttributes parent_attributes{};
+      if (XGetWindowAttributes(display_, parent_, &parent_attributes) == 0) {
+        return false;
+      }
+      Window root = None;
+      Window actual_parent = None;
+      Window *children = nullptr;
+      unsigned int child_count = 0;
+      const Status queried = XQueryTree(display_, browser_window_, &root,
+                                        &actual_parent, &children, &child_count);
+      if (children != nullptr) {
+        XFree(children);
+      }
+      if (queried == 0) {
+        return false;
+      }
+      if (actual_parent == parent_) {
+        return true;
+      }
+      XReparentWindow(display_, browser_window_, parent_, x, y);
+      XSync(display_, False);
+      usleep(5000);
+    }
+    return false;
+  }
+
   Display *const display_;
   const Window parent_;
   int32_t x_;

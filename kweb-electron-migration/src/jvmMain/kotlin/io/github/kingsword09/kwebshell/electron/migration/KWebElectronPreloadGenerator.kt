@@ -74,6 +74,16 @@ public class KWebElectronPreloadGenerator public constructor() {
                 val modalInfo = if (it.isModal) " (modal, parent: ${it.parentWindowId})" else ""
                 val mainInfo = if (it.isMainWindow) " [Main]" else ""
                 appendLine("- [ ] Window `${it.id}`: \"${it.title}\"$mainInfo (Profile: `${it.profile}`)$modalInfo")
+                val fullscreenMode = when {
+                    it.kiosk -> "KIOSK"
+                    it.fullscreen -> "FULLSCREEN"
+                    else -> "WINDOWED"
+                }
+                appendLine("  - [ ] Register immutable parent/modality and call `setFullscreen($fullscreenMode)` from host code.")
+                appendLine("  - [ ] Apply typed capabilities: closable=${it.closable}, movable=${it.movable}, minimizable=${it.minimizable}, maximizable=${it.maximizable}, resizable=${it.resizable}, alwaysOnTop=${it.alwaysOnTop}.")
+                it.bounds?.let { bounds ->
+                    appendLine("  - [ ] Apply bounded `setBounds(${bounds.x}, ${bounds.y}, ${bounds.width}, ${bounds.height})` after registration.")
+                }
             }
         }
         appendLine()

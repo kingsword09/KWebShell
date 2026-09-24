@@ -139,6 +139,51 @@ class KWebElectronManifestTest {
         assertFailsWith<KWebElectronMigrationException> { KWebElectronPreloadGenerator().generate(blocked) }
     }
 
+    @Test
+    fun windowDeclarationsMapToTypedRfc0007Controls() {
+        val base = KWebElectronMigrationJson.decode(MANIFEST)
+        val configured = base.copy(
+            windows = listOf(
+                KWebElectronWindowDefinition(
+                    id = "main",
+                    title = "Main",
+                    isMainWindow = true,
+                    profile = "default",
+                    fullscreen = true,
+                    closable = false,
+                    movable = false,
+                    resizable = false,
+                    alwaysOnTop = true,
+                    bounds = KWebElectronWindowBounds(20, 30, 1024, 768),
+                ),
+            ),
+        )
+        val roundTrip = KWebElectronMigrationJson.decode(KWebElectronMigrationJson.encode(configured))
+        assertEquals(configured.windows, roundTrip.windows)
+        val checklist = KWebElectronPreloadGenerator().generate(configured).checklist
+        kotlin.test.assertTrue(checklist.contains("setFullscreen(FULLSCREEN)"))
+        kotlin.test.assertTrue(checklist.contains("closable=false"))
+        kotlin.test.assertTrue(checklist.contains("setBounds(20, 30, 1024, 768)"))
+    }
+
+    @Test
+    fun childKioskDeclarationsAreRejected() {
+        val base = KWebElectronMigrationJson.decode(MANIFEST)
+        val invalid = base.copy(
+            windows = listOf(
+                KWebElectronWindowDefinition("main", "Main", isMainWindow = true, profile = "default"),
+                KWebElectronWindowDefinition(
+                    id = "child",
+                    title = "Child",
+                    profile = "default",
+                    parentWindowId = "main",
+                    kiosk = true,
+                ),
+            ),
+        )
+        assertFailsWith<KWebElectronMigrationException> { KWebElectronManifestValidator.validate(invalid) }
+    }
+
     private companion object {
         val MANIFEST = """
             {

@@ -48,6 +48,14 @@ row; do not add a compatibility alias or fallback branch. The
 truth for those objectives. A Proposed RFC is absent from generated facades and
 does not imply compatibility.
 
+Manifest v2 window declarations map the closed BrowserWindow shape to
+caller-created Compose ownership and typed RFC 0007 controls. `parentWindowId`
+and `isModal` become immutable registration facts; fullscreen, kiosk, bounds,
+and the movable/minimizable/maximizable/closable/resizable/always-on-top flags
+become host-side typed mutations. Renderer code never receives a raw window
+handle or a force-close path. Dynamic BrowserWindow construction, arbitrary
+reparenting, and arbitrary close listeners remain blocking inventory findings.
+
 ## Manifest v2 and inventory prerequisites
 
 Manifest v2 requires an exact `rendererOrigin`, an explicit `rendererProfile`,

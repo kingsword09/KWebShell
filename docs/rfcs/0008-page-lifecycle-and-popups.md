@@ -1,6 +1,6 @@
 # RFC 0008: Page lifecycle, navigation events, popup policy, and renderer failure
 
-- Status: Proposed
+- Status: Accepted
 - Priority: P0
 - Owners: `kweb-core`, `kweb-desktop`, CEF native browser session
 - Depends on: RFC 0004, RFC 0007
@@ -182,9 +182,30 @@ renderer-evaluation API.
 
 ## Readiness review
 
-This section is completed in the review-only commit immediately before coding.
-The review must record the reviewed contract revision, review-pass identity,
-date, platform probes, findings/disposition, and `READY` or `NOT_READY`.
+- Reviewed revision: `7cfb3c1`, the contract and acceptance-matrix revision
+  reviewed before implementation.
+- Review pass: Codex implementation-readiness review, same contributor as the
+  eventual implementation; this is not an independent-person approval.
+- Date: 2026-09-24.
+- Decisions: `KWebPage` moves to the versioned `kweb.page/2` event envelope;
+  main/subframe identity is explicit; popup and before-unload decisions are
+  host-owned bounded requests; renderer termination is terminal; reload is a
+  typed operation; downloads remain RFC 0012; no generic Electron object or
+  script-evaluation API is added.
+- Feasibility: the existing pinned CEF 151 Alloy session already compiles the
+  `CefClient`, `CefDisplayHandler`, `CefLoadHandler`, `CefRequestHandler`, and
+  `CefLifeSpanHandler` surfaces used by the current browser session. RFC 0007
+  proves caller-owned native child creation on macOS, Windows, and Linux/X11.
+  The implementation will add the CEF popup, JS-dialog, favicon, and
+  responsiveness callbacks to that same native session and retain a hosted
+  compile/runtime probe before evidence recording. No new OS window primitive
+  or alternate renderer is required.
+- Findings and disposition: the proposal did not settle public signatures,
+  frame/origin identity, bounded title/favicon data, popup owner semantics,
+  before-unload terminal precedence, renderer failure ordering, or its
+  relationship to RFC 0012 downloads. This revision settles each item and
+  adds A1-A11 mapping, explicit limits, stable errors, and evidence inputs.
+- Decision: `READY`.
 
 ## Evidence lifecycle
 

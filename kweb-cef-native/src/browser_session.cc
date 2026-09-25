@@ -15,6 +15,7 @@
 #include <string>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -28,6 +29,7 @@
 #include "include/cef_client.h"
 #include "include/cef_cookie.h"
 #include "include/cef_keyboard_handler.h"
+#include "include/cef_jsdialog_handler.h"
 #include "include/cef_parser.h"
 #include "include/cef_request_context.h"
 #include "include/cef_request_context_handler.h"
@@ -162,17 +164,73 @@ ValidateProfilePath(kweb_string_view value,
   }
 }
 
-std::optional<std::string> ValidateUrl(const char *data, size_t size) {
+std::optional<std::string> ValidateUrl(const char *data, size_t size,
+                                       bool allow_about_blank) {
   if (data == nullptr || size == 0 || size > kMaximumTextSize ||
       !IsValidUtf8(data, size)) {
     return std::nullopt;
   }
   std::string url(data, size);
   CefURLParts parts;
-  if (!CefParseURL(url, parts) || CefString(&parts.scheme).empty()) {
+  if (!CefParseURL(url, parts)) {
+    return std::nullopt;
+  }
+  const std::string scheme = CefString(&parts.scheme).ToString();
+  const bool supported_scheme = scheme == "http" || scheme == "https" ||
+                                scheme == "app" ||
+                                scheme == "chrome-extension";
+  const bool blank_document = allow_about_blank && scheme == "about" &&
+                              CefString(&parts.path).ToString() == "blank" &&
+                              CefString(&parts.host).empty() &&
+                              CefString(&parts.username).empty() &&
+                              CefString(&parts.password).empty();
+  if (!supported_scheme && !blank_document) {
     return std::nullopt;
   }
   return url;
+}
+
+std::string BoundUtf8(std::string value, size_t maximum_bytes) {
+  std::string sanitized;
+  sanitized.reserve(value.size());
+  for (const char byte : value) {
+    if (byte == '\0') {
+      sanitized.append("\xEF\xBF\xBD", 3);
+    } else {
+      sanitized.push_back(byte);
+    }
+  }
+  value = std::move(sanitized);
+  if (value.size() <= maximum_bytes) {
+    return value;
+  }
+  value.resize(maximum_bytes);
+  while (!value.empty() && !IsValidUtf8(value.data(), value.size())) {
+    value.pop_back();
+  }
+  return value;
+}
+
+std::optional<std::string> CanonicalUrl(const std::string &value) {
+  CefURLParts parts;
+  if (!CefParseURL(value, parts)) {
+    return std::nullopt;
+  }
+  CefString canonical;
+  if (!CefCreateURL(parts, canonical)) {
+    return std::nullopt;
+  }
+  const std::string result = canonical.ToString();
+  if (result.empty() || result.size() > kMaximumTextSize ||
+      !IsValidUtf8(result.data(), result.size())) {
+    return std::nullopt;
+  }
+  return result;
+}
+
+std::string DocumentUrl(const std::string &url) {
+  const size_t fragment = url.find('#');
+  return fragment == std::string::npos ? url : url.substr(0, fragment);
 }
 
 
@@ -189,6 +247,11 @@ public:
   kweb_status Create(const kweb_browser_config *config,
                      kweb_browser_handle *browser_out);
   kweb_status Navigate(kweb_browser_handle handle, std::string url);
+  kweb_status Reload(kweb_browser_handle handle, bool ignore_cache);
+  kweb_status RespondToBeforeUnload(kweb_browser_handle handle,
+                                    uint64_t request_id, bool proceed);
+  kweb_status RespondToPopup(kweb_browser_handle handle, uint64_t request_id,
+                             bool allow);
   kweb_status SetBounds(kweb_browser_handle handle, int32_t x, int32_t y,
                         int32_t width, int32_t height);
   kweb_status SetSurfaceState(kweb_browser_handle handle, bool visible,
@@ -234,6 +297,7 @@ class SessionClient final : public CefClient,
                             public CefDisplayHandler,
                             public CefFocusHandler,
                             public CefKeyboardHandler,
+                            public CefJSDialogHandler,
                             public CefLifeSpanHandler,
                             public CefLoadHandler,
                             public CefRequestHandler {
@@ -245,6 +309,7 @@ public:
   CefRefPtr<CefDisplayHandler> GetDisplayHandler() override { return this; }
   CefRefPtr<CefFocusHandler> GetFocusHandler() override { return this; }
   CefRefPtr<CefKeyboardHandler> GetKeyboardHandler() override { return this; }
+  CefRefPtr<CefJSDialogHandler> GetJSDialogHandler() override { return this; }
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
   CefRefPtr<CefLoadHandler> GetLoadHandler() override { return this; }
   CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
@@ -253,6 +318,8 @@ public:
                        const CefString &url) override;
   void OnTitleChange(CefRefPtr<CefBrowser> browser,
                      const CefString &title) override;
+  void OnFaviconURLChange(CefRefPtr<CefBrowser> browser,
+                          const std::vector<CefString> &icon_urls) override;
   void OnAfterCreated(CefRefPtr<CefBrowser> browser) override;
   bool DoClose(CefRefPtr<CefBrowser> browser) override;
   void OnBeforeClose(CefRefPtr<CefBrowser> browser) override;
@@ -276,6 +343,24 @@ public:
   void OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser,
                                  TerminationStatus status, int error_code,
                                  const CefString &error_string) override;
+  bool OnRenderProcessUnresponsive(
+      CefRefPtr<CefBrowser> browser,
+      CefRefPtr<CefUnresponsiveProcessCallback> callback) override;
+  void OnRenderProcessResponsive(CefRefPtr<CefBrowser> browser) override;
+  bool OnBeforePopup(CefRefPtr<CefBrowser> browser,
+                     CefRefPtr<CefFrame> frame, int popup_id,
+                     const CefString &target_url,
+                     const CefString &target_frame_name,
+                     cef_window_open_disposition_t target_disposition,
+                     bool user_gesture, const CefPopupFeatures &popup_features,
+                     CefWindowInfo &window_info, CefRefPtr<CefClient> &client,
+                     CefBrowserSettings &settings,
+                     CefRefPtr<CefDictionaryValue> &extra_info,
+                     bool *no_javascript_access) override;
+  bool OnBeforeUnloadDialog(CefRefPtr<CefBrowser> browser,
+                            const CefString &message_text, bool is_reload,
+                            CefRefPtr<CefJSDialogCallback> callback) override;
+  void OnResetDialogState(CefRefPtr<CefBrowser> browser) override;
 
 private:
   const std::weak_ptr<BrowserSession> session_;
@@ -403,6 +488,12 @@ public:
     if (!ready_.load(std::memory_order_acquire)) {
       return KWEB_STATUS_BROWSER_NOT_READY;
     }
+    {
+      std::lock_guard lock(page_request_mutex_);
+      if (!before_unload_requests_.empty()) {
+        return KWEB_STATUS_PAGE_OPERATION_PENDING;
+      }
+    }
     auto self = shared_from_this();
     return CefPostTask(
                TID_UI,
@@ -417,6 +508,81 @@ public:
                    std::move(self), std::move(url)))
                ? KWEB_STATUS_OK
                : KWEB_STATUS_CEF_UI_TASK_FAILED;
+  }
+
+  kweb_status Reload(bool ignore_cache) {
+    if (closing_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_BROWSER_CLOSING;
+    }
+    if (!ready_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_BROWSER_NOT_READY;
+    }
+    {
+      std::lock_guard lock(page_request_mutex_);
+      if (!before_unload_requests_.empty()) {
+        return KWEB_STATUS_PAGE_OPERATION_PENDING;
+      }
+    }
+    auto self = shared_from_this();
+    return CefPostTask(
+               TID_UI,
+               base::BindOnce(
+                   [](std::shared_ptr<BrowserSession> session,
+                      bool reload_ignoring_cache) {
+                     if (!session->closing_.load(std::memory_order_acquire) &&
+                         session->browser_) {
+                       if (reload_ignoring_cache) {
+                         session->browser_->ReloadIgnoreCache();
+                       } else {
+                         session->browser_->Reload();
+                       }
+                     }
+                   },
+                   std::move(self), ignore_cache))
+               ? KWEB_STATUS_OK
+               : KWEB_STATUS_CEF_UI_TASK_FAILED;
+  }
+
+  kweb_status RespondToBeforeUnload(uint64_t request_id, bool proceed) {
+    if (request_id == 0) {
+      return KWEB_STATUS_PAGE_REQUEST_INVALID;
+    }
+    CefRefPtr<CefJSDialogCallback> callback;
+    {
+      std::lock_guard lock(page_request_mutex_);
+      const auto found = before_unload_requests_.find(request_id);
+      if (found == before_unload_requests_.end()) {
+        return KWEB_STATUS_PAGE_REQUEST_NOT_FOUND;
+      }
+      callback = found->second;
+      before_unload_requests_.erase(found);
+    }
+    if (CefCurrentlyOn(TID_UI)) {
+      callback->Continue(proceed, {});
+      return KWEB_STATUS_OK;
+    }
+    return CefPostTask(
+               TID_UI,
+               base::BindOnce(
+                   [](CefRefPtr<CefJSDialogCallback> continuation,
+                      bool should_proceed) {
+                     continuation->Continue(should_proceed, {});
+                   },
+                   std::move(callback), proceed))
+               ? KWEB_STATUS_OK
+               : KWEB_STATUS_CEF_UI_TASK_FAILED;
+  }
+
+  kweb_status RespondToPopup(uint64_t request_id, bool allow) {
+    (void)allow;
+    if (request_id == 0) {
+      return KWEB_STATUS_PAGE_REQUEST_INVALID;
+    }
+    std::lock_guard lock(page_request_mutex_);
+    if (pending_popups_.erase(request_id) == 0) {
+      return KWEB_STATUS_PAGE_REQUEST_NOT_FOUND;
+    }
+    return KWEB_STATUS_OK;
   }
 
   kweb_status SetBounds(int32_t x, int32_t y, int32_t width, int32_t height) {
@@ -733,6 +899,10 @@ public:
         !browser->GetHost()->IsWindowRenderingDisabled() &&
         browser->GetHost()->GetWindowHandle() != kNullWindowHandle;
     browser_ = browser;
+    if (browser_->GetMainFrame()) {
+      main_frame_id_ = browser_->GetMainFrame()->GetIdentifier().ToString();
+      current_main_url_ = browser_->GetMainFrame()->GetURL().ToString();
+    }
     surface_->BrowserCreated(browser);
     if (!valid_context || !valid_rendering || !surface_->ValidateParentage()) {
       Fatal(KWEB_STATUS_BROWSER_CREATE_FAILED, "browser-contract-invalid");
@@ -799,19 +969,86 @@ public:
     ResetDevToolsState();
   }
 
-  void AddressChanged(const std::string &url) {
-    Emit(KWEB_BROWSER_EVENT_ADDRESS_CHANGED, 0, url, 0, 0, 0);
+  void AddressChanged(CefRefPtr<CefFrame> frame, const std::string &url) {
+    const bool main_frame = frame && frame->IsMain();
+    const std::string frame_id = frame ? frame->GetIdentifier().ToString() : "";
+    const uint32_t frame_scope = main_frame ? KWEB_BROWSER_FRAME_MAIN
+                                            : KWEB_BROWSER_FRAME_SUBFRAME;
+    const std::string canonical_url = CanonicalUrl(url).value_or(url);
+    const std::string origin = BridgeOriginFromUrl(canonical_url).value_or("");
+    if (main_frame) {
+      const bool same_document_url =
+          DocumentUrl(current_main_url_) == DocumentUrl(canonical_url);
+      const bool same_document = main_frame_committed_ &&
+                                 current_main_url_ != canonical_url &&
+                                 (same_document_url ||
+                                  (pending_main_url_.empty() && !loading_));
+      if (same_document) {
+        Emit(KWEB_BROWSER_EVENT_SAME_DOCUMENT_NAVIGATION, 0, canonical_url, 0,
+             0, 0, frame_id, frame_scope, KWEB_BROWSER_REASON_NONE, 0, origin,
+             canonical_url);
+      } else {
+        Emit(KWEB_BROWSER_EVENT_NAVIGATION_COMMITTED, 0, canonical_url, 0, 0,
+             0, frame_id, frame_scope, KWEB_BROWSER_REASON_NONE, 0, origin,
+             canonical_url);
+        TitleChanged("");
+        FaviconChanged({});
+      }
+      current_main_url_ = canonical_url;
+      main_frame_committed_ = true;
+      pending_main_url_.clear();
+    }
+    Emit(KWEB_BROWSER_EVENT_ADDRESS_CHANGED, 0, canonical_url, 0, 0, 0,
+         frame_id, frame_scope, KWEB_BROWSER_REASON_NONE, 0, origin,
+         canonical_url);
   }
 
   void TitleChanged(const std::string &title) {
-    Emit(KWEB_BROWSER_EVENT_TITLE_CHANGED, 0, title, 0, 0, 0);
+    const std::string url = browser_ && browser_->GetMainFrame()
+                                ? browser_->GetMainFrame()->GetURL().ToString()
+                                : current_main_url_;
+    const std::string bounded_title = BoundUtf8(title, 4096);
+    Emit(KWEB_BROWSER_EVENT_TITLE_CHANGED, 0, bounded_title, 0, 0, 0,
+         browser_ ? browser_->GetMainFrame()->GetIdentifier().ToString() : "",
+         KWEB_BROWSER_FRAME_MAIN, KWEB_BROWSER_REASON_NONE, 0,
+         BridgeOriginFromUrl(url).value_or(""), url, bounded_title);
+  }
+
+  void FaviconChanged(const std::vector<CefString> &icon_urls) {
+    const std::string url = browser_ ? browser_->GetMainFrame()->GetURL().ToString()
+                                     : std::string();
+    std::string details;
+    constexpr size_t kMaximumFaviconUrls = 8;
+    size_t accepted = 0;
+    for (const auto &icon_url : icon_urls) {
+      if (accepted == kMaximumFaviconUrls) break;
+      const auto canonical = CanonicalUrl(icon_url.ToString());
+      if (!canonical || canonical->size() > 2048) {
+        continue;
+      }
+      if (!details.empty()) {
+        details.push_back('\n');
+      }
+      details.append(*canonical);
+      ++accepted;
+    }
+    Emit(KWEB_BROWSER_EVENT_FAVICON_CHANGED, 0, {}, 0, 0, 0,
+         browser_ ? browser_->GetMainFrame()->GetIdentifier().ToString() : "",
+         KWEB_BROWSER_FRAME_MAIN, KWEB_BROWSER_REASON_NONE, 0,
+         BridgeOriginFromUrl(url).value_or(""), url, {}, details);
   }
 
   void NavigationStarted(const std::string &url, bool user_gesture,
                          bool redirect) {
+    pending_main_url_ = CanonicalUrl(url).value_or(url);
+    loading_ = true;
+    const std::string canonical_url = pending_main_url_;
     uint32_t flags = user_gesture ? KWEB_BROWSER_FLAG_USER_GESTURE : 0;
     flags |= redirect ? KWEB_BROWSER_FLAG_REDIRECT : 0;
-    Emit(KWEB_BROWSER_EVENT_NAVIGATION_STARTED, flags, url, 0, 0, 0);
+    Emit(KWEB_BROWSER_EVENT_NAVIGATION_STARTED, flags, canonical_url, 0, 0, 0,
+         browser_ ? browser_->GetMainFrame()->GetIdentifier().ToString() : "",
+         KWEB_BROWSER_FRAME_MAIN, KWEB_BROWSER_REASON_NONE, 0,
+         BridgeOriginFromUrl(canonical_url).value_or(""), canonical_url);
   }
 
   // Real browser-process keyboard input is the only production gesture
@@ -821,18 +1058,40 @@ public:
   }
 
   void LoadingChanged(bool loading, bool can_go_back, bool can_go_forward) {
+    loading_ = loading;
     uint32_t flags = loading ? KWEB_BROWSER_FLAG_LOADING : 0;
     flags |= can_go_back ? KWEB_BROWSER_FLAG_CAN_GO_BACK : 0;
     flags |= can_go_forward ? KWEB_BROWSER_FLAG_CAN_GO_FORWARD : 0;
     Emit(KWEB_BROWSER_EVENT_LOADING_STATE_CHANGED, flags, {}, 0, 0, 0);
   }
 
-  void LoadEnded(const std::string &url, int status_code) {
-    Emit(KWEB_BROWSER_EVENT_LOAD_ENDED, 0, url, status_code, 0, 0);
+  void LoadEnded(CefRefPtr<CefFrame> frame, const std::string &url,
+                 int status_code) {
+    Emit(KWEB_BROWSER_EVENT_LOAD_ENDED, 0, url, status_code, 0, 0,
+         frame ? frame->GetIdentifier().ToString() : "",
+         frame && frame->IsMain() ? KWEB_BROWSER_FRAME_MAIN
+                                  : KWEB_BROWSER_FRAME_SUBFRAME,
+         KWEB_BROWSER_REASON_NONE, 0, BridgeOriginFromUrl(url).value_or(""),
+         url);
+    if (frame && frame->IsMain()) {
+      pending_main_url_.clear();
+      loading_ = false;
+    }
   }
 
-  void LoadFailed(const std::string &url, int error_code) {
-    Emit(KWEB_BROWSER_EVENT_LOAD_FAILED, 0, url, error_code, 0, 0);
+  void LoadFailed(CefRefPtr<CefFrame> frame, const std::string &url,
+                  int error_code) {
+    Emit(KWEB_BROWSER_EVENT_LOAD_FAILED, 0, url, error_code, 0, 0,
+         frame ? frame->GetIdentifier().ToString() : "",
+         frame && frame->IsMain() ? KWEB_BROWSER_FRAME_MAIN
+                                  : KWEB_BROWSER_FRAME_SUBFRAME,
+         error_code == ERR_ABORTED ? KWEB_BROWSER_REASON_NAVIGATION_ABORTED
+                                   : KWEB_BROWSER_REASON_NAVIGATION_FAILED,
+         0, BridgeOriginFromUrl(url).value_or(""), url);
+    if (frame && frame->IsMain()) {
+      pending_main_url_.clear();
+      loading_ = false;
+    }
   }
 
   // Test-only: crashes the renderer process so the stream conformance can
@@ -867,8 +1126,140 @@ public:
     if (bridge_router_ && browser_) {
       bridge_router_->OnRenderProcessTerminated(browser_);
     }
-    Fatal(error_code == 0 ? status : error_code,
-          error.empty() ? "renderer-terminated" : error);
+    uint32_t reason = KWEB_BROWSER_REASON_RENDERER_UNKNOWN;
+    if (status == TS_PROCESS_CRASHED || status == TS_ABNORMAL_TERMINATION) {
+      reason = KWEB_BROWSER_REASON_RENDERER_CRASH;
+    } else if (status == TS_PROCESS_WAS_KILLED) {
+      reason = KWEB_BROWSER_REASON_RENDERER_KILLED;
+    } else if (status == TS_PROCESS_OOM) {
+      reason = KWEB_BROWSER_REASON_RENDERER_OOM;
+    }
+    Emit(KWEB_BROWSER_EVENT_RENDERER_TERMINATED, 0,
+         error.empty() ? "renderer-terminated" : error,
+         error_code == 0 ? status : error_code, 0, 0,
+         browser_ ? browser_->GetMainFrame()->GetIdentifier().ToString() : "",
+         KWEB_BROWSER_FRAME_MAIN, reason);
+    fatal_emitted_.store(true, std::memory_order_release);
+    closing_.store(true, std::memory_order_release);
+    BeginClose();
+  }
+
+  void RendererUnresponsive() {
+    const std::string url = browser_ ? browser_->GetMainFrame()->GetURL().ToString()
+                                     : std::string();
+    Emit(KWEB_BROWSER_EVENT_RENDERER_UNRESPONSIVE, 0, {}, 0, 0, 0,
+         browser_ ? browser_->GetMainFrame()->GetIdentifier().ToString() : "",
+         KWEB_BROWSER_FRAME_MAIN, KWEB_BROWSER_REASON_NONE, 0,
+         BridgeOriginFromUrl(url).value_or(""), url);
+  }
+
+  void RendererResponsive() {
+    const std::string url = browser_ ? browser_->GetMainFrame()->GetURL().ToString()
+                                     : std::string();
+    Emit(KWEB_BROWSER_EVENT_RENDERER_RESPONSIVE, 0, {}, 0, 0, 0,
+         browser_ ? browser_->GetMainFrame()->GetIdentifier().ToString() : "",
+         KWEB_BROWSER_FRAME_MAIN, KWEB_BROWSER_REASON_NONE, 0,
+         BridgeOriginFromUrl(url).value_or(""), url);
+  }
+
+  bool BeforeUnloadRequested(const std::string &message, bool is_reload,
+                             CefRefPtr<CefJSDialogCallback> callback) {
+    CEF_REQUIRE_UI_THREAD();
+    if (!callback) {
+      return true;
+    }
+    if (!browser_ || closing_.load(std::memory_order_acquire)) {
+      callback->Continue(false, {});
+      return true;
+    }
+    if (terminal_emitted_.load(std::memory_order_acquire)) {
+      callback->Continue(false, {});
+      return true;
+    }
+    const uint64_t request_id = AllocatePageRequestId();
+    if (request_id == 0) {
+      callback->Continue(false, {});
+      return true;
+    }
+    {
+      std::lock_guard lock(page_request_mutex_);
+      before_unload_requests_.emplace(request_id, callback);
+    }
+    const std::string url = browser_->GetMainFrame()->GetURL().ToString();
+    const std::string bounded_message = BoundUtf8(message, 4096);
+    Emit(KWEB_BROWSER_EVENT_BEFORE_UNLOAD_REQUESTED, 0, bounded_message, 0, 0, 0,
+         browser_->GetMainFrame()->GetIdentifier().ToString(), KWEB_BROWSER_FRAME_MAIN,
+         KWEB_BROWSER_REASON_NONE, request_id, BridgeOriginFromUrl(url).value_or(""),
+         url, {}, is_reload ? "reload" : "navigate");
+    CefPostDelayedTask(
+        TID_UI,
+        base::BindOnce(
+            [](std::shared_ptr<BrowserSession> session, uint64_t id) {
+              session->TimeoutBeforeUnload(id);
+            },
+            shared_from_this(), request_id),
+        5000);
+    return true;
+  }
+
+  bool PopupRequested(CefRefPtr<CefFrame> frame, const std::string &target_url,
+                      const std::string &target_frame_name, bool user_gesture,
+                      const CefPopupFeatures &features) {
+    CEF_REQUIRE_UI_THREAD();
+    if (!frame || closing_.load(std::memory_order_acquire)) {
+      return true;
+    }
+    const uint64_t request_id = AllocatePageRequestId();
+    if (request_id == 0) {
+      return true;
+    }
+    {
+      std::lock_guard lock(page_request_mutex_);
+      pending_popups_.emplace(request_id, true);
+    }
+    const int x = features.xSet && features.x >= 0
+                      ? std::clamp(features.x, 0, std::max(0, width_ - 1))
+                      : -1;
+    const int y = features.ySet && features.y >= 0
+                      ? std::clamp(features.y, 0, std::max(0, height_ - 1))
+                      : -1;
+    const int width = features.widthSet && features.width > 0
+                          ? std::min(features.width, width_)
+                          : -1;
+    const int height = features.heightSet && features.height > 0
+                           ? std::min(features.height, height_)
+                           : -1;
+    const std::string details = std::to_string(x) + "," + std::to_string(y) +
+                                "," + std::to_string(width) + "," +
+                                std::to_string(height) + "," +
+                                (features.isPopup ? "1" : "0");
+    const std::string opener_url = frame->GetURL().ToString();
+    const std::string canonical_target = target_url.empty()
+                                             ? "about:blank"
+                                             : CanonicalUrl(target_url).value_or(target_url);
+    Emit(KWEB_BROWSER_EVENT_POPUP_REQUESTED,
+         user_gesture ? KWEB_BROWSER_FLAG_USER_GESTURE : 0, canonical_target, 0, 0,
+         0, frame->GetIdentifier().ToString(),
+         frame->IsMain() ? KWEB_BROWSER_FRAME_MAIN : KWEB_BROWSER_FRAME_SUBFRAME,
+         KWEB_BROWSER_REASON_NONE, request_id,
+         BridgeOriginFromUrl(opener_url).value_or(""), canonical_target,
+         BoundUtf8(target_frame_name, 4096), details);
+    CefPostDelayedTask(
+        TID_UI,
+        base::BindOnce(
+            [](std::shared_ptr<BrowserSession> session, uint64_t id) {
+              session->TimeoutPopup(id);
+            },
+            shared_from_this(), request_id),
+        5000);
+    // CEF cannot suspend OnBeforePopup. Always prevent its unmanaged popup;
+    // an allowed decision creates a separate caller-owned Alloy child.
+    return true;
+  }
+
+  void ResetDialogs() {
+    CEF_REQUIRE_UI_THREAD();
+    CancelPendingPageRequests();
   }
 
   bool CompleteBrowserClose(CefRefPtr<CefBrowser> browser) {
@@ -960,6 +1351,51 @@ public:
   }
 
 private:
+  uint64_t AllocatePageRequestId() {
+    CEF_REQUIRE_UI_THREAD();
+    if (next_page_request_id_ == 0 ||
+        next_page_request_id_ > kMaximumBridgeRequestId) {
+      Fatal(KWEB_STATUS_HANDLE_EXHAUSTED, "page-request-id-exhausted");
+      return 0;
+    }
+    return next_page_request_id_++;
+  }
+
+  void TimeoutBeforeUnload(uint64_t request_id) {
+    CEF_REQUIRE_UI_THREAD();
+    CefRefPtr<CefJSDialogCallback> callback;
+    {
+      std::lock_guard lock(page_request_mutex_);
+      const auto found = before_unload_requests_.find(request_id);
+      if (found == before_unload_requests_.end()) {
+        return;
+      }
+      callback = found->second;
+      before_unload_requests_.erase(found);
+    }
+    callback->Continue(false, {});
+  }
+
+  void TimeoutPopup(uint64_t request_id) {
+    CEF_REQUIRE_UI_THREAD();
+    std::lock_guard lock(page_request_mutex_);
+    pending_popups_.erase(request_id);
+  }
+
+  void CancelPendingPageRequests() {
+    CEF_REQUIRE_UI_THREAD();
+    std::map<uint64_t, CefRefPtr<CefJSDialogCallback>> callbacks;
+    {
+      std::lock_guard lock(page_request_mutex_);
+      callbacks.swap(before_unload_requests_);
+      pending_popups_.clear();
+    }
+    for (const auto &[request_id, callback] : callbacks) {
+      (void)request_id;
+      callback->Continue(false, {});
+    }
+  }
+
   void ShowDevToolsOnUiThread() {
     CEF_REQUIRE_UI_THREAD();
     if (closing_.load(std::memory_order_acquire) || !browser_) {
@@ -1135,6 +1571,7 @@ private:
     TraceCloseStage(handle_, "begin-close");
     closing_.store(true, std::memory_order_release);
     ready_.store(false, std::memory_order_release);
+    CancelPendingPageRequests();
     if (!request_context_) {
       CancelPendingProfileContextWait();
       CompleteTerminal();
@@ -1213,7 +1650,8 @@ private:
                    "KWEBSHELL_NATIVE_FATAL browser=%llu status=%d code=%s\n",
                    static_cast<unsigned long long>(handle_), status_code,
                    code.c_str());
-      Emit(KWEB_BROWSER_EVENT_FATAL_ERROR, 0, code, status_code, 0, 0);
+      Emit(KWEB_BROWSER_EVENT_FATAL_ERROR, 0, code, status_code, 0, 0,
+           {}, KWEB_BROWSER_FRAME_MAIN, KWEB_BROWSER_REASON_NATIVE_FAILURE);
     }
   }
 
@@ -1271,13 +1709,33 @@ private:
 
   void Emit(kweb_browser_event_type type, uint32_t flags,
             const std::string &text, int32_t status_code, int32_t width,
-            int32_t height) {
+            int32_t height, const std::string &frame_id = {},
+            uint32_t frame_scope = KWEB_BROWSER_FRAME_MAIN,
+            uint32_t reason = KWEB_BROWSER_REASON_NONE,
+            uint64_t request_id = 0, const std::string &origin = {},
+            const std::string &url = {}, const std::string &title = {},
+            const std::string &details = {}) {
+    const std::string effective_frame_id = frame_id.empty()
+                                               ? (main_frame_id_.empty() ? "0" : main_frame_id_)
+                                               : frame_id;
+    std::string effective_origin = origin;
+    if (effective_origin.empty() && browser_ && browser_->GetMainFrame()) {
+      effective_origin = BridgeOriginFromUrl(browser_->GetMainFrame()->GetURL()).value_or("");
+    }
     const kweb_string_view text_view = {text.data(), text.size()};
+    const kweb_string_view frame_id_view = {effective_frame_id.data(), effective_frame_id.size()};
+    const kweb_string_view origin_view = {effective_origin.data(), effective_origin.size()};
+    const kweb_string_view url_view = {url.data(), url.size()};
+    const kweb_string_view title_view = {title.data(), title.size()};
+    const kweb_string_view details_view = {details.data(), details.size()};
     const kweb_browser_event event = {
         sizeof(kweb_browser_event), KWEB_ABI_VERSION, type, flags,
         engine_,                    handle_,          ++sequence_,
         text_view,                  status_code,      width,
-        height,                     0};
+        height,                     0,                request_id,
+        frame_id_view,              frame_scope,      reason,
+        origin_view,                url_view,         title_view,
+        details_view};
     callback_(user_data_, &event);
   }
 
@@ -1320,6 +1778,15 @@ private:
   std::map<uint64_t, BridgeRequest> bridge_requests_;
   std::map<int64_t, uint64_t> bridge_query_ids_;
   uint64_t next_bridge_request_id_ = 1;
+  std::string main_frame_id_;
+  std::string current_main_url_;
+  std::string pending_main_url_;
+  bool main_frame_committed_ = false;
+  bool loading_ = false;
+  std::mutex page_request_mutex_;
+  std::map<uint64_t, CefRefPtr<CefJSDialogCallback>> before_unload_requests_;
+  std::map<uint64_t, bool> pending_popups_;
+  uint64_t next_page_request_id_ = 1;
   uint64_t sequence_ = 0;
   std::atomic<bool> ready_ = false;
   std::atomic<bool> closing_ = false;
@@ -1348,9 +1815,9 @@ void SessionClient::OnAddressChange(CefRefPtr<CefBrowser> browser,
                                     CefRefPtr<CefFrame> frame,
                                     const CefString &url) {
   CEF_REQUIRE_UI_THREAD();
-  if (frame->IsMain()) {
+  if (frame) {
     if (auto session = session_.lock()) {
-      session->AddressChanged(url.ToString());
+      session->AddressChanged(frame, url.ToString());
     }
   }
 }
@@ -1361,6 +1828,15 @@ void SessionClient::OnTitleChange(CefRefPtr<CefBrowser> browser,
   (void)browser;
   if (auto session = session_.lock()) {
     session->TitleChanged(title.ToString());
+  }
+}
+
+void SessionClient::OnFaviconURLChange(
+    CefRefPtr<CefBrowser> browser, const std::vector<CefString> &icon_urls) {
+  CEF_REQUIRE_UI_THREAD();
+  (void)browser;
+  if (auto session = session_.lock()) {
+    session->FaviconChanged(icon_urls);
   }
 }
 
@@ -1401,9 +1877,9 @@ void SessionClient::OnLoadEnd(CefRefPtr<CefBrowser> browser,
                               CefRefPtr<CefFrame> frame, int http_status_code) {
   CEF_REQUIRE_UI_THREAD();
   (void)browser;
-  if (frame->IsMain()) {
+  if (frame) {
     if (auto session = session_.lock()) {
-      session->LoadEnded(frame->GetURL().ToString(), http_status_code);
+      session->LoadEnded(frame, frame->GetURL().ToString(), http_status_code);
     }
   }
 }
@@ -1415,9 +1891,9 @@ void SessionClient::OnLoadError(CefRefPtr<CefBrowser> browser,
   CEF_REQUIRE_UI_THREAD();
   (void)browser;
   (void)error_text;
-  if (frame->IsMain() && error_code != ERR_ABORTED) {
+  if (frame && error_code != ERR_ABORTED) {
     if (auto session = session_.lock()) {
-      session->LoadFailed(failed_url.ToString(), error_code);
+      session->LoadFailed(frame, failed_url.ToString(), error_code);
     }
   }
 }
@@ -1470,6 +1946,72 @@ void SessionClient::OnRenderProcessTerminated(
   (void)browser;
   if (auto session = session_.lock()) {
     session->RendererTerminated(status, error_code, error_string.ToString());
+  }
+}
+
+bool SessionClient::OnRenderProcessUnresponsive(
+    CefRefPtr<CefBrowser> browser,
+    CefRefPtr<CefUnresponsiveProcessCallback> callback) {
+  CEF_REQUIRE_UI_THREAD();
+  (void)browser;
+  (void)callback;
+  if (auto session = session_.lock()) {
+    session->RendererUnresponsive();
+  }
+  // Alloy has no default top-level prompt; keep waiting for the renderer or
+  // its normal termination callback.
+  return true;
+}
+
+void SessionClient::OnRenderProcessResponsive(CefRefPtr<CefBrowser> browser) {
+  CEF_REQUIRE_UI_THREAD();
+  (void)browser;
+  if (auto session = session_.lock()) {
+    session->RendererResponsive();
+  }
+}
+
+bool SessionClient::OnBeforePopup(
+    CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int popup_id,
+    const CefString &target_url, const CefString &target_frame_name,
+    cef_window_open_disposition_t target_disposition, bool user_gesture,
+    const CefPopupFeatures &popup_features, CefWindowInfo &window_info,
+    CefRefPtr<CefClient> &client, CefBrowserSettings &settings,
+    CefRefPtr<CefDictionaryValue> &extra_info, bool *no_javascript_access) {
+  CEF_REQUIRE_UI_THREAD();
+  (void)browser;
+  (void)popup_id;
+  (void)target_disposition;
+  (void)window_info;
+  (void)client;
+  (void)settings;
+  (void)extra_info;
+  (void)no_javascript_access;
+  if (auto session = session_.lock()) {
+    return session->PopupRequested(frame, target_url.ToString(),
+                                   target_frame_name.ToString(), user_gesture,
+                                   popup_features);
+  }
+  return true;
+}
+
+bool SessionClient::OnBeforeUnloadDialog(
+    CefRefPtr<CefBrowser> browser, const CefString &message_text,
+    bool is_reload, CefRefPtr<CefJSDialogCallback> callback) {
+  CEF_REQUIRE_UI_THREAD();
+  (void)browser;
+  if (auto session = session_.lock()) {
+    return session->BeforeUnloadRequested(message_text.ToString(), is_reload,
+                                          callback);
+  }
+  return false;
+}
+
+void SessionClient::OnResetDialogState(CefRefPtr<CefBrowser> browser) {
+  CEF_REQUIRE_UI_THREAD();
+  (void)browser;
+  if (auto session = session_.lock()) {
+    session->ResetDialogs();
   }
 }
 
@@ -1573,7 +2115,7 @@ kweb_status SessionRegistry::Create(const kweb_browser_config *config,
     return KWEB_STATUS_PROFILE_PATH_INVALID;
   }
   const auto url =
-      ValidateUrl(config->initial_url.data, config->initial_url.size);
+      ValidateUrl(config->initial_url.data, config->initial_url.size, true);
   if (!url) {
     return KWEB_STATUS_NAVIGATION_INVALID;
   }
@@ -1691,6 +2233,26 @@ kweb_status SessionRegistry::Navigate(kweb_browser_handle handle,
                  : KWEB_STATUS_INVALID_HANDLE;
 }
 
+kweb_status SessionRegistry::Reload(kweb_browser_handle handle,
+                                    bool ignore_cache) {
+  auto session = Lookup(handle);
+  return session ? session->Reload(ignore_cache) : KWEB_STATUS_INVALID_HANDLE;
+}
+
+kweb_status SessionRegistry::RespondToBeforeUnload(
+    kweb_browser_handle handle, uint64_t request_id, bool proceed) {
+  auto session = Lookup(handle);
+  return session ? session->RespondToBeforeUnload(request_id, proceed)
+                 : KWEB_STATUS_INVALID_HANDLE;
+}
+
+kweb_status SessionRegistry::RespondToPopup(kweb_browser_handle handle,
+                                            uint64_t request_id, bool allow) {
+  auto session = Lookup(handle);
+  return session ? session->RespondToPopup(request_id, allow)
+                 : KWEB_STATUS_INVALID_HANDLE;
+}
+
 kweb_status SessionRegistry::SetBounds(kweb_browser_handle handle, int32_t x,
                                       int32_t y, int32_t width,
                                       int32_t height) {
@@ -1802,11 +2364,28 @@ kweb_status CreateBrowserSession(const kweb_browser_config *config,
 
 kweb_status NavigateBrowserSession(kweb_browser_handle browser,
                                    const char *url_utf8, size_t url_size) {
-  const auto url = ValidateUrl(url_utf8, url_size);
+  const auto url = ValidateUrl(url_utf8, url_size, false);
   if (!url) {
     return KWEB_STATUS_NAVIGATION_INVALID;
   }
   return GuardStatus([&] { return Registry().Navigate(browser, *url); });
+}
+
+kweb_status ReloadBrowserSession(kweb_browser_handle browser,
+                                 bool ignore_cache) {
+  return GuardStatus([&] { return Registry().Reload(browser, ignore_cache); });
+}
+
+kweb_status RespondToBeforeUnloadSession(kweb_browser_handle browser,
+                                         uint64_t request_id, bool proceed) {
+  return GuardStatus(
+      [&] { return Registry().RespondToBeforeUnload(browser, request_id, proceed); });
+}
+
+kweb_status RespondToPopupSession(kweb_browser_handle browser,
+                                  uint64_t request_id, bool allow) {
+  return GuardStatus(
+      [&] { return Registry().RespondToPopup(browser, request_id, allow); });
 }
 
 kweb_status SetBoundsBrowserSession(kweb_browser_handle browser, int32_t x,

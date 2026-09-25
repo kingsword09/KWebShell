@@ -215,6 +215,8 @@ val expectCustomExtensionRuntime = providers.gradleProperty("kwebExpectCustomExt
     .orElse(false)
 val engineIntegrationMode = providers.gradleProperty("kwebEngineIntegrationMode")
     .orElse("coordinator")
+val engineIntegrationCdpPort = providers.systemProperty("kweb.engine.integration.cdp.port")
+    .orElse("0")
 val cleanEngineIntegration = tasks.register<Delete>("cleanEngineIntegration") {
     delete(engineIntegrationRoot)
 }
@@ -242,6 +244,7 @@ val engineIntegrationJavaCommand = buildList {
     add("-Dkweb.engine.integration.lifecycle.v1=${mv3LifecycleFixture.dir("v1").asFile.absolutePath}")
     add("-Dkweb.engine.integration.lifecycle.v2=${mv3LifecycleFixture.dir("v2").asFile.absolutePath}")
     add("-Dkweb.engine.integration.expect.custom.extension.runtime=${expectCustomExtensionRuntime.get()}")
+    add("-Dkweb.engine.integration.cdp.port=${engineIntegrationCdpPort.get()}")
     add("-Dkweb.desktop.module.path=${desktopJar.get().archiveFile.get().asFile.absolutePath}")
     add("-Dkweb.desktop.test.classes=${desktopTestClasses.asPath}")
     add("-Dkweb.desktop.integration.classpath=${engineIntegrationClasspath.asPath}")

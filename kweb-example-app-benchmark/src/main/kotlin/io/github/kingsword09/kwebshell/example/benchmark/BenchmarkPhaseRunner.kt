@@ -161,11 +161,11 @@ internal class BenchmarkPhaseRunner(
                 withTimeout(configuration.timeoutMs) {
                     page.events.first { event ->
                         event.type == KWebPageEventType.TITLE_CHANGED &&
-                            (event.text.endsWith("_READY") || event.text.endsWith("_FAIL"))
+                            (event.title.orEmpty().endsWith("_READY") || event.title.orEmpty().endsWith("_FAIL"))
                     }
                 }
             }
-            if (readyEvent.text.endsWith("_FAIL")) {
+            if (readyEvent.title.orEmpty().endsWith("_FAIL")) {
                 val failureSession = cdp.openPageSession(pageUrl)
                 try {
                     throwPageFailure(failureSession, "startup")
@@ -195,11 +195,11 @@ internal class BenchmarkPhaseRunner(
                 withTimeout(configuration.timeoutMs) {
                     page.events.first { event ->
                         event.type == KWebPageEventType.TITLE_CHANGED &&
-                            (event.text.endsWith("_PASS") || event.text.endsWith("_FAIL"))
+                            (event.title.orEmpty().endsWith("_PASS") || event.title.orEmpty().endsWith("_FAIL"))
                     }
                 }
             }
-            if (scenarioEvent.text.endsWith("_FAIL")) {
+            if (scenarioEvent.title.orEmpty().endsWith("_FAIL")) {
                 val failureSession = cdp.openPageSession(pageUrl)
                 try {
                     throwPageFailure(failureSession, "scenario")

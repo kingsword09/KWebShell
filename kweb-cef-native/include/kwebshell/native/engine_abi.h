@@ -53,6 +53,28 @@ typedef uint32_t kweb_extension_state_type;
 #define KWEB_BROWSER_EVENT_DEVTOOLS_CLOSED ((kweb_browser_event_type)12)
 #define KWEB_BROWSER_EVENT_DEVTOOLS_FAILED ((kweb_browser_event_type)13)
 #define KWEB_BROWSER_EVENT_INPUT_GESTURE ((kweb_browser_event_type)14)
+#define KWEB_BROWSER_EVENT_NAVIGATION_COMMITTED ((kweb_browser_event_type)15)
+#define KWEB_BROWSER_EVENT_SAME_DOCUMENT_NAVIGATION ((kweb_browser_event_type)16)
+#define KWEB_BROWSER_EVENT_FAVICON_CHANGED ((kweb_browser_event_type)17)
+#define KWEB_BROWSER_EVENT_BEFORE_UNLOAD_REQUESTED ((kweb_browser_event_type)18)
+#define KWEB_BROWSER_EVENT_POPUP_REQUESTED ((kweb_browser_event_type)19)
+#define KWEB_BROWSER_EVENT_RENDERER_UNRESPONSIVE ((kweb_browser_event_type)20)
+#define KWEB_BROWSER_EVENT_RENDERER_RESPONSIVE ((kweb_browser_event_type)21)
+#define KWEB_BROWSER_EVENT_RENDERER_TERMINATED ((kweb_browser_event_type)22)
+
+#define KWEB_BROWSER_FRAME_MAIN ((uint32_t)1)
+#define KWEB_BROWSER_FRAME_SUBFRAME ((uint32_t)2)
+
+#define KWEB_BROWSER_REASON_NONE ((uint32_t)0)
+#define KWEB_BROWSER_REASON_NAVIGATION_FAILED ((uint32_t)1)
+#define KWEB_BROWSER_REASON_NAVIGATION_ABORTED ((uint32_t)2)
+#define KWEB_BROWSER_REASON_BEFORE_UNLOAD_TIMEOUT ((uint32_t)3)
+#define KWEB_BROWSER_REASON_POPUP_TIMEOUT ((uint32_t)4)
+#define KWEB_BROWSER_REASON_RENDERER_CRASH ((uint32_t)5)
+#define KWEB_BROWSER_REASON_RENDERER_KILLED ((uint32_t)6)
+#define KWEB_BROWSER_REASON_RENDERER_OOM ((uint32_t)7)
+#define KWEB_BROWSER_REASON_RENDERER_UNKNOWN ((uint32_t)8)
+#define KWEB_BROWSER_REASON_NATIVE_FAILURE ((uint32_t)9)
 
 #define KWEB_BRIDGE_EVENT_REQUEST ((kweb_bridge_event_type)1)
 #define KWEB_BRIDGE_EVENT_CANCELLED ((kweb_bridge_event_type)2)
@@ -126,6 +148,16 @@ typedef struct kweb_browser_event {
   int32_t width;
   int32_t height;
   uint32_t reserved;
+  uint64_t request_id;
+  kweb_string_view frame_id;
+  uint32_t frame_scope;
+  uint32_t reason;
+  kweb_string_view origin;
+  kweb_string_view url;
+  kweb_string_view title;
+  // Event-type-specific bounded data. Favicon URLs are newline separated;
+  // popup geometry is a comma-separated x,y,width,height,isPopup tuple.
+  kweb_string_view details;
 } kweb_browser_event;
 
 typedef void(KWEB_ABI_CALL *kweb_browser_event_callback)(
@@ -217,6 +249,16 @@ KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL kweb_browser_create(
 
 KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL kweb_browser_navigate(
     kweb_browser_handle browser, const char *url_utf8, size_t url_size);
+
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL kweb_browser_reload(
+    kweb_browser_handle browser, uint32_t ignore_cache);
+
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
+kweb_browser_before_unload_respond(kweb_browser_handle browser,
+                                   uint64_t request_id, uint32_t proceed);
+
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL kweb_browser_popup_respond(
+    kweb_browser_handle browser, uint64_t request_id, uint32_t allow);
 
 KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
 kweb_browser_set_bounds(kweb_browser_handle browser, int32_t x, int32_t y,

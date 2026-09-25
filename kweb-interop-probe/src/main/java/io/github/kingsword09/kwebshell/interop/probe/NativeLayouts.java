@@ -34,7 +34,9 @@ final class NativeLayouts {
         4,
         FfmLayouts.BROWSER_EVENT,
         "struct_size", "abi_version", "type", "flags", "engine", "browser",
-        "sequence", "text", "status_code", "width", "height", "reserved"
+        "sequence", "text", "status_code", "width", "height", "reserved",
+        "request_id", "frame_id", "frame_scope", "reason", "origin", "url",
+        "title", "details"
     );
     static final LayoutSpec BRIDGE_EVENT = spec(
         5,

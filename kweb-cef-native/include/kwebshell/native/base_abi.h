@@ -11,7 +11,7 @@
 #define KWEB_ABI_CALL
 #endif
 
-#define KWEB_ABI_VERSION ((uint32_t)10)
+#define KWEB_ABI_VERSION ((uint32_t)11)
 
 typedef uint32_t kweb_status;
 
@@ -68,5 +68,8 @@ typedef uint32_t kweb_status;
 #define KWEB_STATUS_EXTENSION_OPERATION_ACTIVE ((kweb_status)50)
 #define KWEB_STATUS_EXTENSION_OPERATION_NOT_FOUND ((kweb_status)51)
 #define KWEB_STATUS_EXTENSION_RESULT_INVALID ((kweb_status)52)
+#define KWEB_STATUS_PAGE_REQUEST_NOT_FOUND ((kweb_status)53)
+#define KWEB_STATUS_PAGE_REQUEST_INVALID ((kweb_status)54)
+#define KWEB_STATUS_PAGE_OPERATION_PENDING ((kweb_status)55)
 
 #endif // KWEBSHELL_NATIVE_BASE_ABI_H_

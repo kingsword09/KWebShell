@@ -95,15 +95,18 @@ class KWebRfcEvidenceValidatorTest {
     }
 
     @Test
-    fun matrixRowClaimWithoutServiceFails() {
-        val error = assertFailsWith<KWebRfcGovernanceException> {
-            KWebRfcEvidenceValidator.validate(
-                fixtureManifest(
-                    listOf(fixtureRecord(serviceId = null, serviceVersion = null, matrixRowIds = listOf("menu-tray"))),
+    fun coreMatrixRowClaimWithoutServiceIsAllowed() {
+        KWebRfcEvidenceValidator.validate(
+            fixtureManifest(
+                listOf(
+                    fixtureRecord(
+                        serviceId = null,
+                        serviceVersion = null,
+                        matrixRowIds = listOf("web-contents-reload"),
+                    ),
                 ),
-            )
-        }
-        assertTrue(error.message!!.contains("must bind a service contract"))
+            ),
+        )
     }
 
     @Test

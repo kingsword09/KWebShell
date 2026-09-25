@@ -49,7 +49,7 @@ constexpr std::array<size_t, 12> kEngineConfigOffsets = {
     offsetof(kweb_engine_config, reserved),
 };
 
-constexpr std::array<size_t, 12> kBrowserEventOffsets = {
+constexpr std::array<size_t, 20> kBrowserEventOffsets = {
     offsetof(kweb_browser_event, struct_size),
     offsetof(kweb_browser_event, abi_version),
     offsetof(kweb_browser_event, type),
@@ -62,6 +62,14 @@ constexpr std::array<size_t, 12> kBrowserEventOffsets = {
     offsetof(kweb_browser_event, width),
     offsetof(kweb_browser_event, height),
     offsetof(kweb_browser_event, reserved),
+    offsetof(kweb_browser_event, request_id),
+    offsetof(kweb_browser_event, frame_id),
+    offsetof(kweb_browser_event, frame_scope),
+    offsetof(kweb_browser_event, reason),
+    offsetof(kweb_browser_event, origin),
+    offsetof(kweb_browser_event, url),
+    offsetof(kweb_browser_event, title),
+    offsetof(kweb_browser_event, details),
 };
 
 constexpr std::array<size_t, 8> kBridgeEventOffsets = {

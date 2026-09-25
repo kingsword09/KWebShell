@@ -555,6 +555,12 @@ const char *KWEB_ABI_CALL kweb_status_name(kweb_status status) {
     return "extension-operation-not-found";
   case KWEB_STATUS_EXTENSION_RESULT_INVALID:
     return "extension-result-invalid";
+  case KWEB_STATUS_PAGE_REQUEST_NOT_FOUND:
+    return "page-request-not-found";
+  case KWEB_STATUS_PAGE_REQUEST_INVALID:
+    return "page-request-invalid";
+  case KWEB_STATUS_PAGE_OPERATION_PENDING:
+    return "page-operation-pending";
   default:
     return "unknown-status";
   }
@@ -596,6 +602,37 @@ kweb_status KWEB_ABI_CALL kweb_browser_navigate(kweb_browser_handle browser,
                                                 const char *url_utf8,
                                                 size_t url_size) {
   return kwebshell::NavigateBrowserSession(browser, url_utf8, url_size);
+}
+
+kweb_status KWEB_ABI_CALL kweb_browser_reload(kweb_browser_handle browser,
+                                              uint32_t ignore_cache) {
+  if (ignore_cache != 0 && ignore_cache != 1) {
+    return KWEB_STATUS_INVALID_ARGUMENT;
+  }
+  return kwebshell::ReloadBrowserSession(browser, ignore_cache != 0);
+}
+
+kweb_status KWEB_ABI_CALL kweb_browser_before_unload_respond(
+    kweb_browser_handle browser, uint64_t request_id, uint32_t proceed) {
+  if (request_id == 0) {
+    return KWEB_STATUS_PAGE_REQUEST_INVALID;
+  }
+  if (proceed != 0 && proceed != 1) {
+    return KWEB_STATUS_INVALID_ARGUMENT;
+  }
+  return kwebshell::RespondToBeforeUnloadSession(browser, request_id,
+                                                  proceed != 0);
+}
+
+kweb_status KWEB_ABI_CALL kweb_browser_popup_respond(
+    kweb_browser_handle browser, uint64_t request_id, uint32_t allow) {
+  if (request_id == 0) {
+    return KWEB_STATUS_PAGE_REQUEST_INVALID;
+  }
+  if (allow != 0 && allow != 1) {
+    return KWEB_STATUS_INVALID_ARGUMENT;
+  }
+  return kwebshell::RespondToPopupSession(browser, request_id, allow != 0);
 }
 
 kweb_status KWEB_ABI_CALL kweb_browser_set_bounds(kweb_browser_handle browser,

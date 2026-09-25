@@ -62,6 +62,14 @@ internal enum class NativeBrowserEventType(val value: Int) {
     DEVTOOLS_CLOSED(12),
     DEVTOOLS_FAILED(13),
     INPUT_GESTURE(14),
+    NAVIGATION_COMMITTED(15),
+    SAME_DOCUMENT_NAVIGATION(16),
+    FAVICON_CHANGED(17),
+    BEFORE_UNLOAD_REQUESTED(18),
+    POPUP_REQUESTED(19),
+    RENDERER_UNRESPONSIVE(20),
+    RENDERER_RESPONSIVE(21),
+    RENDERER_TERMINATED(22),
     ;
 
     companion object {
@@ -79,6 +87,14 @@ internal data class NativeBrowserEvent(
     val statusCode: Int,
     val width: Int,
     val height: Int,
+    val requestId: Long = 0,
+    val frameId: String = "0",
+    val frameScope: Int = 1,
+    val reason: Int = 0,
+    val origin: String = "",
+    val url: String = "",
+    val title: String = "",
+    val details: String = "",
 )
 
 internal enum class NativeBridgeEventType(val value: Int) {
@@ -109,6 +125,7 @@ internal class NativeBrowser private constructor(
     private val callbackFailure = AtomicReference<KWebNativeException?>()
     private val closeFailure = AtomicReference<KWebNativeException?>()
     private val fatalFailure = AtomicReference<KWebNativeException?>()
+    private val rendererTerminated = AtomicBoolean(false)
     private val devtoolsFailure = AtomicReference<KWebNativeException?>()
     private val devtoolsOpenedEvent = AtomicReference(CountDownLatch(0))
     private val devtoolsClosedEvent = AtomicReference(CountDownLatch(0))
@@ -121,7 +138,8 @@ internal class NativeBrowser private constructor(
     }
     private val sink = NativeBrowserEventSink(
         failureCallback = ::receiveFfmCallbackFailure,
-        callback = ::receiveNativeEvent,
+        callback = { _, _, _, _, _, _, _, _, _ -> },
+        detailedCallback = ::receiveNativeEvent,
     )
     private val bridgeScope = CoroutineScope(
         SupervisorJob() + Dispatchers.IO + CoroutineName("KWebShell-bridge-${dispatcherIds.incrementAndGet()}"),
@@ -137,10 +155,42 @@ internal class NativeBrowser private constructor(
     }
 
     internal val lifecycle: StateFlow<KWebLifecycleState> = mutableLifecycle.asStateFlow()
+    internal val rendererHasTerminated: Boolean
+        get() = rendererTerminated.get()
 
     internal fun navigate(url: String) {
         val handle = requireOpenHandle("navigate")
-        requireNativeSuccess("browser-navigate", NativeBindings.browserNavigate(handle, url), handle)
+        val status = NativeBindings.browserNavigate(handle, url)
+        if (status == NativeStatus.NAVIGATION_INVALID.value) {
+            throw KWebNativeException(
+                code = "page.navigation-invalid",
+                details = mapOf("url" to url),
+                message = "Page navigation requires an absolute http, https, app, or chrome-extension URL.",
+            )
+        }
+        if (status == NativeStatus.PAGE_OPERATION_PENDING.value) {
+            throw KWebNativeException(
+                code = "page.operation-pending",
+                details = mapOf("operation" to "navigate"),
+                message = "A before-unload decision is still pending for this page.",
+            )
+        }
+        requireNativeSuccess("browser-navigate", status, handle)
+    }
+
+    internal fun reload(ignoreCache: Boolean): Int {
+        val handle = requireOpenHandle("reload")
+        return NativeBindings.browserReload(handle, ignoreCache)
+    }
+
+    internal fun respondToBeforeUnload(requestId: Long, proceed: Boolean): Int {
+        val handle = requireOpenHandle("respond-before-unload")
+        return NativeBindings.browserRespondToBeforeUnload(handle, requestId, proceed)
+    }
+
+    internal fun respondToPopup(requestId: Long, allow: Boolean): Int {
+        val handle = requireOpenHandle("respond-popup")
+        return NativeBindings.browserRespondToPopup(handle, requestId, allow)
     }
 
     internal fun setBounds(x: Int, y: Int, width: Int, height: Int) {
@@ -235,7 +285,8 @@ internal class NativeBrowser private constructor(
         var terminalObserved = false
         var dispatcherTerminated = false
         try {
-            if (mutableLifecycle.value != KWebLifecycleState.FAILED) {
+            val alreadyTerminal = mutableLifecycle.value == KWebLifecycleState.CLOSED
+            if (!alreadyTerminal && mutableLifecycle.value != KWebLifecycleState.FAILED) {
                 mutableLifecycle.value = KWebLifecycleState.CLOSING
             }
             ownerHandle = nativeHandle.getAndSet(0)
@@ -247,11 +298,12 @@ internal class NativeBrowser private constructor(
                 )
             } else {
                 val status = NativeBindings.browserClose(ownerHandle)
-                // A renderer fatal error starts the native close asynchronously;
-                // CEF may remove the session before the terminal callback is
-                // delivered to this owner.
+                // Renderer termination and the normal terminal callback can
+                // remove the native session before an automatic owner cleanup
+                // reaches this idempotent close path.
                 val nativeCloseAlreadyCompleted =
-                    status == NativeStatus.INVALID_HANDLE.value && fatalFailure.get() != null
+                    status == NativeStatus.INVALID_HANDLE.value &&
+                        (alreadyTerminal || fatalFailure.get() != null || rendererTerminated.get())
                 if (status != NativeStatus.OK.value &&
                     status != NativeStatus.BROWSER_CLOSING.value &&
                     !nativeCloseAlreadyCompleted
@@ -329,6 +381,14 @@ internal class NativeBrowser private constructor(
         statusCode: Int,
         width: Int,
         height: Int,
+        requestId: Long,
+        frameId: String,
+        frameScope: Int,
+        reason: Int,
+        origin: String,
+        url: String,
+        title: String,
+        details: String,
     ) {
         if (callbackHandle.get() == 0L) {
             callbackHandle.compareAndSet(0, browserHandle)
@@ -353,6 +413,14 @@ internal class NativeBrowser private constructor(
                         statusCode,
                         width,
                         height,
+                        requestId,
+                        frameId,
+                        frameScope,
+                        reason,
+                        origin,
+                        url,
+                        title,
+                        details,
                     ),
                 )
             }
@@ -709,8 +777,12 @@ internal class NativeBrowser private constructor(
                 mutableLifecycle.value = KWebLifecycleState.FAILED
                 opened.countDown()
             }
+            NativeBrowserEventType.RENDERER_TERMINATED -> {
+                rendererTerminated.set(true)
+                mutableLifecycle.value = KWebLifecycleState.FAILED
+            }
             NativeBrowserEventType.CLOSED -> {
-                if (fatalFailure.get() == null && callbackFailure.get() == null) {
+                if (callbackFailure.get() == null) {
                     mutableLifecycle.value = KWebLifecycleState.CLOSED
                 }
             }
@@ -736,6 +808,26 @@ internal class NativeBrowser private constructor(
         } finally {
             if (event.type == NativeBrowserEventType.CLOSED) {
                 terminal.countDown()
+                if (!closeStarted.get()) {
+                    Thread({
+                        try {
+                            close()
+                        } catch (error: Throwable) {
+                            closeFailure.compareAndSet(
+                                null,
+                                error as? KWebNativeException ?: KWebNativeException(
+                                    code = "native.browser.terminal-cleanup-failed",
+                                    details = mapOf("handle" to event.browser.toString()),
+                                    message = "Releasing the terminal browser owner failed.",
+                                    cause = error,
+                                ),
+                            )
+                        }
+                    }, "KWebShell-browser-terminal-cleanup").also {
+                        it.isDaemon = true
+                        it.start()
+                    }
+                }
             }
         }
     }

@@ -2,7 +2,7 @@ package io.github.kingsword09.kwebshell.desktop.internal
 
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 
-internal const val NATIVE_ABI_VERSION: Int = 10
+internal const val NATIVE_ABI_VERSION: Int = 11
 
 internal enum class NativeStatus(
     val value: Int,
@@ -61,6 +61,9 @@ internal enum class NativeStatus(
     EXTENSION_OPERATION_ACTIVE(50, "extension-operation-active"),
     EXTENSION_OPERATION_NOT_FOUND(51, "extension-operation-not-found"),
     EXTENSION_RESULT_INVALID(52, "extension-result-invalid"),
+    PAGE_REQUEST_NOT_FOUND(53, "page-request-not-found"),
+    PAGE_REQUEST_INVALID(54, "page-request-invalid"),
+    PAGE_OPERATION_PENDING(55, "page-operation-pending"),
     ;
 
     companion object {

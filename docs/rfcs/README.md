@@ -206,7 +206,7 @@ Agents may work in parallel only when dependencies do not overlap.
 |---|---:|---|---|
 | [0006](0006-application-lifecycle.md) | P0 | 0002, 0003, 0030 | App activation, single instance, deep links, file-open lifecycle |
 | [0007](0007-window-hierarchy-and-fullscreen.md) | P0 | 0002, 0003 | Parent/modal windows, fullscreen, close negotiation |
-| [0008](0008-page-lifecycle-and-popups.md) | P0 | 0004, 0007 | `webContents`-class Page events and popup policy |
+| [0008](0008-page-lifecycle-and-popups.md) | P0 | 0004, 0007 | Typed Page events, lifecycle, reload, before-unload, and owner-bound popup requests |
 | [0009](0009-profile-data-and-session.md) | P0 | 0002, 0003 | Cookies, cache, storage, spellcheck, session state |
 | [0010](0010-network-policy-and-proxy.md) | P0 | 0004, 0009 | Request policy, proxy, network observation |
 | [0011](0011-tls-auth-and-certificates.md) | P1 | 0003, 0010 | TLS errors, client certificates, HTTP authentication |

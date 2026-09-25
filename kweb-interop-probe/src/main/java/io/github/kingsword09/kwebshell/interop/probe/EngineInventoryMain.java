@@ -66,7 +66,7 @@ public final class EngineInventoryMain {
                 "Extension cancel did not report a missing operation.");
         }
         System.out.println(
-            "JDK 25 FFM resolved and bound all 20 frozen engine ABI symbols and exercised " +
+            "JDK 25 FFM resolved and bound all 23 frozen engine ABI symbols and exercised " +
                 "safe pre-initialization calls."
         );
     }

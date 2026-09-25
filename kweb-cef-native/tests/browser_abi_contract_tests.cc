@@ -74,11 +74,38 @@ int main() {
   Check(std::strcmp(kweb_status_name(KWEB_STATUS_EXTENSION_RESULT_INVALID),
                     "extension-result-invalid") == 0,
         "invalid extension result status must have a stable name");
+  Check(std::strcmp(kweb_status_name(KWEB_STATUS_PAGE_REQUEST_NOT_FOUND),
+                    "page-request-not-found") == 0,
+        "page request lookup status must have a stable name");
+  Check(std::strcmp(kweb_status_name(KWEB_STATUS_PAGE_REQUEST_INVALID),
+                    "page-request-invalid") == 0,
+        "invalid page request status must have a stable name");
+  Check(std::strcmp(kweb_status_name(KWEB_STATUS_PAGE_OPERATION_PENDING),
+                    "page-operation-pending") == 0,
+        "pending page operation status must have a stable name");
   Check(kweb_browser_create(nullptr, nullptr) == KWEB_STATUS_INVALID_ARGUMENT,
         "null browser create arguments must fail immediately");
   Check(kweb_browser_navigate(KWEB_INVALID_BROWSER_HANDLE, nullptr, 0) ==
             KWEB_STATUS_NAVIGATION_INVALID,
         "empty browser URL must fail before handle lookup");
+  Check(kweb_browser_reload(KWEB_INVALID_BROWSER_HANDLE, 2) ==
+            KWEB_STATUS_INVALID_ARGUMENT,
+        "invalid reload mode must fail before handle lookup");
+  Check(kweb_browser_reload(KWEB_INVALID_BROWSER_HANDLE, 0) ==
+            KWEB_STATUS_INVALID_HANDLE,
+        "reload must reject a stale handle");
+  Check(kweb_browser_before_unload_respond(KWEB_INVALID_BROWSER_HANDLE, 0, 0) ==
+            KWEB_STATUS_PAGE_REQUEST_INVALID,
+        "zero before-unload request id must fail before handle lookup");
+  Check(kweb_browser_popup_respond(KWEB_INVALID_BROWSER_HANDLE, 0, 0) ==
+            KWEB_STATUS_PAGE_REQUEST_INVALID,
+        "zero popup request id must fail before handle lookup");
+  Check(kweb_browser_before_unload_respond(KWEB_INVALID_BROWSER_HANDLE, 1, 2) ==
+            KWEB_STATUS_INVALID_ARGUMENT,
+        "invalid before-unload decision must fail before handle lookup");
+  Check(kweb_browser_popup_respond(KWEB_INVALID_BROWSER_HANDLE, 1, 2) ==
+            KWEB_STATUS_INVALID_ARGUMENT,
+        "invalid popup decision must fail before handle lookup");
   Check(kweb_browser_set_bounds(KWEB_INVALID_BROWSER_HANDLE, 0, 0, 0, 600) ==
             KWEB_STATUS_INVALID_DIMENSIONS,
         "invalid browser dimensions must fail before handle lookup");

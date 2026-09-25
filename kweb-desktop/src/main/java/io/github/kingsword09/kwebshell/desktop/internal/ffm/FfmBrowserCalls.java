@@ -88,6 +88,23 @@ final class FfmBrowserCalls {
         return invokeUtf8("kweb_browser_navigate", handle, 0, url, false);
     }
 
+    static int reload(long handle, boolean ignoreCache) {
+        try {
+            return (int) library().handle("kweb_browser_reload")
+                .invokeExact(handle, ignoreCache ? 1 : 0);
+        } catch (Throwable error) {
+            return FfmStatus.INTERNAL_ERROR;
+        }
+    }
+
+    static int respondToBeforeUnload(long handle, long requestId, boolean proceed) {
+        return invokeRequestDecision("kweb_browser_before_unload_respond", handle, requestId, proceed);
+    }
+
+    static int respondToPopup(long handle, long requestId, boolean allow) {
+        return invokeRequestDecision("kweb_browser_popup_respond", handle, requestId, allow);
+    }
+
     static int setBounds(long handle, int x, int y, int width, int height) {
         try {
             return (int) library().handle("kweb_browser_set_bounds")
@@ -183,6 +200,15 @@ final class FfmBrowserCalls {
     private static int invokeHandleStatus(String symbol, long handle) {
         try {
             return (int) library().handle(symbol).invokeExact(handle);
+        } catch (Throwable error) {
+            return FfmStatus.INTERNAL_ERROR;
+        }
+    }
+
+    private static int invokeRequestDecision(String symbol, long handle, long requestId, boolean value) {
+        try {
+            return (int) library().handle(symbol)
+                .invokeExact(handle, requestId, value ? 1 : 0);
         } catch (Throwable error) {
             return FfmStatus.INTERNAL_ERROR;
         }

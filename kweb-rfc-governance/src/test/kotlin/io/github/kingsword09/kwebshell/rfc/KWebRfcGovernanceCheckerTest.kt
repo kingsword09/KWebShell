@@ -10,7 +10,27 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class KWebRfcGovernanceCheckerTest {
-    private val matrix: KWebElectronCapabilityMatrixDocument = KWebElectronCapabilityMatrix.document()
+    private val matrix: KWebElectronCapabilityMatrixDocument = fixtureMatrix()
+
+    private fun fixtureMatrix(): KWebElectronCapabilityMatrixDocument =
+        KWebElectronCapabilityMatrix.document().copy(
+            entries = KWebElectronCapabilityMatrix.entries.map { entry ->
+                if (entry.id in RFC_0008_ROWS) {
+                    entry.copy(status = KWebElectronMappingStatus.UNSUPPORTED, kweb = "")
+                } else {
+                    entry
+                }
+            },
+        )
+
+    private companion object {
+        val RFC_0008_ROWS: Set<String> = setOf(
+            "web-contents-reload",
+            "web-contents-before-unload",
+            "window-open-handler",
+            "renderer-process-state",
+        )
+    }
 
     private fun implementedCatalog(): List<KWebRfcDocument> = listOf(
         fixtureDocument(id = "0001", status = KWebRfcStatus.IMPLEMENTED),

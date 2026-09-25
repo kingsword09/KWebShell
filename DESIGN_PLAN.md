@@ -2017,6 +2017,36 @@ must stay within that accepted contract:
    shutdown integration, three-target process/registration evidence, docs,
    capability/evidence updates, and a final A1-A11 acceptance review in one PR.
 
+### RFC 0008 implementation objective: typed Page lifecycle and popup ownership
+
+RFC 0008 is the page-facing browser vertical slice that follows the accepted
+RFC 0007 caller-owned window boundary. The objective is complete only when the
+same PR publishes the typed page contract, real CEF callbacks, popup and
+before-unload decision ownership, renderer failure lifecycle, migration mapping,
+three-target evidence, and the final A1-A11 acceptance review:
+
+1. `kweb-core` publishes the versioned page event envelope with page/Profile/
+   frame/origin identity, bounded title/favicon values, typed reasons, reload
+   results, before-unload requests, popup requests, and renderer failure state.
+2. The desktop and CEF layers preserve one ordered sequence, main/subframe
+   distinction, terminal close precedence, and RFC 0004 bounded delivery while
+   keeping all popup/before-unload decisions host-owned.
+3. CEF Alloy callbacks implement navigation, same-document/address changes,
+   title/favicon, JS before-unload, `OnBeforePopup`, renderer responsive/
+   unresponsive/terminated, and controlled reload behavior on macOS, Windows,
+   and Linux/X11. Missing callbacks or native capabilities fail typed; no
+   alternate backend or hidden owner is selected.
+4. CEF popup callbacks are synchronous, so the renderer popup is canceled as
+   soon as the request event is emitted. An allowed host response creates a
+   separate Alloy child under an explicit caller-created Compose owner; it does
+   not preserve `window.opener` or the renderer's popup proxy. Denied, stale,
+   timed-out, cross-origin, and owner-close races are covered. Download
+   selection and results remain RFC 0012 and are not duplicated here.
+5. Electron migration classifies each supported `webContents` event and
+   blocks unknown or unrestricted evaluation/event declarations. Popup flows
+   requiring `window.opener` are rewrite-required. Golden output, docs,
+   capability metadata, and hosted evidence are updated together.
+
 ### RFC review workflow objective: contract review and requirement acceptance
 
 Make RFC implementation readiness and merge acceptance explicit without changing

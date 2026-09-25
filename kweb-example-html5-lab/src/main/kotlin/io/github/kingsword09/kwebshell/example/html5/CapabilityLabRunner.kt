@@ -368,7 +368,7 @@ internal class CapabilityLabPhaseRunner(
             runBlocking {
                 withTimeout(configuration.timeoutMs) {
                     page.events.first { event ->
-                        event.type == KWebPageEventType.TITLE_CHANGED && event.text == inputReadyTitle
+                        event.type == KWebPageEventType.TITLE_CHANGED && event.title == inputReadyTitle
                     }
                 }
             }
@@ -379,7 +379,7 @@ internal class CapabilityLabPhaseRunner(
                 withTimeout(configuration.timeoutMs) {
                     page.events.transformWhile { event ->
                         emit(event)
-                        event.type != KWebPageEventType.TITLE_CHANGED || event.text != expectedTitle
+                        event.type != KWebPageEventType.TITLE_CHANGED || event.title != expectedTitle
                     }.toList()
                 }
             }

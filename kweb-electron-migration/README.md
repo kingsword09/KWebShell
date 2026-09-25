@@ -56,6 +56,11 @@ become host-side typed mutations. Renderer code never receives a raw window
 handle or a force-close path. Dynamic BrowserWindow construction, arbitrary
 reparenting, and arbitrary close listeners remain blocking inventory findings.
 
+RFC 0008 maps navigation, reload, before-unload, and renderer lifecycle through
+typed `KWebPage` operations and events. Popup handling requires a rewrite:
+CEF cancels `window.open` immediately, and an allowed host decision creates a
+separate caller-owned page without preserving `window.opener`.
+
 ## Manifest v2 and inventory prerequisites
 
 Manifest v2 requires an exact `rendererOrigin`, an explicit `rendererProfile`,

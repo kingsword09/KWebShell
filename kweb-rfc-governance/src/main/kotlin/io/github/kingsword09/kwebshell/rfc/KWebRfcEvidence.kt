@@ -367,12 +367,6 @@ public object KWebRfcEvidenceValidator {
                 )
             }
         }
-        if (record.serviceId == null && record.matrixRowIds.isNotEmpty()) {
-            throw invalid(
-                "records[$index].serviceId",
-                message = "Evidence that backs a capability matrix row must bind a service contract.",
-            )
-        }
         if (record.matrixRowIds.size != record.matrixRowIds.toSet().size) {
             throw invalid(
                 "records[$index].matrixRowIds",

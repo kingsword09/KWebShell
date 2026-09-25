@@ -146,6 +146,15 @@ internal object NativeBindings {
 
     internal fun browserNavigate(handle: Long, url: String): Int = FfmBindings.browserNavigate(handle, url)
 
+    internal fun browserReload(handle: Long, ignoreCache: Boolean): Int =
+        FfmBindings.browserReload(handle, ignoreCache)
+
+    internal fun browserRespondToBeforeUnload(handle: Long, requestId: Long, proceed: Boolean): Int =
+        FfmBindings.browserRespondToBeforeUnload(handle, requestId, proceed)
+
+    internal fun browserRespondToPopup(handle: Long, requestId: Long, allow: Boolean): Int =
+        FfmBindings.browserRespondToPopup(handle, requestId, allow)
+
     internal fun browserSetBounds(handle: Long, x: Int, y: Int, width: Int, height: Int): Int =
         FfmBindings.browserSetBounds(handle, x, y, width, height)
 
@@ -228,6 +237,9 @@ internal class NativeEngineEventSink(
 
 internal class NativeBrowserEventSink(
     private val failureCallback: (String, String, Throwable) -> Unit = ::throwNativeCallbackFailure,
+    private val detailedCallback: (
+        Long, Long, Long, Int, Int, String, Int, Int, Int, Long, String, Int, Int, String, String, String, String,
+    ) -> Unit = { _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
     private val callback: (Long, Long, Long, Int, Int, String, Int, Int, Int) -> Unit,
 ) {
     internal fun onNativeBrowserEvent(
@@ -240,8 +252,35 @@ internal class NativeBrowserEventSink(
         statusCode: Int,
         width: Int,
         height: Int,
+        requestId: Long,
+        frameId: String,
+        frameScope: Int,
+        reason: Int,
+        origin: String,
+        url: String,
+        title: String,
+        details: String,
     ) {
         callback(engine, browser, sequence, type, flags, text, statusCode, width, height)
+        detailedCallback(
+            engine,
+            browser,
+            sequence,
+            type,
+            flags,
+            text,
+            statusCode,
+            width,
+            height,
+            requestId,
+            frameId,
+            frameScope,
+            reason,
+            origin,
+            url,
+            title,
+            details,
+        )
     }
 
     internal fun onNativeCallbackFailure(code: String, message: String, cause: Throwable) {

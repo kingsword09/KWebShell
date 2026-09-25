@@ -83,6 +83,18 @@ public final class FfmBindings {
         return FfmBrowserCalls.navigate(handle, url);
     }
 
+    public static int browserReload(long handle, boolean ignoreCache) {
+        return FfmBrowserCalls.reload(handle, ignoreCache);
+    }
+
+    public static int browserRespondToBeforeUnload(long handle, long requestId, boolean proceed) {
+        return FfmBrowserCalls.respondToBeforeUnload(handle, requestId, proceed);
+    }
+
+    public static int browserRespondToPopup(long handle, long requestId, boolean allow) {
+        return FfmBrowserCalls.respondToPopup(handle, requestId, allow);
+    }
+
     public static int browserSetBounds(long handle, int x, int y, int width, int height) {
         return FfmBrowserCalls.setBounds(handle, x, y, width, height);
     }

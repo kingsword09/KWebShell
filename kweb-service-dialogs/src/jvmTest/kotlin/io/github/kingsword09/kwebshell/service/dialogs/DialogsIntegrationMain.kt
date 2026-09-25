@@ -209,11 +209,21 @@ public fun main(): Unit = runBlocking {
             check(cancellation["selected"]!!.jsonPrimitive.content == "false")
             check(cancellation.filterKeys { it != "selected" }.values.all { it.toString() == "null" })
 
-            session.string("globalThis.abort = new AbortController(); globalThis.aborted = null; void DialogsBridge.createClient().selectFile({mode:'open',title:'Abort',defaultName:null,filters:[]},{signal:abort.signal}).catch(e => {globalThis.aborted=e.code}); 'started'")
-            val observer = async(Dispatchers.Default) { session.awaitTrue("globalThis.aborted !== null") }
-            awaitNativePicker(selector, observer)
-            session.string("abort.abort(); 'aborted'")
-            withTimeout(5_000) { observer.await(); while (selector.isVisible()) delay(10) }
+            session.string(
+                "globalThis.abort = new AbortController(); " +
+                    "globalThis.aborted = null; " +
+                    "void DialogsBridge.createClient().selectFile(" +
+                    "{mode:'open',title:'Abort',defaultName:null,filters:[]}," +
+                    "{signal:abort.signal}).catch(e => {globalThis.aborted=e.code}); " +
+                    "setTimeout(() => abort.abort(), 5000); 'started'",
+            )
+            withTimeout(10_000) {
+                while (!selector.isVisible()) delay(10)
+            }
+            withTimeout(15_000) {
+                while (selector.isVisible()) delay(10)
+            }
+            session.awaitTrue("globalThis.aborted !== null")
             check(session.string("globalThis.aborted") == "bridge.call.cancelled")
 
             session.awaitTrue("typeof document.getElementById('child').contentWindow.DialogsBridge === 'object'")

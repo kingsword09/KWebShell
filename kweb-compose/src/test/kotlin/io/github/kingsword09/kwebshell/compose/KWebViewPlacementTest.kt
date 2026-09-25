@@ -6,6 +6,13 @@ import io.github.kingsword09.kwebshell.core.KWebException
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebPage
 import io.github.kingsword09.kwebshell.core.KWebPageEvent
+import io.github.kingsword09.kwebshell.core.KWebBeforeUnloadDecision
+import io.github.kingsword09.kwebshell.core.KWebBeforeUnloadResult
+import io.github.kingsword09.kwebshell.core.KWebPopupDecision
+import io.github.kingsword09.kwebshell.core.KWebPopupResult
+import io.github.kingsword09.kwebshell.core.KWebReloadMode
+import io.github.kingsword09.kwebshell.core.KWebReloadOutcome
+import io.github.kingsword09.kwebshell.core.KWebReloadResult
 import io.github.kingsword09.kwebshell.core.KWebPageHost
 import io.github.kingsword09.kwebshell.core.KWebProfile
 import io.github.kingsword09.kwebshell.core.KWebRect
@@ -115,6 +122,19 @@ private class RecordingPage : KWebPage {
         require(url.isNotBlank())
         navigateCalls += 1
     }
+
+    override suspend fun reload(mode: KWebReloadMode): KWebReloadResult =
+        KWebReloadResult(mode, KWebReloadOutcome.STARTED)
+
+    override suspend fun respondToBeforeUnload(
+        requestId: Long,
+        decision: KWebBeforeUnloadDecision,
+    ): KWebBeforeUnloadResult = KWebBeforeUnloadResult(requestId, decision, timedOut = false)
+
+    override suspend fun respondToPopup(
+        requestId: Long,
+        decision: KWebPopupDecision,
+    ): KWebPopupResult = KWebPopupResult(requestId, io.github.kingsword09.kwebshell.core.KWebPopupOutcome.DENIED)
 
     override suspend fun setBounds(bounds: KWebRect) {
         setBoundsCalls += 1

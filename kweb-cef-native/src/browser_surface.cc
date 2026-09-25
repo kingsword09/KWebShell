@@ -473,16 +473,28 @@ public:
     if (display_ == nullptr || parent_ == None || browser_window_ == None) {
       return false;
     }
-    Window root = None;
-    Window parent = None;
-    Window *children = nullptr;
-    unsigned int child_count = 0;
-    const Status result = XQueryTree(display_, browser_window_, &root, &parent,
-                                     &children, &child_count);
-    if (children != nullptr) {
-      XFree(children);
+    constexpr int kParentValidationAttempts = 40;
+    for (int attempt = 0; attempt < kParentValidationAttempts; ++attempt) {
+      Window root = None;
+      Window parent = None;
+      Window *children = nullptr;
+      unsigned int child_count = 0;
+      const Status result = XQueryTree(display_, browser_window_, &root, &parent,
+                                       &children, &child_count);
+      if (children != nullptr) {
+        XFree(children);
+      }
+      if (result == 0) {
+        return false;
+      }
+      if (parent == parent_) {
+        return true;
+      }
+      XReparentWindow(display_, browser_window_, parent_, x_, y_);
+      XSync(display_, False);
+      usleep(5000);
     }
-    return result != 0 && parent == parent_;
+    return false;
   }
 
   kweb_status RequestBrowserClose() override {

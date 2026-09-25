@@ -25,6 +25,22 @@ class KWebElectronCapabilityMatrixTest {
             "KWebDialogs + DialogsBridge",
             KWebElectronCapabilityMatrix.find("dialog")?.kweb,
         )
+        assertEquals(
+            KWebElectronMappingStatus.DIRECT,
+            KWebElectronCapabilityMatrix.find("web-contents-reload")?.status,
+        )
+        assertEquals(
+            KWebElectronMappingStatus.ADAPTER,
+            KWebElectronCapabilityMatrix.find("web-contents-before-unload")?.status,
+        )
+        assertEquals(
+            KWebElectronMappingStatus.REWRITE,
+            KWebElectronCapabilityMatrix.find("window-open-handler")?.status,
+        )
+        assertEquals(
+            KWebElectronMappingStatus.DIRECT,
+            KWebElectronCapabilityMatrix.find("renderer-process-state")?.status,
+        )
         assertNotNull(KWebElectronCapabilityMatrix.find("node-runtime"))
         assertTrue(KWebElectronCapabilityMatrix.entries.size >= 12)
     }

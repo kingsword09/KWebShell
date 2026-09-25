@@ -1,6 +1,9 @@
 _kweb_browser_close
 _kweb_browser_create
 _kweb_browser_navigate
+_kweb_browser_reload
+_kweb_browser_before_unload_respond
+_kweb_browser_popup_respond
 _kweb_browser_set_bounds
 _kweb_browser_set_surface_state
 _kweb_browser_open_devtools

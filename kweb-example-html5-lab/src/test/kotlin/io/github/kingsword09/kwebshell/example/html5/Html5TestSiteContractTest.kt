@@ -1,6 +1,10 @@
 package io.github.kingsword09.kwebshell.example.html5
 
 import io.github.kingsword09.kwebshell.core.KWebCapability
+import io.github.kingsword09.kwebshell.core.KWebPageEvent
+import io.github.kingsword09.kwebshell.core.KWebPageEventReason
+import io.github.kingsword09.kwebshell.core.KWebPageEventType
+import io.github.kingsword09.kwebshell.core.KWebPageFrameScope
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.buildJsonObject
@@ -69,6 +73,26 @@ class Html5TestSiteContractTest {
             Html5TestSiteValidator.validate(sampleReport().copy(events = sampleReport().events + failure))
         }
         assertEquals("html5test.report-invalid", error.code)
+    }
+
+    @Test
+    fun preservesTitleEvidenceWhenTitleEventsAlsoCarryTheCurrentUrl() {
+        val evidence = KWebPageEvent(
+            type = KWebPageEventType.TITLE_CHANGED,
+            sequence = 5,
+            statusCode = 0,
+            bounds = null,
+            flags = emptySet(),
+            pageId = "page",
+            profileId = "profile",
+            frameId = "0",
+            frameScope = KWebPageFrameScope.MAIN,
+            url = Html5TestSiteContract.URL,
+            title = Html5TestSiteContract.TITLE,
+            reason = KWebPageEventReason.NONE,
+        ).toEvidence()
+
+        assertEquals(Html5TestSiteContract.TITLE, evidence.text)
     }
 
     @Test

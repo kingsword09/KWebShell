@@ -596,10 +596,21 @@ Runtime SHA-256: <code>${escape(report.runtimeSha256)}</code></p>
     }
 }
 
-private fun KWebPageEvent.toEvidence(): Html5TestSiteEventEvidence = Html5TestSiteEventEvidence(
+internal fun KWebPageEvent.toEvidence(): Html5TestSiteEventEvidence = Html5TestSiteEventEvidence(
     sequence = sequence,
     type = type.id,
-    text = url ?: title ?: beforeUnloadRequest?.message.orEmpty(),
+    text = when (type) {
+        KWebPageEventType.TITLE_CHANGED -> title.orEmpty()
+        KWebPageEventType.BEFORE_UNLOAD_REQUESTED -> beforeUnloadRequest?.message.orEmpty()
+        KWebPageEventType.NAVIGATION_STARTED,
+        KWebPageEventType.NAVIGATION_COMMITTED,
+        KWebPageEventType.SAME_DOCUMENT_NAVIGATION,
+        KWebPageEventType.ADDRESS_CHANGED,
+        KWebPageEventType.LOAD_ENDED,
+        KWebPageEventType.LOAD_FAILED,
+        -> url.orEmpty()
+        else -> url ?: title ?: beforeUnloadRequest?.message.orEmpty()
+    },
     statusCode = statusCode,
 )
 

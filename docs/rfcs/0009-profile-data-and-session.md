@@ -282,8 +282,9 @@ contract.
 
 ## Readiness review
 
-- Reviewed revision: main baseline 8bcfd34 plus this RFC 0009 contract revision
-  before implementation.
+- Reviewed revision: 0e6977a9ee63c8b38cde019d86ceb9aa5339dd3b, the committed
+  RFC 0009 contract and acceptance-matrix revision reviewed before
+  implementation.
 - Review pass: Codex implementation-readiness review by the same contributor
   who will implement the objective; this is not an independent-person
   approval.

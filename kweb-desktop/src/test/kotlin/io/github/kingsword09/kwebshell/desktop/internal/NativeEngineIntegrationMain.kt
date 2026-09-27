@@ -3668,15 +3668,21 @@ private class CdpClient(private val port: Int) {
                 }
                 if (page != null) {
                     val targetId = page["id"]!!.jsonPrimitive.content
-                    val readyState = webSocket(page["webSocketDebuggerUrl"]!!.jsonPrimitive.content).use {
-                        it.evaluate("document.readyState")
+                    val expectedOrigin = URI(url).let { parsed ->
+                        "${parsed.scheme}://${parsed.rawAuthority}"
                     }
-                    if (readyState == "complete") {
+                    val documentCommitted = webSocket(page["webSocketDebuggerUrl"]!!.jsonPrimitive.content).use {
+                        it.evaluate(
+                            "document.readyState === 'complete' && " +
+                                "location.origin === ${jsonString(expectedOrigin)}",
+                        )
+                    }
+                    if (documentCommitted == "true") {
                         activePageTargetId = targetId
                         return
                     }
                     lastFailure = IllegalStateException(
-                        "CDP page '$url' is still loading with document.readyState=$readyState.",
+                        "CDP page '$url' has not committed its expected origin '$expectedOrigin'.",
                     )
                 }
             } catch (error: Throwable) {

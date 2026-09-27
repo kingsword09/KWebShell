@@ -3667,9 +3667,17 @@ private class CdpClient(private val port: Int) {
                         it["url"]?.jsonPrimitive?.content == url
                 }
                 if (page != null) {
-                    activePageTargetId = page["id"]!!.jsonPrimitive.content
-                    webSocket(page["webSocketDebuggerUrl"]!!.jsonPrimitive.content).close()
-                    return
+                    val targetId = page["id"]!!.jsonPrimitive.content
+                    val readyState = webSocket(page["webSocketDebuggerUrl"]!!.jsonPrimitive.content).use {
+                        it.evaluate("document.readyState")
+                    }
+                    if (readyState == "complete") {
+                        activePageTargetId = targetId
+                        return
+                    }
+                    lastFailure = IllegalStateException(
+                        "CDP page '$url' is still loading with document.readyState=$readyState.",
+                    )
                 }
             } catch (error: Throwable) {
                 lastFailure = error

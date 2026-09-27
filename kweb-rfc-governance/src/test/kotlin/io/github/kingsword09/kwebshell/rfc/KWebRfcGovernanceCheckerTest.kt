@@ -15,7 +15,7 @@ class KWebRfcGovernanceCheckerTest {
     private fun fixtureMatrix(): KWebElectronCapabilityMatrixDocument =
         KWebElectronCapabilityMatrix.document().copy(
             entries = KWebElectronCapabilityMatrix.entries.map { entry ->
-                if (entry.id in RFC_0008_ROWS) {
+                if (entry.id in RFC_0008_ROWS || entry.id in RFC_0009_ROWS) {
                     entry.copy(status = KWebElectronMappingStatus.UNSUPPORTED, kweb = "")
                 } else {
                     entry
@@ -29,6 +29,14 @@ class KWebRfcGovernanceCheckerTest {
             "web-contents-before-unload",
             "window-open-handler",
             "renderer-process-state",
+        )
+        val RFC_0009_ROWS: Set<String> = setOf(
+            "session-cookies",
+            "session-cache-clear",
+            "session-storage-clear",
+            "session-storage-usage",
+            "session-spellcheck",
+            "session-flush",
         )
     }
 

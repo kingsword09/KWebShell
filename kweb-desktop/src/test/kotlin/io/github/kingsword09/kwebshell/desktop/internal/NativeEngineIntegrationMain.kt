@@ -5,6 +5,13 @@ import io.github.kingsword09.kwebshell.core.KWebException
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 import io.github.kingsword09.kwebshell.core.KWebConfigurationException
 import io.github.kingsword09.kwebshell.core.KWebBeforeUnloadDecision
+import io.github.kingsword09.kwebshell.core.KWebCookieFilter
+import io.github.kingsword09.kwebshell.core.KWebCookieSameSite
+import io.github.kingsword09.kwebshell.core.KWebCookieSourceScheme
+import io.github.kingsword09.kwebshell.core.KWebCookieSpec
+import io.github.kingsword09.kwebshell.core.KWebProfileDataFilter
+import io.github.kingsword09.kwebshell.core.KWebProfileDataKind
+import io.github.kingsword09.kwebshell.core.KWebSpellcheckConfiguration
 import io.github.kingsword09.kwebshell.core.KWebRect
 import io.github.kingsword09.kwebshell.core.KWebCapability
 import io.github.kingsword09.kwebshell.core.KWebPageEvent
@@ -67,6 +74,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
@@ -137,6 +145,7 @@ private const val SUBPROCESS_PROPERTY = "kweb.engine.subprocess.path"
 private const val RESOURCES_PROPERTY = "kweb.engine.resources.path"
 private const val LOCALES_PROPERTY = "kweb.engine.locales.path"
 private const val CDP_PORT_PROPERTY = "kweb.engine.integration.cdp.port"
+private const val PROFILE_DATA_PORT_PROPERTY = "kweb.engine.integration.profile-data.port"
 private const val BRIDGE_JAVASCRIPT_PROPERTY = "kweb.engine.integration.bridge.javascript"
 private const val APP_PATHS_BRIDGE_JAVASCRIPT_PROPERTY =
     "kweb.engine.integration.app-paths.bridge.javascript"
@@ -177,6 +186,9 @@ private enum class IntegrationMode(val argument: String) {
     LISTENER_FAILURE("listener-failure"),
     FFM_STRESS("ffm-stress"),
     PUBLIC_FACADE("public-facade"),
+    PROFILE_DATA_COORDINATOR("profile-data-coordinator"),
+    PROFILE_DATA_STAGE1("profile-data-stage1"),
+    PROFILE_DATA_STAGE2("profile-data-stage2"),
     PAGE_LIFECYCLE("page-lifecycle"),
     RENDERER_CRASH("renderer-crash"),
     HOLDER("holder"),
@@ -207,6 +219,9 @@ fun main(arguments: Array<String>) {
             IntegrationMode.LISTENER_FAILURE -> runListenerFailureLifecycle()
             IntegrationMode.FFM_STRESS -> runFfmStressLifecycle()
             IntegrationMode.PUBLIC_FACADE -> runPublicFacadeLifecycle()
+            IntegrationMode.PROFILE_DATA_COORDINATOR -> runProfileDataCoordinator()
+            IntegrationMode.PROFILE_DATA_STAGE1 -> runProfileDataStage1()
+            IntegrationMode.PROFILE_DATA_STAGE2 -> runProfileDataStage2()
             IntegrationMode.PAGE_LIFECYCLE -> runPageLifecycleContract()
             IntegrationMode.RENDERER_CRASH -> runRendererCrashLifecycle()
             IntegrationMode.HOLDER -> runHolderLifecycle()
@@ -236,6 +251,8 @@ private fun runCoordinator() {
     runChildAndRequireSuccess(IntegrationMode.LISTENER_FAILURE, root.resolve("listener-failure"))
     runChildAndRequireSuccess(IntegrationMode.FFM_STRESS, root.resolve("ffm-stress"))
     runChildAndRequireSuccess(IntegrationMode.PUBLIC_FACADE, root.resolve("public-facade"))
+    System.setProperty(PROFILE_DATA_PORT_PROPERTY, findFreePort().toString())
+    runChildAndRequireSuccess(IntegrationMode.PROFILE_DATA_COORDINATOR, root.resolve("profile-data"))
     runChildAndRequireSuccess(IntegrationMode.PAGE_LIFECYCLE, root.resolve("page-lifecycle"))
     runChildAndRequireSuccess(IntegrationMode.RENDERER_CRASH, root.resolve("renderer-crash"))
 
@@ -262,6 +279,399 @@ private fun runCoordinator() {
         }
     }
     println("KWebShell real CEF engine integration passed in isolated JVM processes.")
+}
+
+private fun runProfileDataCoordinator() {
+    val root = requiredPathProperty(INTEGRATION_ROOT_PROPERTY)
+    Files.createDirectories(root)
+    if (System.getProperty(PROFILE_DATA_PORT_PROPERTY).isNullOrBlank()) {
+        System.setProperty(PROFILE_DATA_PORT_PROPERTY, findFreePort().toString())
+    }
+    runChildAndRequireSuccess(IntegrationMode.PROFILE_DATA_STAGE1, root)
+    runChildAndRequireSuccess(IntegrationMode.PROFILE_DATA_STAGE2, root)
+    println("KWebShell RFC 0009 Profile data persistence and isolation passed.")
+}
+
+private fun runProfileDataStage1() {
+    val configuration = runtimeConfiguration()
+    val engine = KWebDesktop.openEngine(
+        KWebDesktopEngineConfiguration(
+            cefRuntime = configuration.cefRuntime,
+            browserSubprocess = configuration.browserSubprocess,
+            resources = configuration.resources,
+            locales = configuration.locales,
+            rootCache = configuration.rootCache,
+            log = configuration.log,
+            remoteDebuggingPort = configuration.remoteDebuggingPort,
+        ),
+    )
+    var persistentProfile: io.github.kingsword09.kwebshell.core.KWebProfile? = null
+    var persistentPage: io.github.kingsword09.kwebshell.core.KWebPage? = null
+    var isolationA: io.github.kingsword09.kwebshell.core.KWebProfile? = null
+    var isolationB: io.github.kingsword09.kwebshell.core.KWebProfile? = null
+    var isolationPageA: io.github.kingsword09.kwebshell.core.KWebPage? = null
+    var isolationPageB: io.github.kingsword09.kwebshell.core.KWebPage? = null
+    var persistentSurface: ComposeBrowserSurface? = null
+    var isolationSurfaceA: ComposeBrowserSurface? = null
+    var isolationSurfaceB: ComposeBrowserSurface? = null
+    BrowserOrigin(
+        includeAppPathsBridge = false,
+        fixedPort = requiredIntegrationPort(PROFILE_DATA_PORT_PROPERTY),
+    ).use { origin ->
+        try {
+            persistentProfile = kotlinx.coroutines.runBlocking { engine.openProfile("profile-data-persistent") }
+            persistentSurface = NativeEngine.onAwtEventDispatchThread {
+                ComposeBrowserSurface.create(800, 600)
+            }
+            persistentPage = kotlinx.coroutines.runBlocking {
+                persistentProfile!!.openPage(
+                    KWebDesktop.composeWindowHost(persistentSurface!!.window),
+                    origin.firstUrl,
+                    KWebRect(0, 0, 800, 600),
+                )
+            }
+            val cdp = CdpClient(configuration.remoteDebuggingPort)
+            cdp.awaitPage(origin.firstUrl)
+            require(
+                cdp.evaluate(
+                    "localStorage.setItem('kwebshell-rfc0009-clear-me','x'.repeat(65536)); 'set'",
+                ) == "set",
+            )
+            Thread.sleep(500)
+            val persistentCookie = KWebCookieSpec(
+                url = origin.secondUrl,
+                name = "kwebshell-rfc0009-persistent",
+                value = "stage-one-secret",
+                path = "/",
+                httpOnly = true,
+                sameSite = KWebCookieSameSite.LAX,
+                sourceScheme = KWebCookieSourceScheme.HTTP,
+            )
+            require(
+                kotlinx.coroutines.runBlocking {
+                    persistentProfile!!.setCookie(persistentPage!!, persistentCookie).affected
+                } == 1,
+            )
+            require(
+                cdp.evaluate(
+                    """
+                    void (() => {
+                      const request = indexedDB.open('kwebshell-rfc0009-usage', 1);
+                      request.onupgradeneeded = () => request.result.createObjectStore('items');
+                      request.onerror = () => localStorage.setItem('kwebshell-rfc0009-idb-error', '1');
+                      request.onsuccess = () => {
+                        const database = request.result;
+                        const transaction = database.transaction('items', 'readwrite');
+                        transaction.objectStore('items').put('x'.repeat(65536), 'payload');
+                        transaction.oncomplete = () => {
+                          database.close();
+                          localStorage.setItem('kwebshell-rfc0009-idb-ready', '1');
+                        };
+                        transaction.onerror = () => localStorage.setItem('kwebshell-rfc0009-idb-error', '1');
+                      };
+                    })(); 'started'
+                    """.trimIndent(),
+                ) == "started",
+            )
+            cdp.awaitExpression("localStorage.getItem('kwebshell-rfc0009-idb-ready') === '1'")
+            require(cdp.evaluate("localStorage.getItem('kwebshell-rfc0009-idb-error')") == "null")
+            val usageBeforeClear = kotlinx.coroutines.runBlocking {
+                persistentProfile!!.storageUsage(persistentPage!!, origin.origin)
+            }
+            require(usageBeforeClear.usageBytes > 0 &&
+                usageBeforeClear.breakdown.any {
+                    it.storageType == "indexeddb" && it.bytes > 0
+                }
+            ) {
+                "Chromium storage usage did not include the committed IndexedDB payload: $usageBeforeClear"
+            }
+            val clearOrigin = kotlinx.coroutines.runBlocking {
+                persistentProfile!!.clearData(
+                    persistentPage!!,
+                    KWebProfileDataFilter(
+                        kinds = setOf(KWebProfileDataKind.LOCAL_STORAGE),
+                        origin = origin.origin,
+                    ),
+                )
+            }
+            require(
+                cdp.evaluate("localStorage.getItem('kwebshell-rfc0009-clear-me')") == "null",
+            )
+            val clearCache = kotlinx.coroutines.runBlocking {
+                persistentProfile!!.clearData(
+                    persistentPage!!,
+                    KWebProfileDataFilter(kinds = setOf(KWebProfileDataKind.HTTP_CACHE)),
+                )
+            }
+            require(KWebProfileDataKind.HTTP_CACHE in clearCache.clearedKinds)
+            val unsupportedCacheScope = try {
+                kotlinx.coroutines.runBlocking {
+                    persistentProfile!!.clearData(
+                        persistentPage!!,
+                        KWebProfileDataFilter(
+                            kinds = setOf(KWebProfileDataKind.HTTP_CACHE),
+                            origin = origin.origin,
+                        ),
+                    )
+                }
+                null
+            } catch (error: KWebConfigurationException) {
+                error
+            }
+            require(unsupportedCacheScope?.code == "profile.data-time-range-unsupported") {
+                "HTTP cache origin filtering did not fail typed: $unsupportedCacheScope"
+            }
+            require(
+                cdp.evaluate(
+                    "localStorage.setItem('kwebshell-rfc0009-persistent','stage-one'); 'set'",
+                ) == "set",
+            )
+            val spellcheck = kotlinx.coroutines.runBlocking {
+                persistentProfile!!.configureSpellcheck(
+                    persistentPage!!,
+                    KWebSpellcheckConfiguration(enabled = false, languages = emptyList()),
+                )
+            }
+            val flush = kotlinx.coroutines.runBlocking {
+                persistentProfile!!.flush(persistentPage!!)
+            }
+
+            isolationA = kotlinx.coroutines.runBlocking { engine.openProfile("profile-data-isolation-a") }
+            isolationB = kotlinx.coroutines.runBlocking { engine.openProfile("profile-data-isolation-b") }
+            isolationSurfaceA = NativeEngine.onAwtEventDispatchThread {
+                ComposeBrowserSurface.create(640, 480)
+            }
+            isolationSurfaceB = NativeEngine.onAwtEventDispatchThread {
+                ComposeBrowserSurface.create(640, 480)
+            }
+            isolationPageA = kotlinx.coroutines.runBlocking {
+                isolationA!!.openPage(
+                    KWebDesktop.composeWindowHost(isolationSurfaceA!!.window),
+                    origin.firstUrl,
+                    KWebRect(0, 0, 640, 480),
+                )
+            }
+            isolationPageB = kotlinx.coroutines.runBlocking {
+                isolationB!!.openPage(
+                    KWebDesktop.composeWindowHost(isolationSurfaceB!!.window),
+                    origin.firstUrl,
+                    KWebRect(0, 0, 640, 480),
+                )
+            }
+            val isolatedCookie = KWebCookieSpec(
+                url = origin.secondUrl,
+                name = "kwebshell-rfc0009-isolated",
+                value = "profile-a-only",
+                path = "/",
+                sourceScheme = KWebCookieSourceScheme.HTTP,
+            )
+            kotlinx.coroutines.runBlocking {
+                isolationA!!.setCookie(isolationPageA!!, isolatedCookie)
+            }
+            val foreignTarget = try {
+                kotlinx.coroutines.runBlocking {
+                    isolationA!!.listCookies(isolationPageB!!)
+                }
+                null
+            } catch (error: KWebConfigurationException) {
+                error
+            }
+            require(foreignTarget?.code == "profile.data-target-cross-profile") {
+                "A foreign Profile data target did not fail with the ownership error: $foreignTarget"
+            }
+            val seenFromB = kotlinx.coroutines.runBlocking {
+                isolationB!!.listCookies(
+                    isolationPageB!!,
+                    KWebCookieFilter(origin = origin.origin, name = isolatedCookie.name),
+                )
+            }
+            require(seenFromB.isEmpty()) {
+                "RFC 0009 Profile isolation exposed a cookie across Profiles: $seenFromB"
+            }
+            val evidence = buildJsonObject {
+                put("schemaVersion", 1)
+                put("target", currentTargetId())
+                put("stage", "initial")
+                put("profile", "profile-data-persistent")
+                putJsonObject("cookie") {
+                    put("name", persistentCookie.name)
+                    put("valueRedacted", true)
+                    put("httpOnly", true)
+                    put("sameSite", persistentCookie.sameSite.name)
+                }
+                putJsonObject("storageUsage") {
+                    put("origin", usageBeforeClear.origin)
+                    put("usageBytes", usageBeforeClear.usageBytes)
+                    put("quotaBytes", usageBeforeClear.quotaBytes)
+                    put("breakdownEntries", usageBeforeClear.breakdown.size)
+                }
+                putJsonObject("originClear") {
+                    put("clearedKinds", clearOrigin.clearedKinds.joinToString(",") { it.name })
+                    put("localStorageRemoved", true)
+                }
+                putJsonObject("httpCacheClear") {
+                    put("profileWide", true)
+                    put("clearedKinds", clearCache.clearedKinds.joinToString(",") { it.name })
+                    put("unsupportedOriginRejected", true)
+                }
+                putJsonObject("spellcheck") {
+                    put("enabled", spellcheck.enabled)
+                    put("languages", spellcheck.languages.joinToString(","))
+                }
+                put("flushCompletedEpochMillis", flush.completedEpochMillis)
+                putJsonObject("profileIsolation") {
+                    put("crossProfileCookieVisible", seenFromB.isNotEmpty())
+                    put("foreignTargetRejected", foreignTarget != null)
+                    put("passed", seenFromB.isEmpty())
+                }
+            }
+            Files.writeString(
+                requiredPathProperty(INTEGRATION_ROOT_PROPERTY).resolve("profile-data-stage1.json"),
+                evidence.toString() + "\n",
+                StandardCharsets.UTF_8,
+            )
+        } finally {
+            closeAndAwait(persistentPage)
+            closeAndAwait(isolationPageA)
+            closeAndAwait(isolationPageB)
+            persistentProfile?.let { if (it.lifecycle.value != KWebLifecycleState.CLOSED) it.close() }
+            isolationA?.let { if (it.lifecycle.value != KWebLifecycleState.CLOSED) it.close() }
+            isolationB?.let { if (it.lifecycle.value != KWebLifecycleState.CLOSED) it.close() }
+            persistentSurface?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
+            isolationSurfaceA?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
+            isolationSurfaceB?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
+            if (engine.lifecycle.value != KWebLifecycleState.CLOSED) engine.close()
+        }
+    }
+    require(NativeBrowser.liveNativeBrowserCount() == 0L)
+    require(NativeEngine.liveNativeEngineCount() == 0L)
+}
+
+private fun runProfileDataStage2() {
+    val configuration = runtimeConfiguration()
+    val engine = KWebDesktop.openEngine(
+        KWebDesktopEngineConfiguration(
+            cefRuntime = configuration.cefRuntime,
+            browserSubprocess = configuration.browserSubprocess,
+            resources = configuration.resources,
+            locales = configuration.locales,
+            rootCache = configuration.rootCache,
+            log = configuration.log,
+            remoteDebuggingPort = configuration.remoteDebuggingPort,
+        ),
+    )
+    var profile: io.github.kingsword09.kwebshell.core.KWebProfile? = null
+    var page: io.github.kingsword09.kwebshell.core.KWebPage? = null
+    var surface: ComposeBrowserSurface? = null
+    BrowserOrigin(
+        includeAppPathsBridge = false,
+        fixedPort = requiredIntegrationPort(PROFILE_DATA_PORT_PROPERTY),
+    ).use { origin ->
+        try {
+            profile = kotlinx.coroutines.runBlocking { engine.openProfile("profile-data-persistent") }
+            surface = NativeEngine.onAwtEventDispatchThread { ComposeBrowserSurface.create(800, 600) }
+            page = kotlinx.coroutines.runBlocking {
+                profile!!.openPage(
+                    KWebDesktop.composeWindowHost(surface!!.window),
+                    origin.secondUrl,
+                    KWebRect(0, 0, 800, 600),
+                )
+            }
+            val cdp = CdpClient(configuration.remoteDebuggingPort)
+            cdp.awaitPage(origin.secondUrl)
+            val cookies = kotlinx.coroutines.runBlocking {
+                profile!!.listCookies(
+                    page!!,
+                    KWebCookieFilter(origin = origin.origin, name = "kwebshell-rfc0009-persistent"),
+                )
+            }
+            require(cookies.singleOrNull()?.value == "stage-one-secret") {
+                "RFC 0009 did not persist the Profile cookie across a new CEF process: $cookies"
+            }
+            require(
+                cdp.evaluate("localStorage.getItem('kwebshell-rfc0009-persistent')") == "stage-one",
+            ) {
+                "RFC 0009 did not persist origin localStorage across a new CEF process."
+            }
+            require(
+                cdp.evaluate(
+                    """
+                    void (() => {
+                      const request = indexedDB.open('kwebshell-rfc0009-usage');
+                      request.onerror = () => localStorage.setItem('kwebshell-rfc0009-idb-read', 'error');
+                      request.onsuccess = () => {
+                        const database = request.result;
+                        const read = database.transaction('items').objectStore('items').get('payload');
+                        read.onerror = () => localStorage.setItem('kwebshell-rfc0009-idb-read', 'error');
+                        read.onsuccess = () => {
+                          database.close();
+                          localStorage.setItem('kwebshell-rfc0009-idb-read', String(read.result?.length ?? 0));
+                        };
+                      };
+                    })(); 'started'
+                    """.trimIndent(),
+                ) == "started",
+            ) {
+                "RFC 0009 did not persist origin IndexedDB data across a new CEF process."
+            }
+            cdp.awaitExpression("localStorage.getItem('kwebshell-rfc0009-idb-read') !== null")
+            require(cdp.evaluate("localStorage.getItem('kwebshell-rfc0009-idb-read')") == "65536") {
+                "RFC 0009 did not persist origin IndexedDB data across a new CEF process."
+            }
+            val flush = kotlinx.coroutines.runBlocking { profile!!.flush(page!!) }
+            closeAndAwait(page)
+            val closedTarget = try {
+                kotlinx.coroutines.runBlocking { profile!!.listCookies(page!!) }
+                null
+            } catch (error: KWebNativeException) {
+                error
+            }
+            require(closedTarget?.code == "profile.data-target-invalid") {
+                "A closed Profile data target did not fail with the typed error: $closedTarget"
+            }
+            val stage1 = kotlinx.serialization.json.Json.parseToJsonElement(
+                Files.readString(
+                    requiredPathProperty(INTEGRATION_ROOT_PROPERTY).resolve("profile-data-stage1.json"),
+                    StandardCharsets.UTF_8,
+                ),
+            )
+            val evidence = buildJsonObject {
+                put("schemaVersion", 1)
+                put("target", currentTargetId())
+                put("stage1", stage1)
+                putJsonObject("restart") {
+                    put("newJvm", true)
+                    put("newCefProcess", true)
+                    put("cookieRestored", true)
+                    put("cookieValueRedacted", true)
+                    put("localStorageRestored", true)
+                    put("indexedDbRestored", true)
+                    put("closedTargetRejected", true)
+                }
+                put("flushCompletedEpochMillis", flush.completedEpochMillis)
+            }
+            Files.writeString(
+                requiredPathProperty(INTEGRATION_ROOT_PROPERTY).resolve("profile-data-evidence.json"),
+                evidence.toString() + "\n",
+                StandardCharsets.UTF_8,
+            )
+        } finally {
+            closeAndAwait(page)
+            profile?.let { if (it.lifecycle.value != KWebLifecycleState.CLOSED) it.close() }
+            surface?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
+            if (engine.lifecycle.value != KWebLifecycleState.CLOSED) engine.close()
+        }
+    }
+    require(NativeBrowser.liveNativeBrowserCount() == 0L)
+    require(NativeEngine.liveNativeEngineCount() == 0L)
+}
+
+private fun closeAndAwait(page: io.github.kingsword09.kwebshell.core.KWebPage?) {
+    if (page == null || page.lifecycle.value == KWebLifecycleState.CLOSED) return
+    page.close()
+    kotlinx.coroutines.runBlocking {
+        withTimeout(30_000) { page.events.first { it.type == KWebPageEventType.CLOSED } }
+    }
 }
 
 private fun runExtensionLifecycleCoordinator() {
@@ -834,6 +1244,91 @@ private fun runPublicFacadeLifecycle() {
                             it.type == KWebPageEventType.ADDRESS_CHANGED && it.url == origin.secondUrl
                         }
                     }
+                }
+                val cookieSecure = origin.secondUrl.startsWith("https://")
+                val profileCookie = KWebCookieSpec(
+                    url = origin.secondUrl,
+                    name = "kwebshell-rfc0009",
+                    value = "profile-data-value",
+                    path = "/",
+                    secure = cookieSecure,
+                    httpOnly = true,
+                    sameSite = KWebCookieSameSite.LAX,
+                    sourceScheme = if (cookieSecure) {
+                        KWebCookieSourceScheme.HTTPS
+                    } else {
+                        KWebCookieSourceScheme.HTTP
+                    },
+                )
+                val cookieSet = kotlinx.coroutines.runBlocking {
+                    publicProfile.setCookie(publicPage, profileCookie)
+                }
+                require(cookieSet.affected == 1) {
+                    "RFC 0009 cookie set did not report one affected cookie: $cookieSet"
+                }
+                val listedCookies = kotlinx.coroutines.runBlocking {
+                    publicProfile.listCookies(
+                        publicPage,
+                        KWebCookieFilter(
+                            origin = origin.origin,
+                            name = profileCookie.name,
+                        ),
+                    )
+                }
+                require(listedCookies.any {
+                    it.name == profileCookie.name &&
+                        it.value == profileCookie.value &&
+                        it.httpOnly &&
+                        it.sameSite == KWebCookieSameSite.LAX
+                }) {
+                    "RFC 0009 cookie list did not preserve Chromium cookie fields: $listedCookies"
+                }
+                val storageUsage = kotlinx.coroutines.runBlocking {
+                    publicProfile.storageUsage(publicPage, origin.origin)
+                }
+                require(
+                    storageUsage.origin == origin.origin &&
+                        storageUsage.usageBytes >= 0 &&
+                        storageUsage.quotaBytes >= storageUsage.usageBytes
+                ) {
+                    "RFC 0009 storage usage was invalid: $storageUsage"
+                }
+                val spellcheck = kotlinx.coroutines.runBlocking {
+                    publicProfile.configureSpellcheck(
+                        publicPage,
+                        KWebSpellcheckConfiguration(enabled = false, languages = emptyList()),
+                    )
+                }
+                require(!spellcheck.enabled && spellcheck.languages.isEmpty()) {
+                    "RFC 0009 spellcheck read-back was not deterministic: $spellcheck"
+                }
+                val flush = kotlinx.coroutines.runBlocking { publicProfile.flush(publicPage) }
+                require(flush.completedEpochMillis > 0) {
+                    "RFC 0009 Profile flush did not return a completion timestamp: $flush"
+                }
+                val clear = kotlinx.coroutines.runBlocking {
+                    publicProfile.clearData(
+                        publicPage,
+                        KWebProfileDataFilter(
+                            kinds = setOf(KWebProfileDataKind.COOKIES),
+                            origin = origin.origin,
+                        ),
+                    )
+                }
+                require(clear.removedCookies >= 1 && KWebProfileDataKind.COOKIES in clear.clearedKinds) {
+                    "RFC 0009 cookie clear did not report the retained cookie: $clear"
+                }
+                val remainingCookies = kotlinx.coroutines.runBlocking {
+                    publicProfile.listCookies(
+                        publicPage,
+                        KWebCookieFilter(
+                            origin = origin.origin,
+                            name = profileCookie.name,
+                        ),
+                    )
+                }
+                require(remainingCookies.none { it.name == profileCookie.name }) {
+                    "RFC 0009 cookie clear left a matching cookie: $remainingCookies"
                 }
                 kotlinx.coroutines.runBlocking { publicPage.setBounds(KWebRect(24, 32, 960, 640)) }
                 kotlinx.coroutines.runBlocking {
@@ -2368,8 +2863,12 @@ private fun runRawBridgeAbiConformance(
 
 private class BrowserOrigin(
     private val includeAppPathsBridge: Boolean = true,
+    private val fixedPort: Int? = null,
 ) : AutoCloseable {
-    private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    private val server = HttpServer.create(
+        InetSocketAddress("127.0.0.1", fixedPort ?: 0),
+        0,
+    )
     private val crossOriginServer = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
     private val port: Int
     private val bridgeJavascript = Files.readString(requiredPathProperty(BRIDGE_JAVASCRIPT_PROPERTY))
@@ -3369,7 +3868,9 @@ private class CdpWebSocket(url: String) : AutoCloseable {
         require(response["result"]!!.jsonObject["exceptionDetails"] == null) {
             "CDP evaluation failed: $response"
         }
-        return response["result"]!!.jsonObject["result"]!!.jsonObject["value"]!!.jsonPrimitive.content
+        return response["result"]!!.jsonObject["result"]!!.jsonObject["value"]
+            ?.jsonPrimitive?.content
+            ?: error("CDP evaluation returned no by-value result: $response")
     }
 
     fun command(method: String, paramsJson: String): kotlinx.serialization.json.JsonObject {
@@ -3562,20 +4063,28 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
         "bin",
         if (isWindows()) "java.exe" else "java",
     )
-    val inheritedProperties = listOf(
-        NATIVE_LIBRARY_PATH_PROPERTY,
-        CEF_RUNTIME_PROPERTY,
-        SUBPROCESS_PROPERTY,
-        RESOURCES_PROPERTY,
-        LOCALES_PROPERTY,
-        BRIDGE_JAVASCRIPT_PROPERTY,
-        APP_PATHS_BRIDGE_JAVASCRIPT_PROPERTY,
-        APP_PATHS_NATIVE_LIBRARY_PROPERTY,
-        EXTENSION_PATH_PROPERTY,
-        LIFECYCLE_V1_PROPERTY,
-        LIFECYCLE_V2_PROPERTY,
-        EXPECT_CUSTOM_EXTENSION_RUNTIME_PROPERTY,
-    )
+    val inheritedProperties = buildList {
+        add(NATIVE_LIBRARY_PATH_PROPERTY)
+        add(CEF_RUNTIME_PROPERTY)
+        add(SUBPROCESS_PROPERTY)
+        add(RESOURCES_PROPERTY)
+        add(LOCALES_PROPERTY)
+        add(BRIDGE_JAVASCRIPT_PROPERTY)
+        add(APP_PATHS_BRIDGE_JAVASCRIPT_PROPERTY)
+        add(APP_PATHS_NATIVE_LIBRARY_PROPERTY)
+        add(EXTENSION_PATH_PROPERTY)
+        add(LIFECYCLE_V1_PROPERTY)
+        add(LIFECYCLE_V2_PROPERTY)
+        add(EXPECT_CUSTOM_EXTENSION_RUNTIME_PROPERTY)
+        add(DESKTOP_MODULE_PATH_PROPERTY)
+        add(DESKTOP_TEST_CLASSES_PROPERTY)
+        add(DESKTOP_INTEGRATION_CLASSPATH_PROPERTY)
+        if (mode == IntegrationMode.PROFILE_DATA_STAGE1 ||
+            mode == IntegrationMode.PROFILE_DATA_STAGE2
+        ) {
+            add(PROFILE_DATA_PORT_PROPERTY)
+        }
+    }
     val command = buildList {
         add(javaExecutable.toString())
         add("--module-path=${System.getProperty(DESKTOP_MODULE_PATH_PROPERTY)}")
@@ -3590,6 +4099,8 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
         add("-D$INTEGRATION_ROOT_PROPERTY=$root")
         if (mode == IntegrationMode.SUCCESS ||
             mode == IntegrationMode.PUBLIC_FACADE ||
+            mode == IntegrationMode.PROFILE_DATA_STAGE1 ||
+            mode == IntegrationMode.PROFILE_DATA_STAGE2 ||
             mode == IntegrationMode.PAGE_LIFECYCLE ||
             mode == IntegrationMode.RENDERER_CRASH ||
             mode == IntegrationMode.EXTENSION_LIFECYCLE_CRASH ||
@@ -3635,6 +4146,10 @@ private fun findFreePort(): Int = ServerSocket().use { socket ->
     socket.bind(InetSocketAddress("127.0.0.1", 0))
     socket.localPort
 }
+
+private fun requiredIntegrationPort(property: String): Int =
+    System.getProperty(property)?.toIntOrNull()?.takeIf { it in 1024..65535 }
+        ?: error("Missing valid integration port property '$property'.")
 
 /**
  * CEF stream conformance: ordered delivery, slow-consumer backpressure, abort,

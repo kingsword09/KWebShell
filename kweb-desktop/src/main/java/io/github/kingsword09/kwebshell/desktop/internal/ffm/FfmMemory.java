@@ -13,6 +13,7 @@ import java.util.Objects;
 
 final class FfmMemory {
     static final long MAXIMUM_TEXT_SIZE = 1024L * 1024L;
+    static final long MAXIMUM_PROFILE_DATA_OUTPUT_SIZE = 4L * 1024L * 1024L;
     static final long MAXIMUM_PATH_SIZE = 32768L;
 
     private static final long STRING_DATA_OFFSET = FfmLayouts.offset(FfmLayouts.STRING_VIEW, "data");

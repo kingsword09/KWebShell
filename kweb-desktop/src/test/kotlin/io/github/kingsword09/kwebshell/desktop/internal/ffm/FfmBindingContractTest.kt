@@ -10,25 +10,28 @@ import kotlin.test.assertTrue
 
 class FfmBindingContractTest {
     @Test
-    fun productionInventoryMatchesAbiVersionEleven() {
-        assertEquals(11, FfmAbi.VERSION)
-        assertEquals(23, FfmAbi.FUNCTIONS.size)
+    fun productionInventoryMatchesAbiVersionTwelve() {
+        assertEquals(12, FfmAbi.VERSION)
+        assertEquals(24, FfmAbi.FUNCTIONS.size)
         assertEquals(16, FfmLayouts.STRING_VIEW.byteSize())
         assertEquals(32, FfmLayouts.ENGINE_EVENT.byteSize())
         assertEquals(128, FfmLayouts.ENGINE_CONFIG.byteSize())
         assertEquals(168, FfmLayouts.BROWSER_EVENT.byteSize())
         assertEquals(56, FfmLayouts.BRIDGE_EVENT.byteSize())
+        assertEquals(64, FfmLayouts.PROFILE_DATA_EVENT.byteSize())
         assertEquals(128, FfmLayouts.EXTENSION_RESULT.byteSize())
         assertEquals(80, FfmLayouts.EXTENSION_CONFIG.byteSize())
-        assertEquals(128, FfmLayouts.BROWSER_CONFIG.byteSize())
+        assertEquals(144, FfmLayouts.BROWSER_CONFIG.byteSize())
         assertEquals(24, FfmLayouts.offset(FfmLayouts.BROWSER_CONFIG, "native_parent"))
         assertEquals(80, FfmLayouts.offset(FfmLayouts.BROWSER_CONFIG, "callback"))
         assertEquals(112, FfmLayouts.offset(FfmLayouts.BROWSER_CONFIG, "bridge_callback"))
+        assertEquals(128, FfmLayouts.offset(FfmLayouts.BROWSER_CONFIG, "profile_data_callback"))
         assertEquals(48, FfmLayouts.offset(FfmLayouts.EXTENSION_RESULT, "extension_id"))
-        assertEquals(4, listOf(
+        assertEquals(5, listOf(
             FfmAbi.ENGINE_CALLBACK,
             FfmAbi.BROWSER_CALLBACK,
             FfmAbi.BRIDGE_CALLBACK,
+            FfmAbi.PROFILE_DATA_CALLBACK,
             FfmAbi.EXTENSION_CALLBACK,
         ).size)
     }

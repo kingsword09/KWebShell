@@ -27,12 +27,15 @@
 #include "include/base/cef_bind.h"
 #include "include/base/cef_callback.h"
 #include "include/cef_client.h"
+#include "include/cef_devtools_message_observer.h"
 #include "include/cef_cookie.h"
 #include "include/cef_keyboard_handler.h"
 #include "include/cef_jsdialog_handler.h"
 #include "include/cef_parser.h"
 #include "include/cef_request_context.h"
 #include "include/cef_request_context_handler.h"
+#include "include/cef_registration.h"
+#include "include/cef_values.h"
 #include "include/wrapper/cef_closure_task.h"
 #include "include/wrapper/cef_helpers.h"
 #include "pending_waiters.h"
@@ -42,6 +45,7 @@ namespace kwebshell {
 namespace {
 
 constexpr size_t kMaximumTextSize = 1024 * 1024;
+constexpr size_t kMaximumProfileDataOutputSize = 4 * 1024 * 1024;
 constexpr int32_t kMaximumViewportDimension = 32768;
 constexpr int64_t kCookieFlushTimeoutMs = 30000;
 constexpr int64_t kDevToolsOpenTimeoutMs = 30000;
@@ -233,12 +237,34 @@ std::string DocumentUrl(const std::string &url) {
   return fragment == std::string::npos ? url : url.substr(0, fragment);
 }
 
+CefRefPtr<CefDictionaryValue> ParseProfileDataParams(
+    const std::string &payload) {
+  CefRefPtr<CefValue> value = CefParseJSON(payload, JSON_PARSER_RFC);
+  if (!value || value->GetType() != VTYPE_DICTIONARY) {
+    return nullptr;
+  }
+  return value->GetDictionary();
+}
+
+std::string ProfileDataJson(CefRefPtr<CefDictionaryValue> dictionary) {
+  if (!dictionary) {
+    return {};
+  }
+  CefRefPtr<CefValue> value = CefValue::Create();
+  value->SetDictionary(dictionary);
+  return CefWriteJSON(value, JSON_WRITER_DEFAULT).ToString();
+}
+
 
 class BrowserSession;
 
 class DevToolsClient;
 
 class BridgeQueryHandler;
+
+class ProfileDataDevToolsObserver;
+
+class ProfileDataCompletionCallback;
 
 struct ProfileContextEntry;
 
@@ -262,6 +288,9 @@ public:
   kweb_status CrashRenderer(kweb_browser_handle handle);
   kweb_status BridgeRespond(kweb_browser_handle handle, uint64_t request_id,
                             std::string response, bool success);
+  kweb_status ProfileData(kweb_browser_handle handle, uint64_t request_id,
+                          kweb_profile_data_operation_type operation,
+                          std::string payload);
   kweb_status ExtensionContext(kweb_browser_handle handle,
                                kweb_engine_handle *engine_out,
                                std::filesystem::path *profile_path_out) const;
@@ -422,6 +451,41 @@ private:
   IMPLEMENT_REFCOUNTING(CookieFlushCallback);
 };
 
+class ProfileDataDevToolsObserver final : public CefDevToolsMessageObserver {
+public:
+  ProfileDataDevToolsObserver(std::weak_ptr<BrowserSession> session,
+                              uint64_t request_id)
+      : session_(std::move(session)), request_id_(request_id) {}
+
+  void OnDevToolsMethodResult(CefRefPtr<CefBrowser> browser, int message_id,
+                              bool success, const void *result,
+                              size_t result_size) override;
+  void OnDevToolsAgentDetached(CefRefPtr<CefBrowser> browser) override;
+
+private:
+  const std::weak_ptr<BrowserSession> session_;
+  const uint64_t request_id_;
+  IMPLEMENT_REFCOUNTING(ProfileDataDevToolsObserver);
+};
+
+class ProfileDataCompletionCallback final : public CefCompletionCallback {
+public:
+  ProfileDataCompletionCallback(std::weak_ptr<BrowserSession> session,
+                                uint64_t request_id,
+                                kweb_profile_data_operation_type operation)
+      : session_(std::move(session)),
+        request_id_(request_id),
+        operation_(operation) {}
+
+  void OnComplete() override;
+
+private:
+  const std::weak_ptr<BrowserSession> session_;
+  const uint64_t request_id_;
+  const kweb_profile_data_operation_type operation_;
+  IMPLEMENT_REFCOUNTING(ProfileDataCompletionCallback);
+};
+
 // A CefRequestContext shared by every browser created on one profile cache
 // path. Chromium profile storage is expensive to initialize and tear down on
 // the same cache path, and repeatedly rebuilding it under churn can stall
@@ -447,13 +511,17 @@ public:
                  std::string initial_url, kweb_browser_event_callback callback,
                  void *user_data, std::string bridge_origin,
                  kweb_bridge_event_callback bridge_callback,
-                 void *bridge_user_data)
+                 void *bridge_user_data,
+                 kweb_profile_data_event_callback profile_data_callback,
+                 void *profile_data_user_data)
       : engine_(engine), handle_(handle), native_parent_(native_parent), x_(x),
         y_(y), width_(width), height_(height),
         profile_path_(std::move(profile_path)),
         initial_url_(std::move(initial_url)), callback_(callback),
         user_data_(user_data), bridge_origin_(std::move(bridge_origin)),
-        bridge_callback_(bridge_callback), bridge_user_data_(bridge_user_data) {}
+        bridge_callback_(bridge_callback), bridge_user_data_(bridge_user_data),
+        profile_data_callback_(profile_data_callback),
+        profile_data_user_data_(profile_data_user_data) {}
 
   kweb_status Start() {
     TraceCreateStage(handle_, "start-requested");
@@ -758,6 +826,84 @@ public:
       return KWEB_STATUS_CEF_UI_TASK_FAILED;
     }
     return KWEB_STATUS_OK;
+  }
+
+  kweb_status ProfileData(
+      uint64_t request_id, kweb_profile_data_operation_type operation,
+      std::string payload) {
+    if (request_id == 0 || operation < KWEB_PROFILE_DATA_GET_COOKIES ||
+        operation > KWEB_PROFILE_DATA_FLUSH) {
+      return KWEB_STATUS_INVALID_ARGUMENT;
+    }
+    if (payload.size() > kMaximumTextSize || !IsValidUtf8(payload.data(),
+                                                          payload.size())) {
+      return KWEB_STATUS_TEXT_TOO_LARGE;
+    }
+    if (closing_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_BROWSER_CLOSING;
+    }
+    if (!ready_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_BROWSER_NOT_READY;
+    }
+    if (!profile_data_callback_) {
+      return KWEB_STATUS_PROFILE_DATA_NOT_SUPPORTED;
+    }
+    {
+      std::lock_guard lock(profile_data_mutex_);
+      if (profile_data_active_) {
+        return KWEB_STATUS_PROFILE_DATA_OPERATION_ACTIVE;
+      }
+      profile_data_active_ = true;
+      profile_data_request_id_ = request_id;
+      profile_data_operation_ = operation;
+    }
+    auto self = shared_from_this();
+    if (!CefPostTask(
+            TID_UI,
+            base::BindOnce(
+                [](std::shared_ptr<BrowserSession> session,
+                   uint64_t operation_request_id,
+                   kweb_profile_data_operation_type operation_type,
+                   std::string operation_payload) {
+                  session->StartProfileData(operation_request_id,
+                                             operation_type,
+                                             std::move(operation_payload));
+                },
+                std::move(self), request_id, operation, std::move(payload)))) {
+      std::lock_guard lock(profile_data_mutex_);
+      profile_data_active_ = false;
+      return KWEB_STATUS_CEF_UI_TASK_FAILED;
+    }
+    return KWEB_STATUS_OK;
+  }
+
+  void ProfileDataDevToolsResult(uint64_t request_id, int message_id,
+                                 bool success, const void *result,
+                                 size_t result_size) {
+    CEF_REQUIRE_UI_THREAD();
+    if (request_id != profile_data_request_id_ ||
+        message_id != profile_data_message_id_) {
+      return;
+    }
+    const auto operation = profile_data_operation_;
+    if (!success || result == nullptr ||
+        result_size > kMaximumProfileDataOutputSize ||
+        !IsValidUtf8(static_cast<const char *>(result), result_size)) {
+      FinishProfileData(request_id, operation,
+                        KWEB_STATUS_PROFILE_DATA_RESULT_INVALID, {});
+      return;
+    }
+    FinishProfileData(
+        request_id, operation, KWEB_STATUS_OK,
+        std::string(static_cast<const char *>(result), result_size));
+  }
+
+  void ProfileDataAgentDetached(uint64_t request_id) {
+    CEF_REQUIRE_UI_THREAD();
+    if (request_id == profile_data_request_id_) {
+      FinishProfileData(request_id, profile_data_operation_,
+                        KWEB_STATUS_PROFILE_DATA_RESULT_INVALID, {});
+    }
   }
 
   kweb_status ExtensionContext(
@@ -1351,6 +1497,204 @@ public:
   }
 
 private:
+  friend class ProfileDataCompletionCallback;
+  friend class ProfileDataDevToolsObserver;
+
+  void StartProfileData(uint64_t request_id,
+                        kweb_profile_data_operation_type operation,
+                        std::string payload) {
+    CEF_REQUIRE_UI_THREAD();
+    if (closing_.load(std::memory_order_acquire) || !browser_ ||
+        !request_context_) {
+      FinishProfileData(request_id, operation, KWEB_STATUS_BROWSER_CLOSING,
+                        {});
+      return;
+    }
+    CefPostDelayedTask(
+        TID_UI,
+        base::BindOnce(
+            [](std::shared_ptr<BrowserSession> session,
+               uint64_t timeout_request_id,
+               kweb_profile_data_operation_type timeout_operation) {
+              if (session->profile_data_active_ &&
+                  session->profile_data_request_id_ == timeout_request_id) {
+                session->FinishProfileData(
+                    timeout_request_id, timeout_operation,
+                    KWEB_STATUS_PROFILE_DATA_TIMEOUT, {});
+              }
+            },
+            shared_from_this(), request_id, operation),
+        kCookieFlushTimeoutMs);
+
+    if (operation == KWEB_PROFILE_DATA_SET_SPELLCHECK) {
+      StartSpellcheckUpdate(request_id, operation, std::move(payload));
+      return;
+    }
+    if (operation == KWEB_PROFILE_DATA_FLUSH) {
+      CefRefPtr<CefCookieManager> cookie_manager =
+          request_context_->GetCookieManager(nullptr);
+      if (!cookie_manager ||
+          !cookie_manager->FlushStore(new ProfileDataCompletionCallback(
+              weak_from_this(), request_id, operation))) {
+        FinishProfileData(request_id, operation,
+                          KWEB_STATUS_PROFILE_DATA_RESULT_INVALID, {});
+      }
+      return;
+    }
+    if (operation == KWEB_PROFILE_DATA_CLEAR_HTTP_CACHE) {
+      request_context_->ClearHttpCache(new ProfileDataCompletionCallback(
+          weak_from_this(), request_id, operation));
+      return;
+    }
+
+    std::string method;
+    CefRefPtr<CefDictionaryValue> params;
+    switch (operation) {
+    case KWEB_PROFILE_DATA_GET_COOKIES:
+      method = "Network.getAllCookies";
+      params = CefDictionaryValue::Create();
+      break;
+    case KWEB_PROFILE_DATA_SET_COOKIE:
+      method = "Network.setCookie";
+      params = ParseProfileDataParams(payload);
+      break;
+    case KWEB_PROFILE_DATA_DELETE_COOKIE:
+      method = "Network.deleteCookies";
+      params = ParseProfileDataParams(payload);
+      break;
+    case KWEB_PROFILE_DATA_CLEAR_ORIGIN:
+      method = "Storage.clearDataForOrigin";
+      params = ParseProfileDataParams(payload);
+      break;
+    case KWEB_PROFILE_DATA_STORAGE_USAGE:
+      method = "Storage.getUsageAndQuota";
+      params = ParseProfileDataParams(payload);
+      break;
+    default:
+      FinishProfileData(request_id, operation,
+                        KWEB_STATUS_PROFILE_DATA_NOT_SUPPORTED, {});
+      return;
+    }
+    if (!params) {
+      FinishProfileData(request_id, operation,
+                        KWEB_STATUS_PROFILE_DATA_RESULT_INVALID, {});
+      return;
+    }
+    auto observer = new ProfileDataDevToolsObserver(weak_from_this(),
+                                                    request_id);
+    profile_data_registration_ =
+        browser_->GetHost()->AddDevToolsMessageObserver(observer);
+    if (!profile_data_registration_) {
+      FinishProfileData(request_id, operation,
+                        KWEB_STATUS_PROFILE_DATA_NOT_SUPPORTED, {});
+      return;
+    }
+    profile_data_message_id_ =
+        browser_->GetHost()->ExecuteDevToolsMethod(0, method, params);
+    if (profile_data_message_id_ == 0) {
+      profile_data_registration_ = nullptr;
+      FinishProfileData(request_id, operation,
+                        KWEB_STATUS_PROFILE_DATA_RESULT_INVALID, {});
+    }
+  }
+
+  void StartSpellcheckUpdate(
+      uint64_t request_id, kweb_profile_data_operation_type operation,
+      std::string payload) {
+    CEF_REQUIRE_UI_THREAD();
+    auto params = ParseProfileDataParams(payload);
+    if (!params || !params->HasKey("enabled") ||
+        params->GetType("enabled") != VTYPE_BOOL ||
+        !params->HasKey("languages") ||
+        params->GetType("languages") != VTYPE_LIST) {
+      FinishProfileData(request_id, operation,
+                        KWEB_STATUS_PROFILE_DATA_RESULT_INVALID, {});
+      return;
+    }
+    const bool enabled = params->GetBool("enabled");
+    CefRefPtr<CefListValue> languages = params->GetList("languages");
+    if (!languages || (enabled && languages->GetSize() == 0)) {
+      FinishProfileData(request_id, operation,
+                        KWEB_STATUS_PROFILE_DATA_RESULT_INVALID, {});
+      return;
+    }
+    CefString error;
+    if (!request_context_->CanSetPreference("spellcheck.enabled") ||
+        !request_context_->CanSetPreference("spellcheck.dictionaries")) {
+      if (!enabled && languages->GetSize() == 0) {
+        auto unavailable = CefDictionaryValue::Create();
+        unavailable->SetBool("enabled", false);
+        unavailable->SetList("languages", CefListValue::Create());
+        FinishProfileData(request_id, operation, KWEB_STATUS_OK,
+                          ProfileDataJson(unavailable));
+        return;
+      }
+      FinishProfileData(request_id, operation,
+                        KWEB_STATUS_PROFILE_DATA_NOT_SUPPORTED, {});
+      return;
+    }
+    CefRefPtr<CefValue> enabled_value = CefValue::Create();
+    enabled_value->SetBool(enabled);
+    if (!request_context_->SetPreference("spellcheck.enabled", enabled_value,
+                                         error)) {
+      FinishProfileData(request_id, operation,
+                        KWEB_STATUS_PROFILE_DATA_RESULT_INVALID, {});
+      return;
+    }
+    CefRefPtr<CefValue> languages_value = CefValue::Create();
+    languages_value->SetList(languages);
+    if (!request_context_->SetPreference("spellcheck.dictionaries",
+                                         languages_value, error)) {
+      FinishProfileData(request_id, operation,
+                        KWEB_STATUS_PROFILE_DATA_RESULT_INVALID, {});
+      return;
+    }
+    auto result = CefDictionaryValue::Create();
+    CefRefPtr<CefValue> retained_enabled =
+        request_context_->GetPreference("spellcheck.enabled");
+    if (!retained_enabled || retained_enabled->GetType() != VTYPE_BOOL) {
+      FinishProfileData(request_id, operation,
+                        KWEB_STATUS_PROFILE_DATA_RESULT_INVALID, {});
+      return;
+    }
+    result->SetBool("enabled", retained_enabled->GetBool());
+    CefRefPtr<CefValue> retained =
+        request_context_->GetPreference("spellcheck.dictionaries");
+    if (!retained || retained->GetType() != VTYPE_LIST) {
+      FinishProfileData(request_id, operation,
+                        KWEB_STATUS_PROFILE_DATA_RESULT_INVALID, {});
+      return;
+    }
+    result->SetList("languages", retained->GetList());
+    FinishProfileData(request_id, operation, KWEB_STATUS_OK,
+                      ProfileDataJson(result));
+  }
+
+  void FinishProfileData(uint64_t request_id,
+                         kweb_profile_data_operation_type operation,
+                         kweb_status status, std::string payload) {
+    CEF_REQUIRE_UI_THREAD();
+    {
+      std::lock_guard lock(profile_data_mutex_);
+      if (!profile_data_active_ || profile_data_request_id_ != request_id) {
+        return;
+      }
+      profile_data_active_ = false;
+      profile_data_message_id_ = 0;
+      profile_data_registration_ = nullptr;
+    }
+    if (payload.size() > kMaximumProfileDataOutputSize ||
+        !IsValidUtf8(payload.data(), payload.size())) {
+      status = KWEB_STATUS_PROFILE_DATA_RESULT_INVALID;
+      payload.clear();
+    }
+    const kweb_string_view payload_view = {payload.data(), payload.size()};
+    const kweb_profile_data_event event = {
+        sizeof(kweb_profile_data_event), KWEB_ABI_VERSION, operation, 0,
+        engine_, handle_, request_id, status, payload_view};
+    profile_data_callback_(profile_data_user_data_, &event);
+  }
+
   uint64_t AllocatePageRequestId() {
     CEF_REQUIRE_UI_THREAD();
     if (next_page_request_id_ == 0 ||
@@ -1572,6 +1916,10 @@ private:
     closing_.store(true, std::memory_order_release);
     ready_.store(false, std::memory_order_release);
     CancelPendingPageRequests();
+    if (profile_data_active_) {
+      FinishProfileData(profile_data_request_id_, profile_data_operation_,
+                        KWEB_STATUS_BROWSER_CLOSING, {});
+    }
     if (!request_context_) {
       CancelPendingProfileContextWait();
       CompleteTerminal();
@@ -1761,6 +2109,8 @@ private:
   const std::string bridge_origin_;
   const kweb_bridge_event_callback bridge_callback_;
   void *const bridge_user_data_;
+  const kweb_profile_data_event_callback profile_data_callback_;
+  void *const profile_data_user_data_;
   std::unique_ptr<BrowserSurface> surface_;
   CefRefPtr<SessionClient> client_;
   CefRefPtr<CefRequestContext> request_context_;
@@ -1778,6 +2128,12 @@ private:
   std::map<uint64_t, BridgeRequest> bridge_requests_;
   std::map<int64_t, uint64_t> bridge_query_ids_;
   uint64_t next_bridge_request_id_ = 1;
+  std::mutex profile_data_mutex_;
+  bool profile_data_active_ = false;
+  uint64_t profile_data_request_id_ = 0;
+  kweb_profile_data_operation_type profile_data_operation_ = 0;
+  int profile_data_message_id_ = 0;
+  CefRefPtr<CefRegistration> profile_data_registration_;
   std::string main_frame_id_;
   std::string current_main_url_;
   std::string pending_main_url_;
@@ -2080,6 +2436,33 @@ void CookieFlushCallback::OnComplete() {
   session->FlushCompleted();
 }
 
+void ProfileDataDevToolsObserver::OnDevToolsMethodResult(
+    CefRefPtr<CefBrowser> browser, int message_id, bool success,
+    const void *result, size_t result_size) {
+  CEF_REQUIRE_UI_THREAD();
+  (void)browser;
+  if (auto session = session_.lock()) {
+    session->ProfileDataDevToolsResult(request_id_, message_id, success,
+                                       result, result_size);
+  }
+}
+
+void ProfileDataDevToolsObserver::OnDevToolsAgentDetached(
+    CefRefPtr<CefBrowser> browser) {
+  CEF_REQUIRE_UI_THREAD();
+  (void)browser;
+  if (auto session = session_.lock()) {
+    session->ProfileDataAgentDetached(request_id_);
+  }
+}
+
+void ProfileDataCompletionCallback::OnComplete() {
+  CEF_REQUIRE_UI_THREAD();
+  if (auto session = session_.lock()) {
+    session->FinishProfileData(request_id_, operation_, KWEB_STATUS_OK, "{}");
+  }
+}
+
 kweb_status SessionRegistry::Create(const kweb_browser_config *config,
                                     kweb_browser_handle *browser_out) {
   if (config == nullptr || browser_out == nullptr) {
@@ -2140,7 +2523,8 @@ kweb_status SessionRegistry::Create(const kweb_browser_config *config,
         config->engine, handle, config->native_parent, config->x, config->y,
         config->width, config->height, *profile, *url, config->callback,
         config->user_data, std::move(bridge_origin), config->bridge_callback,
-        config->bridge_user_data);
+        config->bridge_user_data, config->profile_data_callback,
+        config->profile_data_user_data);
     sessions_.emplace(handle, session);
   }
   const kweb_status start_status = session->Start();
@@ -2298,6 +2682,15 @@ kweb_status SessionRegistry::BridgeRespond(kweb_browser_handle handle,
                  : KWEB_STATUS_INVALID_HANDLE;
 }
 
+kweb_status SessionRegistry::ProfileData(
+    kweb_browser_handle handle, uint64_t request_id,
+    kweb_profile_data_operation_type operation, std::string payload) {
+  auto session = Lookup(handle);
+  return session ? session->ProfileData(request_id, operation,
+                                        std::move(payload))
+                 : KWEB_STATUS_INVALID_HANDLE;
+}
+
 kweb_status SessionRegistry::ExtensionContext(
     kweb_browser_handle handle, kweb_engine_handle *engine_out,
     std::filesystem::path *profile_path_out) const {
@@ -2339,6 +2732,21 @@ kweb_status OpenDevToolsSession(kweb_browser_handle browser) {
 
 kweb_status CloseDevToolsSession(kweb_browser_handle browser) {
   return GuardStatus([&] { return Registry().CloseDevTools(browser); });
+}
+
+kweb_status ProfileDataSession(
+    kweb_browser_handle browser, uint64_t request_id,
+    kweb_profile_data_operation_type operation, const char *payload_utf8,
+    size_t payload_size) {
+  if (payload_utf8 == nullptr && payload_size != 0) {
+    return KWEB_STATUS_INVALID_ARGUMENT;
+  }
+  std::string payload(payload_utf8 == nullptr ? "" : payload_utf8,
+                      payload_size);
+  return GuardStatus([&] {
+    return Registry().ProfileData(browser, request_id, operation,
+                                  std::move(payload));
+  });
 }
 
 

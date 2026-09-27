@@ -120,6 +120,7 @@ internal object NativeBindings {
     internal fun browserCreate(
         engine: Long,
         sink: NativeBrowserEventSink,
+        profileDataSink: NativeProfileDataEventSink,
         nativeParent: Long,
         profilePath: String,
         initialUrl: String,
@@ -133,6 +134,7 @@ internal object NativeBindings {
         engine,
         FfmCallbacks.BrowserEvent(sink::onNativeBrowserEvent),
         bridgeSink?.let { FfmCallbacks.BridgeEvent(it::onNativeBridgeEvent) },
+        FfmCallbacks.ProfileDataEvent(profileDataSink::onNativeProfileDataEvent),
         FfmCallbacks.Failure(sink::onNativeCallbackFailure),
         nativeParent,
         profilePath,
@@ -142,6 +144,33 @@ internal object NativeBindings {
         width,
         height,
         bridgeOrigin,
+    )
+
+    internal fun browserCreate(
+        engine: Long,
+        sink: NativeBrowserEventSink,
+        nativeParent: Long,
+        profilePath: String,
+        initialUrl: String,
+        x: Int,
+        y: Int,
+        width: Int,
+        height: Int,
+        bridgeOrigin: String,
+        bridgeSink: NativeBridgeEventSink?,
+    ): Long = browserCreate(
+        engine = engine,
+        sink = sink,
+        profileDataSink = NativeProfileDataEventSink { _, _, _, _, _, _ -> },
+        nativeParent = nativeParent,
+        profilePath = profilePath,
+        initialUrl = initialUrl,
+        x = x,
+        y = y,
+        width = width,
+        height = height,
+        bridgeOrigin = bridgeOrigin,
+        bridgeSink = bridgeSink,
     )
 
     internal fun browserNavigate(handle: Long, url: String): Int = FfmBindings.browserNavigate(handle, url)
@@ -174,6 +203,13 @@ internal object NativeBindings {
 
     internal fun browserBridgeFail(handle: Long, requestId: Long, failureJson: String): Int =
         FfmBindings.browserBridgeFail(handle, requestId, failureJson)
+
+    internal fun browserProfileData(
+        handle: Long,
+        requestId: Long,
+        operation: Int,
+        payloadJson: String,
+    ): Int = FfmBindings.browserProfileData(handle, requestId, operation, payloadJson)
 
     internal fun releaseBrowserOwner(handle: Long): Throwable? =
         releaseOwner("browser", handle) { FfmBindings.releaseBrowserOwner(handle) }
@@ -299,6 +335,21 @@ internal class NativeBridgeEventSink(
         payload: String,
     ) {
         callback(engine, browser, requestId, type, payload)
+    }
+}
+
+internal class NativeProfileDataEventSink(
+    private val callback: (Long, Long, Long, Int, Int, String) -> Unit,
+) {
+    internal fun onNativeProfileDataEvent(
+        engine: Long,
+        browser: Long,
+        requestId: Long,
+        operation: Int,
+        status: Int,
+        payload: String,
+    ) {
+        callback(engine, browser, requestId, operation, status, payload)
     }
 }
 

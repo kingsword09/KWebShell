@@ -1,6 +1,6 @@
 # RFC 0009: Profile cookies, cache, storage, spellcheck, and session state
 
-- Status: Accepted
+- Status: Implemented
 - Priority: P0
 - Owners: kweb-core, kweb-desktop, Chromium Profile adapter
 - Depends on: RFC 0002, RFC 0003, RFC 0008
@@ -71,7 +71,7 @@ The common contract separates a cookie value from the URL used to set it:
         val expiresEpochMillis: Long? = null,
         val sourceScheme: KWebCookieSourceScheme? = null,
         val sourcePort: Int? = null,
-        val partitionKey: String? = null,
+        val partitionKey: KWebCookiePartitionKey? = null,
     )
 
     public data class KWebCookie(
@@ -88,12 +88,18 @@ The common contract separates a cookie value from the URL used to set it:
         val expiresEpochMillis: Long?,
         val sourceScheme: KWebCookieSourceScheme?,
         val sourcePort: Int?,
-        val partitionKey: String?,
+        val partitionKey: KWebCookiePartitionKey?,
     )
 
     public enum class KWebCookieSameSite { UNSPECIFIED, NONE, LAX, STRICT }
     public enum class KWebCookiePriority { LOW, MEDIUM, HIGH }
     public enum class KWebCookieSourceScheme { HTTP, HTTPS, UNKNOWN }
+
+    public data class KWebCookiePartitionKey(
+        val topLevelSite: String?,
+        val hasCrossSiteAncestor: Boolean,
+        val opaque: Boolean = false,
+    )
 
 Cookie list/set/delete uses Chromium's Network DevTools domain through
 CefBrowserHost::ExecuteDevToolsMethod and
@@ -267,18 +273,18 @@ contract.
 
 | ID / source clause | Observable requirement | Normal, negative and boundary scenarios | Planned verification / required targets | Implementation and test references | Retained evidence / tested revision | Result / review rationale |
 |---|---|---|---|---|---|---|
-| A1 / Profile target and ownership | Every operation is bound to an open page in the receiver Profile and never crosses a request context. | Valid target; foreign Profile; closed page; renderer-terminated page; Profile close race. | Common contract tests, desktop ownership tests, real CEF target identity on macOS, Windows, Linux/X11. | KWebProfile contract; KWebDesktopProfile target validation; native request-context identity checks. | NOT_RUN before implementation. | NOT_RUN |
-| A2 / Cookie model | Cookie list/set/delete preserves domain, path, Secure, HTTP-only, SameSite, priority, expiry, partition key, source scheme, and source port. | Host/domain cookie; all SameSite values; partitioned cookie; invalid source port; 1 MiB boundary; oversized value. | Kotlin model tests, ABI JSON tests, real Network.* CEF fixture on all targets. | KWebCookie models; profile data ABI; DevTools observer and cookie mapping tests. | NOT_RUN before implementation. | NOT_RUN |
-| A3 / Cookie lifecycle and persistence | Cookie mutations report measured results, enforce filters, and survive clean Profile restart. | Set/get/change/delete; expiry; redirect origin; HTTP-only visibility; stale delete; restart. | Three-process real CEF profile fixture and retained cookie transcript on all targets. | Native cookie operation coordinator; profile restart fixture; cookie persistence report. | NOT_RUN before implementation. | NOT_RUN |
-| A4 / Clear scope | Clear operations affect only declared kinds/origins/time ranges, with profile-wide HTTP cache limitations explicit. | Retained second origin; cookie time range; origin storage; HTTP cache profile clear; invalid scope/range; partial failure. | Storage.clearDataForOrigin and ClearHttpCache runtime fixture with network cache evidence on all targets. | KWebProfileDataFilter validation; native clear coordinator; network fixture. | NOT_RUN before implementation. | NOT_RUN |
-| A5 / Storage usage | Usage and quota report exact canonical origin and non-negative Chromium breakdown bytes. | Empty origin; path/query origin rejection; populated local/IndexedDB/Cache Storage; unknown breakdown; quota boundary. | Real Storage.getUsageAndQuota fixture on all targets. | KWebStorageUsage; DevTools result parser; usage fixture. | NOT_RUN before implementation. | NOT_RUN |
-| A6 / Spellcheck | Chromium accepts and persists only the requested spellcheck state; no dictionary is downloaded implicitly. | Enable/disable; duplicate language; invalid tag; restart; missing language resource; network unavailable. | Preference read-back and resource/network audit on all hosted targets. | Spellcheck preference adapter; language validation; no-download assertion. | NOT_RUN before implementation. | NOT_RUN |
-| A7 / Flush and shutdown | Explicit flush completes before success and Profile/page close never reports durable state before Chromium completion. | Normal flush; concurrent operation; flush during page close; timeout; restart read-back. | Native callback ordering plus three-process restart fixture on all targets. | Flush coordinator; close ordering; lifecycle tests. | NOT_RUN before implementation. | NOT_RUN |
-| A8 / Profile isolation | Two persistent Profiles cannot observe each other's cookies, cache, storage, spellcheck state, or permission-related storage. | Same origin in Profile A/B; symlink/case alias; restart each independently; cross-target path attempt. | Real two-Profile, three-process hosted fixture on macOS, Windows, Linux/X11. | Physical profile identity checks; isolation fixture; disk evidence. | NOT_RUN before implementation. | NOT_RUN |
-| A9 / Concurrency and security | Bounded operations serialize, stale targets fail, sensitive cookie values are absent from diagnostics, and CEF UI is not blocked by subscribers. | Concurrent list/set/clear/flush; close race; forged request id; slow collector; output cap. | Kotlin concurrency tests, native callback stress, redacted evidence inspection on all targets. | Per-Profile operation gate; typed errors; redacted recorder; bounded JSON tests. | NOT_RUN before implementation. | NOT_RUN |
-| A10 / Migration and documentation | Electron session surfaces are individually classified and docs/capability metadata match the implemented contract. | fromPartition; cookies; clear cache/storage; spellChecker; unsupported generic Session and partition strings. | Migration golden tests, README/capability matrix, complete PR review. | KWebElectronCapabilityMatrix; migration golden files; RFC and design plan. | NOT_RUN before implementation. | NOT_RUN |
-| A11 / Native ABI and packaging | C header, FFM layouts, exported symbols, runtime packaging, and all advertised targets agree on one versioned profile-data ABI. | Wrong struct size/version; missing callback; invalid JSON; missing export; line-ending/digest drift. | Native C tests, FFM ABI tests, packaging checks, hosted three-target verify. | engine_abi.h; FfmAbi/FfmLayouts; export maps; C ABI contract tests. | NOT_RUN before implementation. | NOT_RUN |
-| A12 / Universal completion | Every applicable row passes on every advertised target and the final review binds the exact implementation/evidence revision. | Missing target, stale digest, skipped runtime test, changed contract after recording, unsupported advertised state. | Governance check, git diff --check, hosted macOS/Windows/Linux matrix, final row review. | Complete PR diff, evidence manifest/artifacts, final acceptance review. | NOT_RUN before implementation. | NOT_RUN |
+| A1 / Profile target and ownership | Every operation is bound to an open page in the receiver Profile and never crosses a request context. | Valid target; foreign Profile; closed page; renderer-terminated page; Profile close race. | Common contract tests, desktop ownership tests, real CEF target identity on macOS, Windows, Linux/X11. | [`KWebProfile`](../../kweb-core/src/commonMain/kotlin/io/github/kingsword09/kwebshell/core/KWebPageContract.kt), [`KWebDesktopProfile`](../../kweb-desktop/src/main/kotlin/io/github/kingsword09/kwebshell/desktop/KWebDesktopEngine.kt), `profile-data-stage1/2` fixture. | `profile-data-evidence.json` after hosted recording; local stage1/2 passed. | HOSTED_PENDING |
+| A2 / Cookie model | Cookie list/set/delete preserves domain, path, Secure, HTTP-only, SameSite, priority, expiry, partition key, source scheme, and source port. | Host/domain cookie; all SameSite values; partitioned cookie; invalid source port; 1 MiB boundary; oversized value. | Kotlin model tests, ABI JSON tests, real Network.* CEF fixture on all targets. | [`KWebProfileDataContract.kt`](../../kweb-core/src/commonMain/kotlin/io/github/kingsword09/kwebshell/core/KWebProfileDataContract.kt), [`KWebDesktopProfileData.kt`](../../kweb-desktop/src/main/kotlin/io/github/kingsword09/kwebshell/desktop/KWebDesktopProfileData.kt), CEF `Network.*` observer. | `profile-data-evidence.json` with redacted cookie fields; local parser and two-stage CEF fixture passed. | HOSTED_PENDING |
+| A3 / Cookie lifecycle and persistence | Cookie mutations report measured results, enforce filters, and survive clean Profile restart. | Set/get/change/delete; expiry; redirect origin; HTTP-only visibility; stale delete; restart. | Three-process real CEF profile fixture and retained cookie transcript on all targets. | `NativeEngineIntegrationMain` `PROFILE_DATA_STAGE1/2`; `NativeBrowser.profileData`; `KWebDesktopProfile.setCookie/listCookies/deleteCookies`. | `profile-data-evidence.json` records new-JVM/new-CEF restoration without cookie values. | HOSTED_PENDING |
+| A4 / Clear scope | Clear operations affect only declared kinds/origins/time ranges, with profile-wide HTTP cache limitations explicit. | Retained second origin; cookie time range; origin storage; HTTP cache profile clear; invalid scope/range; partial failure. | Storage.clearDataForOrigin and ClearHttpCache runtime fixture with network cache evidence on all targets. | `validateDataFilter`; `Storage.clearDataForOrigin`; `CefRequestContext::ClearHttpCache`; profile-data fixture typed rejection. | `profile-data-evidence.json` records origin clear and profile-wide cache clear; hosted pending. | HOSTED_PENDING |
+| A5 / Storage usage | Usage and quota report exact canonical origin and non-negative Chromium breakdown bytes. | Empty origin; path/query origin rejection; populated local/IndexedDB/Cache Storage; unknown breakdown; quota boundary. | Real Storage.getUsageAndQuota fixture on all targets. | `KWebDesktopProfileDataJson.parseStorageUsage`; `KWebProfile.storageUsage`; `Storage.getUsageAndQuota`. | `profile-data-evidence.json` records canonical origin, quota and breakdown count. | HOSTED_PENDING |
+| A6 / Spellcheck | Chromium accepts and persists only the requested spellcheck state; no dictionary is downloaded implicitly. | Enable/disable; duplicate language; invalid tag; restart; missing language resource; network unavailable. | Preference read-back and resource/network audit on all hosted targets. | `StartSpellcheckUpdate`; `validateSpellcheck`; `KWebDesktopProfile.configureSpellcheck`; no-download fixture path. | `profile-data-evidence.json` records Chromium read-back; hosted pending. | HOSTED_PENDING |
+| A7 / Flush and shutdown | Explicit flush completes before success and Profile/page close never reports durable state before Chromium completion. | Normal flush; concurrent operation; flush during page close; timeout; restart read-back. | Native callback ordering plus three-process restart fixture on all targets. | `CefCookieManager::FlushStore`; `ProfileDataCompletionCallback`; stage2 restart and close ordering. | `profile-data-evidence.json` records two completed flush epochs and restart read-back. | HOSTED_PENDING |
+| A8 / Profile isolation | Two persistent Profiles cannot observe each other's cookies, cache, storage, spellcheck state, or permission-related storage. | Same origin in Profile A/B; symlink/case alias; restart each independently; cross-target path attempt. | Real two-Profile, three-process hosted fixture on macOS, Windows, Linux/X11. | `profile-data-stage1` opens two persistent Profiles, rejects foreign target, and verifies cookie isolation; physical path checks remain in Profile owner. | `profile-data-evidence.json` records `passed: true` isolation result. | HOSTED_PENDING |
+| A9 / Concurrency and security | Bounded operations reject overlapping work, stale targets fail, sensitive cookie values are absent from diagnostics, and CEF UI is not blocked by subscribers. | Concurrent list/set/clear/flush; close race; forged request id; slow collector; output cap. | Kotlin concurrency tests, native callback stress, redacted evidence inspection on all targets. | `withProfileDataOperation` try-lock gate; FFM callback owner; 1 MiB input/4 MiB output caps; redacted fixture. | `profile-data-evidence.json` contains no cookie values or native handles; hosted pending. | HOSTED_PENDING |
+| A10 / Migration and documentation | Electron session surfaces are individually classified and docs/capability metadata match the implemented contract. | fromPartition; cookies; clear cache/storage; spellChecker; unsupported generic Session and partition strings. | Migration golden tests, README/capability matrix, complete PR review. | `KWebElectronCapabilityMatrix` session rows; migration README; RFC migration table and design plan. | Hosted evidence records six RFC 0009 migration rows after matrix promotion. | HOSTED_PENDING |
+| A11 / Native ABI and packaging | C header, FFM layouts, exported symbols, runtime packaging, and all advertised targets agree on one versioned profile-data ABI. | Wrong struct size/version; missing callback; invalid JSON; missing export; line-ending/digest drift. | Native C tests, FFM ABI tests, packaging checks, hosted three-target verify. | `engine_abi.h`, `FfmAbi`, `FfmLayouts`, export maps, interop probe, C/FFM contract tests. | Hosted `profile-data-evidence.json` plus native/FFM verification artifacts. | HOSTED_PENDING |
+| A12 / Universal completion | Every applicable row passes on every advertised target and the final review binds the exact implementation/evidence revision. | Missing target, stale digest, skipped runtime test, changed contract after recording, unsupported advertised state. | Governance check, git diff --check, hosted macOS/Windows/Linux matrix, final row review. | Complete PR diff, `contracts.json`, aggregation workflow, final manifest and artifact tree. | Final manifest/artifacts and reviewed merge revision will be recorded before squash merge. | HOSTED_PENDING |
 
 ## Readiness review
 
@@ -320,6 +326,13 @@ retention. The contract digest covers the common Profile API, desktop adapter,
 native C ABI, CEF operation coordinator, migration matrix, fixtures, docs, and
 aggregation workflow. Any change to those inputs invalidates the affected
 records and requires a fresh three-target recording.
+
+The hosted engine-integration artifact is
+`profile-data-evidence.json`. It is produced only after the two-stage fixture
+has completed: stage one writes and clears real Profile data, checks isolation,
+and flushes; stage two opens the same persistent Profile in a new JVM/CEF
+process and verifies cookie and origin-storage restoration. The artifact marks
+cookie values as redacted and contains no filesystem paths or native handles.
 
 ## Migration contract
 

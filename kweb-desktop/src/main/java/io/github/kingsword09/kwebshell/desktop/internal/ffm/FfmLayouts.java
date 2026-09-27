@@ -77,6 +77,19 @@ public final class FfmLayouts {
         STRING_VIEW.withName("payload")
     ).withName("kweb_bridge_event");
 
+    public static final GroupLayout PROFILE_DATA_EVENT = MemoryLayout.structLayout(
+        UINT32.withName("struct_size"),
+        UINT32.withName("abi_version"),
+        UINT32.withName("operation"),
+        UINT32.withName("reserved"),
+        UINT64.withName("engine"),
+        UINT64.withName("browser"),
+        UINT64.withName("request_id"),
+        UINT32.withName("status"),
+        UINT32.withName("reserved_status"),
+        STRING_VIEW.withName("payload")
+    ).withName("kweb_profile_data_event");
+
     public static final GroupLayout EXTENSION_RESULT = MemoryLayout.structLayout(
         UINT32.withName("struct_size"),
         UINT32.withName("abi_version"),
@@ -123,7 +136,9 @@ public final class FfmLayouts {
         POINTER.withName("user_data"),
         STRING_VIEW.withName("bridge_origin"),
         POINTER.withName("bridge_callback"),
-        POINTER.withName("bridge_user_data")
+        POINTER.withName("bridge_user_data"),
+        POINTER.withName("profile_data_callback"),
+        POINTER.withName("profile_data_user_data")
     ).withName("kweb_browser_config");
 
     static {

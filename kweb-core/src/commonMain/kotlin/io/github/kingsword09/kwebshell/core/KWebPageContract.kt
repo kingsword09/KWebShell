@@ -183,6 +183,38 @@ public interface KWebProfile : AutoCloseable {
         bounds: KWebRect,
     ): KWebPage
 
+    public suspend fun listCookies(
+        target: KWebPage,
+        filter: KWebCookieFilter = KWebCookieFilter(),
+    ): List<KWebCookie>
+
+    public suspend fun setCookie(
+        target: KWebPage,
+        cookie: KWebCookieSpec,
+    ): KWebCookieMutationResult
+
+    public suspend fun deleteCookies(
+        target: KWebPage,
+        filter: KWebCookieFilter,
+    ): KWebCookieMutationResult
+
+    public suspend fun clearData(
+        target: KWebPage,
+        filter: KWebProfileDataFilter,
+    ): KWebProfileDataClearResult
+
+    public suspend fun storageUsage(
+        target: KWebPage,
+        origin: String,
+    ): KWebStorageUsage
+
+    public suspend fun configureSpellcheck(
+        target: KWebPage,
+        configuration: KWebSpellcheckConfiguration,
+    ): KWebSpellcheckState
+
+    public suspend fun flush(target: KWebPage): KWebProfileFlushResult
+
     override fun close()
 }
 

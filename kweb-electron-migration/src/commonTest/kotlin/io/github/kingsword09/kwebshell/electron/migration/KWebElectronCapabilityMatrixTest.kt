@@ -41,7 +41,19 @@ class KWebElectronCapabilityMatrixTest {
             KWebElectronMappingStatus.DIRECT,
             KWebElectronCapabilityMatrix.find("renderer-process-state")?.status,
         )
+        assertEquals(
+            KWebElectronMappingStatus.DIRECT,
+            KWebElectronCapabilityMatrix.find("session-cookies")?.status,
+        )
+        assertEquals(
+            "KWebProfile.flush",
+            KWebElectronCapabilityMatrix.find("session-flush")?.kweb,
+        )
+        assertEquals(
+            KWebElectronMappingStatus.DIRECT,
+            KWebElectronCapabilityMatrix.find("session-storage-clear")?.status,
+        )
         assertNotNull(KWebElectronCapabilityMatrix.find("node-runtime"))
-        assertTrue(KWebElectronCapabilityMatrix.entries.size >= 12)
+        assertTrue(KWebElectronCapabilityMatrix.entries.size >= 18)
     }
 }

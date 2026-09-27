@@ -62,7 +62,8 @@ final class NativeLayouts {
         FfmLayouts.BROWSER_CONFIG,
         "struct_size", "abi_version", "engine", "reserved", "native_parent",
         "x", "y", "width", "height", "profile_path", "initial_url",
-        "callback", "user_data", "bridge_origin", "bridge_callback", "bridge_user_data"
+        "callback", "user_data", "bridge_origin", "bridge_callback", "bridge_user_data",
+        "profile_data_callback", "profile_data_user_data"
     );
 
     static final List<LayoutSpec> ALL = List.of(

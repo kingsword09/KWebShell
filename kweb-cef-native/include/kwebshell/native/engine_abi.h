@@ -35,6 +35,7 @@ typedef uint32_t kweb_bridge_event_type;
 typedef uint32_t kweb_extension_operation_type;
 typedef uint32_t kweb_extension_outcome_type;
 typedef uint32_t kweb_extension_state_type;
+typedef uint32_t kweb_profile_data_operation_type;
 
 #define KWEB_ENGINE_EVENT_OPENED ((kweb_engine_event_type)1)
 #define KWEB_ENGINE_EVENT_CLOSED ((kweb_engine_event_type)2)
@@ -96,6 +97,15 @@ typedef uint32_t kweb_extension_state_type;
 #define KWEB_EXTENSION_STATE_TERMINATED ((kweb_extension_state_type)4)
 #define KWEB_EXTENSION_STATE_BLOCKLISTED ((kweb_extension_state_type)5)
 #define KWEB_EXTENSION_STATE_BLOCKED ((kweb_extension_state_type)6)
+
+#define KWEB_PROFILE_DATA_GET_COOKIES ((kweb_profile_data_operation_type)1)
+#define KWEB_PROFILE_DATA_SET_COOKIE ((kweb_profile_data_operation_type)2)
+#define KWEB_PROFILE_DATA_DELETE_COOKIE ((kweb_profile_data_operation_type)3)
+#define KWEB_PROFILE_DATA_CLEAR_ORIGIN ((kweb_profile_data_operation_type)4)
+#define KWEB_PROFILE_DATA_CLEAR_HTTP_CACHE ((kweb_profile_data_operation_type)5)
+#define KWEB_PROFILE_DATA_STORAGE_USAGE ((kweb_profile_data_operation_type)6)
+#define KWEB_PROFILE_DATA_SET_SPELLCHECK ((kweb_profile_data_operation_type)7)
+#define KWEB_PROFILE_DATA_FLUSH ((kweb_profile_data_operation_type)8)
 
 #define KWEB_BROWSER_FLAG_LOADING ((uint32_t)1)
 #define KWEB_BROWSER_FLAG_CAN_GO_BACK ((uint32_t)2)
@@ -177,6 +187,21 @@ typedef struct kweb_bridge_event {
 typedef void(KWEB_ABI_CALL *kweb_bridge_event_callback)(
     void *user_data, const kweb_bridge_event *event);
 
+typedef struct kweb_profile_data_event {
+  uint32_t struct_size;
+  uint32_t abi_version;
+  kweb_profile_data_operation_type operation;
+  uint32_t reserved;
+  kweb_engine_handle engine;
+  kweb_browser_handle browser;
+  uint64_t request_id;
+  kweb_status status;
+  kweb_string_view payload;
+} kweb_profile_data_event;
+
+typedef void(KWEB_ABI_CALL *kweb_profile_data_event_callback)(
+    void *user_data, const kweb_profile_data_event *event);
+
 typedef struct kweb_extension_result {
   uint32_t struct_size;
   uint32_t abi_version;
@@ -226,6 +251,8 @@ typedef struct kweb_browser_config {
   kweb_string_view bridge_origin;
   kweb_bridge_event_callback bridge_callback;
   void *bridge_user_data;
+  kweb_profile_data_event_callback profile_data_callback;
+  void *profile_data_user_data;
 } kweb_browser_config;
 
 KWEB_ENGINE_ABI_EXPORT uint32_t KWEB_ABI_CALL kweb_engine_abi_version(void);
@@ -287,6 +314,12 @@ kweb_browser_bridge_respond(kweb_browser_handle browser, uint64_t request_id,
 KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
 kweb_browser_bridge_fail(kweb_browser_handle browser, uint64_t request_id,
                          const char *failure_utf8, size_t failure_size);
+
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
+kweb_browser_profile_data(
+    kweb_browser_handle browser, uint64_t request_id,
+    kweb_profile_data_operation_type operation, const char *payload_utf8,
+    size_t payload_size);
 
 KWEB_ENGINE_ABI_EXPORT uint64_t KWEB_ABI_CALL kweb_live_browser_count(void);
 

@@ -16,6 +16,7 @@ set(expected
   kweb_browser_crash_renderer
   kweb_browser_bridge_respond
   kweb_browser_bridge_fail
+  kweb_browser_profile_data
   kweb_engine_abi_version
   kweb_engine_close
   kweb_engine_create

@@ -14,7 +14,7 @@ input="docs/rfcs/evidence/manifest.json"
 # The recorder refuses a non-Implemented catalog: normalize the statuses in
 # this workspace before recording. The checked-in flip lands in the same commit
 # as the checked-in records.
-for rfc in 0001 0002 0003 0004 0006 0007 0008 0030; do
+for rfc in 0001 0002 0003 0004 0006 0007 0008 0009 0030; do
   file=$(ls docs/rfcs/${rfc}-*.md)
   sed 's/^- Status: .*$/- Status: Implemented/' "$file" > "$file.recorded"
   mv "$file.recorded" "$file"
@@ -40,6 +40,14 @@ record() {
     arguments="$arguments --matrix-row window-open-handler"
     arguments="$arguments --matrix-row renderer-process-state"
   fi
+  if [ "$rfc" = "0009" ]; then
+    arguments="$arguments --matrix-row session-cookies"
+    arguments="$arguments --matrix-row session-cache-clear"
+    arguments="$arguments --matrix-row session-storage-clear"
+    arguments="$arguments --matrix-row session-storage-usage"
+    arguments="$arguments --matrix-row session-spellcheck"
+    arguments="$arguments --matrix-row session-flush"
+  fi
   ./gradlew --no-daemon :kweb-rfc-governance:rfcEvidenceRecord \
     -PrfcEvidenceArguments="$arguments"
 }
@@ -54,6 +62,7 @@ for target in macos-arm64 windows-x64 linux-x64; do
     "0030|packaging.hosted|application-package|application-package-report.json|application-package"
     "0006|application.lifecycle.hosted|application-lifecycle|application-lifecycle-report.json|application-lifecycle|application-shutdown|application-shutdown.json|engine-integration"
     "0008|page.lifecycle.hosted|page-lifecycle|page-lifecycle-evidence.json|engine-integration|renderer-lifecycle|renderer-lifecycle-evidence.json|engine-integration"
+    "0009|profile.data.hosted|profile-data|profile-data-evidence.json|engine-integration"
     "0007|window-controls.hosted|window-controls-report|window-controls-report.json|provider-lifecycle"
   )
   count=0

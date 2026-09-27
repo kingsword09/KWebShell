@@ -11,6 +11,7 @@ final class FfmBrowserCallbackOwner extends FfmCallbackOwner {
     private static final int CLOSED_EVENT = 10;
     private static final MethodHandle BROWSER_TARGET = callbackTarget("receiveBrowser");
     private static final MethodHandle BRIDGE_TARGET = callbackTarget("receiveBridge");
+    private static final MethodHandle PROFILE_DATA_TARGET = callbackTarget("receiveProfileData");
 
     private static final long BROWSER_STRUCT_SIZE = offset(FfmLayouts.BROWSER_EVENT, "struct_size");
     private static final long BROWSER_ABI_VERSION = offset(FfmLayouts.BROWSER_EVENT, "abi_version");
@@ -33,23 +34,35 @@ final class FfmBrowserCallbackOwner extends FfmCallbackOwner {
     private static final long BRIDGE_BROWSER = offset(FfmLayouts.BRIDGE_EVENT, "browser");
     private static final long BRIDGE_REQUEST = offset(FfmLayouts.BRIDGE_EVENT, "request_id");
 
+    private static final long PROFILE_DATA_STRUCT_SIZE = offset(FfmLayouts.PROFILE_DATA_EVENT, "struct_size");
+    private static final long PROFILE_DATA_ABI_VERSION = offset(FfmLayouts.PROFILE_DATA_EVENT, "abi_version");
+    private static final long PROFILE_DATA_OPERATION = offset(FfmLayouts.PROFILE_DATA_EVENT, "operation");
+    private static final long PROFILE_DATA_ENGINE = offset(FfmLayouts.PROFILE_DATA_EVENT, "engine");
+    private static final long PROFILE_DATA_BROWSER = offset(FfmLayouts.PROFILE_DATA_EVENT, "browser");
+    private static final long PROFILE_DATA_REQUEST = offset(FfmLayouts.PROFILE_DATA_EVENT, "request_id");
+    private static final long PROFILE_DATA_STATUS = offset(FfmLayouts.PROFILE_DATA_EVENT, "status");
+
     private final FfmCallbacks.BrowserEvent browserSink;
     private final FfmCallbacks.BridgeEvent bridgeSink;
+    private final FfmCallbacks.ProfileDataEvent profileDataSink;
     private final BiConsumer<Long, FfmBrowserCallbackOwner> registrar;
     private final MemorySegment browserStub;
     private final MemorySegment bridgeStub;
+    private final MemorySegment profileDataStub;
 
     @SuppressWarnings("restricted")
     FfmBrowserCallbackOwner(
         FfmEngineLibrary library,
         FfmCallbacks.BrowserEvent browserSink,
         FfmCallbacks.BridgeEvent bridgeSink,
+        FfmCallbacks.ProfileDataEvent profileDataSink,
         FfmCallbacks.Failure failureSink,
         BiConsumer<Long, FfmBrowserCallbackOwner> registrar
     ) {
         super(failureSink);
         this.browserSink = Objects.requireNonNull(browserSink, "browserSink");
         this.bridgeSink = bridgeSink;
+        this.profileDataSink = profileDataSink;
         this.registrar = Objects.requireNonNull(registrar, "registrar");
         this.browserStub = library.linker().upcallStub(
             BROWSER_TARGET.bindTo(this),
@@ -63,6 +76,13 @@ final class FfmBrowserCallbackOwner extends FfmCallbackOwner {
                 FfmAbi.BRIDGE_CALLBACK,
                 arena()
             );
+        this.profileDataStub = profileDataSink == null
+            ? MemorySegment.NULL
+            : library.linker().upcallStub(
+                PROFILE_DATA_TARGET.bindTo(this),
+                FfmAbi.PROFILE_DATA_CALLBACK,
+                arena()
+            );
     }
 
     MemorySegment browserStub() {
@@ -71,6 +91,10 @@ final class FfmBrowserCallbackOwner extends FfmCallbackOwner {
 
     MemorySegment bridgeStub() {
         return bridgeStub;
+    }
+
+    MemorySegment profileDataStub() {
+        return profileDataStub;
     }
 
     @SuppressWarnings("restricted")
@@ -206,6 +230,70 @@ final class FfmBrowserCallbackOwner extends FfmCallbackOwner {
             owner.recordFailure(
                 "native.ffm.bridge-callback-failed",
                 "The FFM bridge callback could not be decoded or dispatched.",
+                error
+            );
+        } finally {
+            owner.finishCallback(false);
+        }
+    }
+
+    @SuppressWarnings("restricted")
+    private static void receiveProfileData(
+        FfmBrowserCallbackOwner owner,
+        MemorySegment userData,
+        MemorySegment eventPointer
+    ) {
+        if (!owner.beginCallback()) {
+            owner.recordFailure(
+                "native.ffm.profile-data-callback-after-close",
+                "A Profile data callback entered after its FFM owner closed.",
+                null
+            );
+            return;
+        }
+        try {
+            if (eventPointer.address() == 0 || owner.profileDataSink == null) {
+                throw new IllegalArgumentException("The Profile data callback is not configured.");
+            }
+            MemorySegment event = eventPointer.reinterpret(FfmLayouts.PROFILE_DATA_EVENT.byteSize());
+            long structureSize = Integer.toUnsignedLong(event.get(FfmLayouts.UINT32, PROFILE_DATA_STRUCT_SIZE));
+            int abiVersion = event.get(FfmLayouts.UINT32, PROFILE_DATA_ABI_VERSION);
+            int operation = event.get(FfmLayouts.UINT32, PROFILE_DATA_OPERATION);
+            long engine = event.get(FfmLayouts.UINT64, PROFILE_DATA_ENGINE);
+            long browser = event.get(FfmLayouts.UINT64, PROFILE_DATA_BROWSER);
+            long requestId = event.get(FfmLayouts.UINT64, PROFILE_DATA_REQUEST);
+            int status = event.get(FfmLayouts.UINT32, PROFILE_DATA_STATUS);
+            if (structureSize < FfmLayouts.PROFILE_DATA_EVENT.byteSize()
+                || abiVersion != FfmAbi.VERSION
+                || operation < 1
+                || operation > 8
+                || engine <= 0
+                || browser <= 0
+                || requestId <= 0
+                || status > 59
+                || !owner.bindHandle(browser)) {
+                throw new IllegalArgumentException(
+                    "The native Profile data event violates ABI version " + FfmAbi.VERSION + "."
+                );
+            }
+            owner.registrar.accept(browser, owner);
+            owner.profileDataSink.onEvent(
+                engine,
+                browser,
+                requestId,
+                operation,
+                status,
+                    FfmMemory.readStringView(
+                        event,
+                        FfmLayouts.PROFILE_DATA_EVENT,
+                        "payload",
+                        FfmMemory.MAXIMUM_PROFILE_DATA_OUTPUT_SIZE
+                    )
+            );
+        } catch (Throwable error) {
+            owner.recordFailure(
+                "native.ffm.profile-data-callback-failed",
+                "The FFM Profile data callback could not be decoded or dispatched.",
                 error
             );
         } finally {

@@ -98,9 +98,9 @@ int main() {
        {0, 4, 8, 16, 20, 24, 28, 32, 40, 48, 64, 80, 96, 112}},
       {KWEB_PROBE_LAYOUT_EXTENSION_CONFIG, 80, 8,
        {0, 4, 8, 12, 16, 32, 48, 64, 72}},
-      {KWEB_PROBE_LAYOUT_BROWSER_CONFIG, 128, 8,
+      {KWEB_PROBE_LAYOUT_BROWSER_CONFIG, 144, 8,
        {0, 4, 8, 16, 24, 32, 36, 40, 44, 48, 64, 80, 88, 96, 112,
-        120}},
+        120, 128, 136}},
   };
   passed &= Check(layouts.size() == 8,
                   "native ABI layout inventory must contain 8 entries");

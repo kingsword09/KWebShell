@@ -12,6 +12,7 @@ import io.github.kingsword09.kwebshell.bridge.KWebBridgeProtocol
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebConfigurationException
 import io.github.kingsword09.kwebshell.core.KWebNativeException
+import io.github.kingsword09.kwebshell.desktop.KWebProfileDataOperation
 import io.github.kingsword09.kwebshell.extensions.JvmKWebExtensionLifecycleCoordinator
 import io.github.kingsword09.kwebshell.extensions.KWebExtensionLifecycleResolution
 import io.github.kingsword09.kwebshell.extensions.KWebExtensionLifecycleResult
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -97,6 +99,12 @@ internal data class NativeBrowserEvent(
     val details: String = "",
 )
 
+internal data class NativeProfileDataResult(
+    val operation: Int,
+    val status: Int,
+    val payload: String,
+)
+
 internal enum class NativeBridgeEventType(val value: Int) {
     REQUEST(1),
     CANCELLED(2),
@@ -147,6 +155,9 @@ internal class NativeBrowser private constructor(
     private val bridgeJobs = ConcurrentHashMap<Long, Job>()
     private val bridgeSink = bridgeDispatcher?.let { NativeBridgeEventSink(::receiveNativeBridgeEvent) }
     private val extensionRuntime = NativeExtensionRuntime(engine, this)
+    private val profileDataSink = NativeProfileDataEventSink(::receiveNativeProfileData)
+    private val nextProfileDataRequestId = AtomicLong(1)
+    private val profileDataRequests = ConcurrentHashMap<Long, CompletableDeferred<NativeProfileDataResult>>()
     private val extensionCoordinator: JvmKWebExtensionLifecycleCoordinator by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         JvmKWebExtensionLifecycleCoordinator.open(
             storeRoot = profilePath.resolve(EXTENSION_STORE_DIRECTORY),
@@ -213,6 +224,61 @@ internal class NativeBrowser private constructor(
 
     internal fun requireLiveHandle(operation: String): Long =
         requireOpenHandle(operation)
+
+    internal suspend fun profileData(
+        operation: Int,
+        payload: String,
+    ): NativeProfileDataResult {
+        val handle = requireOpenHandle("profile-data")
+        val requestId = nextProfileDataRequestId.getAndIncrement()
+        if (requestId <= 0L) {
+            throw KWebNativeException(
+                code = "profile.data-operation-pending",
+                details = emptyMap(),
+                message = "The Profile data request identifier was exhausted.",
+            )
+        }
+        val response = CompletableDeferred<NativeProfileDataResult>()
+        if (profileDataRequests.putIfAbsent(requestId, response) != null) {
+            throw KWebNativeException(
+                code = "profile.data-operation-pending",
+                details = mapOf("requestId" to requestId.toString()),
+                message = "The Profile data request identifier is already active.",
+            )
+        }
+        val status = NativeBindings.browserProfileData(handle, requestId, operation, payload)
+        if (status != NativeStatus.OK.value) {
+            profileDataRequests.remove(requestId)
+            throw nativeStatusException(
+                operation = "profile-data",
+                value = status,
+                details = mapOf("requestId" to requestId.toString()),
+            )
+        }
+        val result = withTimeoutOrNull(CALLBACK_TIMEOUT.toMillis()) {
+            response.await()
+        } ?: run {
+            profileDataRequests.remove(requestId)
+            throw KWebNativeException(
+                code = if (operation == KWebProfileDataOperation.FLUSH) {
+                    "profile.flush-timeout"
+                } else {
+                    "profile.native-operation-failed"
+                },
+                details = mapOf("requestId" to requestId.toString()),
+                message = "The Chromium Profile data operation did not complete in time.",
+            )
+        }
+        profileDataRequests.remove(requestId)
+        if (result.status != NativeStatus.OK.value) {
+            throw nativeStatusException(
+                operation = "profile-data",
+                value = result.status,
+                details = mapOf("requestId" to requestId.toString()),
+            )
+        }
+        return result
+    }
 
     internal fun ownsHandle(handle: Long): Boolean =
         handle != 0L && callbackHandle.get() == handle
@@ -324,6 +390,10 @@ internal class NativeBrowser private constructor(
                     }
                 }
             }
+            profileDataRequests.values.forEach {
+                it.cancel(CancellationException("The native browser is closing."))
+            }
+            profileDataRequests.clear()
             callbackExecutor.shutdown()
             closeBridgeScope()
             dispatcherTerminated = awaitExecutorTermination()
@@ -436,6 +506,33 @@ internal class NativeBrowser private constructor(
 
     private fun receiveFfmCallbackFailure(code: String, message: String, cause: Throwable) {
         recordCallbackFailure(code, emptyMap(), message, cause)
+    }
+
+    private fun receiveNativeProfileData(
+        engineHandle: Long,
+        browserHandle: Long,
+        requestId: Long,
+        operation: Int,
+        status: Int,
+        payload: String,
+    ) {
+        if (!engine.ownsHandle(engineHandle) || browserHandle != callbackHandle.get() ||
+            requestId <= 0L
+        ) {
+            recordCallbackFailure(
+                "native.profile-data.callback-handle-mismatch",
+                mapOf(
+                    "engine" to engineHandle.toString(),
+                    "browser" to browserHandle.toString(),
+                    "requestId" to requestId.toString(),
+                ),
+                "A native Profile data callback targeted the wrong owner.",
+            )
+            return
+        }
+        profileDataRequests[requestId]?.complete(
+            NativeProfileDataResult(operation, status, payload),
+        )
     }
 
     private fun receiveNativeBridgeEvent(
@@ -1072,6 +1169,7 @@ internal class NativeBrowser private constructor(
                 NativeBindings.browserCreate(
                     engine.requireLiveHandle("browser-create"),
                     browser.sink,
+                    browser.profileDataSink,
                     nativeParent,
                     normalizedProfile.toString(),
                     initialUrl,

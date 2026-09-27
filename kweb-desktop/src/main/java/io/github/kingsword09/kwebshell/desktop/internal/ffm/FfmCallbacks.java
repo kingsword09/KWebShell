@@ -40,6 +40,18 @@ public final class FfmCallbacks {
     }
 
     @FunctionalInterface
+    public interface ProfileDataEvent {
+        void onEvent(
+            long engine,
+            long browser,
+            long requestId,
+            int operation,
+            int status,
+            String payload
+        );
+    }
+
+    @FunctionalInterface
     public interface ExtensionResult {
         void onResult(
             long operationHandle,

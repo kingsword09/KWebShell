@@ -16,6 +16,16 @@ import io.github.kingsword09.kwebshell.core.KWebReloadResult
 import io.github.kingsword09.kwebshell.core.KWebPageHost
 import io.github.kingsword09.kwebshell.core.KWebProfile
 import io.github.kingsword09.kwebshell.core.KWebRect
+import io.github.kingsword09.kwebshell.core.KWebCookie
+import io.github.kingsword09.kwebshell.core.KWebCookieFilter
+import io.github.kingsword09.kwebshell.core.KWebCookieMutationResult
+import io.github.kingsword09.kwebshell.core.KWebCookieSpec
+import io.github.kingsword09.kwebshell.core.KWebProfileDataClearResult
+import io.github.kingsword09.kwebshell.core.KWebProfileDataFilter
+import io.github.kingsword09.kwebshell.core.KWebProfileFlushResult
+import io.github.kingsword09.kwebshell.core.KWebSpellcheckConfiguration
+import io.github.kingsword09.kwebshell.core.KWebSpellcheckState
+import io.github.kingsword09.kwebshell.core.KWebStorageUsage
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
@@ -166,6 +176,54 @@ private class RecordingProfile : KWebProfile {
 
     override suspend fun openPage(host: KWebPageHost, initialUrl: String, bounds: KWebRect): KWebPage =
         RecordingPage()
+
+    override suspend fun listCookies(
+        target: KWebPage,
+        filter: KWebCookieFilter,
+    ): List<KWebCookie> = emptyList()
+
+    override suspend fun setCookie(
+        target: KWebPage,
+        cookie: KWebCookieSpec,
+    ): KWebCookieMutationResult = KWebCookieMutationResult(affected = 1)
+
+    override suspend fun deleteCookies(
+        target: KWebPage,
+        filter: KWebCookieFilter,
+    ): KWebCookieMutationResult = KWebCookieMutationResult(affected = 0)
+
+    override suspend fun clearData(
+        target: KWebPage,
+        filter: KWebProfileDataFilter,
+    ): KWebProfileDataClearResult = KWebProfileDataClearResult(
+        requestedKinds = filter.kinds,
+        clearedKinds = filter.kinds,
+        origin = filter.origin,
+        removedCookies = 0,
+        startedEpochMillis = 0,
+        completedEpochMillis = 0,
+    )
+
+    override suspend fun storageUsage(
+        target: KWebPage,
+        origin: String,
+    ): KWebStorageUsage = KWebStorageUsage(
+        origin = origin,
+        usageBytes = 0,
+        quotaBytes = 0,
+        breakdown = emptyList(),
+    )
+
+    override suspend fun configureSpellcheck(
+        target: KWebPage,
+        configuration: KWebSpellcheckConfiguration,
+    ): KWebSpellcheckState = KWebSpellcheckState(
+        enabled = configuration.enabled,
+        languages = configuration.languages,
+    )
+
+    override suspend fun flush(target: KWebPage): KWebProfileFlushResult =
+        KWebProfileFlushResult(completedEpochMillis = 0)
 
     override fun close() {
         mutableLifecycle.value = KWebLifecycleState.CLOSED

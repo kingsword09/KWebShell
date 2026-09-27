@@ -28,6 +28,10 @@ kweb_status RespondToBridgeSession(kweb_browser_handle browser,
                                    uint64_t request_id,
                                    const char *response_utf8,
                                    size_t response_size, bool success);
+kweb_status ProfileDataSession(
+    kweb_browser_handle browser, uint64_t request_id,
+    kweb_profile_data_operation_type operation, const char *payload_utf8,
+    size_t payload_size);
 uint64_t LiveBrowserSessionCount();
 // Releases the shared per-profile request contexts on the CEF UI thread.
 // Must run after the last browser session completed and before CefShutdown.

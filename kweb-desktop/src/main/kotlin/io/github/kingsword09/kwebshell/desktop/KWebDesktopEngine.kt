@@ -29,6 +29,17 @@ import io.github.kingsword09.kwebshell.core.KWebReloadMode
 import io.github.kingsword09.kwebshell.core.KWebReloadOutcome
 import io.github.kingsword09.kwebshell.core.KWebReloadResult
 import io.github.kingsword09.kwebshell.core.KWebProfile
+import io.github.kingsword09.kwebshell.core.KWebCookie
+import io.github.kingsword09.kwebshell.core.KWebCookieFilter
+import io.github.kingsword09.kwebshell.core.KWebCookieMutationResult
+import io.github.kingsword09.kwebshell.core.KWebCookieSpec
+import io.github.kingsword09.kwebshell.core.KWebProfileDataClearResult
+import io.github.kingsword09.kwebshell.core.KWebProfileDataFilter
+import io.github.kingsword09.kwebshell.core.KWebProfileDataKind
+import io.github.kingsword09.kwebshell.core.KWebProfileFlushResult
+import io.github.kingsword09.kwebshell.core.KWebSpellcheckConfiguration
+import io.github.kingsword09.kwebshell.core.KWebSpellcheckState
+import io.github.kingsword09.kwebshell.core.KWebStorageUsage
 import io.github.kingsword09.kwebshell.services.KWebNativeServiceRegistry
 import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebApplicationShutdownParticipant
 import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebQuitReason
@@ -47,6 +58,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.sync.Mutex
+import java.net.URI
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -229,6 +242,7 @@ internal class KWebDesktopProfile(
     internal val path: Path,
 ) : KWebProfile {
     private val lock = Any()
+    private val dataOperationMutex = Mutex()
     private val mutableLifecycle = MutableStateFlow(KWebLifecycleState.OPEN)
     private val pages = linkedSetOf<KWebDesktopPage>()
     private var closedByEngine = false
@@ -290,6 +304,223 @@ internal class KWebDesktopProfile(
                 page.trackTerminalOwnership()
                 page
             }
+        }
+    }
+
+    override suspend fun listCookies(
+        target: KWebPage,
+        filter: KWebCookieFilter,
+    ): List<KWebCookie> = withContext(Dispatchers.IO) {
+        withProfileDataOperation {
+            val native = requireDataTarget(target)
+            validateCookieFilter(filter)
+            readCookies(native).filter { it.matches(filter) }
+        }
+    }
+
+    override suspend fun setCookie(
+        target: KWebPage,
+        cookie: KWebCookieSpec,
+    ): KWebCookieMutationResult = withContext(Dispatchers.IO) {
+        withProfileDataOperation {
+            val native = requireDataTarget(target)
+            validateCookieSpec(cookie)
+            val result = native.profileData(
+                KWebProfileDataOperation.SET_COOKIE,
+                KWebDesktopProfileDataJson.cookieSetPayload(cookie),
+            )
+            if (!KWebDesktopProfileDataJson.parseSetCookieSuccess(result.payload)) {
+                throw KWebNativeException(
+                    code = "profile.cookie-set-failed",
+                    details = mapOf("name" to cookie.name, "domain" to (cookie.domain ?: "")),
+                    message = "Chromium rejected the Profile cookie.",
+                )
+            }
+            KWebCookieMutationResult(affected = 1)
+        }
+    }
+
+    override suspend fun deleteCookies(
+        target: KWebPage,
+        filter: KWebCookieFilter,
+    ): KWebCookieMutationResult = withContext(Dispatchers.IO) {
+        withProfileDataOperation {
+            val native = requireDataTarget(target)
+            validateCookieFilter(filter)
+            val matching = readCookies(native).filter { it.matches(filter) }
+            var deleted = 0
+            matching.forEach { cookie ->
+                native.profileData(
+                    KWebProfileDataOperation.DELETE_COOKIE,
+                    KWebDesktopProfileDataJson.cookieDeletePayload(cookie),
+                )
+                deleted += 1
+            }
+            KWebCookieMutationResult(affected = deleted)
+        }
+    }
+
+    override suspend fun clearData(
+        target: KWebPage,
+        filter: KWebProfileDataFilter,
+    ): KWebProfileDataClearResult = withContext(Dispatchers.IO) {
+        withProfileDataOperation {
+            val native = requireDataTarget(target)
+            val origin = validateDataFilter(filter)
+            val started = System.currentTimeMillis()
+            val cleared = linkedSetOf<KWebProfileDataKind>()
+            var removedCookies = 0
+            if (KWebProfileDataKind.COOKIES in filter.kinds) {
+                val cookieFilter = KWebCookieFilter(
+                    origin = origin,
+                    timeRange = filter.timeRange,
+                )
+                val matching = readCookies(native).filter { it.matches(cookieFilter) }
+                matching.forEach { cookie ->
+                    native.profileData(
+                        KWebProfileDataOperation.DELETE_COOKIE,
+                        KWebDesktopProfileDataJson.cookieDeletePayload(cookie),
+                    )
+                    removedCookies += 1
+                }
+                cleared += KWebProfileDataKind.COOKIES
+            }
+            if (KWebProfileDataKind.HTTP_CACHE in filter.kinds) {
+                native.profileData(KWebProfileDataOperation.CLEAR_HTTP_CACHE, "{}")
+                cleared += KWebProfileDataKind.HTTP_CACHE
+            }
+            val originKinds = filter.kinds - KWebProfileDataKind.COOKIES -
+                KWebProfileDataKind.HTTP_CACHE
+            if (originKinds.isNotEmpty()) {
+                native.profileData(
+                    KWebProfileDataOperation.CLEAR_ORIGIN,
+                    KWebDesktopProfileDataJson.clearOriginPayload(
+                        requireNotNull(origin),
+                        KWebDesktopProfileDataJson.storageTypes(originKinds),
+                    ),
+                )
+                cleared += originKinds
+            }
+            KWebProfileDataClearResult(
+                requestedKinds = filter.kinds,
+                clearedKinds = cleared,
+                origin = origin,
+                removedCookies = removedCookies,
+                startedEpochMillis = started,
+                completedEpochMillis = System.currentTimeMillis(),
+            )
+        }
+    }
+
+    override suspend fun storageUsage(
+        target: KWebPage,
+        origin: String,
+    ): KWebStorageUsage = withContext(Dispatchers.IO) {
+        withProfileDataOperation {
+            val native = requireDataTarget(target)
+            val canonicalOrigin = validateOrigin(origin)
+            try {
+                KWebDesktopProfileDataJson.parseStorageUsage(
+                    native.profileData(
+                        KWebProfileDataOperation.STORAGE_USAGE,
+                        KWebDesktopProfileDataJson.usagePayload(canonicalOrigin),
+                    ).payload,
+                    canonicalOrigin,
+                )
+            } catch (error: KWebNativeException) {
+                throw error
+            } catch (error: Throwable) {
+                throw KWebNativeException(
+                    code = "profile.storage-usage-failed",
+                    details = mapOf("origin" to canonicalOrigin),
+                    message = "Chromium returned an invalid storage usage result.",
+                    cause = error,
+                )
+            }
+        }
+    }
+
+    override suspend fun configureSpellcheck(
+        target: KWebPage,
+        configuration: KWebSpellcheckConfiguration,
+    ): KWebSpellcheckState = withContext(Dispatchers.IO) {
+        withProfileDataOperation {
+            val native = requireDataTarget(target)
+            validateSpellcheck(configuration)
+            try {
+                KWebDesktopProfileDataJson.parseSpellcheck(
+                    native.profileData(
+                        KWebProfileDataOperation.SET_SPELLCHECK,
+                        KWebDesktopProfileDataJson.spellcheckPayload(configuration),
+                    ).payload,
+                )
+            } catch (error: KWebNativeException) {
+                throw error
+            } catch (error: Throwable) {
+                throw KWebNativeException(
+                    code = "profile.spellcheck-set-failed",
+                    details = emptyMap(),
+                    message = "Chromium returned an invalid spellcheck state.",
+                    cause = error,
+                )
+            }
+        }
+    }
+
+    override suspend fun flush(target: KWebPage): KWebProfileFlushResult =
+        withContext(Dispatchers.IO) {
+            withProfileDataOperation {
+                val native = requireDataTarget(target)
+                native.profileData(KWebProfileDataOperation.FLUSH, "{}")
+                KWebProfileFlushResult(System.currentTimeMillis())
+            }
+        }
+
+    private suspend fun readCookies(native: NativeBrowser): List<KWebCookie> = try {
+        KWebDesktopProfileDataJson.parseCookies(
+            native.profileData(KWebProfileDataOperation.GET_COOKIES, "{}").payload,
+        )
+    } catch (error: KWebNativeException) {
+        throw error
+    } catch (error: Throwable) {
+        throw KWebNativeException(
+            code = "profile.native-operation-failed",
+            details = emptyMap(),
+            message = "Chromium returned an invalid cookie result.",
+            cause = error,
+        )
+    }
+
+    private fun requireDataTarget(target: KWebPage): NativeBrowser {
+        requireOpen("profile-data")
+        val page = target as? KWebDesktopPage
+            ?: throw KWebConfigurationException(
+                code = "profile.data-target-invalid",
+                details = emptyMap(),
+                message = "Profile data operations require a desktop KWebPage target.",
+            )
+        if (page.profile !== this) {
+            throw KWebConfigurationException(
+                code = "profile.data-target-cross-profile",
+                details = mapOf("profile" to name),
+                message = "The Profile data target belongs to another Profile.",
+            )
+        }
+        return page.requireProfileDataNative()
+    }
+
+    private suspend fun <T> withProfileDataOperation(block: suspend () -> T): T {
+        if (!dataOperationMutex.tryLock()) {
+            throw KWebNativeException(
+                code = "profile.data-operation-pending",
+                details = mapOf("profile" to path.toString()),
+                message = "Another Profile data operation is already active.",
+            )
+        }
+        try {
+            return block()
+        } finally {
+            dataOperationMutex.unlock()
         }
     }
 
@@ -398,6 +629,22 @@ internal class KWebDesktopPage(
     override val lifecycle: StateFlow<KWebLifecycleState> = native.lifecycle
     override val events: Flow<KWebPageEvent> = eventStream.events
     override val profile: KWebProfile = owner
+
+    internal fun requireProfileDataNative(): NativeBrowser {
+        if (lifecycle.value != KWebLifecycleState.OPEN || native.rendererHasTerminated) {
+            throw KWebNativeException(
+                code = if (native.rendererHasTerminated) {
+                    "profile.data-target-terminated"
+                } else {
+                    "profile.data-target-invalid"
+                },
+                details = mapOf("pageId" to id),
+                message = "The Profile data target page is not live.",
+            )
+        }
+        native.requireLiveHandle("profile-data")
+        return native
+    }
 
     override suspend fun navigate(url: String) {
         withContext(Dispatchers.IO) {
@@ -958,4 +1205,195 @@ internal object KWebProfilePathResolver {
             )
         }
     }
+}
+
+private fun validateCookieSpec(cookie: KWebCookieSpec) {
+    val url = try {
+        URI(cookie.url)
+    } catch (error: Throwable) {
+        throw KWebConfigurationException(
+            code = "profile.cookie-invalid",
+            details = mapOf("field" to "url"),
+            message = "The cookie URL is not a valid URI.",
+            cause = error,
+        )
+    }
+    if (!url.isAbsolute || url.scheme?.lowercase() !in setOf("http", "https") ||
+        url.host.isNullOrBlank() || url.userInfo != null
+    ) {
+        throw KWebConfigurationException(
+            code = "profile.cookie-invalid",
+            details = mapOf("field" to "url"),
+            message = "Cookie URLs must be absolute http or https URLs without user information.",
+        )
+    }
+    if (cookie.name.isBlank() || cookie.name.any { it.code < 0x20 || it == ';' || it == '=' }) {
+        throw KWebConfigurationException(
+            code = "profile.cookie-invalid",
+            details = mapOf("field" to "name"),
+            message = "Cookie names must be non-empty and contain no control, separator, or equals characters.",
+        )
+    }
+    if (cookie.value.encodeToByteArray().size > 1024 * 1024) {
+        throw KWebConfigurationException(
+            code = "profile.cookie-invalid",
+            details = mapOf("field" to "value"),
+            message = "Cookie values cannot exceed 1 MiB UTF-8.",
+        )
+    }
+    if (cookie.path.isBlank() || !cookie.path.startsWith("/") ||
+        cookie.path.contains('\u0000') ||
+        cookie.sourcePort != null && cookie.sourcePort != -1 && cookie.sourcePort !in 1..65535 ||
+        cookie.sourcePort != null && cookie.sourceScheme == null ||
+        cookie.sourcePort != null && cookie.sourceScheme == io.github.kingsword09.kwebshell.core.KWebCookieSourceScheme.UNKNOWN
+    ) {
+        throw KWebConfigurationException(
+            code = "profile.cookie-invalid",
+            details = mapOf("field" to "path-or-source-port"),
+            message = "Cookie path and source port values are invalid.",
+        )
+    }
+    cookie.expiresEpochMillis?.let {
+        if (it < 0) {
+            throw KWebConfigurationException(
+                code = "profile.cookie-invalid",
+                details = mapOf("field" to "expiresEpochMillis"),
+                message = "Cookie expiry cannot be negative.",
+            )
+        }
+    }
+    cookie.partitionKey?.let { partitionKey ->
+        if (partitionKey.topLevelSite.isNullOrBlank() || partitionKey.opaque) {
+            throw KWebConfigurationException(
+                code = "profile.cookie-invalid",
+                details = mapOf("field" to "partitionKey"),
+                message = "Set-cookie partition keys must be non-opaque canonical origins.",
+            )
+        }
+        validateOrigin(requireNotNull(partitionKey.topLevelSite))
+    }
+}
+
+private fun validateCookieFilter(filter: KWebCookieFilter) {
+    filter.origin?.let(::validateOrigin)
+    val range = filter.timeRange
+    val since = range.sinceEpochMillis
+    val until = range.untilEpochMillis
+    if (since?.let { it < 0 } == true ||
+        until?.let { it < 0 } == true ||
+        since != null && until != null && since > until
+    ) {
+        throw KWebConfigurationException(
+            code = "profile.data-time-range-invalid",
+            details = emptyMap(),
+            message = "The Profile data time range is invalid.",
+        )
+    }
+}
+
+private fun validateDataFilter(filter: KWebProfileDataFilter): String? {
+    if (filter.kinds.isEmpty()) {
+        throw KWebConfigurationException(
+            code = "profile.data-kind-invalid",
+            details = emptyMap(),
+            message = "At least one Profile data kind is required.",
+        )
+    }
+    val range = filter.timeRange
+    val since = range.sinceEpochMillis
+    val until = range.untilEpochMillis
+    if (since?.let { it < 0 } == true ||
+        until?.let { it < 0 } == true ||
+        since != null && until != null && since > until
+    ) {
+        throw KWebConfigurationException(
+            code = "profile.data-time-range-invalid",
+            details = emptyMap(),
+            message = "The Profile data time range is invalid.",
+        )
+    }
+    if (KWebProfileDataKind.HTTP_CACHE in filter.kinds &&
+        (filter.origin != null || range.sinceEpochMillis != null || range.untilEpochMillis != null)
+    ) {
+        throw KWebConfigurationException(
+            code = "profile.data-time-range-unsupported",
+            details = mapOf("kind" to KWebProfileDataKind.HTTP_CACHE.name),
+            message = "HTTP cache clearing is profile-wide and does not support origin or time filters.",
+        )
+    }
+    val originKinds = filter.kinds - KWebProfileDataKind.COOKIES -
+        KWebProfileDataKind.HTTP_CACHE
+    if (originKinds.isNotEmpty() && filter.origin == null) {
+        throw KWebConfigurationException(
+            code = "profile.data-origin-invalid",
+            details = mapOf("kinds" to originKinds.joinToString(",")),
+            message = "Origin-scoped Profile data kinds require an exact origin.",
+        )
+    }
+    if (originKinds.isNotEmpty() &&
+        (range.sinceEpochMillis != null || range.untilEpochMillis != null)
+    ) {
+        throw KWebConfigurationException(
+            code = "profile.data-time-range-unsupported",
+            details = mapOf("kinds" to originKinds.joinToString(",")),
+            message = "Chromium origin storage clearing does not support time ranges.",
+        )
+    }
+    return filter.origin?.let(::validateOrigin)
+}
+
+private fun validateSpellcheck(configuration: KWebSpellcheckConfiguration) {
+    if (configuration.enabled && configuration.languages.isEmpty()) {
+        throw KWebConfigurationException(
+            code = "profile.spellcheck-invalid",
+            details = emptyMap(),
+            message = "Enabled spellcheck requires at least one language.",
+        )
+    }
+    val languagePattern = Regex("[A-Za-z]{2,8}(?:-[A-Za-z0-9]{2,8})*")
+    if (configuration.languages.any { !languagePattern.matches(it) } ||
+        configuration.languages.toSet().size != configuration.languages.size
+    ) {
+        throw KWebConfigurationException(
+            code = "profile.spellcheck-invalid",
+            details = emptyMap(),
+            message = "Spellcheck languages must be unique BCP-47-like tags.",
+        )
+    }
+}
+
+private fun validateOrigin(value: String): String {
+    val uri = try {
+        URI(value)
+    } catch (error: Throwable) {
+        throw KWebConfigurationException(
+            code = "profile.data-origin-invalid",
+            details = mapOf("origin" to value),
+            message = "The Profile data origin is not a valid URI.",
+            cause = error,
+        )
+    }
+    val scheme = uri.scheme?.lowercase()
+    val host = uri.host?.lowercase()
+    if (!uri.isAbsolute || scheme !in setOf("http", "https") ||
+        host.isNullOrBlank() || uri.rawPath.isNotEmpty() || uri.rawQuery != null ||
+        uri.rawFragment != null || uri.userInfo != null
+    ) {
+        throw KWebConfigurationException(
+            code = "profile.data-origin-invalid",
+            details = mapOf("origin" to value),
+            message = "Profile data origins must be canonical http or https origins without paths or credentials.",
+        )
+    }
+    val defaultPort = if (scheme == "http") 80 else 443
+    val port = if (uri.port == -1) defaultPort else uri.port
+    if (port !in 1..65535) {
+        throw KWebConfigurationException(
+            code = "profile.data-origin-invalid",
+            details = mapOf("origin" to value),
+            message = "The Profile data origin port is invalid.",
+        )
+    }
+    val portPart = if (port == defaultPort) "" else ":$port"
+    return "$scheme://$host$portPart"
 }

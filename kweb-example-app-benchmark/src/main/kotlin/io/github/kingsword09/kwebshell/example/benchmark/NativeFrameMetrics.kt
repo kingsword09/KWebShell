@@ -66,13 +66,7 @@ internal object NativeFrameMetricsSampler {
                     "Page.screencastFrameAck",
                     buildJsonObject { put("sessionId", frame.sessionId) },
                 )
-                if (timestamps.isNotEmpty() && frame.timestampMs <= timestamps.last()) {
-                    throw BenchmarkException(
-                        "frame.timestamp-not-monotonic",
-                        "Chromium compositor frame timestamps are not strictly increasing.",
-                    )
-                }
-                timestamps += frame.timestampMs
+                appendCompositorTimestamp(timestamps, frame.timestampMs)
             }
             if (timestamps.size < MINIMUM_FRAME_COUNT) {
                 throw BenchmarkException(
@@ -133,6 +127,15 @@ internal object NativeFrameMetricsSampler {
 
     private const val EVENT_POLL_MS: Long = 100L
     private const val MINIMUM_FRAME_COUNT: Int = 8
+}
+
+internal fun appendCompositorTimestamp(timestamps: MutableList<Double>, timestampMs: Double) {
+    val previous = timestamps.lastOrNull()
+    when {
+        previous == null || timestampMs > previous -> timestamps += timestampMs
+        timestampMs == previous -> Unit
+        else -> Unit
+    }
 }
 
 internal object NativeCompositorFrameParser {

@@ -6,8 +6,8 @@
 
 _Static_assert(KWEB_INVALID_ENGINE_HANDLE == 0,
                "the invalid engine handle must remain zero");
-_Static_assert(KWEB_ABI_VERSION == 11,
-               "the page lifecycle contract requires ABI version 11");
+_Static_assert(KWEB_ABI_VERSION == 12,
+               "the Profile data contract requires ABI version 12");
 _Static_assert(KWEB_ENGINE_EVENT_OPENED != KWEB_ENGINE_EVENT_CLOSED,
                "engine lifecycle events must remain distinct");
 _Static_assert(KWEB_INVALID_BROWSER_HANDLE == 0,
@@ -188,6 +188,8 @@ int main(void) {
       {"https://example.test", 20},
       receive_bridge_event,
       &sequence,
+      NULL,
+      NULL,
   };
   const kweb_browser_event browser_event = {
       (uint32_t)sizeof(kweb_browser_event),

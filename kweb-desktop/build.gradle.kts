@@ -51,6 +51,7 @@ dependencies {
     implementation(project(":kweb-extensions"))
     implementation(libs.compose.ui.desktop)
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.serialization.json)
     runtimeOnly("org.jetbrains.skiko:skiko-awt-runtime-${skikoTarget.get()}:${libs.versions.skiko.get()}")
     testImplementation(project(":kweb-service-app-paths"))
     testImplementation(libs.kotlinx.serialization.json)

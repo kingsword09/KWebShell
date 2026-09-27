@@ -112,7 +112,7 @@ constexpr std::array<size_t, 9> kExtensionConfigOffsets = {
     offsetof(kweb_extension_config, user_data),
 };
 
-constexpr std::array<size_t, 16> kBrowserConfigOffsets = {
+constexpr std::array<size_t, 18> kBrowserConfigOffsets = {
     offsetof(kweb_browser_config, struct_size),
     offsetof(kweb_browser_config, abi_version),
     offsetof(kweb_browser_config, engine),
@@ -129,6 +129,8 @@ constexpr std::array<size_t, 16> kBrowserConfigOffsets = {
     offsetof(kweb_browser_config, bridge_origin),
     offsetof(kweb_browser_config, bridge_callback),
     offsetof(kweb_browser_config, bridge_user_data),
+    offsetof(kweb_browser_config, profile_data_callback),
+    offsetof(kweb_browser_config, profile_data_user_data),
 };
 
 std::atomic<uint64_t> live_native_bytes{0};

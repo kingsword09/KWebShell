@@ -129,14 +129,20 @@ artifacts of the same run's verification jobs:
    dialogs consent status (`native-dialogs-*`), and stream conformance output
    (`engine-integration-*`).
 2. The `rfc-evidence` job checks the repository out (LF working tree), downloads
-   those artifacts, and chains four upserts per target through
-   `.github/scripts/aggregate-rfc-evidence.sh`, passing the target explicitly
-   with `--target`; the recorder still requires the `Implemented` catalog, so
-   the check-in commit lands the catalog flip together with the records.
+  those artifacts, and chains four upserts per target through
+  `.github/scripts/aggregate-rfc-evidence.sh`, passing the target explicitly
+  with `--target`; the recorder still requires the `Implemented` catalog, so
+  the check-in commit lands the catalog flip together with the records.
 3. The merged manifest plus the retained artifact tree are checked in together
-   with the `Implemented` status flips. `rfcGovernanceCheck` then re-hashes the
-   checked-in artifacts and contract paths on every later change; any mismatch
-   marks the records stale.
+  with the `Implemented` status flips. `rfcGovernanceCheck` then re-hashes the
+  checked-in artifacts and contract paths on every later change; any mismatch
+  marks the records stale.
+
+The CI strict-governance job runs after `rfc-evidence` and downloads that run's
+fresh manifest and retained artifact tree before checking them. This ordering
+allows an implementation PR to change shared ABI/session files and refresh the
+affected historical RFC contract digests through the same hosted run without
+accepting stale checked-in evidence or inventing a local approval.
 
 ## CI behavior
 

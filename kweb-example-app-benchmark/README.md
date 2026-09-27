@@ -28,7 +28,10 @@ an unavailable required API fails the run. Optional INP evidence is represented
 as an explicit unavailable reason when the runtime does not expose it.
 The `host.native-frame.*` metrics require `native-child` and `cdp`, a visible
 and displayable `ComposeWindow`, a non-zero native handle, non-empty JPEG frame
-data, and strictly increasing `Page.screencastFrame` timestamps. They measure
+data, and a strictly increasing retained sequence of `Page.screencastFrame`
+timestamps. Chromium may emit duplicate presentation timestamps for adjacent
+frames or deliver an older timestamp from its compositor clock; those events
+are discarded, while too few retained timestamps fail the sample. They measure
 the target's Chromium compositor output, not operating-system display scanout.
 
 ## Local command

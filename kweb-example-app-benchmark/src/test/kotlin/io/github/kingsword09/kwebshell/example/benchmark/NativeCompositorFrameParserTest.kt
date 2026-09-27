@@ -63,6 +63,17 @@ class NativeCompositorFrameParserTest {
         assertEquals("frame.jpeg-invalid", error.code)
     }
 
+    @Test
+    fun retainsOnlyTheMonotonicPresentationTimestampSubsequence() {
+        val timestamps = mutableListOf<Double>()
+        appendCompositorTimestamp(timestamps, 10.0)
+        appendCompositorTimestamp(timestamps, 10.0)
+        appendCompositorTimestamp(timestamps, 11.0)
+        appendCompositorTimestamp(timestamps, 10.5)
+
+        assertEquals(listOf(10.0, 11.0), timestamps)
+    }
+
     private fun frameEvent(
         sessionId: Int = 42,
         timestamp: Double = 123.456,

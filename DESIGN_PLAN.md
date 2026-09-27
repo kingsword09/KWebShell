@@ -532,6 +532,39 @@ Acceptance:
   exported-symbol checks, native unit tests, Kotlin tests, formatting, and
   packaging checks remain green.
 
+#### Objective 3.4: Profile data, storage, spellcheck, and session state
+
+RFC 0009 completes the existing persistent Profile owner without introducing
+an Electron-shaped Session object. Cookie, storage, cache, spellcheck, and
+flush operations are explicit methods on KWebProfile and are always bound to
+an open KWebPage from that same Profile. The target-page rule lets the native
+adapter use the real Alloy browser's CEF request context and internal
+DevTools agent; it forbids hidden pages, OSR, direct SQLite access, and
+cross-Profile path guessing.
+
+The native adapter uses Chromium's Network DevTools domain for the complete
+cookie model, including partition key and source scheme/port, and its Storage
+domain for origin-scoped usage and clearing. CEF's ClearHttpCache operation
+is exposed only as an explicit profile-wide HTTP cache clear because it has no
+origin or time-range selector. Cookie time ranges are filtered before exact
+Network.deleteCookies calls. Spellcheck languages are written to and read
+back from Chromium's persistent preferences; no dictionary download or
+platform fallback is allowed.
+
+Acceptance requires:
+
+- cookie set/list/delete/change, expiry, HTTP-only, SameSite, partition,
+  source fields, redirect behavior, and restart persistence on every target;
+- origin-scoped storage usage and clearing, profile-wide HTTP cache clearing,
+  retained network entries, and rejection of unsupported scope/time filters;
+- two real Profiles that cannot observe each other's cookie, cache, storage,
+  spellcheck, or permission-related state;
+- flush completion before Profile/page shutdown and restart read-back;
+- typed errors for invalid targets, foreign Profiles, malformed filters,
+  unsupported ranges, stale operations, callback races, and native failures;
+- redacted retained evidence and migration coverage for fromPartition,
+  cookies, clearCache, clearStorageData, spellChecker, and flushStorageData.
+
 ### Phase 4: DevTools, CDP, and typed bridge
 
 Deliver:

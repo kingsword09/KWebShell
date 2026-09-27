@@ -2,7 +2,7 @@ package io.github.kingsword09.kwebshell.desktop.internal
 
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 
-internal const val NATIVE_ABI_VERSION: Int = 11
+internal const val NATIVE_ABI_VERSION: Int = 12
 
 internal enum class NativeStatus(
     val value: Int,
@@ -64,6 +64,10 @@ internal enum class NativeStatus(
     PAGE_REQUEST_NOT_FOUND(53, "page-request-not-found"),
     PAGE_REQUEST_INVALID(54, "page-request-invalid"),
     PAGE_OPERATION_PENDING(55, "page-operation-pending"),
+    PROFILE_DATA_OPERATION_ACTIVE(56, "profile-data-operation-active"),
+    PROFILE_DATA_NOT_SUPPORTED(57, "profile-data-not-supported"),
+    PROFILE_DATA_RESULT_INVALID(58, "profile-data-result-invalid"),
+    PROFILE_DATA_TIMEOUT(59, "profile-data-timeout"),
     ;
 
     companion object {

@@ -61,6 +61,13 @@ typed `KWebPage` operations and events. Popup handling requires a rewrite:
 CEF cancels `window.open` immediately, and an allowed host decision creates a
 separate caller-owned page without preserving `window.opener`.
 
+RFC 0009 maps Electron Profile data surfaces individually: cookies, cache
+clearing, origin storage clearing and usage, spellcheck preferences, and flush
+are direct typed `KWebProfile` operations. Each operation requires a real page
+from the same persistent Profile; a generic Electron `Session`, guessed
+partition string, origin/time selector for profile-wide HTTP cache, and direct
+database access remain rewrite-required or unsupported.
+
 ## Manifest v2 and inventory prerequisites
 
 Manifest v2 requires an exact `rendererOrigin`, an explicit `rendererProfile`,

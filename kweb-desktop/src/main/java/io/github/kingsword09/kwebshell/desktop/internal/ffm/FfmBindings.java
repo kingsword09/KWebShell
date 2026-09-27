@@ -53,6 +53,7 @@ public final class FfmBindings {
         long engine,
         FfmCallbacks.BrowserEvent browserSink,
         FfmCallbacks.BridgeEvent bridgeSink,
+        FfmCallbacks.ProfileDataEvent profileDataSink,
         FfmCallbacks.Failure failureSink,
         long nativeParent,
         String profilePath,
@@ -67,6 +68,7 @@ public final class FfmBindings {
             engine,
             browserSink,
             bridgeSink,
+            profileDataSink,
             failureSink,
             nativeParent,
             profilePath,
@@ -125,6 +127,10 @@ public final class FfmBindings {
 
     public static int browserBridgeFail(long handle, long requestId, String failureJson) {
         return FfmBrowserCalls.bridgeFail(handle, requestId, failureJson);
+    }
+
+    public static int browserProfileData(long handle, long requestId, int operation, String payloadJson) {
+        return FfmBrowserCalls.profileData(handle, requestId, operation, payloadJson);
     }
 
     public static Throwable releaseBrowserOwner(long handle) {

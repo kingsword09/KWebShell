@@ -14,6 +14,7 @@ final class FfmBrowserCalls {
         long engine,
         FfmCallbacks.BrowserEvent browserSink,
         FfmCallbacks.BridgeEvent bridgeSink,
+        FfmCallbacks.ProfileDataEvent profileDataSink,
         FfmCallbacks.Failure failureSink,
         long nativeParent,
         String profilePath,
@@ -34,6 +35,7 @@ final class FfmBrowserCalls {
                 library,
                 browserSink,
                 bridgeSink,
+                profileDataSink,
                 failureSink,
                 FfmBrowserCalls::register
             );
@@ -59,6 +61,8 @@ final class FfmBrowserCalls {
                 write(config, "bridge_origin", bridgeOrigin, callArena, FfmMemory.MAXIMUM_TEXT_SIZE);
                 config.set(FfmLayouts.POINTER, offset("bridge_callback"), owner.bridgeStub());
                 config.set(FfmLayouts.POINTER, offset("bridge_user_data"), MemorySegment.NULL);
+                config.set(FfmLayouts.POINTER, offset("profile_data_callback"), owner.profileDataStub());
+                config.set(FfmLayouts.POINTER, offset("profile_data_user_data"), MemorySegment.NULL);
                 int status = invokeCreate(library.handle("kweb_browser_create"), config, output);
                 if (status != FfmStatus.OK) {
                     abort(owner);
@@ -145,6 +149,24 @@ final class FfmBrowserCalls {
 
     static int bridgeFail(long handle, long requestId, String failure) {
         return invokeUtf8("kweb_browser_bridge_fail", handle, requestId, failure, true);
+    }
+
+    static int profileData(long handle, long requestId, int operation, String payload) {
+        try (Arena arena = Arena.ofConfined()) {
+            FfmMemory.EncodedUtf8 encoded = FfmMemory.encode(
+                payload,
+                arena,
+                FfmMemory.MAXIMUM_TEXT_SIZE
+            );
+            return (int) library().handle("kweb_browser_profile_data")
+                .invokeExact(handle, requestId, operation, encoded.segment(), encoded.size());
+        } catch (FfmTextException error) {
+            return error.status();
+        } catch (OutOfMemoryError error) {
+            return FfmStatus.ALLOCATION_FAILED;
+        } catch (Throwable error) {
+            return FfmStatus.INTERNAL_ERROR;
+        }
     }
 
     static long liveCount() {

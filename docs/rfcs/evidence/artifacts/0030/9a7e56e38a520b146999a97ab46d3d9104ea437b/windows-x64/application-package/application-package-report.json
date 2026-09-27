@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "target": "windows-x64",
+  "format": "WINDOWS_MSIX",
+  "packageSha256": "6e600b5473dee0a3a6c77c6755abccc1aa2ca4880949aa36476c8a9baabc3248",
+  "manifestSha256": "aa97285bb9a2b288dae8d0758cc48286ab157fb87b6c7d5e31650f8c01c96073",
+  "runtimeReleaseSha256": "b4944db212f53ec68387e0ab2171c449af73a7eb4bd1a7021c1988dc82102bcf",
+  "signingMode": "TEST",
+  "status": "PASS"
+}

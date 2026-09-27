@@ -561,6 +561,14 @@ const char *KWEB_ABI_CALL kweb_status_name(kweb_status status) {
     return "page-request-invalid";
   case KWEB_STATUS_PAGE_OPERATION_PENDING:
     return "page-operation-pending";
+  case KWEB_STATUS_PROFILE_DATA_OPERATION_ACTIVE:
+    return "profile-data-operation-active";
+  case KWEB_STATUS_PROFILE_DATA_NOT_SUPPORTED:
+    return "profile-data-not-supported";
+  case KWEB_STATUS_PROFILE_DATA_RESULT_INVALID:
+    return "profile-data-result-invalid";
+  case KWEB_STATUS_PROFILE_DATA_TIMEOUT:
+    return "profile-data-timeout";
   default:
     return "unknown-status";
   }
@@ -687,6 +695,19 @@ kweb_status KWEB_ABI_CALL kweb_browser_bridge_fail(
     const char *failure_utf8, size_t failure_size) {
   return kwebshell::RespondToBridgeSession(
       browser, request_id, failure_utf8, failure_size, false);
+}
+
+kweb_status KWEB_ABI_CALL kweb_browser_profile_data(
+    kweb_browser_handle browser, uint64_t request_id,
+    kweb_profile_data_operation_type operation, const char *payload_utf8,
+    size_t payload_size) {
+  if (request_id == 0 || (payload_size > 0 && payload_utf8 == nullptr)) {
+    return KWEB_STATUS_INVALID_ARGUMENT;
+  }
+  return kwebshell::GuardStatus([&] {
+    return kwebshell::ProfileDataSession(
+        browser, request_id, operation, payload_utf8, payload_size);
+  });
 }
 
 uint64_t KWEB_ABI_CALL kweb_live_browser_count(void) {

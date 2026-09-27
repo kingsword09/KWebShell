@@ -8,7 +8,6 @@ import java.util.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
 
 class NativeCompositorFrameParserTest {
     @Test
@@ -65,18 +64,14 @@ class NativeCompositorFrameParserTest {
     }
 
     @Test
-    fun coalescesDuplicatePresentationTimestampsAndRejectsRegression() {
+    fun retainsOnlyTheMonotonicPresentationTimestampSubsequence() {
         val timestamps = mutableListOf<Double>()
         appendCompositorTimestamp(timestamps, 10.0)
         appendCompositorTimestamp(timestamps, 10.0)
         appendCompositorTimestamp(timestamps, 11.0)
+        appendCompositorTimestamp(timestamps, 10.5)
 
         assertEquals(listOf(10.0, 11.0), timestamps)
-        val error = assertFailsWith<BenchmarkException> {
-            appendCompositorTimestamp(timestamps, 10.5)
-        }
-        assertEquals("frame.timestamp-not-monotonic", error.code)
-        assertTrue(error.message.orEmpty().contains("backwards"))
     }
 
     private fun frameEvent(

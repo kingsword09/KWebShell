@@ -30,8 +30,8 @@ The `host.native-frame.*` metrics require `native-child` and `cdp`, a visible
 and displayable `ComposeWindow`, a non-zero native handle, non-empty JPEG frame
 data, and a strictly increasing retained sequence of `Page.screencastFrame`
 timestamps. Chromium may emit duplicate presentation timestamps for adjacent
-frames; those duplicates are coalesced, while a timestamp regression fails the
-sample. They measure
+frames or deliver an older timestamp from its compositor clock; those events
+are discarded, while too few retained timestamps fail the sample. They measure
 the target's Chromium compositor output, not operating-system display scanout.
 
 ## Local command

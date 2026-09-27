@@ -134,10 +134,7 @@ internal fun appendCompositorTimestamp(timestamps: MutableList<Double>, timestam
     when {
         previous == null || timestampMs > previous -> timestamps += timestampMs
         timestampMs == previous -> Unit
-        else -> throw BenchmarkException(
-            "frame.timestamp-not-monotonic",
-            "Chromium compositor frame timestamps moved backwards.",
-        )
+        else -> Unit
     }
 }
 

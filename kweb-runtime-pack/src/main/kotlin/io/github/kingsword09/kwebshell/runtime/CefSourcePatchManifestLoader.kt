@@ -70,10 +70,20 @@ public object CefSourcePatchManifestLoader {
         )
         requireManifest(manifest.adapterAbiVersion == ADAPTER_ABI_VERSION, "abi-version-invalid")
         requireManifest(SHA256.matches(manifest.adapterAbiFingerprint), "abi-fingerprint-invalid")
+        requireManifest(SHA256.matches(manifest.networkAbiFingerprint), "network-abi-fingerprint-invalid")
         requireManifest(SISO_VERSION.matches(manifest.sisoVersion), "siso-version-invalid")
         requireManifest(manifest.gnDefines == EXPECTED_GN_DEFINES, "gn-defines-invalid")
-        requireManifest(manifest.exports == EXPECTED_EXPORTS, "exports-invalid")
-        requireManifest(manifest.patches.size == 1, "patch-count-invalid")
+        val expectedExports = if (manifest.patches.size == 1) {
+            EXPECTED_EXTENSION_EXPORTS
+        } else {
+            EXPECTED_EXPORTS
+        }
+        requireManifest(manifest.exports == expectedExports, "exports-invalid")
+        requireManifest(manifest.patches.isNotEmpty(), "patch-count-invalid")
+        requireManifest(
+            manifest.patches.map { it.file } == manifest.patches.map { it.file }.sorted(),
+            "patch-order-invalid",
+        )
 
         val targetPaths = mutableSetOf<String>()
         manifest.patches.forEach { patch ->
@@ -81,13 +91,20 @@ public object CefSourcePatchManifestLoader {
             requireManifest(SHA256.matches(patch.sha256), "patch-digest-invalid")
             requireManifest(patch.modifiedPreimages.isNotEmpty(), "preimages-empty")
             requireManifest(patch.createdPostimages.isNotEmpty(), "postimages-empty")
+            val patchPaths = mutableSetOf<String>()
             (patch.modifiedPreimages + patch.createdPostimages).forEach { file ->
                 requireManifest(isSafeRelativePath(file.path), "source-path-invalid")
                 requireManifest(SHA256.matches(file.sha256), "source-digest-invalid")
-                requireManifest(targetPaths.add(file.path), "source-path-duplicate")
+                requireManifest(patchPaths.add(file.path), "source-path-duplicate")
+                targetPaths += file.path
             }
         }
-        requireManifest(targetPaths == EXPECTED_SOURCE_PATHS, "source-paths-invalid")
+        val expectedSourcePaths = if (manifest.patches.size == 1) {
+            EXPECTED_EXTENSION_SOURCE_PATHS
+        } else {
+            EXPECTED_SOURCE_PATHS
+        }
+        requireManifest(targetPaths == expectedSourcePaths, "source-paths-invalid")
 
         val artifactTargets = mutableListOf<KWebTarget>()
         manifest.customRuntimeArtifacts.forEach { artifact ->
@@ -170,7 +187,12 @@ public object CefSourcePatchManifestLoader {
         "cef_kweb_extension_cancel",
         "cef_kweb_extension_live_operation_count",
         "cef_kweb_extension_start",
+        "cef_kweb_network_abi_fingerprint",
+        "cef_kweb_network_clear_config",
+        "cef_kweb_network_resolve_proxy",
+        "cef_kweb_network_set_config",
     )
+    private val EXPECTED_EXTENSION_EXPORTS: List<String> = EXPECTED_EXPORTS.take(4)
     private val EXPECTED_GN_DEFINES: List<String> = listOf(
         "is_official_build=true",
         "symbol_level=0",
@@ -181,5 +203,15 @@ public object CefSourcePatchManifestLoader {
         "libcef/browser/chrome/chrome_context_menu_handler.cc",
         "include/internal/cef_kweb_extension_abi.h",
         "libcef/browser/extensions/kweb_extension_adapter.cc",
+        "include/internal/cef_kweb_network_abi.h",
+        "libcef/browser/kweb_network_adapter.cc",
+        "libcef/browser/kweb_network_adapter.h",
+        "libcef/browser/chrome/chrome_content_browser_client_cef.cc",
+    )
+    private val EXPECTED_EXTENSION_SOURCE_PATHS: Set<String> = EXPECTED_SOURCE_PATHS - setOf(
+        "include/internal/cef_kweb_network_abi.h",
+        "libcef/browser/kweb_network_adapter.cc",
+        "libcef/browser/kweb_network_adapter.h",
+        "libcef/browser/chrome/chrome_content_browser_client_cef.cc",
     )
 }

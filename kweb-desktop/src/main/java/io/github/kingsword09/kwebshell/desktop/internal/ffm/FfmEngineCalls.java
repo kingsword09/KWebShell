@@ -20,6 +20,7 @@ final class FfmEngineCalls {
 
     static long create(
         FfmCallbacks.EngineEvent sink,
+        FfmCallbacks.ProfileDataEvent profileDataSink,
         FfmCallbacks.Failure failureSink,
         String cefRuntimePath,
         String browserSubprocessPath,
@@ -32,7 +33,7 @@ final class FfmEngineCalls {
         FfmEngineCallbackOwner owner = null;
         try {
             FfmEngineLibrary library = library();
-            owner = new FfmEngineCallbackOwner(library, sink, failureSink, FfmEngineCalls::register);
+            owner = new FfmEngineCallbackOwner(library, sink, profileDataSink, failureSink, FfmEngineCalls::register);
             try (Arena callArena = Arena.ofConfined()) {
                 MemorySegment config = callArena.allocate(FfmLayouts.ENGINE_CONFIG);
                 MemorySegment output = callArena.allocate(FfmLayouts.UINT64);
@@ -55,6 +56,8 @@ final class FfmEngineCalls {
                     offset("remote_debugging_port"),
                     remoteDebuggingPort
                 );
+                config.set(FfmLayouts.POINTER, offset("profile_data_callback"), owner.profileDataStub());
+                config.set(FfmLayouts.POINTER, offset("profile_data_user_data"), MemorySegment.NULL);
                 int status = invokeCreate(library.handle("kweb_engine_create"), config, output);
                 if (status != FfmStatus.OK) {
                     abort(owner);
@@ -89,6 +92,70 @@ final class FfmEngineCalls {
             return (long) library().handle("kweb_live_engine_count").invokeExact();
         } catch (Throwable error) {
             return -1;
+        }
+    }
+
+    static int profileNetwork(
+        long engine,
+        long requestId,
+        int operation,
+        String profilePath,
+        String payload
+    ) {
+        try (Arena callArena = Arena.ofConfined()) {
+            FfmMemory.EncodedUtf8 profile = FfmMemory.encode(
+                profilePath, callArena, FfmMemory.MAXIMUM_PATH_SIZE
+            );
+            FfmMemory.EncodedUtf8 body = FfmMemory.encode(
+                payload, callArena, FfmMemory.MAXIMUM_PROFILE_DATA_OUTPUT_SIZE
+            );
+            return (int) library().handle("kweb_engine_profile_network").invokeExact(
+                engine,
+                requestId,
+                operation,
+                profile.size() == 0 ? MemorySegment.NULL : profile.segment(),
+                profile.size(),
+                body.size() == 0 ? MemorySegment.NULL : body.segment(),
+                body.size()
+            );
+        } catch (FfmTextException error) {
+            return error.status();
+        } catch (Throwable error) {
+            return FfmStatus.INTERNAL_ERROR;
+        }
+    }
+
+    static int clearProfileNetworkPolicy(long engine, String profilePath) {
+        try (Arena callArena = Arena.ofConfined()) {
+            FfmMemory.EncodedUtf8 profile = FfmMemory.encode(
+                profilePath, callArena, FfmMemory.MAXIMUM_PATH_SIZE
+            );
+            return (int) library().handle("kweb_engine_clear_profile_network_policy").invokeExact(
+                engine,
+                profile.size() == 0 ? MemorySegment.NULL : profile.segment(),
+                profile.size()
+            );
+        } catch (FfmTextException error) {
+            return error.status();
+        } catch (Throwable error) {
+            return FfmStatus.INTERNAL_ERROR;
+        }
+    }
+
+    static int openProfileContext(long engine, String profilePath) {
+        try (Arena callArena = Arena.ofConfined()) {
+            FfmMemory.EncodedUtf8 profile = FfmMemory.encode(
+                profilePath, callArena, FfmMemory.MAXIMUM_PATH_SIZE
+            );
+            return (int) library().handle("kweb_engine_open_profile_context").invokeExact(
+                engine,
+                profile.size() == 0 ? MemorySegment.NULL : profile.segment(),
+                profile.size()
+            );
+        } catch (FfmTextException error) {
+            return error.status();
+        } catch (Throwable error) {
+            return FfmStatus.INTERNAL_ERROR;
         }
     }
 

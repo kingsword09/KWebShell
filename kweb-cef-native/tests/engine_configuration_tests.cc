@@ -128,7 +128,9 @@ struct ConfigurationStorage final {
             View(cache),
             View(log),
             remote_debugging_port,
-            0};
+            0,
+            nullptr,
+            nullptr};
   }
 };
 

@@ -33,8 +33,23 @@ kweb_status ProfileDataSession(
     kweb_profile_data_operation_type operation, const char *payload_utf8,
     size_t payload_size);
 uint64_t LiveBrowserSessionCount();
-// Releases the shared per-profile request contexts on the CEF UI thread.
-// Must run after the last browser session completed and before CefShutdown.
+using ProfileNetworkCompletion = void (*)(void *user_data,
+                                          kweb_status status,
+                                          std::string payload);
+kweb_status SetProfileNetworkPolicy(const std::filesystem::path &profile_path,
+                                    const std::string &payload,
+                                    std::string *result_payload);
+kweb_status ResolveProfileProxy(const std::filesystem::path &profile_path,
+                                const std::string &payload,
+                                ProfileNetworkCompletion completion,
+                                void *user_data);
+kweb_status ClearProfileNetworkPolicy(
+    const std::filesystem::path &profile_path);
+kweb_status EnsureProfileContext(const std::filesystem::path &profile_path);
+kweb_status ReleaseProfileContext(const std::filesystem::path &profile_path);
+// Releases profile network policy and shared request-context state on the CEF
+// UI thread. Must run after the last browser session completed and before
+// CefShutdown.
 kweb_status ReleaseEngineProfileContexts();
 kweb_status GetBrowserExtensionContext(kweb_browser_handle browser,
                                        kweb_engine_handle *engine_out,

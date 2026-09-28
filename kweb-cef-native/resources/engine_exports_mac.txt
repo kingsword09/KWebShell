@@ -15,7 +15,10 @@ _kweb_browser_profile_data
 _kweb_engine_abi_version
 _kweb_engine_close
 _kweb_engine_create
+_kweb_engine_clear_profile_network_policy
+_kweb_engine_open_profile_context
 _kweb_engine_platform_startup
+_kweb_engine_profile_network
 _kweb_extension_cancel
 _kweb_extension_start
 _kweb_live_browser_count

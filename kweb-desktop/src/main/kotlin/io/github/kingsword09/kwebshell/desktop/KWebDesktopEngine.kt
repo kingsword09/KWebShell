@@ -10,6 +10,9 @@ import io.github.kingsword09.kwebshell.core.KWebConfigurationException
 import io.github.kingsword09.kwebshell.core.KWebEngine
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebNativeException
+import io.github.kingsword09.kwebshell.core.KWebNetworkPolicy
+import io.github.kingsword09.kwebshell.core.KWebNetworkRequestEvent
+import io.github.kingsword09.kwebshell.core.KWebProxyResolution
 import io.github.kingsword09.kwebshell.core.KWebPage
 import io.github.kingsword09.kwebshell.core.KWebPageEvent
 import io.github.kingsword09.kwebshell.core.KWebPageEventFlag
@@ -50,6 +53,8 @@ import io.github.kingsword09.kwebshell.desktop.internal.NativeBrowserEventType
 import io.github.kingsword09.kwebshell.desktop.internal.NativeEngine
 import io.github.kingsword09.kwebshell.desktop.internal.NativeEngineConfiguration
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -57,12 +62,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.sync.Mutex
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 public data class KWebDesktopShutdownStage(
@@ -81,9 +89,13 @@ public class KWebDesktopEngine private constructor(
 ) : KWebEngine {
     internal val engineId: String = configuration.engineId
 
+    internal val openingProfileCount: Int
+        get() = synchronized(lock) { openingProfiles.size }
+
     internal val userGestureIssuer: KWebUserGestureIssuer? = configuration.userGestureIssuer
     private val lock = Any()
     private val profiles = linkedMapOf<Path, KWebDesktopProfile>()
+    private val openingProfiles = linkedSetOf<Path>()
     private val closed = AtomicBoolean(false)
     private var closeFailure: Throwable? = null
     private var shutdownReport: KWebDesktopShutdownReport? = null
@@ -124,19 +136,43 @@ public class KWebDesktopEngine private constructor(
     }
 
     override suspend fun openProfile(name: String): KWebProfile = withContext(Dispatchers.IO) {
-        withEngineLock {
+        val path = withEngineLock {
             requireEngineOpen("open-profile")
             val path = KWebProfilePathResolver.resolve(native.rootCachePath(), name)
-            if (profiles.values.any { it.isSamePhysicalPath(path) }) {
+            if (profiles.values.any { it.isSamePhysicalPath(path) } ||
+                openingProfiles.any { it == path }
+            ) {
                 throw KWebConfigurationException(
                     code = "profile.duplicate-physical-identity",
                     details = mapOf("profile" to path.toString()),
                     message = "The requested Profile is already open through this engine.",
                 )
             }
-            val profile = KWebDesktopProfile(this@KWebDesktopEngine, path)
-            profiles[path] = profile
-            profile
+            openingProfiles.add(path)
+            path
+        }
+        var contextOpened = false
+        try {
+            native.openProfileContext(path)
+            contextOpened = true
+            currentCoroutineContext().ensureActive()
+            withEngineLock {
+                requireEngineOpen("open-profile")
+                KWebDesktopProfile(this@KWebDesktopEngine, path).also { profile ->
+                    profiles[path] = profile
+                }
+            }
+        } catch (error: Throwable) {
+            if (contextOpened && native.lifecycle.value == KWebLifecycleState.OPEN) {
+                try {
+                    native.clearProfileNetworkPolicy(path)
+                } catch (cleanupFailure: Throwable) {
+                    error.addSuppressed(cleanupFailure)
+                }
+            }
+            throw error
+        } finally {
+            withEngineLock { openingProfiles.remove(path) }
         }
     }
 
@@ -153,6 +189,13 @@ public class KWebDesktopEngine private constructor(
                     }
                 }
                 return
+            }
+            if (openingProfiles.isNotEmpty()) {
+                throw KWebNativeException(
+                    code = "desktop.profile-opening",
+                    details = mapOf("count" to openingProfiles.size.toString()),
+                    message = "The engine cannot close while Profile contexts are initializing.",
+                )
             }
             requireEngineOpen("close-engine")
             val startedAt = System.nanoTime()
@@ -237,18 +280,24 @@ public class KWebDesktopEngine private constructor(
     }
 }
 
+private const val PROFILE_OPERATION_CLOSE_TIMEOUT_SECONDS = 30L
+
 internal class KWebDesktopProfile(
     private val engine: KWebDesktopEngine,
     internal val path: Path,
 ) : KWebProfile {
     private val lock = Any()
     private val dataOperationMutex = Mutex()
+    private val networkOperationMutex = Mutex()
     private val mutableLifecycle = MutableStateFlow(KWebLifecycleState.OPEN)
+    private val networkEventStream = KWebDesktopNetworkEventStream()
     private val pages = linkedSetOf<KWebDesktopPage>()
     private var closedByEngine = false
+    private var activeNetworkOperation: CountDownLatch? = null
 
     override val name: String = path.fileName.toString()
     override val lifecycle: StateFlow<KWebLifecycleState> = mutableLifecycle.asStateFlow()
+    override val networkEvents: Flow<KWebNetworkRequestEvent> = networkEventStream.events
 
     override suspend fun openPage(
         host: KWebPageHost,
@@ -297,7 +346,37 @@ internal class KWebDesktopProfile(
                     bridgeOrigin = composeHost.bridgeOrigin.orEmpty(),
                     bridgeDispatcher = bridgeDispatcher,
                     streamDispatcher = streamDispatcher,
-                    listener = eventStream::accept,
+                    listener = listener@{ event ->
+                        if (event.type == NativeBrowserEventType.NETWORK_OBSERVATION_FAILED) {
+                            val code = event.details.takeIf { it == "network.observation-backpressure" }
+                                ?: "network.event.invalid"
+                            networkEventStream.fail(KWebNativeException(
+                                code = code,
+                                details = mapOf("profile" to name),
+                                message = "Chromium could not deliver a bounded network observation.",
+                            ))
+                        } else if (event.type == NativeBrowserEventType.NETWORK_REQUEST) {
+                            val networkEvent = try {
+                                KWebDesktopNetworkJson.parseEvent(event.details)
+                            } catch (error: Throwable) {
+                                val code = if (error is KWebNetworkObservationLimitException) {
+                                    "network.observation-backpressure"
+                                } else {
+                                    "network.event.invalid"
+                                }
+                                networkEventStream.fail(KWebNativeException(
+                                    code = code,
+                                    details = mapOf("profile" to name),
+                                    message = "Chromium returned an invalid network observation event.",
+                                    cause = error,
+                                ))
+                                return@listener
+                            }
+                            networkEventStream.publish(networkEvent)
+                        } else {
+                            eventStream.accept(event)
+                        }
+                    },
                 )
                 val page = KWebDesktopPage(this@KWebDesktopProfile, nativePage, eventStream, pageId)
                 pages += page
@@ -467,6 +546,47 @@ internal class KWebDesktopProfile(
         }
     }
 
+    override suspend fun configureNetworkPolicy(policy: KWebNetworkPolicy) = withContext(Dispatchers.IO) {
+        withNetworkOperation(
+            pendingErrorCode = "network.operation-pending",
+            closingErrorCode = "network.profile-closing",
+        ) {
+            requireOpen("configure-network-policy")
+            val payload = KWebDesktopNetworkJson.policyPayload(policy)
+            engine.nativeEngine().profileNetwork(
+                profilePath = path,
+                operation = KWebDesktopNetworkOperation.SET_POLICY,
+                payload = payload,
+            )
+            Unit
+        }
+    }
+
+    override suspend fun resolveProxy(url: String): KWebProxyResolution = withContext(Dispatchers.IO) {
+        withNetworkOperation(
+            pendingErrorCode = "network.operation-pending",
+            closingErrorCode = "network.profile-closing",
+        ) {
+            requireOpen("resolve-proxy")
+            val canonicalUrl = KWebDesktopNetworkJson.resolvePayload(url)
+            val result = engine.nativeEngine().profileNetwork(
+                profilePath = path,
+                operation = KWebDesktopNetworkOperation.RESOLVE_PROXY,
+                payload = canonicalUrl,
+            )
+            try {
+                KWebDesktopNetworkJson.parseResolution(result.payload, url)
+            } catch (error: Throwable) {
+                throw KWebNativeException(
+                    code = "network.proxy-result-invalid",
+                    details = mapOf("url" to url),
+                    message = "Chromium returned an invalid proxy resolution result.",
+                    cause = error,
+                )
+            }
+        }
+    }
+
     override suspend fun flush(target: KWebPage): KWebProfileFlushResult =
         withContext(Dispatchers.IO) {
             withProfileDataOperation {
@@ -509,8 +629,13 @@ internal class KWebDesktopProfile(
         return page.requireProfileDataNative()
     }
 
-    private suspend fun <T> withProfileDataOperation(block: suspend () -> T): T {
+    private suspend fun <T> withProfileDataOperation(
+        closingErrorCode: String = "desktop.profile.closed",
+        block: suspend () -> T,
+    ): T {
+        synchronized(lock) { ensureProfileOperationOpen(closingErrorCode) }
         if (!dataOperationMutex.tryLock()) {
+            synchronized(lock) { ensureProfileOperationOpen(closingErrorCode) }
             throw KWebNativeException(
                 code = "profile.data-operation-pending",
                 details = mapOf("profile" to path.toString()),
@@ -518,15 +643,57 @@ internal class KWebDesktopProfile(
             )
         }
         try {
+            synchronized(lock) { ensureProfileOperationOpen(closingErrorCode) }
             return block()
         } finally {
             dataOperationMutex.unlock()
         }
     }
 
+    private suspend fun <T> withNetworkOperation(
+        pendingErrorCode: String,
+        closingErrorCode: String,
+        block: suspend () -> T,
+    ): T {
+        synchronized(lock) { ensureProfileOperationOpen(closingErrorCode) }
+        if (!networkOperationMutex.tryLock()) {
+            synchronized(lock) { ensureProfileOperationOpen(closingErrorCode) }
+            throw KWebNativeException(
+                code = pendingErrorCode,
+                details = mapOf("profile" to path.toString()),
+                message = "Another Profile network operation is already active.",
+            )
+        }
+        val completed = CountDownLatch(1)
+        try {
+            synchronized(lock) {
+                ensureProfileOperationOpen(closingErrorCode)
+                check(activeNetworkOperation == null) {
+                    "A Profile network operation is active without holding its mutex."
+                }
+                activeNetworkOperation = completed
+            }
+            val result = try {
+                block()
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                synchronized(lock) { ensureProfileOperationOpen(closingErrorCode) }
+                throw error
+            }
+            synchronized(lock) { ensureProfileOperationOpen(closingErrorCode) }
+            return result
+        } finally {
+            synchronized(lock) {
+                if (activeNetworkOperation === completed) activeNetworkOperation = null
+            }
+            completed.countDown()
+            networkOperationMutex.unlock()
+        }
+    }
+
     override fun close() {
         engine.withEngineLock {
-            synchronized(lock) {
+            val activeOperation = synchronized(lock) {
                 if (mutableLifecycle.value != KWebLifecycleState.CLOSED) {
                     if (pages.isNotEmpty()) {
                         throw KWebNativeException(
@@ -535,9 +702,37 @@ internal class KWebDesktopProfile(
                             message = "The Profile cannot close while pages are still live.",
                         )
                     }
-                    mutableLifecycle.value = KWebLifecycleState.CLOSED
-                    engine.removeProfile(this)
+                    mutableLifecycle.value = KWebLifecycleState.CLOSING
+                    activeNetworkOperation
+                } else {
+                    null
                 }
+            }
+            try {
+                if (activeOperation != null &&
+                    !activeOperation.await(PROFILE_OPERATION_CLOSE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                ) {
+                    throw KWebNativeException(
+                        code = "network.profile-closing",
+                        details = mapOf("profile" to path.toString()),
+                        message = "A pending Profile operation did not settle before close.",
+                    )
+                }
+                synchronized(lock) {
+                    if (mutableLifecycle.value != KWebLifecycleState.CLOSED) {
+                        engine.nativeEngine().clearProfileNetworkPolicy(path)
+                        networkEventStream.close()
+                        mutableLifecycle.value = KWebLifecycleState.CLOSED
+                        engine.removeProfile(this)
+                    }
+                }
+            } catch (error: Throwable) {
+                synchronized(lock) {
+                    if (!closedByEngine && mutableLifecycle.value == KWebLifecycleState.CLOSING) {
+                        mutableLifecycle.value = KWebLifecycleState.OPEN
+                    }
+                }
+                throw error
             }
         }
     }
@@ -565,6 +760,7 @@ internal class KWebDesktopProfile(
         synchronized(lock) {
             closedByEngine = true
             mutableLifecycle.value = KWebLifecycleState.CLOSED
+            networkEventStream.close()
             orphanedPages = pages.toList()
         }
         // An Engine shutdown is a page-owner close: every page the Profile
@@ -573,10 +769,23 @@ internal class KWebDesktopProfile(
         orphanedPages.forEach { it.onEngineClosed() }
     }
 
+    private fun ensureProfileOperationOpen(closingErrorCode: String) {
+        if (mutableLifecycle.value == KWebLifecycleState.CLOSING) {
+            throw KWebNativeException(
+                code = closingErrorCode,
+                details = mapOf("profile" to path.toString()),
+                message = "The Profile is closing and cannot accept operations.",
+            )
+        }
+        requireOpen("profile-data")
+    }
+
     private fun requireOpen(operation: String) {
         if (closedByEngine || mutableLifecycle.value != KWebLifecycleState.OPEN) {
+            val closing = mutableLifecycle.value == KWebLifecycleState.CLOSING &&
+                (operation == "configure-network-policy" || operation == "resolve-proxy")
             throw KWebNativeException(
-                code = "desktop.profile.closed",
+                code = if (closing) "network.profile-closing" else "desktop.profile.closed",
                 details = mapOf("operation" to operation, "profile" to path.toString()),
                 message = "The KWebShell Profile is not open.",
             )
@@ -1037,6 +1246,10 @@ private fun NativeBrowserEvent.toPublicEvent(
         NativeBrowserEventType.INPUT_GESTURE ->
             // Filtered by KWebPageEventStream before the public mapping.
             throw IllegalStateException("The internal input-gesture event reached the public mapping.")
+        NativeBrowserEventType.NETWORK_REQUEST ->
+            throw IllegalStateException("The Profile network event reached the page mapping.")
+        NativeBrowserEventType.NETWORK_OBSERVATION_FAILED ->
+            throw IllegalStateException("The Profile network observation failure reached the page mapping.")
     }
     val flags = buildSet {
         if (this@toPublicEvent.flags and 1 != 0) add(KWebPageEventFlag.LOADING)

@@ -18,9 +18,12 @@ set(expected
   kweb_browser_bridge_fail
   kweb_browser_profile_data
   kweb_engine_abi_version
+  kweb_engine_clear_profile_network_policy
   kweb_engine_close
   kweb_engine_create
+  kweb_engine_open_profile_context
   kweb_engine_platform_startup
+  kweb_engine_profile_network
   kweb_extension_cancel
   kweb_extension_start
   kweb_live_browser_count

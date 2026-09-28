@@ -91,6 +91,7 @@ internal object NativeBindings {
 
     internal fun engineCreate(
         sink: NativeEngineEventSink,
+        profileDataSink: NativeProfileDataEventSink,
         cefRuntimePath: String,
         browserSubprocessPath: String,
         resourcesPath: String,
@@ -100,6 +101,7 @@ internal object NativeBindings {
         remoteDebuggingPort: Int,
     ): Long = FfmBindings.engineCreate(
         FfmCallbacks.EngineEvent(sink::onNativeEngineEvent),
+        FfmCallbacks.ProfileDataEvent(profileDataSink::onNativeProfileDataEvent),
         FfmCallbacks.Failure(sink::onNativeCallbackFailure),
         cefRuntimePath,
         browserSubprocessPath,
@@ -116,6 +118,26 @@ internal object NativeBindings {
         releaseOwner("engine", handle) { FfmBindings.releaseEngineOwner(handle) }
 
     internal fun liveEngineCount(): Long = FfmBindings.liveEngineCount()
+
+    internal fun engineProfileNetwork(
+        engine: Long,
+        requestId: Long,
+        operation: Int,
+        profilePath: String,
+        payload: String,
+    ): Int = FfmBindings.engineProfileNetwork(
+        engine,
+        requestId,
+        operation,
+        profilePath,
+        payload,
+    )
+
+    internal fun engineClearProfileNetworkPolicy(engine: Long, profilePath: String): Int =
+        FfmBindings.engineClearProfileNetworkPolicy(engine, profilePath)
+
+    internal fun engineOpenProfileContext(engine: Long, profilePath: String): Int =
+        FfmBindings.engineOpenProfileContext(engine, profilePath)
 
     internal fun browserCreate(
         engine: Long,

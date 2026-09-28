@@ -68,6 +68,15 @@ from the same persistent Profile; a generic Electron `Session`, guessed
 partition string, origin/time selector for profile-wide HTTP cache, and direct
 database access remain rewrite-required or unsupported.
 
+RFC 0010 classifies the network surfaces explicitly: `session.webRequest` is a
+rewrite to declarative `KWebProfile.configureNetworkPolicy` rules plus bounded
+`networkEvents`; `session.setProxy` becomes Profile-scoped proxy policy; and
+`session.resolveProxy` becomes `KWebProfile.resolveProxy`. Imperative callback
+bags, response-body interception, process-wide proxy switches, and a separate
+Electron-style HTTP client remain outside the published contract.
+`openProfile` waits for the pinned Profile NetworkContext to initialize, so
+proxy policy and resolution are available before the first Page is created.
+
 ## Manifest v2 and inventory prerequisites
 
 Manifest v2 requires an exact `rendererOrigin`, an explicit `rendererProfile`,

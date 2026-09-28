@@ -1,0 +1,685 @@
+diff --git a/BUILD.gn b/BUILD.gn
+index 55a09aa91..3c014acbf 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -616,6 +616,7 @@ source_set("libcef_static") {
+     "libcef/browser/download_manager_delegate_impl.cc",
+     "libcef/browser/download_manager_delegate_impl.h",
+     "libcef/browser/extensions/kweb_extension_adapter.cc",
++    "libcef/browser/kweb_network_adapter.cc",
+     "libcef/browser/file_dialog_manager.cc",
+     "libcef/browser/file_dialog_manager.h",
+     "libcef/browser/file_dialog_runner.cc",
+diff --git a/cef_paths2.gypi b/cef_paths2.gypi
+index a2891bad8..1ee99b9a0 100644
+--- a/cef_paths2.gypi
++++ b/cef_paths2.gypi
+@@ -42,6 +42,7 @@
+       'include/internal/cef_time_wrappers.h',
+       'include/internal/cef_types_wrappers.h',
+       'include/internal/cef_kweb_extension_abi.h',
++      'include/internal/cef_kweb_network_abi.h',
+     ],
+     'includes_common_capi': [
+       'include/cef_id_mappers.h',
+diff --git a/libcef/browser/chrome/chrome_content_browser_client_cef.cc b/libcef/browser/chrome/chrome_content_browser_client_cef.cc
+index 06b6f8954..f18c09edb 100644
+--- a/libcef/browser/chrome/chrome_content_browser_client_cef.cc
++++ b/libcef/browser/chrome/chrome_content_browser_client_cef.cc
+@@ -22,6 +22,7 @@
+ #include "cef/libcef/browser/net_service/login_delegate.h"
+ #include "cef/libcef/browser/net_service/proxy_url_loader_factory.h"
+ #include "cef/libcef/browser/net_service/resource_request_handler_wrapper.h"
++#include "cef/libcef/browser/kweb_network_adapter.h"
+ #include "cef/libcef/browser/prefs/browser_prefs.h"
+ #include "cef/libcef/browser/prefs/renderer_prefs.h"
+ #include "cef/libcef/browser/x509_certificate_impl.h"
+@@ -641,1 +641,6 @@ bool ChromeContentBrowserClientCef::ConfigureNetworkContextParams(
++  if (cef_context) {
++    kweb_network::ConfigureNetworkContextParams(
++        cef_context->cache_path(), network_context_params);
++  }
++
+   return true;
+ }
+
+diff --git a/include/internal/cef_kweb_network_abi.h b/include/internal/cef_kweb_network_abi.h
+new file mode 100644
+index 000000000..b2993d7bb
+--- /dev/null
++++ b/include/internal/cef_kweb_network_abi.h
+@@ -0,0 +1,79 @@
++// Copyright (c) 2026 KWebShell Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CEF_INCLUDE_INTERNAL_CEF_KWEB_NETWORK_ABI_H_
++#define CEF_INCLUDE_INTERNAL_CEF_KWEB_NETWORK_ABI_H_
++#pragma once
++
++#include <stddef.h>
++#include <stdint.h>
++
++#include "include/internal/cef_export.h"
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++#define CEF_KWEB_NETWORK_ABI_VERSION ((uint32_t)1)
++#define CEF_KWEB_NETWORK_ABI_FINGERPRINT \
++  "4c0d5bdbc917002a5ffa3c2a09be4fb51d12277c8f2cdd8ae28b41b995d43cdb"
++
++typedef uint32_t cef_kweb_network_status_t;
++typedef uint32_t cef_kweb_network_proxy_mode_t;
++
++#define CEF_KWEB_NETWORK_STATUS_OK ((cef_kweb_network_status_t)0)
++#define CEF_KWEB_NETWORK_STATUS_INVALID_ARGUMENT ((cef_kweb_network_status_t)1)
++#define CEF_KWEB_NETWORK_STATUS_ABI_MISMATCH ((cef_kweb_network_status_t)2)
++#define CEF_KWEB_NETWORK_STATUS_WRONG_THREAD ((cef_kweb_network_status_t)3)
++#define CEF_KWEB_NETWORK_STATUS_PROFILE_NOT_FOUND ((cef_kweb_network_status_t)4)
++#define CEF_KWEB_NETWORK_STATUS_PROXY_INVALID ((cef_kweb_network_status_t)5)
++#define CEF_KWEB_NETWORK_STATUS_PROXY_RESOLVE_FAILED ((cef_kweb_network_status_t)6)
++#define CEF_KWEB_NETWORK_STATUS_USER_AGENT_LOCKED ((cef_kweb_network_status_t)7)
++#define CEF_KWEB_NETWORK_STATUS_INTERNAL_ERROR ((cef_kweb_network_status_t)8)
++
++#define CEF_KWEB_NETWORK_PROXY_DIRECT ((cef_kweb_network_proxy_mode_t)1)
++#define CEF_KWEB_NETWORK_PROXY_FIXED ((cef_kweb_network_proxy_mode_t)2)
++#define CEF_KWEB_NETWORK_PROXY_PAC ((cef_kweb_network_proxy_mode_t)3)
++
++typedef struct _cef_kweb_network_string_view_t {
++  const char* data;
++  size_t size;
++} cef_kweb_network_string_view_t;
++
++typedef struct _cef_kweb_network_proxy_config_t {
++  uint32_t struct_size;
++  uint32_t abi_version;
++  cef_kweb_network_proxy_mode_t mode;
++  uint32_t pac_mandatory;
++  cef_kweb_network_string_view_t profile_path;
++  cef_kweb_network_string_view_t proxy_rules;
++  cef_kweb_network_string_view_t pac_url;
++  cef_kweb_network_string_view_t bypass_list;
++  cef_kweb_network_string_view_t user_agent;
++  cef_kweb_network_string_view_t accept_language;
++} cef_kweb_network_proxy_config_t;
++
++typedef void(CEF_CALLBACK* cef_kweb_network_resolve_callback_t)(
++    void* user_data, cef_kweb_network_status_t status,
++    cef_kweb_network_string_view_t result);
++
++CEF_EXPORT const char* cef_kweb_network_abi_fingerprint(void);
++
++CEF_EXPORT cef_kweb_network_status_t cef_kweb_network_set_config(
++    const cef_kweb_network_proxy_config_t* config);
++
++CEF_EXPORT cef_kweb_network_status_t cef_kweb_network_resolve_proxy(
++    cef_kweb_network_string_view_t profile_path,
++    cef_kweb_network_string_view_t url,
++    cef_kweb_network_resolve_callback_t callback,
++    void* user_data);
++
++CEF_EXPORT cef_kweb_network_status_t cef_kweb_network_clear_config(
++    cef_kweb_network_string_view_t profile_path);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif  // CEF_INCLUDE_INTERNAL_CEF_KWEB_NETWORK_ABI_H_
+
+diff --git a/libcef/browser/kweb_network_adapter.cc b/libcef/browser/kweb_network_adapter.cc
+new file mode 100644
+index 000000000..4213448de424eaf655468d7b165627c8f8182356
+--- /dev/null
++++ b/libcef/browser/kweb_network_adapter.cc
+@@ -0,0 +1,518 @@
++// Copyright (c) 2026 KWebShell Authors. All rights reserved.
++
++#include "cef/libcef/browser/kweb_network_adapter.h"
++
++#include <map>
++#include <memory>
++#include <optional>
++#include <set>
++#include <string>
++#include <string_view>
++#include <utility>
++
++#include "base/files/file_path.h"
++#include "base/no_destructor.h"
++#include "base/strings/string_util.h"
++#include "cef/include/internal/cef_kweb_network_abi.h"
++#include "cef/libcef/browser/browser_context.h"
++#include "cef/libcef/browser/thread_util.h"
++#include "chrome/browser/profiles/profile.h"
++#include "content/public/browser/browser_thread.h"
++#include "mojo/public/cpp/bindings/pending_remote.h"
++#include "mojo/public/cpp/bindings/receiver.h"
++#include "mojo/public/cpp/bindings/remote_set.h"
++#include "mojo/public/cpp/bindings/self_owned_receiver.h"
++#include "net/base/proxy_chain.h"
++#include "net/base/proxy_server.h"
++#include "net/base/proxy_string_util.h"
++#include "net/proxy_resolution/proxy_config.h"
++#include "net/proxy_resolution/proxy_config_with_annotation.h"
++#include "net/proxy_resolution/proxy_host_matching_rules.h"
++#include "net/proxy_resolution/proxy_list.h"
++#include "net/traffic_annotation/network_traffic_annotation.h"
++#include "services/network/public/mojom/network_context.mojom.h"
++#include "services/network/public/mojom/network_param.mojom.h"
++#include "services/network/public/mojom/proxy_lookup_client.mojom.h"
++#include "url/gurl.h"
++
++namespace {
++
++constexpr size_t kMaximumPathSize = 32768;
++constexpr size_t kMaximumProxyRulesSize = 8192;
++constexpr size_t kMaximumPacUrlSize = 8192;
++constexpr size_t kMaximumBypassListSize = 8192;
++constexpr size_t kMaximumUserAgentSize = 1024;
++constexpr size_t kMaximumAcceptLanguageSize = 1024;
++
++struct ProfileState final {
++  bool configured = false;
++  bool network_context_created = false;
++  net::ProxyConfigWithAnnotation proxy_config;
++  std::string user_agent;
++  std::string accept_language;
++  std::string default_accept_language;
++  bool default_accept_language_captured = false;
++  mojo::RemoteSet<network::mojom::ProxyConfigClient> proxy_clients;
++};
++
++using StateMap = std::map<base::FilePath, std::unique_ptr<ProfileState>>;
++
++StateMap& States() {
++  static base::NoDestructor<StateMap> states;
++  return *states;
++}
++
++std::string CopyString(cef_kweb_network_string_view value,
++                       size_t maximum,
++                       bool required) {
++  if (value.data == nullptr && value.size != 0) {
++    return {};
++  }
++  if (value.size > maximum || (required && value.size == 0)) {
++    return {};
++  }
++  return std::string(value.data == nullptr ? "" : value.data, value.size);
++}
++
++bool IsSafeNetworkContextValue(std::string_view value) {
++  for (const unsigned char character : value) {
++    if (character < 0x20 || character == 0x7f) {
++      return false;
++    }
++  }
++  return true;
++}
++
++base::FilePath PathFromString(const std::string& value) {
++  return base::FilePath::FromUTF8Unsafe(value);
++}
++
++const net::NetworkTrafficAnnotationTag& TrafficAnnotation() {
++  static const auto annotation =
++      net::DefineNetworkTrafficAnnotation("kwebshell_profile_proxy", R"(
++        semantics {
++          sender: "KWebShell Profile Network Policy"
++          description:
++            "Applying an explicit Profile-scoped proxy configuration to an embedded Chromium NetworkContext."
++          trigger:
++            "Whenever a KWebShell Profile is opened or its network policy is replaced."
++          data:
++            "Proxy rules, bypass entries, or a PAC URL supplied by the application."
++          destination: OTHER
++          destination_other:
++            "The proxy or origin network selected by the Profile policy."
++          internal {
++            contacts {
++              owners: "//tools/traffic_annotation/OWNERS"
++            }
++          }
++          last_reviewed: "2026-09-28"
++          user_data {
++            type: ARBITRARY_DATA
++          }
++        }
++        policy {
++          cookies_allowed: NO
++          setting:
++            "The application explicitly opts into this Profile-scoped network policy."
++          policy_exception_justification:
++            "The proxy policy is part of the embedding application's declared Profile contract."
++        })");
++  return annotation;
++}
++
++std::string_view TrimAscii(std::string_view value) {
++  while (!value.empty() && base::IsAsciiWhitespace(value.front())) {
++    value.remove_prefix(1);
++  }
++  while (!value.empty() && base::IsAsciiWhitespace(value.back())) {
++    value.remove_suffix(1);
++  }
++  return value;
++}
++
++bool ValidateProxyList(std::string_view value,
++                       net::ProxyServer::Scheme default_scheme) {
++  if (value.empty()) {
++    return false;
++  }
++  size_t start = 0;
++  while (start <= value.size()) {
++    const size_t end = value.find(',', start);
++    const std::string_view entry = TrimAscii(value.substr(
++        start,
++        end == std::string_view::npos ? std::string_view::npos : end - start));
++    if (entry.empty() ||
++        !net::ProxyUriToProxyChain(entry, default_scheme).IsValid()) {
++      return false;
++    }
++    if (end == std::string_view::npos) {
++      break;
++    }
++    start = end + 1;
++  }
++  return true;
++}
++
++bool ValidateFixedProxyRules(std::string_view value) {
++  if (value.empty()) {
++    return false;
++  }
++  std::set<std::string> schemes;
++  size_t start = 0;
++  size_t clause_index = 0;
++  while (start <= value.size()) {
++    const size_t end = value.find(';', start);
++    const std::string_view clause = TrimAscii(value.substr(
++        start,
++        end == std::string_view::npos ? std::string_view::npos : end - start));
++    if (clause.empty()) {
++      return false;
++    }
++    const size_t equals = clause.find('=');
++    if (equals == std::string_view::npos) {
++      return clause_index == 0 && end == std::string_view::npos &&
++             ValidateProxyList(clause, net::ProxyServer::SCHEME_HTTP);
++    }
++    if (clause.find('=', equals + 1) != std::string_view::npos) {
++      return false;
++    }
++    const std::string_view scheme = TrimAscii(clause.substr(0, equals));
++    const std::string_view proxies = TrimAscii(clause.substr(equals + 1));
++    net::ProxyServer::Scheme default_scheme = net::ProxyServer::SCHEME_HTTP;
++    if (scheme == "socks") {
++      default_scheme = net::ProxyServer::SCHEME_SOCKS4;
++    } else if (scheme != "http" && scheme != "https" && scheme != "ftp") {
++      return false;
++    }
++    if (!schemes.insert(std::string(scheme)).second ||
++        !ValidateProxyList(proxies, default_scheme)) {
++      return false;
++    }
++    ++clause_index;
++    if (end == std::string_view::npos) {
++      break;
++    }
++    start = end + 1;
++  }
++  return clause_index > 0;
++}
++
++bool ValidateBypassRules(std::string_view value) {
++  if (value.empty()) {
++    return true;
++  }
++  net::ProxyHostMatchingRules parsed_rules;
++  size_t start = 0;
++  while (start <= value.size()) {
++    const size_t end = value.find_first_of(",;", start);
++    const std::string_view entry = TrimAscii(value.substr(
++        start,
++        end == std::string_view::npos ? std::string_view::npos : end - start));
++    if (entry.empty() || !parsed_rules.AddRuleFromString(entry)) {
++      return false;
++    }
++    if (end == std::string_view::npos) {
++      break;
++    }
++    start = end + 1;
++  }
++  return true;
++}
++
++std::optional<net::ProxyConfigWithAnnotation> BuildProxyConfig(
++    const cef_kweb_network_proxy_config_t& config) {
++  if (config.pac_mandatory > 1) {
++    return std::nullopt;
++  }
++  net::ProxyConfig proxy;
++  switch (config.mode) {
++    case CEF_KWEB_NETWORK_PROXY_DIRECT:
++      if (config.pac_mandatory != 0 || config.proxy_rules.size != 0 ||
++          config.pac_url.size != 0 || config.bypass_list.size != 0) {
++        return std::nullopt;
++      }
++      proxy = net::ProxyConfig::CreateDirect();
++      break;
++    case CEF_KWEB_NETWORK_PROXY_FIXED: {
++      if (config.pac_mandatory != 0 || config.pac_url.size != 0) {
++        return std::nullopt;
++      }
++      const std::string rules = CopyString(
++          config.proxy_rules, kMaximumProxyRulesSize, /*required=*/true);
++      if (!ValidateFixedProxyRules(rules)) {
++        return std::nullopt;
++      }
++      proxy.proxy_rules().ParseFromString(rules);
++      if (proxy.proxy_rules().empty()) {
++        return std::nullopt;
++      }
++      const std::string bypass = CopyString(
++          config.bypass_list, kMaximumBypassListSize, /*required=*/false);
++      if ((config.bypass_list.size != 0 && bypass.empty()) ||
++          !ValidateBypassRules(bypass)) {
++        return std::nullopt;
++      }
++      proxy.proxy_rules().bypass_rules.ParseFromString(bypass);
++      break;
++    }
++    case CEF_KWEB_NETWORK_PROXY_PAC: {
++      if (config.proxy_rules.size != 0 || config.bypass_list.size != 0) {
++        return std::nullopt;
++      }
++      const std::string pac_url =
++          CopyString(config.pac_url, kMaximumPacUrlSize, /*required=*/true);
++      const GURL url(pac_url);
++      if (!url.is_valid() ||
++          (!url.SchemeIs("http") && !url.SchemeIs("https"))) {
++        return std::nullopt;
++      }
++      proxy = net::ProxyConfig::CreateFromCustomPacURL(url);
++      proxy.set_pac_mandatory(config.pac_mandatory != 0);
++      break;
++    }
++    default:
++      return std::nullopt;
++  }
++  return net::ProxyConfigWithAnnotation(proxy, TrafficAnnotation());
++}
++
++ProfileState* FindState(const base::FilePath& profile_path) {
++  auto found = States().find(profile_path);
++  return found == States().end() ? nullptr : found->second.get();
++}
++
++class ResolveClient final : public network::mojom::ProxyLookupClient {
++ public:
++  ResolveClient(cef_kweb_network_resolve_callback_t callback, void* user_data)
++      : callback_(callback), user_data_(user_data) {}
++
++  void OnProxyLookupComplete(int32_t net_error,
++                             network::mojom::ProxyInfoPtr proxy_info) override {
++    std::string result;
++    cef_kweb_network_status_t status = CEF_KWEB_NETWORK_STATUS_OK;
++    if (net_error != 0 || !proxy_info) {
++      status = CEF_KWEB_NETWORK_STATUS_PROXY_RESOLVE_FAILED;
++    } else {
++      net::ProxyList proxy_list;
++      for (const auto& chain : (*proxy_info)->proxy_chains) {
++        if (!chain || !chain->proxy_servers) {
++          status = CEF_KWEB_NETWORK_STATUS_PROXY_RESOLVE_FAILED;
++          break;
++        }
++        if (chain->proxy_servers->empty()) {
++          proxy_list.AddProxyChain(net::ProxyChain::Direct());
++          continue;
++        }
++        if (chain->proxy_servers->size() != 1 ||
++            !chain->proxy_servers->front() ||
++            !chain->proxy_servers->front()->host_and_port) {
++          status = CEF_KWEB_NETWORK_STATUS_PROXY_RESOLVE_FAILED;
++          break;
++        }
++        const auto& server = chain->proxy_servers->front();
++        net::ProxyServer::Scheme scheme;
++        switch (server->scheme) {
++          case network::mojom::ProxyScheme::kHttp:
++            scheme = net::ProxyServer::SCHEME_HTTP;
++            break;
++          case network::mojom::ProxyScheme::kHttps:
++            scheme = net::ProxyServer::SCHEME_HTTPS;
++            break;
++          case network::mojom::ProxyScheme::kSocks4:
++            scheme = net::ProxyServer::SCHEME_SOCKS4;
++            break;
++          case network::mojom::ProxyScheme::kSocks5:
++            scheme = net::ProxyServer::SCHEME_SOCKS5;
++            break;
++          case network::mojom::ProxyScheme::kQuic:
++            scheme = net::ProxyServer::SCHEME_QUIC;
++            break;
++          default:
++            status = CEF_KWEB_NETWORK_STATUS_PROXY_RESOLVE_FAILED;
++            break;
++        }
++        if (status != CEF_KWEB_NETWORK_STATUS_OK) {
++          break;
++        }
++        auto parsed_chain = net::ProxyChain::FromSchemeHostAndPort(
++            scheme, server->host_and_port->host, server->host_and_port->port);
++        if (!parsed_chain.IsValid()) {
++          status = CEF_KWEB_NETWORK_STATUS_PROXY_RESOLVE_FAILED;
++          break;
++        }
++        proxy_list.AddProxyChain(std::move(parsed_chain));
++      }
++      if (status == CEF_KWEB_NETWORK_STATUS_OK && proxy_list.IsEmpty()) {
++        status = CEF_KWEB_NETWORK_STATUS_PROXY_RESOLVE_FAILED;
++      }
++      if (status == CEF_KWEB_NETWORK_STATUS_OK) {
++        result = proxy_list.ToPacString();
++      }
++    }
++    callback_(user_data_, status, {result.data(), result.size()});
++  }
++
++ private:
++  const cef_kweb_network_resolve_callback_t callback_;
++  void* const user_data_;
++};
++
++}  // namespace
++
++namespace kweb_network {
++
++bool ConfigureNetworkContextParams(
++    const base::FilePath& profile_path,
++    network::mojom::NetworkContextParams* params) {
++  CEF_REQUIRE_UIT();
++  ProfileState* state = FindState(profile_path);
++  if (!state) {
++    auto created = std::make_unique<ProfileState>();
++    state = created.get();
++    States().emplace(profile_path, std::move(created));
++  }
++  if (!state->default_accept_language_captured) {
++    state->default_accept_language = params->accept_language;
++    state->default_accept_language_captured = true;
++  }
++  state->network_context_created = true;
++  params->initial_proxy_config = state->configured
++                                     ? state->proxy_config
++                                     : net::ProxyConfigWithAnnotation(
++                                           net::ProxyConfig::CreateDirect(),
++                                           TrafficAnnotation());
++  mojo::PendingRemote<network::mojom::ProxyConfigClient> remote;
++  params->proxy_config_client_receiver =
++      remote.InitWithNewPipeAndPassReceiver();
++  state->proxy_clients.Add(std::move(remote));
++  if (state->configured && !state->user_agent.empty()) {
++    params->user_agent = state->user_agent;
++  }
++  if (state->configured && !state->accept_language.empty()) {
++    params->accept_language = state->accept_language;
++  }
++  return true;
++}
++
++}  // namespace kweb_network
++
++extern "C" {
++
++CEF_EXPORT const char* cef_kweb_network_abi_fingerprint(void) {
++  return CEF_KWEB_NETWORK_ABI_FINGERPRINT;
++}
++
++CEF_EXPORT cef_kweb_network_status_t
++cef_kweb_network_set_config(const cef_kweb_network_proxy_config_t* config) {
++  if (!config || config->struct_size < sizeof(*config) ||
++      config->abi_version != CEF_KWEB_NETWORK_ABI_VERSION ||
++      !CEF_CURRENTLY_ON_UIT()) {
++    return config && !CEF_CURRENTLY_ON_UIT()
++               ? CEF_KWEB_NETWORK_STATUS_WRONG_THREAD
++               : CEF_KWEB_NETWORK_STATUS_INVALID_ARGUMENT;
++  }
++  const std::string profile_string =
++      CopyString(config->profile_path, kMaximumPathSize, true);
++  if (profile_string.empty()) {
++    return CEF_KWEB_NETWORK_STATUS_INVALID_ARGUMENT;
++  }
++  const base::FilePath profile_path = PathFromString(profile_string);
++  auto proxy_config = BuildProxyConfig(*config);
++  if (!proxy_config) {
++    return CEF_KWEB_NETWORK_STATUS_PROXY_INVALID;
++  }
++  const std::string user_agent =
++      CopyString(config->user_agent, kMaximumUserAgentSize, false);
++  const std::string accept_language =
++      CopyString(config->accept_language, kMaximumAcceptLanguageSize, false);
++  if (config->user_agent.size != 0 && user_agent.empty()) {
++    return CEF_KWEB_NETWORK_STATUS_INVALID_ARGUMENT;
++  }
++  if (config->accept_language.size != 0 && accept_language.empty()) {
++    return CEF_KWEB_NETWORK_STATUS_INVALID_ARGUMENT;
++  }
++  if (!IsSafeNetworkContextValue(user_agent) ||
++      !IsSafeNetworkContextValue(accept_language)) {
++    return CEF_KWEB_NETWORK_STATUS_INVALID_ARGUMENT;
++  }
++  ProfileState* state = FindState(profile_path);
++  if (!state) {
++    auto created = std::make_unique<ProfileState>();
++    state = created.get();
++    States().emplace(profile_path, std::move(created));
++  }
++  if (auto* context = CefBrowserContext::FromCachePath(profile_path)) {
++    state->network_context_created = state->network_context_created ||
++                                     context->GetNetworkContext() != nullptr;
++  }
++  if (state->network_context_created && state->user_agent != user_agent) {
++    return CEF_KWEB_NETWORK_STATUS_USER_AGENT_LOCKED;
++  }
++  state->proxy_config = std::move(*proxy_config);
++  state->user_agent = user_agent;
++  state->accept_language = accept_language;
++  state->configured = true;
++  for (const auto& client : state->proxy_clients) {
++    client->OnProxyConfigUpdated(state->proxy_config);
++  }
++  if (auto* context = CefBrowserContext::FromCachePath(profile_path)) {
++    if (auto* network_context = context->GetNetworkContext()) {
++      network_context->SetAcceptLanguage(
++          accept_language.empty() ? state->default_accept_language
++                                  : accept_language);
++    }
++  }
++  return CEF_KWEB_NETWORK_STATUS_OK;
++}
++
++CEF_EXPORT cef_kweb_network_status_t cef_kweb_network_resolve_proxy(
++    cef_kweb_network_string_view_t profile_path_value,
++    cef_kweb_network_string_view_t url_value,
++    cef_kweb_network_resolve_callback_t callback,
++    void* user_data) {
++  if (!callback || !CEF_CURRENTLY_ON_UIT()) {
++    return callback ? CEF_KWEB_NETWORK_STATUS_WRONG_THREAD
++                    : CEF_KWEB_NETWORK_STATUS_INVALID_ARGUMENT;
++  }
++  const std::string profile_string =
++      CopyString(profile_path_value, kMaximumPathSize, true);
++  const std::string url_string =
++      CopyString(url_value, kMaximumPacUrlSize, true);
++  if (profile_string.empty() || url_string.empty()) {
++    return CEF_KWEB_NETWORK_STATUS_INVALID_ARGUMENT;
++  }
++  const GURL url(url_string);
++  if (!url.is_valid() || (!url.SchemeIs("http") && !url.SchemeIs("https")) ||
++      url.has_username() || url.has_password()) {
++    return CEF_KWEB_NETWORK_STATUS_INVALID_ARGUMENT;
++  }
++  auto* context =
++      CefBrowserContext::FromCachePath(PathFromString(profile_string));
++  if (!context || !context->GetNetworkContext()) {
++    return CEF_KWEB_NETWORK_STATUS_PROFILE_NOT_FOUND;
++  }
++  mojo::PendingRemote<network::mojom::ProxyLookupClient> remote;
++  auto client = std::make_unique<ResolveClient>(callback, user_data);
++  auto receiver = remote.InitWithNewPipeAndPassReceiver();
++  mojo::MakeSelfOwnedReceiver(std::move(client), std::move(receiver));
++  context->GetNetworkContext()->LookUpProxyForURL(
++      url, net::NetworkAnonymizationKey(), std::move(remote));
++  return CEF_KWEB_NETWORK_STATUS_OK;
++}
++
++CEF_EXPORT cef_kweb_network_status_t cef_kweb_network_clear_config(
++    cef_kweb_network_string_view_t profile_path_value) {
++  if (!CEF_CURRENTLY_ON_UIT()) {
++    return CEF_KWEB_NETWORK_STATUS_WRONG_THREAD;
++  }
++  const std::string profile_string =
++      CopyString(profile_path_value, kMaximumPathSize, true);
++  if (profile_string.empty()) {
++    return CEF_KWEB_NETWORK_STATUS_INVALID_ARGUMENT;
++  }
++  States().erase(PathFromString(profile_string));
++  return CEF_KWEB_NETWORK_STATUS_OK;
++}
++
++}  // extern "C"
+
+diff --git a/libcef/browser/kweb_network_adapter.h b/libcef/browser/kweb_network_adapter.h
+new file mode 100644
+index 000000000..39ba0ce26
+--- /dev/null
++++ b/libcef/browser/kweb_network_adapter.h
+@@ -0,0 +1,23 @@
++// Copyright (c) 2026 KWebShell Authors. All rights reserved.
++
++#ifndef CEF_LIBCEF_BROWSER_KWEB_NETWORK_ADAPTER_H_
++#define CEF_LIBCEF_BROWSER_KWEB_NETWORK_ADAPTER_H_
++#pragma once
++
++#include "base/files/file_path.h"
++
++namespace network {
++namespace mojom {
++class NetworkContextParams;
++}
++}  // namespace network
++
++namespace kweb_network {
++
++bool ConfigureNetworkContextParams(
++    const base::FilePath& profile_path,
++    network::mojom::NetworkContextParams* params);
++
++}  // namespace kweb_network
++
++#endif  // CEF_LIBCEF_BROWSER_KWEB_NETWORK_ADAPTER_H_

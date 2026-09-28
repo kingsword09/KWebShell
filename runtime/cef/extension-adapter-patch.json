@@ -7,6 +7,7 @@
   "depotToolsCommit": "94e89b10b92cc9d6e58fc8d1b6474b7d29e8a114",
   "adapterAbiVersion": 1,
   "adapterAbiFingerprint": "8561856986d1c16cbb95294d7ad3f1e27bed9e102abc0f669a073161614a9c44",
+  "networkAbiFingerprint": "4c0d5bdbc917002a5ffa3c2a09be4fb51d12277c8f2cdd8ae28b41b995d43cdb",
   "sisoVersion": "git_revision:7ea15ed68d4aa12fc4aaa50f5446e8549e8f1ce0",
   "gnDefines": [
     "is_official_build=true",
@@ -16,7 +17,11 @@
     "cef_kweb_extension_abi_fingerprint",
     "cef_kweb_extension_cancel",
     "cef_kweb_extension_live_operation_count",
-    "cef_kweb_extension_start"
+    "cef_kweb_extension_start",
+    "cef_kweb_network_abi_fingerprint",
+    "cef_kweb_network_clear_config",
+    "cef_kweb_network_resolve_proxy",
+    "cef_kweb_network_set_config"
   ],
   "patches": [
     {
@@ -44,6 +49,38 @@
         {
           "path": "libcef/browser/extensions/kweb_extension_adapter.cc",
           "sha256": "c09f65fb465027723d16ba1e1b97c1f88159d5f5155488e61df8a72d08d9a73a"
+        }
+      ]
+    },
+    {
+      "file": "patches/0002-profile-scoped-network-policy.patch",
+      "sha256": "c1a386a7d96acc86e3d51f2d71d170e1eae1fbf671423634c1bfbc229c3e19fc",
+      "modifiedPreimages": [
+        {
+          "path": "BUILD.gn",
+          "sha256": "19054ced2048f70272a9292d9ad5d814bf82981a935a3c03dbc43002a0208975"
+        },
+        {
+          "path": "cef_paths2.gypi",
+          "sha256": "1751ab746374771be0fd638f4c239e88021a32a680a99c2cd10ccba939035f80"
+        },
+        {
+          "path": "libcef/browser/chrome/chrome_content_browser_client_cef.cc",
+          "sha256": "7f3a5682a1258561cb845ff99c0cab82f2842cf1579c8b8b835b04641b217297"
+        }
+      ],
+      "createdPostimages": [
+        {
+          "path": "include/internal/cef_kweb_network_abi.h",
+          "sha256": "a5b53b1a31991fd5c391e0cba056101c49fe6ff3a0b61fa9240030863c571d64"
+        },
+        {
+          "path": "libcef/browser/kweb_network_adapter.cc",
+          "sha256": "efb21d30b96b0d703fea81ffc71b32e5a1c089d93ce12ff9942ead738f9c8c68"
+        },
+        {
+          "path": "libcef/browser/kweb_network_adapter.h",
+          "sha256": "2edde8a4bdac1864c4c00580a076e0e84bf072baa82d9e5f91c1bd1edc8a6112"
         }
       ]
     }

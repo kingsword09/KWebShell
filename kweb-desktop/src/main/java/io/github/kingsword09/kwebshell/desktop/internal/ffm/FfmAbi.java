@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 public final class FfmAbi {
-    public static final int VERSION = 12;
+    public static final int VERSION = 14;
 
     public static final FunctionDescriptor ENGINE_CALLBACK = FunctionDescriptor.ofVoid(
         FfmLayouts.POINTER,
@@ -59,6 +59,37 @@ public final class FfmAbi {
         ),
         function("kweb_engine_close", STATUS_FROM_HANDLE),
         function("kweb_live_engine_count", LIVE_COUNT),
+        function(
+            "kweb_engine_profile_network",
+            FunctionDescriptor.of(
+                FfmLayouts.UINT32,
+                FfmLayouts.UINT64,
+                FfmLayouts.UINT64,
+                FfmLayouts.UINT32,
+                FfmLayouts.POINTER,
+                FfmLayouts.SIZE_T,
+                FfmLayouts.POINTER,
+                FfmLayouts.SIZE_T
+            )
+        ),
+        function(
+            "kweb_engine_clear_profile_network_policy",
+            FunctionDescriptor.of(
+                FfmLayouts.UINT32,
+                FfmLayouts.UINT64,
+                FfmLayouts.POINTER,
+                FfmLayouts.SIZE_T
+            )
+        ),
+        function(
+            "kweb_engine_open_profile_context",
+            FunctionDescriptor.of(
+                FfmLayouts.UINT32,
+                FfmLayouts.UINT64,
+                FfmLayouts.POINTER,
+                FfmLayouts.SIZE_T
+            )
+        ),
         function(
             "kweb_browser_create",
             FunctionDescriptor.of(
@@ -157,8 +188,8 @@ public final class FfmAbi {
     private static final Map<String, FunctionDescriptor> DESCRIPTORS = descriptorsByName();
 
     static {
-        if (FUNCTIONS.size() != 24 || DESCRIPTORS.size() != 24) {
-            throw new ExceptionInInitializerError("The KWebShell ABI must contain exactly 24 exports.");
+        if (FUNCTIONS.size() != 27 || DESCRIPTORS.size() != 27) {
+            throw new ExceptionInInitializerError("The KWebShell ABI must contain exactly 27 exports.");
         }
     }
 

@@ -87,8 +87,8 @@ int main() {
   const std::vector<LayoutExpectation> layouts = {
       {KWEB_PROBE_LAYOUT_STRING_VIEW, 16, 8, {0, 8}},
       {KWEB_PROBE_LAYOUT_ENGINE_EVENT, 32, 8, {0, 4, 8, 12, 16, 24}},
-      {KWEB_PROBE_LAYOUT_ENGINE_CONFIG, 128, 8,
-       {0, 4, 8, 16, 24, 40, 56, 72, 88, 104, 120, 124}},
+      {KWEB_PROBE_LAYOUT_ENGINE_CONFIG, 144, 8,
+       {0, 4, 8, 16, 24, 40, 56, 72, 88, 104, 120, 124, 128, 136}},
       {KWEB_PROBE_LAYOUT_BROWSER_EVENT, 168, 8,
        {0, 4, 8, 12, 16, 24, 32, 40, 56, 60, 64, 68,
         72, 80, 96, 100, 104, 120, 136, 152}},

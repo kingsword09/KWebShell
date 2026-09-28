@@ -15,6 +15,7 @@ public data class CefSourcePatchManifest(
     public val depotToolsCommit: String,
     public val adapterAbiVersion: Int,
     public val adapterAbiFingerprint: String,
+    public val networkAbiFingerprint: String,
     public val sisoVersion: String,
     public val gnDefines: List<String>,
     public val exports: List<String>,

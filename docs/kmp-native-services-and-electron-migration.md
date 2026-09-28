@@ -446,6 +446,9 @@ The initial mapping direction is:
 | `BrowserWindow` | Compose `Window`/`ComposeWindow` plus `KWebPage`; Kotlin owns window lifecycle. |
 | `webContents` | `KWebPage`, its event flow, and explicitly configured CDP. |
 | `session.fromPartition` | Explicit persistent `KWebProfile`. |
+| `session.webRequest` | Rewrite to typed Profile network rules and bounded body-free observation; imperative callback bags are not portable. |
+| `session.setProxy` | Rewrite to Profile-scoped direct/fixed/PAC network policy, available immediately after `openProfile` and before the first Page. |
+| `session.resolveProxy` | Rewrite to `KWebProfile.resolveProxy` using the eagerly initialized Profile NetworkContext. |
 | `protocol.handle` | Profile-scoped verified `app://` protocol origins. |
 | `ipcMain.handle` + `ipcRenderer.invoke` | Typed service implementation plus generated exact-origin client. |
 | `contextBridge.exposeInMainWorld` | Optional generated application-specific preload facade. |

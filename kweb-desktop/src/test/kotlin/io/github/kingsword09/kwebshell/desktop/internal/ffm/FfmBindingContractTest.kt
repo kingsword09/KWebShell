@@ -10,15 +10,16 @@ import kotlin.test.assertTrue
 
 class FfmBindingContractTest {
     @Test
-    fun productionInventoryMatchesAbiVersionTwelve() {
-        assertEquals(12, FfmAbi.VERSION)
-        assertEquals(24, FfmAbi.FUNCTIONS.size)
+    fun productionInventoryMatchesAbiVersionFourteen() {
+        assertEquals(14, FfmAbi.VERSION)
+        assertEquals(27, FfmAbi.FUNCTIONS.size)
         assertEquals(16, FfmLayouts.STRING_VIEW.byteSize())
         assertEquals(32, FfmLayouts.ENGINE_EVENT.byteSize())
-        assertEquals(128, FfmLayouts.ENGINE_CONFIG.byteSize())
+        assertEquals(144, FfmLayouts.ENGINE_CONFIG.byteSize())
         assertEquals(168, FfmLayouts.BROWSER_EVENT.byteSize())
         assertEquals(56, FfmLayouts.BRIDGE_EVENT.byteSize())
         assertEquals(64, FfmLayouts.PROFILE_DATA_EVENT.byteSize())
+        assertTrue(FfmAbi.FUNCTIONS.any { it.name() == "kweb_engine_open_profile_context" })
         assertEquals(128, FfmLayouts.EXTENSION_RESULT.byteSize())
         assertEquals(80, FfmLayouts.EXTENSION_CONFIG.byteSize())
         assertEquals(144, FfmLayouts.BROWSER_CONFIG.byteSize())

@@ -257,6 +257,8 @@ val engineIntegrationJavaCommand = buildList {
 }
 val extensionLifecycleIntegrationJavaCommand =
     engineIntegrationJavaCommand.dropLast(1) + "extension-lifecycle-coordinator"
+val networkPolicyIntegrationJavaCommand =
+    engineIntegrationJavaCommand.dropLast(1) + "network-policy"
 
 val engineIntegrationTest = tasks.register<Exec>("engineIntegrationTest") {
     group = "verification"
@@ -298,6 +300,44 @@ val engineIntegrationTest = tasks.register<Exec>("engineIntegrationTest") {
         )
     } else {
         commandLine(engineIntegrationJavaCommand)
+    }
+}
+
+tasks.register<Exec>("networkPolicyIntegrationTest") {
+    group = "verification"
+    description = "Verifies RFC 0010 behavior against a real patched CEF NetworkContext."
+    dependsOn(
+        cleanEngineIntegration,
+        generateConformanceBridge,
+        tasks.testClasses,
+        desktopJar,
+        ":kweb-cef-native:buildNative",
+        ":kweb-service-app-paths:buildNative",
+        ":kweb-service-app-paths:generateAppPathsBridge",
+    )
+    mustRunAfter(tasks.test, ":kweb-cef-native:nativeTest", engineIntegrationTest)
+    inputs.file(nativeEngineLibrary)
+    inputs.file(nativeCefRuntime)
+    inputs.file(nativeBrowserSubprocess)
+    inputs.file(nativeResources.map { it.resolve("resources.pak") })
+    inputs.file(nativeLocales.map { directory ->
+        if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("mac")) {
+            directory.resolve("en.lproj/locale.pak")
+        } else {
+            directory.resolve("en-US.pak")
+        }
+    })
+
+    if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("linux")) {
+        commandLine(
+            listOf(
+                "xvfb-run",
+                "--auto-servernum",
+                "--server-args=-screen 0 1280x1024x24",
+            ) + networkPolicyIntegrationJavaCommand,
+        )
+    } else {
+        commandLine(networkPolicyIntegrationJavaCommand)
     }
 }
 

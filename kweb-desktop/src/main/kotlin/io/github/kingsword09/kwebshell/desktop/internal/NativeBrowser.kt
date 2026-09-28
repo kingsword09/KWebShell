@@ -72,6 +72,8 @@ internal enum class NativeBrowserEventType(val value: Int) {
     RENDERER_UNRESPONSIVE(20),
     RENDERER_RESPONSIVE(21),
     RENDERER_TERMINATED(22),
+    NETWORK_REQUEST(23),
+    NETWORK_OBSERVATION_FAILED(24),
     ;
 
     companion object {

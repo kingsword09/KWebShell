@@ -178,6 +178,35 @@
         "kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronCapabilityMatrixTest.kt",
         "kweb-interop-probe/src/main/java/io/github/kingsword09/kwebshell/interop/probe"
       ]
+    },
+    {
+      "rfcId": "0010",
+      "paths": [
+        ".github/scripts/aggregate-rfc-evidence.sh",
+        ".github/workflows/ci.yml",
+        "docs/kmp-native-services-and-electron-migration.md",
+        "docs/rfcs/0010-network-policy-and-proxy.md",
+        "docs/rfcs/README.md",
+        "kweb-cef-native/include/kwebshell/native/engine_abi.h",
+        "kweb-cef-native/src/browser_session.cc",
+        "kweb-cef-native/src/browser_session.h",
+        "kweb-cef-native/src/engine_abi.cc",
+        "kweb-cef-native/src/network_policy.cc",
+        "kweb-cef-native/src/network_policy.h",
+        "kweb-cef-native/tests/engine_abi_header_c_test.c",
+        "kweb-compose/src/test/kotlin/io/github/kingsword09/kwebshell/compose/KWebViewPlacementTest.kt",
+        "kweb-core/src/commonMain/kotlin/io/github/kingsword09/kwebshell/core/KWebNetworkContract.kt",
+        "kweb-core/src/commonMain/kotlin/io/github/kingsword09/kwebshell/core/KWebPageContract.kt",
+        "kweb-desktop/build.gradle.kts",
+        "kweb-desktop/src/main/kotlin/io/github/kingsword09/kwebshell/desktop/KWebDesktopEngine.kt",
+        "kweb-desktop/src/main/kotlin/io/github/kingsword09/kwebshell/desktop/KWebDesktopNetwork.kt",
+        "kweb-desktop/src/test/kotlin/io/github/kingsword09/kwebshell/desktop/KWebDesktopNetworkTest.kt",
+        "kweb-desktop/src/test/kotlin/io/github/kingsword09/kwebshell/desktop/internal/NativeEngineIntegrationMain.kt",
+        "kweb-rfc-governance/src/test/kotlin/io/github/kingsword09/kwebshell/rfc/KWebRfcGovernanceCheckerTest.kt",
+        "kweb-electron-migration/README.md",
+        "kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronCapabilityMatrix.kt",
+        "kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronCapabilityMatrixTest.kt"
+      ]
     }
   ]
 }

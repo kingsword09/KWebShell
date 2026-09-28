@@ -447,8 +447,8 @@ The initial mapping direction is:
 | `webContents` | `KWebPage`, its event flow, and explicitly configured CDP. |
 | `session.fromPartition` | Explicit persistent `KWebProfile`. |
 | `session.webRequest` | Rewrite to typed Profile network rules and bounded body-free observation; imperative callback bags are not portable. |
-| `session.setProxy` | Rewrite to Profile-scoped direct/fixed/PAC network policy, available immediately after `openProfile` and before the first Page. |
-| `session.resolveProxy` | Rewrite to `KWebProfile.resolveProxy` using the eagerly initialized Profile NetworkContext. |
+| `session.setProxy` | Unsupported/deferred until a separately reviewed Profile NetworkContext proxy contract exists; no process-wide or system-proxy fallback. |
+| `session.resolveProxy` | Unsupported/deferred with Profile proxy configuration; no synthetic PAC resolver is exposed. |
 | `protocol.handle` | Profile-scoped verified `app://` protocol origins. |
 | `ipcMain.handle` + `ipcRenderer.invoke` | Typed service implementation plus generated exact-origin client. |
 | `contextBridge.exposeInMainWorld` | Optional generated application-specific preload facade. |

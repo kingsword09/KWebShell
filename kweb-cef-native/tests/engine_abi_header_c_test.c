@@ -125,8 +125,6 @@ _Static_assert(KWEB_BROWSER_EVENT_POPUP_REQUESTED == 19,
                "the popup request event id is ABI-stable");
 _Static_assert(KWEB_PROFILE_DATA_SET_NETWORK_POLICY == 9,
                "the network policy operation id is ABI-stable");
-_Static_assert(KWEB_PROFILE_DATA_RESOLVE_PROXY == 10,
-               "the proxy resolution operation id is ABI-stable");
 _Static_assert(KWEB_STATUS_NETWORK_POLICY_INVALID == 60,
                "the network policy invalid status is ABI-stable");
 _Static_assert(KWEB_STATUS_NETWORK_RUNTIME_CAPABILITY_MISSING == 65,

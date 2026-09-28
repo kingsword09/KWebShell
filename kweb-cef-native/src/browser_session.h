@@ -33,16 +33,9 @@ kweb_status ProfileDataSession(
     kweb_profile_data_operation_type operation, const char *payload_utf8,
     size_t payload_size);
 uint64_t LiveBrowserSessionCount();
-using ProfileNetworkCompletion = void (*)(void *user_data,
-                                          kweb_status status,
-                                          std::string payload);
 kweb_status SetProfileNetworkPolicy(const std::filesystem::path &profile_path,
                                     const std::string &payload,
                                     std::string *result_payload);
-kweb_status ResolveProfileProxy(const std::filesystem::path &profile_path,
-                                const std::string &payload,
-                                ProfileNetworkCompletion completion,
-                                void *user_data);
 kweb_status ClearProfileNetworkPolicy(
     const std::filesystem::path &profile_path);
 kweb_status EnsureProfileContext(const std::filesystem::path &profile_path);

@@ -51,26 +51,9 @@ public data class KWebNetworkRule(
     public val headerMutations: List<KWebNetworkHeaderMutation> = emptyList(),
 )
 
-public enum class KWebProxyMode {
-    DIRECT,
-    FIXED,
-    PAC,
-}
-
-public data class KWebProxyConfiguration(
-    public val mode: KWebProxyMode = KWebProxyMode.DIRECT,
-    public val rules: String = "",
-    public val pacUrl: String? = null,
-    public val pacMandatory: Boolean = false,
-    public val bypassList: List<String> = emptyList(),
-)
-
 public data class KWebNetworkPolicy(
     public val version: Int = 1,
     public val rules: List<KWebNetworkRule> = emptyList(),
-    public val proxy: KWebProxyConfiguration = KWebProxyConfiguration(),
-    public val userAgent: String? = null,
-    public val acceptLanguage: String? = null,
 )
 
 public data class KWebNetworkRequestEvent(
@@ -85,9 +68,4 @@ public data class KWebNetworkRequestEvent(
     public val completionStatus: KWebNetworkCompletionStatus? = null,
     public val redirectedUrl: String? = null,
     public val policyVersion: Int,
-)
-
-public data class KWebProxyResolution(
-    public val url: String,
-    public val result: String,
 )

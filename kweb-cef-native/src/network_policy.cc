@@ -13,7 +13,6 @@
 #include "include/cef_request.h"
 #include "include/cef_response.h"
 #include "include/cef_task.h"
-#include "kwebshell/native/cef_network_abi.h"
 #include "utf8_validation.h"
 
 namespace kwebshell {
@@ -26,15 +25,6 @@ constexpr size_t kMaximumPatternBytes = 2048;
 constexpr size_t kMaximumHeaderMutations = 32;
 constexpr size_t kMaximumHeaderValueBytes = 8192;
 constexpr int kMaximumRedirectDepth = 5;
-
-std::string PathToUtf8(const std::filesystem::path &path) {
-#if defined(_WIN32)
-  const std::u8string utf8 = path.u8string();
-  return std::string(reinterpret_cast<const char *>(utf8.data()), utf8.size());
-#else
-  return path.string();
-#endif
-}
 
 struct HeaderMutation final {
   std::string name;
@@ -108,13 +98,6 @@ bool IsSafeHeaderValue(const std::string &value) {
   });
 }
 
-bool IsSafeNetworkContextValue(const std::string &value) {
-  return std::all_of(value.begin(), value.end(), [](char character) {
-    const auto byte = static_cast<unsigned char>(character);
-    return byte >= 0x20 && byte != 0x7f;
-  });
-}
-
 std::string LowerAscii(std::string value) {
   std::transform(value.begin(), value.end(), value.begin(), [](char character) {
     return static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
@@ -137,7 +120,8 @@ bool IsHttpUrl(const std::string &value) {
   if (!CefParseURL(value, parts)) {
     return false;
   }
-  const std::string scheme = CefString(&parts.scheme).ToString();
+  const std::string scheme =
+      LowerAscii(CefString(&parts.scheme).ToString());
   return (scheme == "http" || scheme == "https") &&
          !CefString(&parts.host).empty() &&
          CefString(&parts.username).empty() &&
@@ -156,7 +140,8 @@ bool IsHttpPattern(const std::string &value) {
   std::replace(candidate.begin(), candidate.end(), '*', 'x');
   CefURLParts parts;
   if (!CefParseURL(candidate, parts)) return false;
-  const std::string scheme = CefString(&parts.scheme).ToString();
+  const std::string scheme =
+      LowerAscii(CefString(&parts.scheme).ToString());
   return (scheme == "http" || scheme == "https") &&
          !CefString(&parts.host).empty() &&
          CefString(&parts.username).empty() &&
@@ -302,73 +287,6 @@ std::string JsonEvent(uint64_t request_id, const std::string &phase,
   return CefWriteJSON(value, JSON_WRITER_DEFAULT).ToString();
 }
 
-struct RuntimeApi final {
-  cef_kweb_network_abi_fingerprint_fn fingerprint = nullptr;
-  cef_kweb_network_set_config_fn set_config = nullptr;
-  cef_kweb_network_resolve_proxy_fn resolve_proxy = nullptr;
-  cef_kweb_network_clear_config_fn clear_config = nullptr;
-
-  bool complete() const {
-    return fingerprint && set_config && resolve_proxy && clear_config;
-  }
-};
-
-RuntimeApi LoadRuntimeApi() {
-  RuntimeApi api;
-  api.fingerprint = reinterpret_cast<cef_kweb_network_abi_fingerprint_fn>(
-      ResolveCefRuntimeSymbol("cef_kweb_network_abi_fingerprint"));
-  api.set_config = reinterpret_cast<cef_kweb_network_set_config_fn>(
-      ResolveCefRuntimeSymbol("cef_kweb_network_set_config"));
-  api.resolve_proxy = reinterpret_cast<cef_kweb_network_resolve_proxy_fn>(
-      ResolveCefRuntimeSymbol("cef_kweb_network_resolve_proxy"));
-  api.clear_config = reinterpret_cast<cef_kweb_network_clear_config_fn>(
-      ResolveCefRuntimeSymbol("cef_kweb_network_clear_config"));
-  if (!api.complete() || api.fingerprint() == nullptr ||
-      std::string(api.fingerprint()) != CEF_KWEB_NETWORK_ABI_FINGERPRINT) {
-    return {};
-  }
-  return api;
-}
-
-RuntimeApi &Runtime() {
-  static RuntimeApi api = LoadRuntimeApi();
-  return api;
-}
-
-kweb_status MapRuntimeStatus(cef_kweb_network_status_t status) {
-  switch (status) {
-    case CEF_KWEB_NETWORK_STATUS_OK:
-      return KWEB_STATUS_OK;
-    case CEF_KWEB_NETWORK_STATUS_INVALID_ARGUMENT:
-    case CEF_KWEB_NETWORK_STATUS_ABI_MISMATCH:
-      return KWEB_STATUS_NETWORK_POLICY_INVALID;
-    case CEF_KWEB_NETWORK_STATUS_PROXY_INVALID:
-      return KWEB_STATUS_NETWORK_PROXY_INVALID;
-    case CEF_KWEB_NETWORK_STATUS_PROFILE_NOT_FOUND:
-      return KWEB_STATUS_PROFILE_PATH_INVALID;
-    case CEF_KWEB_NETWORK_STATUS_PROXY_RESOLVE_FAILED:
-      return KWEB_STATUS_NETWORK_PROXY_UNAVAILABLE;
-    case CEF_KWEB_NETWORK_STATUS_USER_AGENT_LOCKED:
-      return KWEB_STATUS_NETWORK_USER_AGENT_REQUIRES_PROFILE_REOPEN;
-    default:
-      return KWEB_STATUS_INTERNAL_ERROR;
-  }
-}
-
-struct ResolveContext final {
-  ProfileNetworkCompletion completion = nullptr;
-  void *user_data = nullptr;
-};
-
-void KWEB_CEF_NETWORK_CALLBACK ReceiveResolve(
-    void *user_data, cef_kweb_network_status_t status,
-    cef_kweb_network_string_view result) {
-  std::unique_ptr<ResolveContext> context(static_cast<ResolveContext *>(user_data));
-  std::string value(result.data == nullptr ? "" : result.data, result.size);
-  context->completion(context->user_data, MapRuntimeStatus(status),
-                      std::move(value));
-}
-
 std::mutex registry_mutex;
 std::map<std::filesystem::path, std::shared_ptr<NetworkPolicyState>> registry;
 
@@ -377,13 +295,6 @@ std::map<std::filesystem::path, std::shared_ptr<NetworkPolicyState>> registry;
 struct NetworkPolicySnapshot final {
   int version = 1;
   std::vector<PolicyRule> rules;
-  cef_kweb_network_proxy_mode_t proxy_mode = CEF_KWEB_NETWORK_PROXY_DIRECT;
-  bool pac_mandatory = false;
-  std::string proxy_rules;
-  std::string pac_url;
-  std::string bypass_list;
-  std::string user_agent;
-  std::string accept_language;
 };
 
 class PreparedNetworkPolicy final {
@@ -419,13 +330,10 @@ kweb_status NetworkPolicyState::Prepare(
   }
   auto dictionary = root->GetDictionary();
   if (!dictionary ||
-      !HasOnlyKeys(dictionary,
-                   {"version", "rules", "proxy", "userAgent",
-                    "acceptLanguage"}) ||
+      !HasOnlyKeys(dictionary, {"version", "rules"}) ||
       dictionary->GetType("version") != VTYPE_INT ||
       dictionary->GetInt("version") != 1 ||
-      dictionary->GetType("rules") != VTYPE_LIST ||
-      dictionary->GetType("proxy") != VTYPE_DICTIONARY) {
+      dictionary->GetType("rules") != VTYPE_LIST) {
     return KWEB_STATUS_NETWORK_POLICY_INVALID;
   }
   auto snapshot = std::make_shared<NetworkPolicySnapshot>();
@@ -549,94 +457,6 @@ kweb_status NetworkPolicyState::Prepare(
                      return left.priority > right.priority;
                    });
 
-  auto proxy = dictionary->GetDictionary("proxy");
-  if (!HasOnlyKeys(proxy, {"mode", "rules", "pacUrl", "pacMandatory",
-                            "bypassList"})) {
-    return KWEB_STATUS_NETWORK_POLICY_INVALID;
-  }
-  if (proxy->HasKey("mode") && !HasString(proxy, "mode")) {
-    return KWEB_STATUS_NETWORK_POLICY_INVALID;
-  }
-  const std::string mode = HasString(proxy, "mode")
-                               ? proxy->GetString("mode").ToString()
-                               : "direct";
-  if (mode == "direct") snapshot->proxy_mode = CEF_KWEB_NETWORK_PROXY_DIRECT;
-  else if (mode == "fixed") snapshot->proxy_mode = CEF_KWEB_NETWORK_PROXY_FIXED;
-  else if (mode == "pac") snapshot->proxy_mode = CEF_KWEB_NETWORK_PROXY_PAC;
-  else return KWEB_STATUS_NETWORK_POLICY_INVALID;
-  if (proxy->HasKey("rules")) {
-    if (!HasString(proxy, "rules")) return KWEB_STATUS_NETWORK_POLICY_INVALID;
-    snapshot->proxy_rules = proxy->GetString("rules").ToString();
-  }
-  if (proxy->HasKey("pacUrl")) {
-    if (!HasString(proxy, "pacUrl")) return KWEB_STATUS_NETWORK_POLICY_INVALID;
-    snapshot->pac_url = proxy->GetString("pacUrl").ToString();
-  }
-  if (proxy->HasKey("pacMandatory")) {
-    if (proxy->GetType("pacMandatory") != VTYPE_BOOL) return KWEB_STATUS_NETWORK_POLICY_INVALID;
-    snapshot->pac_mandatory = proxy->GetBool("pacMandatory");
-  }
-  if (proxy->HasKey("bypassList")) {
-    auto bypass = proxy->GetList("bypassList");
-    if (!bypass) return KWEB_STATUS_NETWORK_POLICY_INVALID;
-    for (size_t index = 0; index < bypass->GetSize(); ++index) {
-      if (bypass->GetType(index) != VTYPE_STRING) return KWEB_STATUS_NETWORK_POLICY_INVALID;
-      const std::string value = bypass->GetString(index).ToString();
-      if (value.size() > 2048) {
-        return KWEB_STATUS_NETWORK_POLICY_LIMIT_EXCEEDED;
-      }
-      if (IsBlank(value)) {
-        return KWEB_STATUS_NETWORK_POLICY_INVALID;
-      }
-      if (!snapshot->bypass_list.empty()) snapshot->bypass_list.append(",");
-      snapshot->bypass_list.append(value);
-    }
-  }
-  if (snapshot->proxy_rules.size() > 8192 ||
-      snapshot->bypass_list.size() > 8192) {
-    return KWEB_STATUS_NETWORK_POLICY_LIMIT_EXCEEDED;
-  }
-  if (snapshot->proxy_mode == CEF_KWEB_NETWORK_PROXY_DIRECT &&
-      (!snapshot->proxy_rules.empty() || !snapshot->pac_url.empty() ||
-       !snapshot->bypass_list.empty() || snapshot->pac_mandatory)) {
-    return KWEB_STATUS_NETWORK_POLICY_INVALID;
-  }
-  if (snapshot->proxy_mode == CEF_KWEB_NETWORK_PROXY_FIXED &&
-      (snapshot->proxy_rules.empty() || !snapshot->pac_url.empty() ||
-       snapshot->pac_mandatory)) {
-    return KWEB_STATUS_NETWORK_POLICY_INVALID;
-  }
-  if (snapshot->proxy_mode == CEF_KWEB_NETWORK_PROXY_PAC &&
-      (!snapshot->proxy_rules.empty() || !snapshot->bypass_list.empty() ||
-       !IsHttpUrl(snapshot->pac_url))) {
-    return KWEB_STATUS_NETWORK_POLICY_INVALID;
-  }
-  if (dictionary->HasKey("userAgent")) {
-    if (!HasString(dictionary, "userAgent")) {
-      return KWEB_STATUS_NETWORK_POLICY_INVALID;
-    }
-    snapshot->user_agent = dictionary->GetString("userAgent").ToString();
-    if (IsBlank(snapshot->user_agent) ||
-        !IsSafeNetworkContextValue(snapshot->user_agent) ||
-        snapshot->user_agent.size() > 1024) {
-      return snapshot->user_agent.size() > 1024
-                 ? KWEB_STATUS_NETWORK_POLICY_LIMIT_EXCEEDED
-                 : KWEB_STATUS_NETWORK_POLICY_INVALID;
-    }
-  }
-  if (dictionary->HasKey("acceptLanguage")) {
-    if (!HasString(dictionary, "acceptLanguage")) {
-      return KWEB_STATUS_NETWORK_POLICY_INVALID;
-    }
-    snapshot->accept_language = dictionary->GetString("acceptLanguage").ToString();
-    if (IsBlank(snapshot->accept_language) ||
-        !IsSafeNetworkContextValue(snapshot->accept_language) ||
-        snapshot->accept_language.size() > 1024) {
-      return snapshot->accept_language.size() > 1024
-                 ? KWEB_STATUS_NETWORK_POLICY_LIMIT_EXCEEDED
-                 : KWEB_STATUS_NETWORK_POLICY_INVALID;
-    }
-  }
   *prepared = std::move(snapshot);
   return KWEB_STATUS_OK;
 }
@@ -645,19 +465,12 @@ void NetworkPolicyState::Install(
     std::shared_ptr<const NetworkPolicySnapshot> snapshot) {
   std::lock_guard lock(mutex_);
   current_ = std::move(snapshot);
-  runtime_policy_installed_ = true;
 }
 
 void NetworkPolicyState::Clear() {
   std::lock_guard lock(mutex_);
   current_ = std::make_shared<NetworkPolicySnapshot>();
-  runtime_policy_installed_ = false;
   redirect_depth_.clear();
-}
-
-bool NetworkPolicyState::HasInstalledRuntimePolicy() const {
-  std::lock_guard lock(mutex_);
-  return runtime_policy_installed_;
 }
 
 int NetworkPolicyState::IncrementRedirectDepth(uint64_t request_id) {
@@ -703,22 +516,38 @@ NetworkPolicyRequestHandler::NetworkPolicyRequestHandler(
     : state_(std::move(state)), event_sink_(std::move(event_sink)) {}
 
 std::shared_ptr<const NetworkPolicySnapshot>
-NetworkPolicyRequestHandler::CaptureSnapshot(uint64_t request_id) {
+NetworkPolicyRequestHandler::CaptureSnapshot(uint64_t request_id,
+                                              uint64_t *public_request_id) {
   std::lock_guard lock(request_mutex_);
   auto found = requests_.find(request_id);
-  if (found != requests_.end()) return found->second.snapshot;
+  if (found != requests_.end()) {
+    if (public_request_id) *public_request_id = found->second.public_request_id;
+    return found->second.snapshot;
+  }
   auto snapshot = state_->Snapshot();
-  if (snapshot) requests_.emplace(request_id, RequestObservation{snapshot});
+  if (snapshot) {
+    if (next_public_request_id_ == 0) next_public_request_id_ = 1;
+    const uint64_t assigned_id = next_public_request_id_++;
+    requests_.emplace(request_id, RequestObservation{});
+    auto inserted = requests_.find(request_id);
+    inserted->second.public_request_id = assigned_id;
+    inserted->second.snapshot = snapshot;
+    if (public_request_id) *public_request_id = assigned_id;
+  }
   return snapshot;
 }
 
 void NetworkPolicyRequestHandler::CaptureInitialDecision(
-    uint64_t request_id, const std::string &action) {
+    uint64_t request_id, const std::string &url, const std::string &method,
+    const std::string &resource_type, const std::string &action) {
   std::lock_guard lock(request_mutex_);
   auto found = requests_.find(request_id);
   if (found == requests_.end() || found->second.initial_decision_captured) {
     return;
   }
+  found->second.url = url;
+  found->second.method = method;
+  found->second.resource_type = resource_type;
   found->second.initial_action = action;
   found->second.initial_decision_captured = true;
 }
@@ -751,20 +580,26 @@ NetworkPolicyRequestHandler::OnBeforeResourceLoad(
   (void)frame;
   (void)callback;
   if (!request) return RV_CONTINUE;
-  const uint64_t request_id = static_cast<uint64_t>(request->GetIdentifier());
-  auto snapshot = CaptureSnapshot(request_id);
-  if (!snapshot || !request) return RV_CONTINUE;
   const std::string original_url = request->GetURL().ToString();
+  if (original_url.rfind("http://", 0) != 0 &&
+      original_url.rfind("https://", 0) != 0) {
+    return RV_CONTINUE;
+  }
+  const uint64_t request_id = static_cast<uint64_t>(request->GetIdentifier());
+  uint64_t public_request_id = 0;
+  auto snapshot = CaptureSnapshot(request_id, &public_request_id);
+  if (!snapshot || !request) return RV_CONTINUE;
   const auto decision = Match(*snapshot, request);
   const Decision effective =
       decision.value_or(Decision{"allow", {}, {}, snapshot->version});
-  CaptureInitialDecision(request_id, effective.action);
   const std::string method = request->GetMethod().ToString();
   const std::string resource_type = ResourceTypeName(request->GetResourceType());
+  CaptureInitialDecision(request_id, original_url, method, resource_type,
+                         effective.action);
   if (effective.action == "block") {
     UpdateTerminalResult(request_id, "block");
     if (event_sink_) {
-      event_sink_(JsonEvent(request_id, "before-request", original_url, method,
+      event_sink_(JsonEvent(public_request_id, "before-request", original_url, method,
                             resource_type, "block", effective.version));
     }
     return RV_CANCEL;
@@ -798,7 +633,7 @@ NetworkPolicyRequestHandler::OnBeforeResourceLoad(
       state_->ClearRedirectDepth(request->GetIdentifier());
       UpdateTerminalResult(request_id, "block", "network.redirect.loop");
       if (event_sink_) {
-        event_sink_(JsonEvent(request_id, "before-request", original_url,
+        event_sink_(JsonEvent(public_request_id, "before-request", original_url,
                               method, resource_type, "block", effective.version,
                               std::nullopt, std::nullopt, {},
                               "network.redirect.loop"));
@@ -809,7 +644,7 @@ NetworkPolicyRequestHandler::OnBeforeResourceLoad(
     request->SetURL(redirected_url);
   }
   if (event_sink_) {
-    event_sink_(JsonEvent(request_id, "before-request", original_url, method,
+    event_sink_(JsonEvent(public_request_id, "before-request", original_url, method,
                           resource_type, effective.action, effective.version,
                           std::nullopt, std::nullopt, redirected_url));
   }
@@ -828,21 +663,23 @@ void NetworkPolicyRequestHandler::OnResourceLoadComplete(
   state_->ClearRedirectDepth(request_id);
   const auto observation = TakeObservation(request_id);
   if (!observation || !observation->snapshot || !event_sink_) return;
+  const std::optional<int> status_code =
+      response && response->GetStatus() > 0
+          ? std::optional<int>(response->GetStatus())
+          : std::nullopt;
+  const std::string completion_status =
+      observation->initial_action == "block"
+          ? "canceled"
+          : CompletionStatusName(status);
   event_sink_(JsonEvent(
-      request_id, "complete", request->GetURL().ToString(),
-      request->GetMethod().ToString(), ResourceTypeName(request->GetResourceType()),
+      observation->public_request_id, "complete", observation->url,
+      observation->method, observation->resource_type,
       observation->initial_action, observation->snapshot->version,
-      response ? std::optional<int>(response->GetStatus()) : std::nullopt,
-      std::string(CompletionStatusName(status)), {}, observation->error_id));
+      status_code, completion_status, {}, observation->error_id));
 }
 
 std::shared_ptr<NetworkPolicyState> CreateNetworkPolicyState() {
   return std::make_shared<NetworkPolicyState>();
-}
-
-kweb_status RequireProfileNetworkRuntime() {
-  return Runtime().complete() ? KWEB_STATUS_OK
-                              : KWEB_STATUS_NETWORK_RUNTIME_CAPABILITY_MISSING;
 }
 
 std::shared_ptr<NetworkPolicyState> GetNetworkPolicyState(
@@ -879,87 +716,15 @@ kweb_status SetProfileNetworkPolicy(
     return KWEB_STATUS_INVALID_ARGUMENT;
   }
   if (!CefCurrentlyOn(TID_UI)) return KWEB_STATUS_WRONG_THREAD;
-  auto &runtime = Runtime();
-  if (!runtime.complete()) return KWEB_STATUS_NETWORK_RUNTIME_CAPABILITY_MISSING;
-  const auto &snapshot = prepared->snapshot;
-  const std::string profile_path_utf8 = PathToUtf8(profile_path);
-  auto view = [](const std::string &value) -> cef_kweb_network_string_view {
-    return {value.data(), value.size()};
-  };
-  const cef_kweb_network_proxy_config config = {
-      sizeof(cef_kweb_network_proxy_config),
-      CEF_KWEB_NETWORK_ABI_VERSION,
-      snapshot->proxy_mode,
-      snapshot->pac_mandatory ? 1U : 0U,
-      view(profile_path_utf8),
-      view(snapshot->proxy_rules),
-      view(snapshot->pac_url),
-      view(snapshot->bypass_list),
-      view(snapshot->user_agent),
-      view(snapshot->accept_language),
-  };
-  const kweb_status runtime_status = MapRuntimeStatus(runtime.set_config(&config));
-  if (runtime_status == KWEB_STATUS_OK) {
-    prepared->state->Install(snapshot);
-    if (result_payload) *result_payload = "{\"version\":1}";
-  }
-  return runtime_status;
-}
-
-kweb_status ParseProxyResolutionPayload(const std::string &payload,
-                                        std::string *url) {
-  if (url == nullptr) return KWEB_STATUS_INVALID_ARGUMENT;
-  if (CefCurrentlyOn(TID_UI)) return KWEB_STATUS_WRONG_THREAD;
-  auto root = CefParseJSON(payload, JSON_PARSER_RFC);
-  if (!root || root->GetType() != VTYPE_DICTIONARY ||
-      !HasString(root->GetDictionary(), "url")) {
-    return KWEB_STATUS_NETWORK_POLICY_INVALID;
-  }
-  std::string parsed_url =
-      root->GetDictionary()->GetString("url").ToString();
-  if (!IsHttpUrl(parsed_url)) return KWEB_STATUS_NETWORK_POLICY_INVALID;
-  *url = std::move(parsed_url);
-  return KWEB_STATUS_OK;
-}
-
-kweb_status ResolveProfileProxy(const std::filesystem::path &profile_path,
-                                const std::string &url,
-                                ProfileNetworkCompletion completion,
-                                void *user_data) {
-  if (!completion) return KWEB_STATUS_INVALID_ARGUMENT;
-  if (!CefCurrentlyOn(TID_UI)) return KWEB_STATUS_WRONG_THREAD;
-  if (url.empty()) return KWEB_STATUS_NETWORK_POLICY_INVALID;
-  auto &runtime = Runtime();
-  if (!runtime.complete()) return KWEB_STATUS_NETWORK_RUNTIME_CAPABILITY_MISSING;
-  auto *context = new ResolveContext{completion, user_data};
-  const std::string profile_path_utf8 = PathToUtf8(profile_path);
-  const auto profile_view = cef_kweb_network_string_view{
-      profile_path_utf8.data(), profile_path_utf8.size()};
-  const auto url_view = cef_kweb_network_string_view{url.data(), url.size()};
-  const auto status = runtime.resolve_proxy(profile_view, url_view,
-                                             &ReceiveResolve, context);
-  if (status != CEF_KWEB_NETWORK_STATUS_OK) {
-    delete context;
-    return MapRuntimeStatus(status);
-  }
+  prepared->state->Install(prepared->snapshot);
+  if (result_payload) *result_payload = "{\"version\":1}";
   return KWEB_STATUS_OK;
 }
 
 kweb_status ClearProfileNetworkPolicy(
     const std::filesystem::path &profile_path) {
-  auto &runtime = Runtime();
   auto state = GetNetworkPolicyState(profile_path);
-  if (!runtime.complete()) {
-    if (state->HasInstalledRuntimePolicy()) {
-      return KWEB_STATUS_NETWORK_RUNTIME_CAPABILITY_MISSING;
-    }
-    std::lock_guard lock(registry_mutex);
-    registry.erase(profile_path);
-    return KWEB_STATUS_OK;
-  }
-  const std::string path = PathToUtf8(profile_path);
-  const auto status = runtime.clear_config({path.data(), path.size()});
-  if (status != CEF_KWEB_NETWORK_STATUS_OK) return MapRuntimeStatus(status);
+  state->Clear();
   std::lock_guard lock(registry_mutex);
   registry.erase(profile_path);
   return KWEB_STATUS_OK;
@@ -976,25 +741,7 @@ kweb_status ReleaseAllProfileNetworkPolicies() {
     }
   }
   if (paths.empty()) return KWEB_STATUS_OK;
-
-  auto &runtime = Runtime();
-  if (runtime.complete()) {
-    for (const auto &profile_path : paths) {
-      const std::string path = PathToUtf8(profile_path);
-      const kweb_status status =
-          MapRuntimeStatus(runtime.clear_config({path.data(), path.size()}));
-      if (status != KWEB_STATUS_OK) return status;
-    }
-  } else {
-    const bool has_installed_policy = std::any_of(
-        paths.begin(), paths.end(), [](const std::filesystem::path &path) {
-          const auto state = GetNetworkPolicyState(path);
-          return state && state->HasInstalledRuntimePolicy();
-        });
-    if (has_installed_policy) {
-      return KWEB_STATUS_NETWORK_RUNTIME_CAPABILITY_MISSING;
-    }
-  }
+  for (const auto &path : paths) GetNetworkPolicyState(path)->Clear();
   std::lock_guard lock(registry_mutex);
   for (const auto &path : paths) registry.erase(path);
   return KWEB_STATUS_OK;

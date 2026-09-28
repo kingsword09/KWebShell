@@ -216,8 +216,6 @@ public interface KWebProfile : AutoCloseable {
 
     public suspend fun configureNetworkPolicy(policy: KWebNetworkPolicy)
 
-    public suspend fun resolveProxy(url: String): KWebProxyResolution
-
     public suspend fun flush(target: KWebPage): KWebProfileFlushResult
 
     override fun close()

@@ -514,10 +514,9 @@ private:
 // thread and released at engine close before CefShutdown.
 struct ProfileContextEntry {
   explicit ProfileContextEntry(std::filesystem::path profile_path)
-      : path(std::move(profile_path)), network_policy(GetNetworkPolicyState(path)) {}
+      : path(std::move(profile_path)) {}
 
   const std::filesystem::path path;
-  const std::shared_ptr<NetworkPolicyState> network_policy;
   CefRefPtr<CefRequestContext> context;
   bool initialized = false;
   bool failed = false;
@@ -2484,9 +2483,7 @@ ProfileContextHandler::GetResourceRequestHandler(
   (void)is_download;
   (void)request_initiator;
   (void)disable_default_handling;
-  auto entry = entry_.lock();
-  return entry ? new NetworkPolicyRequestHandler(entry->network_policy, nullptr)
-               : nullptr;
+  return nullptr;
 }
 
 void CookieFlushCallback::OnComplete() {
@@ -2762,17 +2759,6 @@ void CompleteProfileContextInitialization(
   state->completed_condition.notify_one();
 }
 
-void CompleteInitialProfileProxyResolution(
-    void *user_data, kweb_status status, std::string payload) {
-  std::unique_ptr<std::shared_ptr<ProfileContextInitializationState>> state(
-      static_cast<std::shared_ptr<ProfileContextInitializationState> *>(
-          user_data));
-  const kweb_status result = status == KWEB_STATUS_OK && payload == "DIRECT"
-                                 ? KWEB_STATUS_OK
-                                 : KWEB_STATUS_PROFILE_CONTEXT_INITIALIZATION_FAILED;
-  CompleteProfileContextInitialization(*state, result);
-}
-
 void PostProfileContextReleaseBarrier(
     const std::shared_ptr<ProfileContextReleaseState> &state,
     int remaining_tasks) {
@@ -3041,10 +3027,6 @@ kweb_status EnsureProfileContext(const std::filesystem::path &profile_path) {
   if (CefCurrentlyOn(TID_UI)) {
     return KWEB_STATUS_WRONG_THREAD;
   }
-  const kweb_status runtime_status = RequireProfileNetworkRuntime();
-  if (runtime_status != KWEB_STATUS_OK) {
-    return runtime_status;
-  }
 
   auto state = std::make_shared<ProfileContextInitializationState>();
   if (!CefPostTask(
@@ -3053,24 +3035,13 @@ kweb_status EnsureProfileContext(const std::filesystem::path &profile_path) {
               [](std::shared_ptr<ProfileContextInitializationState> init_state,
                  std::filesystem::path path) {
                 const kweb_status status = Registry().EnsureProfileContext(
-                    path, [init_state, path](kweb_status result) {
+                    path, [init_state](kweb_status result) {
                       if (result != KWEB_STATUS_OK) {
                         CompleteProfileContextInitialization(init_state, result);
                         return;
                       }
-                      auto *callback_state =
-                          new std::shared_ptr<ProfileContextInitializationState>(
-                              init_state);
-                      const kweb_status resolve_status = ResolveProfileProxy(
-                          path, "http://kwebshell-profile-context.invalid/",
-                          &CompleteInitialProfileProxyResolution,
-                          callback_state);
-                      if (resolve_status != KWEB_STATUS_OK) {
-                        delete callback_state;
-                        CompleteProfileContextInitialization(
-                            init_state,
-                            KWEB_STATUS_PROFILE_CONTEXT_INITIALIZATION_FAILED);
-                      }
+                      CompleteProfileContextInitialization(init_state,
+                                                           KWEB_STATUS_OK);
                     });
                 if (status != KWEB_STATUS_OK) {
                   CompleteProfileContextInitialization(init_state, status);

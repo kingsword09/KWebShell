@@ -58,9 +58,14 @@ class KWebElectronCapabilityMatrixTest {
             KWebElectronCapabilityMatrix.find("session-web-request")?.status,
         )
         assertEquals(
-            "KWebProfile.resolveProxy",
-            KWebElectronCapabilityMatrix.find("session-resolve-proxy")?.kweb,
+            KWebElectronMappingStatus.UNSUPPORTED,
+            KWebElectronCapabilityMatrix.find("session-set-proxy")?.status,
         )
+        assertEquals(
+            KWebElectronMappingStatus.UNSUPPORTED,
+            KWebElectronCapabilityMatrix.find("session-resolve-proxy")?.status,
+        )
+        assertEquals("", KWebElectronCapabilityMatrix.find("session-resolve-proxy")?.kweb)
         assertNotNull(KWebElectronCapabilityMatrix.find("node-runtime"))
         assertTrue(KWebElectronCapabilityMatrix.entries.size >= 18)
     }

@@ -25,7 +25,6 @@ import io.github.kingsword09.kwebshell.core.KWebProfileDataFilter
 import io.github.kingsword09.kwebshell.core.KWebProfileFlushResult
 import io.github.kingsword09.kwebshell.core.KWebNetworkPolicy
 import io.github.kingsword09.kwebshell.core.KWebNetworkRequestEvent
-import io.github.kingsword09.kwebshell.core.KWebProxyResolution
 import io.github.kingsword09.kwebshell.core.KWebSpellcheckConfiguration
 import io.github.kingsword09.kwebshell.core.KWebSpellcheckState
 import io.github.kingsword09.kwebshell.core.KWebStorageUsage
@@ -228,9 +227,6 @@ private class RecordingProfile : KWebProfile {
     )
 
     override suspend fun configureNetworkPolicy(policy: KWebNetworkPolicy) = Unit
-
-    override suspend fun resolveProxy(url: String): KWebProxyResolution =
-        KWebProxyResolution(url, "DIRECT")
 
     override suspend fun flush(target: KWebPage): KWebProfileFlushResult =
         KWebProfileFlushResult(completedEpochMillis = 0)

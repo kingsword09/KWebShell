@@ -9,14 +9,9 @@ import io.github.kingsword09.kwebshell.core.KWebNetworkRequestPhase
 import io.github.kingsword09.kwebshell.core.KWebNetworkResourceType
 import io.github.kingsword09.kwebshell.core.KWebNetworkRule
 import io.github.kingsword09.kwebshell.core.KWebNetworkRuleAction
-import io.github.kingsword09.kwebshell.core.KWebProxyConfiguration
-import io.github.kingsword09.kwebshell.core.KWebProxyMode
-import io.github.kingsword09.kwebshell.core.KWebProxyResolution
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
@@ -25,7 +20,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
-import kotlinx.serialization.json.putJsonObject
 import java.net.URI
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.cancel
@@ -110,7 +104,6 @@ internal class KWebDesktopNetworkEventStream(
 
 internal object KWebDesktopNetworkOperation {
     const val SET_POLICY: Int = 9
-    const val RESOLVE_PROXY: Int = 10
 }
 
 internal object KWebDesktopNetworkJson {
@@ -139,34 +132,11 @@ internal object KWebDesktopNetworkJson {
             putJsonArray("rules") {
                 policy.rules.forEach { rule -> add(ruleJson(rule)) }
             }
-            putJsonObject("proxy") {
-                put("mode", policy.proxy.mode.name.lowercase())
-                put("rules", policy.proxy.rules)
-                policy.proxy.pacUrl?.let { put("pacUrl", it) }
-                put("pacMandatory", policy.proxy.pacMandatory)
-                putJsonArray("bypassList") {
-                    policy.proxy.bypassList.forEach { add(JsonPrimitive(it)) }
-                }
-            }
-            policy.userAgent?.let { put("userAgent", it) }
-            policy.acceptLanguage?.let { put("acceptLanguage", it) }
         }.toString().also { payload ->
             if (payload.encodeToByteArray().size > MAXIMUM_POLICY_BYTES) {
                 invalid("network.policy.limit-exceeded", "policyBytes")
             }
         }
-    }
-
-    fun resolvePayload(url: String): String {
-        validateUrl(url)
-        return buildJsonObject { put("url", url) }.toString()
-    }
-
-    fun parseResolution(payload: String, requestedUrl: String): KWebProxyResolution {
-        val root = parseObject(payload)
-        val url = requiredString(root, "url")
-        require(url == requestedUrl) { "Chromium returned a different proxy URL." }
-        return KWebProxyResolution(url, requiredString(root, "result"))
     }
 
     fun parseEvent(payload: String): KWebNetworkRequestEvent {
@@ -190,9 +160,10 @@ internal object KWebDesktopNetworkJson {
         }
         val resourceType = resourceType(requiredString(root, "resourceType"))
         val statusCode = optionalInt(root, "statusCode")
-        val requestId = root["requestId"]?.jsonPrimitive?.content?.toLongOrNull()
+        val requestIdValue = root["requestId"]?.jsonPrimitive?.content
+        val requestId = requestIdValue?.toLongOrNull()
             ?.takeIf { it > 0L }
-            ?: error("Chromium omitted a valid network request identifier.")
+            ?: error("Chromium omitted a valid network request identifier: '$requestIdValue'.")
         val policyVersion = optionalInt(root, "policyVersion")
             ?.takeIf { it == 1 }
             ?: error("Chromium returned an unsupported network policy version.")
@@ -215,6 +186,9 @@ internal object KWebDesktopNetworkJson {
                 "failed" -> KWebNetworkCompletionStatus.FAILED
                 else -> error("Chromium returned an unknown network completion status.")
             }
+        }
+        if (phase == KWebNetworkRequestPhase.BEFORE_REQUEST && statusCode != null) {
+            error("Chromium returned an HTTP status for a before-request event.")
         }
         if ((phase == KWebNetworkRequestPhase.COMPLETE) != (completionStatus != null)) {
             error("Chromium returned a completion status for the wrong network event phase.")
@@ -239,23 +213,6 @@ internal object KWebDesktopNetworkJson {
         if (policy.rules.size > MAXIMUM_RULES) invalid("network.policy.limit-exceeded", "rules")
         val ids = HashSet<String>()
         policy.rules.forEachIndexed { index, rule -> validateRule(index, rule, ids) }
-        validateProxy(policy.proxy)
-        policy.userAgent?.let { value ->
-            if (value.encodeToByteArray().size > MAXIMUM_USER_AGENT_BYTES) {
-                invalid("network.policy.limit-exceeded", "userAgent")
-            }
-            if (value.isBlank() || !isSafeNetworkContextHeader(value)) {
-                invalid("network.policy.invalid", "userAgent")
-            }
-        }
-        policy.acceptLanguage?.let { value ->
-            if (value.encodeToByteArray().size > MAXIMUM_ACCEPT_LANGUAGE_BYTES) {
-                invalid("network.policy.limit-exceeded", "acceptLanguage")
-            }
-            if (value.isBlank() || !isSafeNetworkContextHeader(value)) {
-                invalid("network.policy.invalid", "acceptLanguage")
-            }
-        }
     }
 
     private fun validateRule(index: Int, rule: KWebNetworkRule, ids: MutableSet<String>) {
@@ -304,34 +261,6 @@ internal object KWebDesktopNetworkJson {
         }
     }
 
-    private fun validateProxy(proxy: KWebProxyConfiguration) {
-        when (proxy.mode) {
-            KWebProxyMode.DIRECT -> if (proxy.rules.isNotEmpty() || proxy.pacUrl != null ||
-                proxy.pacMandatory || proxy.bypassList.isNotEmpty()
-            ) {
-                invalid("network.proxy.invalid", "direct")
-            }
-            KWebProxyMode.FIXED -> {
-                if (proxy.rules.isBlank() || proxy.rules.encodeToByteArray().size > MAXIMUM_PROXY_RULES_BYTES) {
-                    invalid("network.proxy.invalid", "rules")
-                }
-                if (!isValidFixedProxyRules(proxy.rules)) invalid("network.proxy.invalid", "rules")
-                if (proxy.pacUrl != null || proxy.pacMandatory) invalid("network.proxy.invalid", "pacUrl")
-                proxy.bypassList.forEach { bypass ->
-                    if (bypass.isBlank() || bypass.encodeToByteArray().size > MAXIMUM_BYPASS_BYTES ||
-                        !isValidBypassEntry(bypass)
-                    ) {
-                        invalid("network.proxy.invalid", "bypassList")
-                    }
-                }
-            }
-            KWebProxyMode.PAC -> {
-                if (proxy.rules.isNotEmpty() || proxy.bypassList.isNotEmpty()) invalid("network.proxy.invalid", "pac")
-                validateUrl(proxy.pacUrl ?: invalid("network.proxy.invalid", "pacUrl"))
-            }
-        }
-    }
-
     private fun ruleJson(rule: KWebNetworkRule): JsonObject = buildJsonObject {
         put("id", rule.id)
         put("urlPattern", rule.urlPattern)
@@ -376,72 +305,16 @@ internal object KWebDesktopNetworkJson {
     private fun isHttpUrlPattern(value: String): Boolean {
         val schemeEnd = value.indexOf("://")
         if (schemeEnd <= 0) return false
-        val scheme = value.substring(0, schemeEnd)
+        val scheme = value.substring(0, schemeEnd).lowercase()
         if (scheme != "http" && scheme != "https") return false
         val candidate = try {
             URI(value.replace("*", "x"))
         } catch (_: Throwable) {
             return false
         }
-        return candidate.scheme == scheme && !candidate.host.isNullOrBlank() &&
+        return candidate.scheme?.lowercase() == scheme && !candidate.host.isNullOrBlank() &&
             candidate.userInfo == null
     }
-
-    private fun isValidFixedProxyRules(value: String): Boolean {
-        val clauses = value.split(';')
-        if (clauses.size == 1 && '=' !in clauses.single()) {
-            return isValidProxyList(clauses.single(), "http")
-        }
-        val seenSchemes = HashSet<String>()
-        for (clause in clauses) {
-            if (clause.isBlank() || clause.count { it == '=' } != 1) return false
-            val separator = clause.indexOf('=')
-            val scheme = clause.substring(0, separator).trim()
-            val proxies = clause.substring(separator + 1)
-            if (scheme !in setOf("http", "https", "ftp", "socks") ||
-                !seenSchemes.add(scheme) ||
-                !isValidProxyList(proxies, if (scheme == "socks") "socks4" else "http")
-            ) {
-                return false
-            }
-        }
-        return seenSchemes.isNotEmpty()
-    }
-
-    private fun isValidProxyList(value: String, defaultScheme: String): Boolean {
-        val proxies = value.split(',')
-        return proxies.isNotEmpty() && proxies.all { rawProxy ->
-            val proxy = rawProxy.trim()
-            if (proxy.isEmpty()) return@all false
-            if (proxy == "direct://") return@all true
-            val candidate = try {
-                URI(if ("://" in proxy) proxy else "$defaultScheme://$proxy")
-            } catch (_: Throwable) {
-                return@all false
-            }
-            candidate.scheme in setOf("http", "https", "socks", "socks4", "socks5") &&
-                !candidate.host.isNullOrBlank() && candidate.userInfo == null &&
-                candidate.rawPath.isNullOrEmpty() && candidate.rawQuery == null &&
-                candidate.rawFragment == null
-        }
-    }
-
-    private fun isValidBypassEntry(value: String): Boolean {
-        if (value.any { it == ',' || it == ';' || it.code < 0x20 || it.code == 0x7f }) return false
-        if (value == "*" || value == "<local>" || value == "<-loopback>") return true
-        val candidate = try {
-            val hostPattern = value.replace("*", "x")
-            URI(if ("://" in value) hostPattern else "http://$hostPattern")
-        } catch (_: Throwable) {
-            return false
-        }
-        return !candidate.host.isNullOrBlank() && candidate.userInfo == null &&
-            candidate.rawPath.isNullOrEmpty() && candidate.rawQuery == null &&
-            candidate.rawFragment == null
-    }
-
-    private fun isSafeNetworkContextHeader(value: String): Boolean =
-        value.none { character -> character.code < 0x20 || character.code == 0x7f }
 
     private fun resourceType(value: String): KWebNetworkResourceType =
         KWebNetworkResourceType.entries.firstOrNull { it.name.equals(value.replace('-', '_'), ignoreCase = true) }
@@ -475,11 +348,7 @@ internal object KWebDesktopNetworkJson {
     private const val MAXIMUM_EVENT_BYTES = 16 * 1024
     private const val MAXIMUM_HEADER_MUTATIONS = 32
     private const val MAXIMUM_HEADER_VALUE_BYTES = 8192
-    private const val MAXIMUM_PROXY_RULES_BYTES = 8192
-    private const val MAXIMUM_BYPASS_BYTES = 2048
     private const val MAXIMUM_URL_BYTES = 8192
-    private const val MAXIMUM_USER_AGENT_BYTES = 1024
-    private const val MAXIMUM_ACCEPT_LANGUAGE_BYTES = 1024
     private val METHOD_PATTERN = Regex("[A-Za-z]{1,16}")
     private val HEADER_PATTERN = Regex("[A-Za-z0-9-]{1,128}")
     private val FORBIDDEN_HEADERS = setOf(

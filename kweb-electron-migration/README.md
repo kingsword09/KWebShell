@@ -70,12 +70,11 @@ database access remain rewrite-required or unsupported.
 
 RFC 0010 classifies the network surfaces explicitly: `session.webRequest` is a
 rewrite to declarative `KWebProfile.configureNetworkPolicy` rules plus bounded
-`networkEvents`; `session.setProxy` becomes Profile-scoped proxy policy; and
-`session.resolveProxy` becomes `KWebProfile.resolveProxy`. Imperative callback
-bags, response-body interception, process-wide proxy switches, and a separate
-Electron-style HTTP client remain outside the published contract.
-`openProfile` waits for the pinned Profile NetworkContext to initialize, so
-proxy policy and resolution are available before the first Page is created.
+`networkEvents`. Imperative callback bags and response-body interception remain
+outside the published contract. `session.setProxy` and `session.resolveProxy`
+are explicitly deferred until a separately reviewed Profile NetworkContext
+proxy contract exists; the migration kit does not emulate them with a
+process-wide switch, system proxy, or Kotlin resolver.
 
 ## Manifest v2 and inventory prerequisites
 

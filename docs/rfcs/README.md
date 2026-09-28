@@ -208,7 +208,7 @@ Agents may work in parallel only when dependencies do not overlap.
 | [0007](0007-window-hierarchy-and-fullscreen.md) | P0 | 0002, 0003 | Parent/modal windows, fullscreen, close negotiation |
 | [0008](0008-page-lifecycle-and-popups.md) | P0 | 0004, 0007 | Typed Page events, lifecycle, reload, before-unload, and owner-bound popup requests |
 | [0009](0009-profile-data-and-session.md) | P0 | 0002, 0003 | Cookies, cache, storage, spellcheck, session state |
-| [0010](0010-network-policy-and-proxy.md) | P0 | 0004, 0009 | Request policy, proxy, network observation |
+| [0010](0010-network-policy-and-proxy.md) | P0 | 0004, 0009 | Request policy and network observation; Profile proxy deferred |
 | [0011](0011-tls-auth-and-certificates.md) | P1 | 0003, 0010 | TLS errors, client certificates, HTTP authentication |
 | [0012](0012-downloads.md) | P0 | 0003, 0004, 0009 | Profile downloads and scoped results |
 
@@ -296,7 +296,7 @@ intentional rather than accidental.
 | `webContents.startDrag` | 0037 |
 | Media/device permission handlers | 0038 |
 | `webUtils` | 0013 for scoped file capabilities; ambient `getPathForFile` remains unsupported |
-| `net` | 0010; Kotlin HTTP clients remain application choices rather than an Electron-shaped API |
+| `net` | Deferred with the future Profile proxy/network RFC; Kotlin HTTP clients remain application choices rather than an Electron-shaped API |
 | `process`, `parentPort`, Node built-ins, native addons | 0024 or a dedicated KMP service rewrite |
 
 Permanent unsupported rows include Electron `remote`, `BrowserView` identity,

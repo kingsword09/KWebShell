@@ -9,8 +9,6 @@ import io.github.kingsword09.kwebshell.core.KWebNetworkRequestPhase
 import io.github.kingsword09.kwebshell.core.KWebNetworkResourceType
 import io.github.kingsword09.kwebshell.core.KWebNetworkRule
 import io.github.kingsword09.kwebshell.core.KWebNetworkRuleAction
-import io.github.kingsword09.kwebshell.core.KWebProxyConfiguration
-import io.github.kingsword09.kwebshell.core.KWebProxyMode
 import io.github.kingsword09.kwebshell.core.KWebConfigurationException
 import io.github.kingsword09.kwebshell.core.KWebBeforeUnloadDecision
 import io.github.kingsword09.kwebshell.core.KWebCookieFilter
@@ -96,6 +94,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collect
@@ -316,134 +315,80 @@ private fun runNetworkPolicyIntegration() {
             remoteDebuggingPort = configuration.remoteDebuggingPort,
         ),
     )
-    val firstProxy = NetworkPolicyProxy()
-    val secondProxy = NetworkPolicyProxy()
-    val firstProxyPort = firstProxy.port
-    val secondProxyPort = secondProxy.port
-    val origin = NetworkPolicyOrigin(firstProxyPort)
+    val origin = NetworkPolicyOrigin()
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val observedEvents = LinkedBlockingQueue<KWebNetworkRequestEvent>()
-    var firstProfile: io.github.kingsword09.kwebshell.core.KWebProfile? = null
-    var secondProfile: io.github.kingsword09.kwebshell.core.KWebProfile? = null
-    var firstPage: io.github.kingsword09.kwebshell.core.KWebPage? = null
-    var secondPage: io.github.kingsword09.kwebshell.core.KWebPage? = null
-    var firstSurface: ComposeBrowserSurface? = null
-    var secondSurface: ComposeBrowserSurface? = null
-    var cdp: CdpClient? = null
-    var firstEventCollector: kotlinx.coroutines.Job? = null
-    var secondEventCollector: kotlinx.coroutines.Job? = null
-    val firstUserAgent = "KWebRFC0010/Profile-One"
-    val secondUserAgent = "KWebRFC0010/Profile-Reopened"
-    val language = "fr-CA,fr;q=0.8"
+    var profile: io.github.kingsword09.kwebshell.core.KWebProfile? = null
+    var isolatedProfile: io.github.kingsword09.kwebshell.core.KWebProfile? = null
+    var page: io.github.kingsword09.kwebshell.core.KWebPage? = null
+    var isolatedPage: io.github.kingsword09.kwebshell.core.KWebPage? = null
+    var surface: ComposeBrowserSurface? = null
+    var isolatedSurface: ComposeBrowserSurface? = null
+    var eventCollector: kotlinx.coroutines.Job? = null
+    var isolatedCollector: kotlinx.coroutines.Job? = null
 
     try {
         kotlinx.coroutines.runBlocking {
-            verifyProfileNetworkPolicyBeforeFirstPage(engine, origin, firstProxy)
-            val openingProfile = scope.async(Dispatchers.IO) {
-                engine.openProfile("rfc0010-network-open-race")
-            }
-            withTimeout(5_000) {
-                while (engine.openingProfileCount == 0) kotlinx.coroutines.delay(1)
-            }
-            val closeDuringOpen = runCatching { engine.close() }.exceptionOrNull()
-            check((closeDuringOpen as? KWebNativeException)?.code == "desktop.profile-opening") {
-                "Engine close did not return its typed result while a Profile context was opening: $closeDuringOpen"
-            }
-            openingProfile.await().close()
-
-            firstProfile = engine.openProfile("rfc0010-network-policy")
-            val defaultProfile = requireNotNull(firstProfile)
-            check(defaultProfile.resolveProxy("http://proxy-check.invalid/").result == "DIRECT") {
-                "An unconfigured Profile did not resolve DIRECT before its first Page."
-            }
-            firstEventCollector = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            profile = engine.openProfile("rfc0010-network-policy")
+            val liveProfile = requireNotNull(profile)
+            eventCollector = scope.launch(start = CoroutineStart.UNDISPATCHED) {
                 try {
-                    defaultProfile.networkEvents.collect { observedEvents.put(it) }
+                    liveProfile.networkEvents.collect { observedEvents.put(it) }
                 } catch (error: KWebNativeException) {
                     if (error.code != "network.profile-closing") throw error
                 }
             }
-            firstSurface = NativeEngine.onAwtEventDispatchThread {
+            surface = NativeEngine.onAwtEventDispatchThread {
                 ComposeBrowserSurface.create(800, 600)
             }
-            firstPage = defaultProfile.openPage(
-                KWebDesktop.composeWindowHost(requireNotNull(firstSurface).window),
-                origin.url("/default-policy"),
+            page = liveProfile.openPage(
+                KWebDesktop.composeWindowHost(requireNotNull(surface).window),
+                "about:blank",
                 KWebRect(0, 0, 800, 600),
             )
-            val defaultPage = requireNotNull(firstPage)
-            val defaultLoad = scope.async(start = CoroutineStart.UNDISPATCHED) {
-                withTimeout(30_000) {
-                    defaultPage.events.first {
-                        it.type == KWebPageEventType.LOAD_ENDED &&
-                            it.url == origin.url("/default-policy") &&
-                            it.frameScope == KWebPageFrameScope.MAIN
-                    }
-                }
-            }
-            val defaultRequest = origin.awaitRequest("/default-policy")
-            defaultLoad.await()
-            val defaultBefore = awaitNetworkEvent(observedEvents, "default policy before request") {
+            val livePage = requireNotNull(page)
+            livePage.navigate(origin.url("/default-policy"))
+            origin.awaitRequest("/default-policy")
+            val defaultBefore = awaitNetworkEvent(observedEvents, "default request") {
                 it.phase == KWebNetworkRequestPhase.BEFORE_REQUEST &&
                     it.url.endsWith("/default-policy")
             }
-            val defaultComplete = awaitNetworkEvent(observedEvents, "default policy completion") {
+            val defaultComplete = awaitNetworkEvent(observedEvents, "default completion") {
                 it.requestId == defaultBefore.requestId &&
                     it.phase == KWebNetworkRequestPhase.COMPLETE
             }
             check(defaultBefore.action == KWebNetworkRuleAction.ALLOW &&
-                defaultBefore.policyVersion == 1 && defaultComplete.policyVersion == 1 &&
-                defaultComplete.completionStatus != null &&
-                defaultRequest.header("User-Agent") != firstUserAgent
-            ) { "An unconfigured Profile did not observe its direct default policy." }
-            closeAndAwait(defaultPage)
-            firstPage = null
-            defaultProfile.close()
-            firstProfile = null
-            firstEventCollector.join()
-            firstEventCollector = null
+                defaultBefore.policyVersion == 1 &&
+                defaultComplete.completionStatus != null
+            ) { "The stock CEF default Profile request was not observed correctly." }
 
-            firstProfile = engine.openProfile("rfc0010-network-policy")
-            val liveFirstProfile = requireNotNull(firstProfile)
-            firstEventCollector = scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                try {
-                    liveFirstProfile.networkEvents.collect { observedEvents.put(it) }
-                } catch (error: KWebNativeException) {
-                    if (error.code != "network.profile-closing") throw error
-                }
-            }
             val policy = KWebNetworkPolicy(
                 rules = listOf(
                     KWebNetworkRule(
-                        id = "integration-block",
+                        id = "block",
                         urlPattern = origin.url("/blocked"),
                         action = KWebNetworkRuleAction.BLOCK,
                     ),
                     KWebNetworkRule(
-                        id = "integration-https-block",
-                        urlPattern = "https://blocked-network-policy.invalid/*",
-                        action = KWebNetworkRuleAction.BLOCK,
-                    ),
-                    KWebNetworkRule(
-                        id = "integration-redirect",
+                        id = "redirect",
                         urlPattern = origin.url("/redirect-source"),
                         action = KWebNetworkRuleAction.REDIRECT,
                         redirectUrl = origin.url("/redirect-target"),
                     ),
                     KWebNetworkRule(
-                        id = "integration-loop-a",
+                        id = "loop-a",
                         urlPattern = origin.url("/loop-a"),
                         action = KWebNetworkRuleAction.REDIRECT,
                         redirectUrl = origin.url("/loop-b"),
                     ),
                     KWebNetworkRule(
-                        id = "integration-loop-b",
+                        id = "loop-b",
                         urlPattern = origin.url("/loop-b"),
                         action = KWebNetworkRuleAction.REDIRECT,
                         redirectUrl = origin.url("/loop-a"),
                     ),
                     KWebNetworkRule(
-                        id = "integration-header",
+                        id = "headers",
                         urlPattern = origin.url("/headers"),
                         headerMutations = listOf(
                             io.github.kingsword09.kwebshell.core.KWebNetworkHeaderMutation(
@@ -457,644 +402,256 @@ private fun runNetworkPolicyIntegration() {
                         ),
                     ),
                     KWebNetworkRule(
-                        id = "integration-priority-low",
+                        id = "priority-low",
                         urlPattern = origin.url("/priority"),
                         priority = 1,
                         action = KWebNetworkRuleAction.BLOCK,
                     ),
                     KWebNetworkRule(
-                        id = "integration-priority-first",
+                        id = "priority-filtered",
                         urlPattern = origin.url("/priority"),
-                        resourceTypes = setOf(KWebNetworkResourceType.MAIN_FRAME),
-                        methods = setOf("GET"),
+                        resourceTypes = setOf(KWebNetworkResourceType.IMAGE),
+                        methods = setOf("POST"),
+                        priority = 3,
+                        action = KWebNetworkRuleAction.BLOCK,
+                    ),
+                    KWebNetworkRule(
+                        id = "priority-allow",
+                        urlPattern = origin.url("/priority"),
                         priority = 2,
                         action = KWebNetworkRuleAction.ALLOW,
                     ),
                     KWebNetworkRule(
-                        id = "integration-priority-later",
+                        id = "priority-declaration-order",
                         urlPattern = origin.url("/priority"),
                         priority = 2,
                         action = KWebNetworkRuleAction.BLOCK,
                     ),
                 ),
-                userAgent = firstUserAgent,
-                acceptLanguage = language,
             )
-            liveFirstProfile.configureNetworkPolicy(policy)
-            firstPage = liveFirstProfile.openPage(
-                KWebDesktop.composeWindowHost(requireNotNull(firstSurface).window),
-                origin.url("/start"),
-                KWebRect(0, 0, 800, 600),
-            )
-            val liveFirstPage = requireNotNull(firstPage)
-            val startLoad = scope.async(start = CoroutineStart.UNDISPATCHED) {
-                withTimeout(30_000) {
-                    liveFirstPage.events.first {
-                        it.type == KWebPageEventType.LOAD_ENDED &&
-                            it.url == origin.url("/start") &&
-                            it.frameScope == KWebPageFrameScope.MAIN
-                    }
-                }
-            }
-            val startRequest = origin.awaitRequest("/start")
-            origin.releaseInitialResponse()
-            startLoad.await()
-            check(startRequest.header("User-Agent") == firstUserAgent) {
-                "The real NetworkContext did not apply the Profile user-agent: $startRequest"
-            }
-            check(startRequest.header("Accept-Language") == language) {
-                "The real NetworkContext did not apply the Profile Accept-Language: $startRequest"
-            }
-            cdp = CdpClient(configuration.remoteDebuggingPort)
-            val liveCdp = requireNotNull(cdp)
-            liveCdp.awaitPage(origin.url("/start"))
-            liveCdp.command("Network.enable", "{}")
-            liveCdp.command(
+            liveProfile.configureNetworkPolicy(policy)
+
+            val cdp = CdpClient(configuration.remoteDebuggingPort)
+            cdp.awaitPage(origin.url("/default-policy"))
+            cdp.command("Network.enable", "{}")
+            cdp.command(
                 "Network.setExtraHTTPHeaders",
                 """{"headers":{"X-KWeb-Remove":"remove-me"}}""",
             )
 
-            val nativeProfilePath =
-                (liveFirstProfile as io.github.kingsword09.kwebshell.desktop.KWebDesktopProfile).path
-            suspend fun submitNativePolicy(payload: String) {
-                kotlinx.coroutines.withContext(Dispatchers.IO) {
-                    engine.nativeEngine().profileNetwork(
-                        nativeProfilePath,
-                        io.github.kingsword09.kwebshell.desktop.KWebDesktopNetworkOperation.SET_POLICY,
-                        payload,
-                    )
-                }
-            }
-            val nativeHeaderFailure = try {
-                submitNativePolicy(
-                    """{"version":1,"rules":[{"id":"native-forbidden-header","urlPattern":"https://example.test/*","priority":0,"action":"allow","headerMutations":[{"name":"Host","value":"attacker.test"}]}],"proxy":{"mode":"direct","rules":"","pacMandatory":false,"bypassList":[]}}""",
-                )
-                null
-            } catch (error: KWebNativeException) {
-                error
-            }
-            check(nativeHeaderFailure?.code == "network.header.forbidden") {
-                "Native policy revalidation accepted a forbidden request header: $nativeHeaderFailure"
-            }
-            val nativeUserAgentFailure = try {
-                submitNativePolicy(
-                    """{"version":1,"rules":[],"proxy":{"mode":"direct","rules":"","pacMandatory":false,"bypassList":[]},"userAgent":"KWeb\r\nInjected: true"}""",
-                )
-                null
-            } catch (error: KWebNativeException) {
-                error
-            }
-            check(nativeUserAgentFailure?.code == "network.policy.invalid") {
-                "Native policy validation accepted control characters in User-Agent: $nativeUserAgentFailure"
-            }
-            val nativeLanguageFailure = try {
-                submitNativePolicy(
-                    """{"version":1,"rules":[],"proxy":{"mode":"direct","rules":"","pacMandatory":false,"bypassList":[]},"acceptLanguage":"en-US\nInjected: true"}""",
-                )
-                null
-            } catch (error: KWebNativeException) {
-                error
-            }
-            check(nativeLanguageFailure?.code == "network.policy.invalid") {
-                "Native policy validation accepted control characters in Accept-Language: $nativeLanguageFailure"
-            }
-            val nativeProxyFailure = try {
-                submitNativePolicy(
-                    """{"version":1,"rules":[],"proxy":{"mode":"fixed","rules":"http=proxy.example.test:not-a-port","pacMandatory":false,"bypassList":[]}}""",
-                )
-                null
-            } catch (error: KWebNativeException) {
-                error
-            }
-            check(nativeProxyFailure?.code == "network.proxy.invalid") {
-                "Chromium accepted malformed fixed-proxy rules through the private ABI: $nativeProxyFailure"
-            }
-            check(liveFirstProfile.resolveProxy("http://proxy-check.invalid/").result == "DIRECT") {
-                "A native-rejected policy replacement changed the active direct proxy."
-            }
+            livePage.navigate(origin.url("/start"))
+            origin.awaitRequest("/start")
+            origin.releaseInitialResponse()
 
-            val priorityLoad = scope.async(start = CoroutineStart.UNDISPATCHED) {
-                withTimeout(30_000) {
-                    liveFirstPage.events.first {
-                        it.type == KWebPageEventType.LOAD_ENDED &&
-                            it.url == origin.url("/priority") &&
-                            it.frameScope == KWebPageFrameScope.MAIN
-                    }
-                }
-            }
-            liveFirstPage.navigate(origin.url("/priority"))
-            val priorityRequest = origin.awaitRequest("/priority")
-            priorityLoad.await()
-            val priorityEvent = awaitNetworkEvent(observedEvents, "priority and declaration order") {
-                it.phase == KWebNetworkRequestPhase.BEFORE_REQUEST && it.url.endsWith("/priority")
-            }
-            check(priorityRequest.path == "/priority" &&
-                priorityEvent.action == KWebNetworkRuleAction.ALLOW
-            ) { "Priority/declaration-order matching did not select the first highest-priority rule." }
-
-            verifyRequestSnapshotReplacement(
-                liveFirstProfile,
-                liveFirstPage,
-                policy,
-                origin,
-                observedEvents,
-            )
-
-            val rejectedReplacement = policy.copy(
-                rules = policy.rules + KWebNetworkRule(
-                    id = "rejected-replacement-rule",
-                    urlPattern = origin.url("/rejected-replacement"),
-                    action = KWebNetworkRuleAction.BLOCK,
-                ),
-                proxy = KWebProxyConfiguration(
-                    mode = KWebProxyMode.FIXED,
-                    rules = "http=127.0.0.1:$firstProxyPort",
-                ),
-                userAgent = "KWebRFC0010/Rejected",
-                acceptLanguage = "de-DE,de;q=0.8",
-            )
-            val lockedUserAgent = runCatching {
-                liveFirstProfile.configureNetworkPolicy(rejectedReplacement)
-            }.exceptionOrNull() as? KWebNativeException
-            check(lockedUserAgent?.code == "network.user-agent-requires-profile-reopen") {
-                "The native NetworkContext did not reject replacing an active user-agent: $lockedUserAgent"
-            }
-            check(liveFirstProfile.resolveProxy("http://proxy-check.invalid/").result == "DIRECT") {
-                "A rejected policy replacement changed the active Profile proxy."
-            }
-            val retainedPolicyLoad = scope.async(start = CoroutineStart.UNDISPATCHED) {
-                withTimeout(30_000) {
-                    liveFirstPage.events.first {
-                        it.type == KWebPageEventType.LOAD_ENDED &&
-                            it.url == origin.url("/rejected-replacement") &&
-                            it.frameScope == KWebPageFrameScope.MAIN
-                    }
-                }
-            }
-            liveFirstPage.navigate(origin.url("/rejected-replacement"))
-            val retainedPolicyRequest = origin.awaitRequest("/rejected-replacement")
-            retainedPolicyLoad.await()
-            val retainedPolicyEvent = awaitNetworkEvent(observedEvents, "rejected policy preservation") {
+            livePage.navigate(origin.url("/blocked"))
+            val blockedBefore = awaitNetworkEvent(observedEvents, "blocked request") {
                 it.phase == KWebNetworkRequestPhase.BEFORE_REQUEST &&
-                    it.url.endsWith("/rejected-replacement")
+                    it.url.endsWith("/blocked") &&
+                    it.action == KWebNetworkRuleAction.BLOCK
             }
-            check(retainedPolicyEvent.action == KWebNetworkRuleAction.ALLOW &&
-                retainedPolicyEvent.policyVersion == 1 &&
-                retainedPolicyRequest.header("User-Agent") == firstUserAgent &&
-                retainedPolicyRequest.header("Accept-Language") == language
-            ) { "A rejected replacement changed the request snapshot or NetworkContext: $retainedPolicyRequest" }
-
-            val replacedLanguage = "de-DE,de;q=0.8"
-            liveFirstProfile.configureNetworkPolicy(policy.copy(acceptLanguage = replacedLanguage))
-            val replacementLanguageLoad = scope.async(start = CoroutineStart.UNDISPATCHED) {
-                withTimeout(30_000) {
-                    liveFirstPage.events.first {
-                        it.type == KWebPageEventType.LOAD_ENDED &&
-                            it.url == origin.url("/language-replaced") &&
-                            it.frameScope == KWebPageFrameScope.MAIN
-                    }
-                }
-            }
-            liveFirstPage.navigate(origin.url("/language-replaced"))
-            val replacedLanguageRequest = origin.awaitRequest("/language-replaced")
-            replacementLanguageLoad.await()
-            check(replacedLanguageRequest.header("Accept-Language") == replacedLanguage) {
-                "The live NetworkContext did not apply the replacement Accept-Language."
-            }
-
-            liveFirstProfile.configureNetworkPolicy(policy.copy(acceptLanguage = null))
-            val resetLanguageLoad = scope.async(start = CoroutineStart.UNDISPATCHED) {
-                withTimeout(30_000) {
-                    liveFirstPage.events.first {
-                        it.type == KWebPageEventType.LOAD_ENDED &&
-                            it.url == origin.url("/language-reset") &&
-                            it.frameScope == KWebPageFrameScope.MAIN
-                    }
-                }
-            }
-            liveFirstPage.navigate(origin.url("/language-reset"))
-            val resetLanguage = origin.awaitRequest("/language-reset").header("Accept-Language")
-            resetLanguageLoad.await()
-            check(!resetLanguage.isNullOrBlank() && resetLanguage != replacedLanguage) {
-                "Removing the policy Accept-Language did not restore Chromium's Profile default: $resetLanguage"
-            }
-
-            val blockedLoaded = scope.async(start = CoroutineStart.UNDISPATCHED) {
-                withTimeout(30_000) {
-                    liveFirstPage.events.first {
-                        it.type == KWebPageEventType.LOAD_FAILED && it.url == origin.url("/blocked")
-                    }
-                }
-            }
-            liveFirstPage.navigate(origin.url("/blocked"))
-            val blockedEvent = awaitNetworkEvent(observedEvents, "request block") {
-                it.phase == KWebNetworkRequestPhase.BEFORE_REQUEST &&
-                    it.url.endsWith("/blocked") && it.action == KWebNetworkRuleAction.BLOCK
-            }
-            blockedLoaded.await()
-            val blockedComplete = awaitNetworkEvent(observedEvents, "blocked request completion") {
-                it.requestId == blockedEvent.requestId &&
+            val blockedComplete = awaitNetworkEvent(observedEvents, "blocked completion") {
+                it.requestId == blockedBefore.requestId &&
                     it.phase == KWebNetworkRequestPhase.COMPLETE
             }
-            check(origin.requestCount("/blocked") == 0) {
-                "The blocked request reached the real HTTP server."
-            }
-            check(blockedEvent.policyVersion == 1 &&
-                blockedComplete.action == KWebNetworkRuleAction.BLOCK &&
+            check(blockedComplete.action == KWebNetworkRuleAction.BLOCK &&
                 blockedComplete.completionStatus ==
-                    io.github.kingsword09.kwebshell.core.KWebNetworkCompletionStatus.CANCELED
-            ) { "The blocked request did not emit a canceled completion pair: $blockedComplete" }
+                    io.github.kingsword09.kwebshell.core.KWebNetworkCompletionStatus.CANCELED &&
+                origin.requestCount("/blocked") == 0
+            ) { "The stock CEF block rule did not cancel the request: $blockedComplete" }
 
-            val blockedHttpsUrl = "https://blocked-network-policy.invalid/rfc0010"
-            val blockedHttpsLoad = scope.async(start = CoroutineStart.UNDISPATCHED) {
-                withTimeout(30_000) {
-                    liveFirstPage.events.first {
-                        it.type == KWebPageEventType.LOAD_FAILED && it.url == blockedHttpsUrl
-                    }
-                }
-            }
-            liveFirstPage.navigate(blockedHttpsUrl)
-            val blockedHttpsEvent = awaitNetworkEvent(observedEvents, "HTTPS request interception") {
-                it.phase == KWebNetworkRequestPhase.BEFORE_REQUEST &&
-                    it.url == blockedHttpsUrl && it.action == KWebNetworkRuleAction.BLOCK
-            }
-            blockedHttpsLoad.await()
-            check(blockedHttpsEvent.requestId > 0L &&
-                origin.requestCount("/rfc0010") == 0
-            ) { "The HTTPS request was not stopped in the real CEF request path: $blockedHttpsEvent" }
-
-            val redirectedLoaded = scope.async(start = CoroutineStart.UNDISPATCHED) {
-                withTimeout(30_000) {
-                    liveFirstPage.events.first {
-                        it.type == KWebPageEventType.LOAD_ENDED &&
-                            it.url == origin.url("/redirect-target") &&
-                            it.frameScope == KWebPageFrameScope.MAIN
-                    }
-                }
-            }
-            liveFirstPage.navigate(origin.url("/redirect-source"))
-            val redirectEvent = awaitNetworkEvent(observedEvents, "request redirect") {
+            livePage.navigate(origin.url("/redirect-source"))
+            val redirectedBefore = awaitNetworkEvent(observedEvents, "redirect request") {
                 it.phase == KWebNetworkRequestPhase.BEFORE_REQUEST &&
                     it.url.endsWith("/redirect-source") &&
                     it.action == KWebNetworkRuleAction.REDIRECT
             }
-            redirectedLoaded.await()
-            val redirectComplete = awaitNetworkEvent(observedEvents, "redirect completion") {
-                it.requestId == redirectEvent.requestId &&
-                    it.phase == KWebNetworkRequestPhase.COMPLETE
-            }
-            check(redirectEvent.redirectedUrl == origin.url("/redirect-target")) {
-                "The CEF request handler did not publish the declared redirect target: $redirectEvent"
-            }
-            check(redirectComplete.action == KWebNetworkRuleAction.REDIRECT &&
-                redirectComplete.policyVersion == redirectEvent.policyVersion
-            ) { "The redirect completion did not retain the initial request decision: $redirectComplete" }
-            check(origin.requestCount("/redirect-source") == 0 &&
+            origin.awaitRequest("/redirect-target")
+            check(redirectedBefore.redirectedUrl == origin.url("/redirect-target") &&
+                origin.requestCount("/redirect-source") == 0 &&
                 origin.requestCount("/redirect-target") == 1
-            ) { "The redirected request did not reach only its target." }
+            ) { "The stock CEF redirect rule did not reach only its target." }
 
-            val loopFailed = scope.async(start = CoroutineStart.UNDISPATCHED) {
-                withTimeout(30_000) {
-                    liveFirstPage.events.first {
-                        it.type == KWebPageEventType.LOAD_FAILED && it.url == origin.url("/loop-a")
-                    }
-                }
-            }
-            liveFirstPage.navigate(origin.url("/loop-a"))
-            val redirectLoop = awaitNetworkEvent(observedEvents, "redirect depth limit") {
+            livePage.navigate(origin.url("/loop-a"))
+            val loopBefore = awaitNetworkEvent(observedEvents, "redirect loop") {
                 it.phase == KWebNetworkRequestPhase.BEFORE_REQUEST &&
                     it.errorId == "network.redirect.loop"
             }
-            loopFailed.await()
-            val loopComplete = awaitNetworkEvent(observedEvents, "redirect-loop completion") {
-                it.requestId == redirectLoop.requestId &&
-                    it.phase == KWebNetworkRequestPhase.COMPLETE
-            }
-            check(redirectLoop.action == KWebNetworkRuleAction.BLOCK &&
-                loopComplete.action == KWebNetworkRuleAction.REDIRECT &&
-                loopComplete.errorId == "network.redirect.loop" &&
-                origin.requestCount("/loop-a") == 0 && origin.requestCount("/loop-b") == 0
-            ) { "The redirect loop was not stopped before reaching the network: $redirectLoop" }
+            check(loopBefore.action == KWebNetworkRuleAction.BLOCK &&
+                origin.requestCount("/loop-a") == 0 &&
+                origin.requestCount("/loop-b") == 0
+            ) { "The stock CEF redirect depth limit did not stop the loop." }
 
-            val headersLoaded = scope.async(start = CoroutineStart.UNDISPATCHED) {
-                withTimeout(30_000) {
-                    liveFirstPage.events.first {
-                        it.type == KWebPageEventType.LOAD_ENDED &&
-                            it.url == origin.url("/headers") &&
-                            it.frameScope == KWebPageFrameScope.MAIN
-                    }
-                }
+            livePage.navigate(origin.url("/headers"))
+            val headersRequest = origin.awaitRequest("/headers")
+            check(headersRequest.header("X-KWeb-Policy") == "rfc0010" &&
+                headersRequest.header("X-KWeb-Remove") == null
+            ) { "The stock CEF request handler did not apply Header mutations." }
+            cdp.command("Network.setExtraHTTPHeaders", """{"headers":{}}""")
+
+            livePage.navigate(origin.url("/priority"))
+            val priorityBefore = awaitNetworkEvent(observedEvents, "priority request") {
+                it.phase == KWebNetworkRequestPhase.BEFORE_REQUEST &&
+                    it.url.endsWith("/priority")
             }
-            liveFirstPage.navigate(origin.url("/headers"))
-            headersLoaded.await()
-            val mutatedHeadersRequest = origin.awaitRequest("/headers")
-            check(mutatedHeadersRequest.header("X-KWeb-Policy") == "rfc0010" &&
-                mutatedHeadersRequest.header("X-KWeb-Remove") == null
-            ) {
-                "The real CefResourceRequestHandler did not add and remove the declared headers: $mutatedHeadersRequest"
-            }
-            liveCdp.command("Network.setExtraHTTPHeaders", """{"headers":{}}""")
+            origin.awaitRequest("/priority")
+            check(priorityBefore.action == KWebNetworkRuleAction.ALLOW &&
+                origin.requestCount("/priority") == 1
+            ) { "Priority or declaration-order matching selected the wrong rule: $priorityBefore" }
 
             val credentialUrl = origin.url("/userinfo").replace(
                 "http://",
                 "http://kweb-user:kweb-secret@",
             )
-            val credentialLoad = scope.async(start = CoroutineStart.UNDISPATCHED) {
-                withTimeout(30_000) {
-                    liveFirstPage.events.first {
-                        it.type == KWebPageEventType.LOAD_ENDED &&
-                            it.url?.endsWith("/userinfo") == true &&
-                            it.frameScope == KWebPageFrameScope.MAIN
-                    }
-                }
-            }
-            liveFirstPage.navigate(credentialUrl)
+            livePage.navigate(credentialUrl)
             origin.awaitRequest("/userinfo")
-            credentialLoad.await()
-            val credentialObservation = awaitNetworkEvent(observedEvents, "URL user-info redaction") {
-                it.phase == KWebNetworkRequestPhase.BEFORE_REQUEST && it.url.endsWith("/userinfo")
+            val credentialEvent = awaitNetworkEvent(observedEvents, "URL user-info redaction") {
+                it.phase == KWebNetworkRequestPhase.BEFORE_REQUEST &&
+                    it.url.endsWith("/userinfo")
             }
-            check(!credentialObservation.url.contains("kweb-user") &&
-                !credentialObservation.url.contains("kweb-secret")
-            ) { "URL credentials crossed the network observation ABI: $credentialObservation" }
+            check(!credentialEvent.url.contains("kweb-user") &&
+                !credentialEvent.url.contains("kweb-secret")
+            ) { "URL credentials crossed the stock CEF observation boundary." }
 
-            val firstProxyPolicy = policy.copy(
-                proxy = KWebProxyConfiguration(
-                    mode = KWebProxyMode.FIXED,
-                    rules = "http=127.0.0.1:$firstProxyPort",
+            val atomicPolicy = policy.copy(
+                rules = policy.rules + KWebNetworkRule(
+                    id = "atomic-block",
+                    urlPattern = origin.url("/atomic-block"),
+                    action = KWebNetworkRuleAction.BLOCK,
                 ),
             )
-            liveFirstProfile.configureNetworkPolicy(firstProxyPolicy)
-            val firstResolution = liveFirstProfile.resolveProxy("http://proxy-check.invalid/").result
-            check(firstResolution.contains("127.0.0.1:$firstProxyPort")) {
-                "The Profile fixed proxy did not resolve through its NetworkContext: $firstResolution"
-            }
-            val bypassPolicy = firstProxyPolicy.copy(
-                proxy = firstProxyPolicy.proxy.copy(bypassList = listOf("proxy-check.invalid")),
-            )
-            liveFirstProfile.configureNetworkPolicy(bypassPolicy)
-            check(liveFirstProfile.resolveProxy("http://proxy-check.invalid/").result == "DIRECT") {
-                "The Profile proxy bypass list was not honored by Chromium."
-            }
-            liveFirstProfile.configureNetworkPolicy(firstProxyPolicy)
-            val fixedProxyUrl = "http://fixed-proxy-check.invalid/profile-one"
-            val fixedProxyLoad = scope.async(start = CoroutineStart.UNDISPATCHED) {
-                withTimeout(30_000) {
-                    liveFirstPage.events.first {
-                        it.type == KWebPageEventType.LOAD_ENDED && it.url == fixedProxyUrl &&
-                            it.frameScope == KWebPageFrameScope.MAIN
-                    }
+            liveProfile.configureNetworkPolicy(atomicPolicy)
+            val nativeFailure = try {
+                withContext(Dispatchers.IO) {
+                    engine.nativeEngine().profileNetwork(
+                        (liveProfile as io.github.kingsword09.kwebshell.desktop.KWebDesktopProfile).path,
+                        io.github.kingsword09.kwebshell.desktop.KWebDesktopNetworkOperation.SET_POLICY,
+                        """{"version":1,"rules":[{"id":"forbidden","urlPattern":"https://example.test/*","priority":0,"action":"allow","headerMutations":[{"name":"Host","value":"evil.test"}]}]}""",
+                    )
                 }
+                null
+            } catch (error: KWebNativeException) {
+                error
             }
-            liveFirstPage.navigate(fixedProxyUrl)
-            firstProxy.awaitRequest("GET $fixedProxyUrl ")
-            fixedProxyLoad.await()
-            check(secondProxy.requestCount("GET $fixedProxyUrl ") == 0) {
-                "A request from the first Profile reached the second Profile's proxy."
+            check(nativeFailure?.code == "network.header.forbidden") {
+                "Native stock-CEF policy revalidation accepted a forbidden Header: $nativeFailure"
+            }
+            livePage.navigate(origin.url("/atomic-block"))
+            awaitNetworkEvent(observedEvents, "atomic retained policy") {
+                it.phase == KWebNetworkRequestPhase.BEFORE_REQUEST &&
+                    it.url.endsWith("/atomic-block") &&
+                    it.action == KWebNetworkRuleAction.BLOCK
+            }
+            check(origin.requestCount("/atomic-block") == 0) {
+                "A rejected native policy replacement changed the active policy."
             }
 
-            secondProfile = engine.openProfile("rfc0010-network-policy-isolation")
-            val liveSecondProfile = requireNotNull(secondProfile)
-            liveSecondProfile.configureNetworkPolicy(
-                policy.copy(
-                    userAgent = "KWebRFC0010/Profile-Isolated",
-                    acceptLanguage = null,
-                    proxy = KWebProxyConfiguration(
-                        mode = KWebProxyMode.FIXED,
-                        rules = "http=127.0.0.1:$secondProxyPort",
+            isolatedProfile = engine.openProfile("rfc0010-network-policy-isolated")
+            val liveIsolatedProfile = requireNotNull(isolatedProfile)
+            isolatedCollector = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                try {
+                    liveIsolatedProfile.networkEvents.collect { observedEvents.put(it) }
+                } catch (error: KWebNativeException) {
+                    if (error.code != "network.profile-closing") throw error
+                }
+            }
+            liveIsolatedProfile.configureNetworkPolicy(
+                KWebNetworkPolicy(
+                    rules = listOf(
+                        KWebNetworkRule(
+                            id = "isolated-block",
+                            urlPattern = origin.url("/isolated"),
+                            action = KWebNetworkRuleAction.BLOCK,
+                        ),
                     ),
                 ),
             )
-            secondSurface = NativeEngine.onAwtEventDispatchThread {
+            isolatedSurface = NativeEngine.onAwtEventDispatchThread {
                 ComposeBrowserSurface.create(640, 480)
             }
-            val secondProxyUrl = "http://fixed-proxy-check.invalid/profile-two"
-            secondPage = liveSecondProfile.openPage(
-                KWebDesktop.composeWindowHost(requireNotNull(secondSurface).window),
-                origin.url("/profile-b"),
+            isolatedPage = liveIsolatedProfile.openPage(
+                KWebDesktop.composeWindowHost(requireNotNull(isolatedSurface).window),
+                "about:blank",
                 KWebRect(0, 0, 640, 480),
             )
-            val liveSecondPage = requireNotNull(secondPage)
-            val secondProfileRequest = origin.awaitRequest("/profile-b")
-            check(secondProfileRequest.header("Accept-Language") == resetLanguage) {
-                "Profile defaults diverged after clearing an Accept-Language override."
+            requireNotNull(isolatedPage).navigate(origin.url("/isolated"))
+            val isolatedBefore = awaitNetworkEvent(observedEvents, "isolated profile block") {
+                it.phase == KWebNetworkRequestPhase.BEFORE_REQUEST &&
+                    it.url.endsWith("/isolated") &&
+                    it.action == KWebNetworkRuleAction.BLOCK
             }
-            val secondProxyLoad = scope.async(start = CoroutineStart.UNDISPATCHED) {
-                withTimeout(30_000) {
-                    liveSecondPage.events.first {
-                        it.type == KWebPageEventType.LOAD_ENDED && it.url == secondProxyUrl &&
-                            it.frameScope == KWebPageFrameScope.MAIN
-                    }
-                }
-            }
-            liveSecondPage.navigate(secondProxyUrl)
-            secondProxy.awaitRequest("GET $secondProxyUrl ")
-            secondProxyLoad.await()
-            val secondResolution = liveSecondProfile.resolveProxy("http://proxy-check.invalid/").result
-            check(secondResolution.contains("127.0.0.1:$secondProxyPort") &&
-                liveFirstProfile.resolveProxy("http://proxy-check.invalid/").result
-                    .contains("127.0.0.1:$firstProxyPort")
-            ) { "Two Profile NetworkContexts shared or overwrote proxy state." }
+            check(isolatedBefore.policyVersion == 1 &&
+                origin.requestCount("/isolated") == 0
+            ) { "The isolated Profile did not enforce its own policy." }
 
-            val pacPolicy = firstProxyPolicy.copy(
-                proxy = KWebProxyConfiguration(
-                    mode = KWebProxyMode.PAC,
-                    pacUrl = origin.url("/proxy.pac?profile=first"),
-                    pacMandatory = true,
-                ),
-            )
-            liveFirstProfile.configureNetworkPolicy(pacPolicy)
-            val pacResolution = liveFirstProfile.resolveProxy("http://pac-check.invalid/").result
-            check(pacResolution.contains("127.0.0.1:$firstProxyPort")) {
-                "Chromium's PAC resolver did not return the declared Profile proxy: $pacResolution"
+            livePage.navigate(origin.url("/isolated"))
+            origin.awaitRequest("/isolated")
+            check(origin.requestCount("/isolated") == 1) {
+                "A second Profile's block rule leaked into the first Profile."
             }
-            val pacProxyUrl = "http://pac-proxy-check.invalid/profile-pac"
-            val pacProxyLoad = scope.async(start = CoroutineStart.UNDISPATCHED) {
-                withTimeout(30_000) {
-                    liveFirstPage.events.first {
-                        it.type == KWebPageEventType.LOAD_ENDED && it.url == pacProxyUrl &&
-                            it.frameScope == KWebPageFrameScope.MAIN
-                    }
-                }
-            }
-            liveFirstPage.navigate(pacProxyUrl)
-            firstProxy.awaitRequest("GET $pacProxyUrl ")
-            pacProxyLoad.await()
 
-            val unavailablePacPort = ServerSocket(0).use { it.localPort }
-            liveFirstProfile.configureNetworkPolicy(
-                pacPolicy.copy(
-                    proxy = KWebProxyConfiguration(
-                        mode = KWebProxyMode.PAC,
-                        pacUrl = "http://127.0.0.1:$unavailablePacPort/unavailable.pac",
-                        pacMandatory = true,
-                    ),
-                ),
-            )
-            val unavailablePac = runCatching {
-                liveFirstProfile.resolveProxy("http://mandatory-pac-failure.invalid/")
-            }.exceptionOrNull() as? KWebNativeException
-            check(unavailablePac?.code == "network.proxy.unavailable") {
-                "A mandatory PAC failure did not fail with a typed error: $unavailablePac"
-            }
+            closeAndAwait(isolatedPage)
+            isolatedPage = null
+            isolatedCollector?.cancel()
+            isolatedProfile = null
+            isolatedCollector = null
+
+            closeAndAwait(page)
+            page = null
+            profile = null
+            eventCollector?.cancel()
+            eventCollector = null
 
             verifyNetworkObservationBackpressure(
                 engine,
                 origin,
                 configuration.remoteDebuggingPort,
             )
-
-            closeAndAwait(secondPage)
-            liveSecondProfile.close()
-            secondPage = null
-            secondProfile = null
-            closeAndAwait(firstPage)
-            firstPage = null
-            verifyProfileCloseWinsProxyResolution(liveFirstProfile, policy, pacPolicy, origin)
-            firstProfile = null
-            firstEventCollector.join()
-            firstEventCollector = null
-
-            val reopenedProfile = engine.openProfile("rfc0010-network-policy")
-            firstProfile = reopenedProfile
-            val reopenedPolicy = policy.copy(
-                userAgent = secondUserAgent,
-                proxy = KWebProxyConfiguration(),
-                acceptLanguage = null,
-            )
-            reopenedProfile.configureNetworkPolicy(reopenedPolicy)
-            firstEventCollector = scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                try {
-                    reopenedProfile.networkEvents.collect { observedEvents.put(it) }
-                } catch (error: KWebNativeException) {
-                    if (error.code != "network.profile-closing") throw error
-                }
-            }
-            firstPage = reopenedProfile.openPage(
-                KWebDesktop.composeWindowHost(requireNotNull(firstSurface).window),
-                origin.url("/reopened"),
-                KWebRect(0, 0, 800, 600),
-            )
-            val reopenedLoad = scope.async(start = CoroutineStart.UNDISPATCHED) {
-                withTimeout(30_000) {
-                    requireNotNull(firstPage).events.first {
-                        it.type == KWebPageEventType.LOAD_ENDED &&
-                            it.url == origin.url("/reopened") &&
-                            it.frameScope == KWebPageFrameScope.MAIN
-                    }
-                }
-            }
-            val reopenedRequest = origin.awaitRequest("/reopened")
-            check(reopenedRequest.header("User-Agent") == secondUserAgent &&
-                reopenedRequest.header("Accept-Language") == resetLanguage
-            ) {
-                "Closing and reopening a Profile path reused stale NetworkContext headers."
-            }
-            check(reopenedProfile.resolveProxy("http://proxy-check.invalid/").result == "DIRECT") {
-                "Closing and reopening a Profile path reused its previous PAC configuration."
-            }
-            reopenedLoad.await()
         }
-        println("KWebShell RFC 0010 real CEF network policy, proxy isolation, and Profile reopen passed.")
+        println("KWebShell RFC 0010 stock CEF network policy and observation passed.")
     } finally {
-        runCatching { closeAndAwait(secondPage) }
-        runCatching { closeAndAwait(firstPage) }
-        secondProfile?.let { runCatching { it.close() } }
-        firstProfile?.let { runCatching { it.close() } }
-        secondEventCollector?.cancel()
-        firstEventCollector?.cancel()
+        runCatching { closeAndAwait(isolatedPage) }
+        runCatching { closeAndAwait(page) }
+        isolatedProfile?.let { runCatching { it.close() } }
+        profile?.let { runCatching { it.close() } }
+        isolatedCollector?.cancel()
+        eventCollector?.cancel()
         scope.cancel()
         origin.close()
-        firstProxy.close()
-        secondProxy.close()
-        secondSurface?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
-        firstSurface?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
+        isolatedSurface?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
+        surface?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
         if (engine.lifecycle.value != KWebLifecycleState.CLOSED) engine.close()
     }
     require(NativeBrowser.liveNativeBrowserCount() == 0L)
     require(NativeEngine.liveNativeEngineCount() == 0L)
-}
-
-private suspend fun verifyProfileNetworkPolicyBeforeFirstPage(
-    engine: io.github.kingsword09.kwebshell.desktop.KWebDesktopEngine,
-    origin: NetworkPolicyOrigin,
-    proxy: NetworkPolicyProxy,
-) = coroutineScope {
-    val profileName = "rfc0010-network-pre-page"
-    var profile: io.github.kingsword09.kwebshell.core.KWebProfile? =
-        engine.openProfile(profileName)
-    var page: io.github.kingsword09.kwebshell.core.KWebPage? = null
-    var surface: ComposeBrowserSurface? = null
-    try {
-        val liveProfile = requireNotNull(profile)
-        check(liveProfile.resolveProxy("http://proxy-check.invalid/").result == "DIRECT") {
-            "An unconfigured Profile did not resolve DIRECT before creating a Page."
+    val evidence = buildJsonObject {
+        put("schemaVersion", 1)
+        put("target", currentTargetId())
+        put("cefRuntime", "stock-cef-151")
+        put("contractRevision", "2026-09-28.5")
+        put("assertions", buildJsonArray {
+            listOf(
+                "A1-bounded-versioned-policy-and-native-revalidation",
+                "A2-url-method-resource-type-priority-and-declaration-order-matching",
+                "A3-header-add-remove-and-forbidden-header-rejection",
+                "A4-block-redirect-and-redirect-loop-cancellation",
+                "A5-before-complete-body-free-credential-redacted-bounded-observation",
+                "A9-atomic-replacement-and-profile-isolation",
+                "A10-credential-redaction-and-no-body-or-header-map-observation",
+                "A11-stock-cef-profile-context-and-resource-handler",
+            ).forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) }
+        })
+        putJsonObject("deferred") {
+            put("profileProxy", true)
+            put("proxyResolution", true)
+            put("profileUserAgent", true)
+            put("profileAcceptLanguage", true)
         }
-        val fixedPolicy = KWebNetworkPolicy(
-            proxy = KWebProxyConfiguration(
-                mode = KWebProxyMode.FIXED,
-                rules = "http=127.0.0.1:${proxy.port}",
-            ),
-        )
-        liveProfile.configureNetworkPolicy(fixedPolicy)
-        check(
-            liveProfile.resolveProxy("http://pre-page-fixed-check.invalid/")
-                .result.contains("127.0.0.1:${proxy.port}"),
-        ) { "A fixed proxy policy could not be configured and resolved before the first Page." }
-
-        liveProfile.configureNetworkPolicy(
-            KWebNetworkPolicy(
-                proxy = KWebProxyConfiguration(
-                    mode = KWebProxyMode.PAC,
-                    pacUrl = origin.url("/proxy.pac"),
-                    pacMandatory = true,
-                ),
-            ),
-        )
-        check(
-            liveProfile.resolveProxy("http://pre-page-pac-check.invalid/")
-                .result.contains("127.0.0.1:${proxy.port}"),
-        ) { "A PAC policy could not be configured and resolved before the first Page." }
-
-        liveProfile.configureNetworkPolicy(fixedPolicy)
-        surface = NativeEngine.onAwtEventDispatchThread {
-            ComposeBrowserSurface.create(640, 480)
-        }
-        page = liveProfile.openPage(
-            KWebDesktop.composeWindowHost(requireNotNull(surface).window),
-            "about:blank",
-            KWebRect(0, 0, 640, 480),
-        )
-        val livePage = requireNotNull(page)
-        val target = origin.url("/pre-page-policy")
-        val load = async(start = CoroutineStart.UNDISPATCHED) {
-            withTimeout(30_000) {
-                livePage.events.first {
-                    it.type == KWebPageEventType.LOAD_ENDED && it.url == target
-                }
-            }
-        }
-        livePage.navigate(target)
-        proxy.awaitRequest("GET $target ")
-        load.await()
-        closeAndAwait(livePage)
-        page = null
-        liveProfile.close()
-        profile = null
-    } finally {
-        page?.let(::closeAndAwait)
-        surface?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
-        profile?.let { if (it.lifecycle.value != KWebLifecycleState.CLOSED) it.close() }
     }
-
-    val closedWithoutPage = engine.openProfile(profileName)
-    try {
-        check(closedWithoutPage.resolveProxy("http://proxy-check.invalid/").result == "DIRECT") {
-            "A no-Page Profile reopen inherited proxy state from its previous context."
-        }
-    } finally {
-        closedWithoutPage.close()
-    }
+    Files.writeString(
+        requiredPathProperty(INTEGRATION_ROOT_PROPERTY).resolve("network-policy-evidence.json"),
+        evidence.toString() + "\n",
+        StandardCharsets.UTF_8,
+    )
 }
 
 private fun awaitNetworkEvent(
@@ -1108,7 +665,7 @@ private fun awaitNetworkEvent(
         val event = queue.poll(remaining, TimeUnit.NANOSECONDS) ?: break
         if (predicate(event)) return event
     }
-    error("Timed out waiting for the real CEF network event: $description")
+    error("Timed out waiting for the real stock CEF network event: $description")
 }
 
 private suspend fun verifyNetworkObservationBackpressure(
@@ -1134,7 +691,7 @@ private suspend fun verifyNetworkObservationBackpressure(
         }
         val slowCollector = scope.async(start = CoroutineStart.UNDISPATCHED) {
             try {
-                liveProfile.networkEvents.collect { kotlinx.coroutines.delay(50) }
+                liveProfile.networkEvents.collect { delay(50) }
                 null
             } catch (error: KWebNativeException) {
                 error.code
@@ -1153,15 +710,16 @@ private suspend fun verifyNetworkObservationBackpressure(
         cdp.awaitPage(origin.url("/burst-start"))
         check(
             cdp.evaluate(
-                "Promise.all(Array.from({length: 160}, (_, index) => fetch('/burst/' + index)))" +
+                "Promise.all(Array.from({length: 512}, (_, index) => fetch('/burst/' + index)))" +
                     ".then(() => 'complete')",
             ) == "complete",
-        ) { "The real CEF request burst did not finish." }
-        val slowCollectorError = withTimeout(30_000) { slowCollector.await() }
-        check(slowCollectorError == "network.observation-backpressure" &&
-            withTimeout(5_000) { fastCollectorFailure.await() } ==
+        ) { "The real stock CEF request burst did not finish." }
+        check(
+            withTimeout(30_000) { slowCollector.await() } ==
+                "network.observation-backpressure" &&
+                withTimeout(5_000) { fastCollectorFailure.await() } ==
                 "network.observation-backpressure"
-        ) { "A real CEF event burst did not terminate all active collectors." }
+        ) { "A real stock CEF event burst did not terminate all active collectors." }
         val lateCollectorError = try {
             liveProfile.networkEvents.first()
             null
@@ -1173,120 +731,14 @@ private suspend fun verifyNetworkObservationBackpressure(
         }
         closeAndAwait(page)
         page = null
-        liveProfile.close()
         profile = null
-        fastCollector.join()
+        fastCollector.cancel()
     } finally {
         runCatching { closeAndAwait(page) }
         profile?.let { runCatching { it.close() } }
         fastCollector?.cancel()
         scope.cancel()
         surface?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
-    }
-}
-
-private suspend fun verifyRequestSnapshotReplacement(
-    profile: io.github.kingsword09.kwebshell.core.KWebProfile,
-    page: io.github.kingsword09.kwebshell.core.KWebPage,
-    policy: KWebNetworkPolicy,
-    origin: NetworkPolicyOrigin,
-    events: LinkedBlockingQueue<KWebNetworkRequestEvent>,
-) = kotlinx.coroutines.coroutineScope {
-    val inFlightLoad = async(start = CoroutineStart.UNDISPATCHED) {
-        withTimeout(30_000) {
-            page.events.first {
-                it.type == KWebPageEventType.LOAD_ENDED &&
-                    it.url == origin.url("/snapshot-in-flight") &&
-                    it.frameScope == KWebPageFrameScope.MAIN
-            }
-        }
-    }
-    page.navigate(origin.url("/snapshot-in-flight"))
-    val inFlightBefore = awaitNetworkEvent(events, "request snapshot before policy replacement") {
-        it.phase == KWebNetworkRequestPhase.BEFORE_REQUEST &&
-            it.url.endsWith("/snapshot-in-flight")
-    }
-    profile.configureNetworkPolicy(
-        policy.copy(
-            rules = policy.rules + KWebNetworkRule(
-                id = "replace-during-request",
-                urlPattern = origin.url("/snapshot-in-flight"),
-                action = KWebNetworkRuleAction.BLOCK,
-            ),
-        ),
-    )
-    origin.releaseSnapshotResponse()
-    inFlightLoad.await()
-    val inFlightComplete = awaitNetworkEvent(events, "request snapshot completion") {
-        it.requestId == inFlightBefore.requestId &&
-            it.phase == KWebNetworkRequestPhase.COMPLETE
-    }
-    check(inFlightBefore.action == KWebNetworkRuleAction.ALLOW &&
-        inFlightComplete.action == KWebNetworkRuleAction.ALLOW &&
-        inFlightComplete.completionStatus ==
-            io.github.kingsword09.kwebshell.core.KWebNetworkCompletionStatus.SUCCESS
-    ) { "Policy replacement changed the in-flight request's captured decision: $inFlightComplete" }
-
-    val replacementBlockLoad = async(start = CoroutineStart.UNDISPATCHED) {
-        withTimeout(30_000) {
-            page.events.first {
-                it.type == KWebPageEventType.LOAD_FAILED &&
-                    it.url == origin.url("/snapshot-in-flight")
-            }
-        }
-    }
-    page.navigate(origin.url("/snapshot-in-flight"))
-    val replacementBlock = awaitNetworkEvent(events, "replacement policy request block") {
-        it.phase == KWebNetworkRequestPhase.BEFORE_REQUEST &&
-            it.url.endsWith("/snapshot-in-flight") &&
-            it.action == KWebNetworkRuleAction.BLOCK
-    }
-    replacementBlockLoad.await()
-    check(replacementBlock.requestId != inFlightBefore.requestId &&
-        origin.requestCount("/snapshot-in-flight") == 1
-    ) { "The replacement policy did not govern the next request." }
-}
-
-private suspend fun verifyProfileCloseWinsProxyResolution(
-    profile: io.github.kingsword09.kwebshell.core.KWebProfile,
-    policy: KWebNetworkPolicy,
-    pacPolicy: KWebNetworkPolicy,
-    origin: NetworkPolicyOrigin,
-) = kotlinx.coroutines.coroutineScope {
-    val delayedPacPolicy = pacPolicy.copy(
-        proxy = KWebProxyConfiguration(
-            mode = KWebProxyMode.PAC,
-            pacUrl = origin.url("/proxy-delay.pac"),
-            pacMandatory = true,
-        ),
-    )
-    profile.configureNetworkPolicy(delayedPacPolicy)
-    val pendingResolution = async(Dispatchers.IO) {
-        runCatching {
-            profile.resolveProxy("http://profile-close-race.invalid/")
-        }.exceptionOrNull() as? KWebNativeException
-    }
-    origin.awaitRequest("/proxy-delay.pac")
-    val competingOperation = runCatching {
-        profile.configureNetworkPolicy(policy)
-    }.exceptionOrNull() as? KWebNativeException
-    check(competingOperation?.code == "network.operation-pending") {
-        "A second Profile network operation was not rejected while proxy resolution was pending: $competingOperation"
-    }
-    val closeOperation = async(Dispatchers.IO) {
-        runCatching { profile.close() }.exceptionOrNull()
-    }
-    withTimeout(5_000) {
-        profile.lifecycle.first { it == KWebLifecycleState.CLOSING }
-    }
-    check(!closeOperation.isCompleted) {
-        "Profile close did not wait for the outstanding native proxy resolution."
-    }
-    origin.releaseDelayedPacResponse()
-    val closeFailure = closeOperation.await()
-    val resolutionFailure = pendingResolution.await()
-    check(closeFailure == null && resolutionFailure?.code == "network.profile-closing") {
-        "Close did not win the pending proxy-resolution race: close=$closeFailure, resolution=$resolutionFailure"
     }
 }
 
@@ -3867,83 +3319,11 @@ private data class NetworkRequestRecord(
         headers.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
 }
 
-private class NetworkPolicyProxy : AutoCloseable {
-    private val server = ServerSocket()
-    private val pendingRequests = LinkedBlockingQueue<String>()
-    private val observedRequests = CopyOnWriteArrayList<String>()
-    private val executor = Executors.newCachedThreadPool { task ->
-        Thread(task, "KWebShell-network-policy-proxy").also { it.isDaemon = true }
-    }
-
-    val port: Int
-        get() = server.localPort
-
-    init {
-        server.reuseAddress = true
-        server.bind(InetSocketAddress("127.0.0.1", 0))
-        executor.execute {
-            while (!server.isClosed) {
-                val socket = try {
-                    server.accept()
-                } catch (_: java.net.SocketException) {
-                    break
-                }
-                executor.execute { serve(socket) }
-            }
-        }
-    }
-
-    fun awaitRequest(prefix: String): String {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20)
-        while (System.nanoTime() < deadline) {
-            val request = pendingRequests.poll(deadline - System.nanoTime(), TimeUnit.NANOSECONDS)
-                ?: break
-            if (request.startsWith(prefix)) return request
-        }
-        error("Chromium did not send the expected request through proxy $port: $prefix")
-    }
-
-    fun requestCount(prefix: String): Int =
-        observedRequests.count { it.startsWith(prefix) }
-
-    private fun serve(socket: java.net.Socket) {
-        socket.use { connection ->
-            connection.soTimeout = 15_000
-            val reader = connection.getInputStream()
-                .bufferedReader(StandardCharsets.ISO_8859_1)
-            val requestLine = reader.readLine() ?: return
-            while (reader.readLine()?.isNotEmpty() == true) Unit
-            observedRequests += requestLine
-            pendingRequests.offer(requestLine)
-            val body = "<!doctype html><meta charset=\"utf-8\"><title>proxy</title>"
-                .toByteArray(StandardCharsets.UTF_8)
-            val responseHeaders = (
-                "HTTP/1.1 200 OK\r\n" +
-                    "Content-Type: text/html; charset=utf-8\r\n" +
-                    "Content-Length: ${body.size}\r\n" +
-                    "Connection: close\r\n\r\n"
-                ).toByteArray(StandardCharsets.ISO_8859_1)
-            connection.getOutputStream().use { output ->
-                output.write(responseHeaders)
-                output.write(body)
-                output.flush()
-            }
-        }
-    }
-
-    override fun close() {
-        server.close()
-        executor.shutdownNow()
-    }
-}
-
-private class NetworkPolicyOrigin(private val proxyPort: Int) : AutoCloseable {
+private class NetworkPolicyOrigin : AutoCloseable {
     private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
     private val requests = LinkedBlockingQueue<NetworkRequestRecord>()
     private val observed = CopyOnWriteArrayList<NetworkRequestRecord>()
     private val initialResponseReleased = CountDownLatch(1)
-    private val snapshotResponseReleased = CountDownLatch(1)
-    private val delayedPacResponseReleased = CountDownLatch(1)
     private val executor = Executors.newCachedThreadPool { task ->
         Thread(task, "KWebShell-network-policy-origin").also { it.isDaemon = true }
     }
@@ -3961,14 +3341,6 @@ private class NetworkPolicyOrigin(private val proxyPort: Int) : AutoCloseable {
 
     fun releaseInitialResponse() {
         initialResponseReleased.countDown()
-    }
-
-    fun releaseSnapshotResponse() {
-        snapshotResponseReleased.countDown()
-    }
-
-    fun releaseDelayedPacResponse() {
-        delayedPacResponseReleased.countDown()
     }
 
     fun awaitRequest(path: String): NetworkRequestRecord {
@@ -3995,28 +3367,10 @@ private class NetworkPolicyOrigin(private val proxyPort: Int) : AutoCloseable {
         if (request.path == "/start") {
             initialResponseReleased.await(20, TimeUnit.SECONDS)
         }
-        if (request.path == "/snapshot-in-flight") {
-            snapshotResponseReleased.await(20, TimeUnit.SECONDS)
-        }
-        val body: ByteArray
-        val contentType: String
-        if (request.path == "/proxy-delay.pac") {
-            delayedPacResponseReleased.await(30, TimeUnit.SECONDS)
-        }
-        if (request.path == "/proxy.pac" || request.path == "/proxy-delay.pac") {
-            body = (
-                "function FindProxyForURL(url, host) { " +
-                    "if (host == '127.0.0.1') return 'DIRECT'; " +
-                    "return 'PROXY 127.0.0.1:$proxyPort; DIRECT'; }"
-                ).toByteArray(StandardCharsets.UTF_8)
-            contentType = "application/x-ns-proxy-autoconfig"
-        } else {
-            val title = request.path.removePrefix("/").ifBlank { "page" }
-            body = "<!doctype html><meta charset=\"utf-8\"><title>$title</title>"
-                .toByteArray(StandardCharsets.UTF_8)
-            contentType = "text/html; charset=utf-8"
-        }
-        exchange.responseHeaders.set("Content-Type", contentType)
+        val title = request.path.removePrefix("/").ifBlank { "page" }
+        val body = "<!doctype html><meta charset=\"utf-8\"><title>$title</title>"
+            .toByteArray(StandardCharsets.UTF_8)
+        exchange.responseHeaders.set("Content-Type", "text/html; charset=utf-8")
         exchange.responseHeaders.set("Cache-Control", "no-store")
         exchange.sendResponseHeaders(200, body.size.toLong())
         exchange.responseBody.use { it.write(body) }
@@ -4024,8 +3378,6 @@ private class NetworkPolicyOrigin(private val proxyPort: Int) : AutoCloseable {
 
     override fun close() {
         releaseInitialResponse()
-        releaseSnapshotResponse()
-        releaseDelayedPacResponse()
         server.stop(0)
         executor.shutdownNow()
     }

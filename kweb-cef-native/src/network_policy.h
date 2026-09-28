@@ -38,9 +38,13 @@ class NetworkPolicyRequestHandler final : public CefResourceRequestHandler {
                               URLRequestStatus status,
                               int64_t received_content_length) override;
 
- private:
+  private:
   struct RequestObservation final {
+    uint64_t public_request_id = 0;
     std::shared_ptr<const NetworkPolicySnapshot> snapshot;
+    std::string url;
+    std::string method;
+    std::string resource_type;
     std::string initial_action = "allow";
     bool initial_decision_captured = false;
     std::string terminal_action = "allow";
@@ -48,8 +52,11 @@ class NetworkPolicyRequestHandler final : public CefResourceRequestHandler {
   };
 
   std::shared_ptr<const NetworkPolicySnapshot> CaptureSnapshot(
-      uint64_t request_id);
-  void CaptureInitialDecision(uint64_t request_id, const std::string &action);
+      uint64_t request_id, uint64_t *public_request_id);
+  void CaptureInitialDecision(uint64_t request_id, const std::string &url,
+                              const std::string &method,
+                              const std::string &resource_type,
+                              const std::string &action);
   void UpdateTerminalResult(uint64_t request_id, const std::string &action,
                             const std::string &error_id = {});
   std::optional<RequestObservation> TakeObservation(uint64_t request_id);
@@ -58,6 +65,7 @@ class NetworkPolicyRequestHandler final : public CefResourceRequestHandler {
   const NetworkEventSink event_sink_;
   std::mutex request_mutex_;
   std::map<uint64_t, RequestObservation> requests_;
+  uint64_t next_public_request_id_ = 1;
 
   IMPLEMENT_REFCOUNTING(NetworkPolicyRequestHandler);
 };
@@ -70,7 +78,6 @@ class NetworkPolicyState final {
                       std::shared_ptr<const NetworkPolicySnapshot> *snapshot);
   void Install(std::shared_ptr<const NetworkPolicySnapshot> snapshot);
   void Clear();
-  bool HasInstalledRuntimePolicy() const;
   std::shared_ptr<const NetworkPolicySnapshot> Snapshot() const;
   int IncrementRedirectDepth(uint64_t request_id);
   void ClearRedirectDepth(uint64_t request_id);
@@ -78,12 +85,10 @@ class NetworkPolicyState final {
  private:
   mutable std::mutex mutex_;
   std::shared_ptr<const NetworkPolicySnapshot> current_;
-  bool runtime_policy_installed_ = false;
   std::map<uint64_t, int> redirect_depth_;
 };
 
 std::shared_ptr<NetworkPolicyState> CreateNetworkPolicyState();
-kweb_status RequireProfileNetworkRuntime();
 
 kweb_status PrepareProfileNetworkPolicy(
     const std::filesystem::path &profile_path, const std::string &payload,
@@ -92,12 +97,6 @@ kweb_status SetProfileNetworkPolicy(
     const std::filesystem::path &profile_path,
     const std::shared_ptr<PreparedNetworkPolicy> &prepared,
     std::string *result_payload);
-kweb_status ParseProxyResolutionPayload(const std::string &payload,
-                                        std::string *url);
-kweb_status ResolveProfileProxy(const std::filesystem::path &profile_path,
-                                const std::string &url,
-                                ProfileNetworkCompletion completion,
-                                void *user_data);
 kweb_status ClearProfileNetworkPolicy(
     const std::filesystem::path &profile_path);
 kweb_status ReleaseAllProfileNetworkPolicies();

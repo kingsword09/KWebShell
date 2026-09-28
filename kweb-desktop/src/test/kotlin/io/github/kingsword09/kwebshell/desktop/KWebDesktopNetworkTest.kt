@@ -10,8 +10,6 @@ import io.github.kingsword09.kwebshell.core.KWebNativeException
 import io.github.kingsword09.kwebshell.core.KWebNetworkResourceType
 import io.github.kingsword09.kwebshell.core.KWebNetworkRule
 import io.github.kingsword09.kwebshell.core.KWebNetworkRuleAction
-import io.github.kingsword09.kwebshell.core.KWebProxyConfiguration
-import io.github.kingsword09.kwebshell.core.KWebProxyMode
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -46,13 +44,6 @@ class KWebDesktopNetworkTest {
                     headerMutations = listOf(KWebNetworkHeaderMutation("X-KWeb", "policy-1")),
                 ),
             ),
-            proxy = KWebProxyConfiguration(
-                mode = KWebProxyMode.PAC,
-                pacUrl = "https://proxy.example.test/pac.js",
-                pacMandatory = true,
-            ),
-            userAgent = "KWebShellTest/1",
-            acceptLanguage = "zh-CN,zh;q=0.9",
         )
 
         val payload = KWebDesktopNetworkJson.policyPayload(policy)
@@ -62,7 +53,7 @@ class KWebDesktopNetworkTest {
             "redirect",
             root["rules"]?.jsonArray?.single()?.jsonObject?.get("action")?.jsonPrimitive?.content,
         )
-        assertEquals("pac", root["proxy"]?.jsonObject?.get("mode")?.jsonPrimitive?.content)
+        assertTrue(root["proxy"] == null)
 
         val event = KWebDesktopNetworkJson.parseEvent(
             """
@@ -131,60 +122,6 @@ class KWebDesktopNetworkTest {
         }
         assertEquals("network.policy.invalid", injectedHeader.code)
 
-        val proxyMismatch = assertFailsWith<KWebConfigurationException> {
-            KWebDesktopNetworkJson.policyPayload(
-                KWebNetworkPolicy(
-                    proxy = KWebProxyConfiguration(
-                        mode = KWebProxyMode.DIRECT,
-                        pacMandatory = true,
-                    ),
-                ),
-            )
-        }
-        assertEquals("network.proxy.invalid", proxyMismatch.code)
-
-        val invalidUserAgent = assertFailsWith<KWebConfigurationException> {
-            KWebDesktopNetworkJson.policyPayload(KWebNetworkPolicy(userAgent = "KWeb\r\nInjected: true"))
-        }
-        assertEquals("network.policy.invalid", invalidUserAgent.code)
-
-        val invalidAcceptLanguage = assertFailsWith<KWebConfigurationException> {
-            KWebDesktopNetworkJson.policyPayload(
-                KWebNetworkPolicy(acceptLanguage = "en-US\nX-Injected: true"),
-            )
-        }
-        assertEquals("network.policy.invalid", invalidAcceptLanguage.code)
-
-        val oversizedUserAgent = assertFailsWith<KWebConfigurationException> {
-            KWebDesktopNetworkJson.policyPayload(
-                KWebNetworkPolicy(userAgent = "u".repeat(1025)),
-            )
-        }
-        assertEquals("network.policy.limit-exceeded", oversizedUserAgent.code)
-
-        assertTrue(
-            KWebDesktopNetworkJson.policyPayload(
-                KWebNetworkPolicy(
-                    proxy = KWebProxyConfiguration(
-                        mode = KWebProxyMode.FIXED,
-                        rules = "http=proxy.example.test:8080;https=secure.example.test:8443;socks=socks.example.test:1080",
-                        bypassList = listOf("<local>", "*.example.test"),
-                    ),
-                ),
-            ).contains("proxy.example.test"),
-        )
-
-        val invalidFixedProxy = assertFailsWith<KWebConfigurationException> {
-            KWebDesktopNetworkJson.policyPayload(
-                KWebNetworkPolicy(
-                    proxy = KWebProxyConfiguration(
-                        mode = KWebProxyMode.FIXED,
-                        rules = "proxy.example.test:8080,not a proxy",
-                    ),
-                ),
-            )
-        }
-        assertEquals("network.proxy.invalid", invalidFixedProxy.code)
     }
 
     @Test
@@ -196,6 +133,12 @@ class KWebDesktopNetworkTest {
             )
         }
         assertTrue(error.message.orEmpty().contains("Unknown network event phase"))
+
+        assertFailsWith<IllegalStateException> {
+            KWebDesktopNetworkJson.parseEvent(
+                """{"requestId":"1","phase":"before-request","url":"https://example.test/","method":"GET","resourceType":"xhr","action":"allow","statusCode":200,"policyVersion":1}""",
+            )
+        }
     }
 
     @Test
@@ -213,6 +156,23 @@ class KWebDesktopNetworkTest {
                     "\"resourceType\":\"xhr\",\"action\":\"allow\",\"policyVersion\":1}",
             )
         }
+    }
+
+    @Test
+    fun acceptsCaseInsensitiveHttpSchemesForPatternsAndRedirects() {
+        val payload = KWebDesktopNetworkJson.policyPayload(
+            KWebNetworkPolicy(
+                rules = listOf(
+                    KWebNetworkRule(
+                        id = "uppercase-scheme",
+                        urlPattern = "HTTP://example.test/*",
+                        action = KWebNetworkRuleAction.REDIRECT,
+                        redirectUrl = "HTTPS://example.test/redirected",
+                    ),
+                ),
+            ),
+        )
+        assertTrue(payload.contains("uppercase-scheme"))
     }
 
     @Test

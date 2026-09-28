@@ -12,7 +12,6 @@ import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 import io.github.kingsword09.kwebshell.core.KWebNetworkPolicy
 import io.github.kingsword09.kwebshell.core.KWebNetworkRequestEvent
-import io.github.kingsword09.kwebshell.core.KWebProxyResolution
 import io.github.kingsword09.kwebshell.core.KWebPage
 import io.github.kingsword09.kwebshell.core.KWebPageEvent
 import io.github.kingsword09.kwebshell.core.KWebPageEventFlag
@@ -562,31 +561,6 @@ internal class KWebDesktopProfile(
         }
     }
 
-    override suspend fun resolveProxy(url: String): KWebProxyResolution = withContext(Dispatchers.IO) {
-        withNetworkOperation(
-            pendingErrorCode = "network.operation-pending",
-            closingErrorCode = "network.profile-closing",
-        ) {
-            requireOpen("resolve-proxy")
-            val canonicalUrl = KWebDesktopNetworkJson.resolvePayload(url)
-            val result = engine.nativeEngine().profileNetwork(
-                profilePath = path,
-                operation = KWebDesktopNetworkOperation.RESOLVE_PROXY,
-                payload = canonicalUrl,
-            )
-            try {
-                KWebDesktopNetworkJson.parseResolution(result.payload, url)
-            } catch (error: Throwable) {
-                throw KWebNativeException(
-                    code = "network.proxy-result-invalid",
-                    details = mapOf("url" to url),
-                    message = "Chromium returned an invalid proxy resolution result.",
-                    cause = error,
-                )
-            }
-        }
-    }
-
     override suspend fun flush(target: KWebPage): KWebProfileFlushResult =
         withContext(Dispatchers.IO) {
             withProfileDataOperation {
@@ -720,7 +694,7 @@ internal class KWebDesktopProfile(
                 }
                 synchronized(lock) {
                     if (mutableLifecycle.value != KWebLifecycleState.CLOSED) {
-                        engine.nativeEngine().clearProfileNetworkPolicy(path)
+                        clearProfileNetworkPolicyWithRetry()
                         networkEventStream.close()
                         mutableLifecycle.value = KWebLifecycleState.CLOSED
                         engine.removeProfile(this)
@@ -783,7 +757,7 @@ internal class KWebDesktopProfile(
     private fun requireOpen(operation: String) {
         if (closedByEngine || mutableLifecycle.value != KWebLifecycleState.OPEN) {
             val closing = mutableLifecycle.value == KWebLifecycleState.CLOSING &&
-                (operation == "configure-network-policy" || operation == "resolve-proxy")
+                operation == "configure-network-policy"
             throw KWebNativeException(
                 code = if (closing) "network.profile-closing" else "desktop.profile.closed",
                 details = mapOf("operation" to operation, "profile" to path.toString()),
@@ -791,6 +765,21 @@ internal class KWebDesktopProfile(
             )
         }
         engine.requireEngineOpen(operation)
+    }
+
+    private fun clearProfileNetworkPolicyWithRetry() {
+        var lastFailure: KWebNativeException? = null
+        repeat(10) {
+            try {
+                engine.nativeEngine().clearProfileNetworkPolicy(path)
+                return
+            } catch (error: KWebNativeException) {
+                if (error.code != "native.abi.cef-ui-task-failed") throw error
+                lastFailure = error
+                Thread.sleep(100)
+            }
+        }
+        throw requireNotNull(lastFailure)
     }
 
     private fun validateComposeWindow(window: ComposeWindow): Long =

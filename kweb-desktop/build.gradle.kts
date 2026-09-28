@@ -305,7 +305,7 @@ val engineIntegrationTest = tasks.register<Exec>("engineIntegrationTest") {
 
 tasks.register<Exec>("networkPolicyIntegrationTest") {
     group = "verification"
-    description = "Verifies RFC 0010 behavior against a real patched CEF NetworkContext."
+    description = "Verifies RFC 0010 request policy and observation against stock CEF."
     dependsOn(
         cleanEngineIntegration,
         generateConformanceBridge,
@@ -386,4 +386,5 @@ val extensionLifecycleIntegrationTest = tasks.register<Exec>("extensionLifecycle
 tasks.named("check") {
     dependsOn(verifyConformanceBridgeTypescript)
     dependsOn(engineIntegrationTest)
+    dependsOn(tasks.named("networkPolicyIntegrationTest"))
 }

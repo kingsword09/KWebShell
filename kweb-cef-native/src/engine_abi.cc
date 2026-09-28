@@ -212,11 +212,8 @@ public:
     }
     if (CefCurrentlyOn(TID_UI)) return KWEB_STATUS_WRONG_THREAD;
     std::shared_ptr<PreparedNetworkPolicy> prepared;
-    std::string proxy_url;
     const kweb_status validation_status =
-        operation == KWEB_PROFILE_DATA_SET_NETWORK_POLICY
-            ? PrepareProfileNetworkPolicy(profile_path, payload, &prepared)
-            : ParseProxyResolutionPayload(payload, &proxy_url);
+        PrepareProfileNetworkPolicy(profile_path, payload, &prepared);
     if (validation_status != KWEB_STATUS_OK) return validation_status;
     auto self = this;
     if (!CefPostTask(
@@ -225,14 +222,11 @@ public:
                 [](Engine *engine, uint64_t request_id,
                    kweb_profile_data_operation_type operation,
                    std::filesystem::path profile_path,
-                   std::shared_ptr<PreparedNetworkPolicy> prepared,
-                   std::string proxy_url) {
+                   std::shared_ptr<PreparedNetworkPolicy> prepared) {
                   engine->StartProfileNetwork(engine, request_id, operation,
-                                              profile_path, std::move(prepared),
-                                              std::move(proxy_url));
+                                              profile_path, std::move(prepared));
                 },
-                self, request_id, operation, profile_path, std::move(prepared),
-                std::move(proxy_url)))) {
+                self, request_id, operation, profile_path, std::move(prepared)))) {
       return KWEB_STATUS_CEF_UI_TASK_FAILED;
     }
     return KWEB_STATUS_OK;
@@ -267,42 +261,17 @@ public:
     return configuration_.root_cache_path;
   }
 
-private:
-  static void ProxyResolved(void *user_data, kweb_status status,
-                            std::string payload) {
-    auto *context = static_cast<std::tuple<Engine *, uint64_t,
-                                           kweb_profile_data_operation_type> *>(
-        user_data);
-    std::get<0>(*context)->EmitProfileData(std::get<1>(*context),
-                                           std::get<2>(*context), status,
-                                           std::move(payload));
-    delete context;
-  }
-
   kweb_status StartProfileNetwork(
       Engine *engine, uint64_t request_id,
       kweb_profile_data_operation_type operation,
       const std::filesystem::path &profile_path,
-      std::shared_ptr<PreparedNetworkPolicy> prepared,
-      std::string proxy_url) {
+      std::shared_ptr<PreparedNetworkPolicy> prepared) {
     (void)engine;
     if (operation == KWEB_PROFILE_DATA_SET_NETWORK_POLICY) {
       std::string result;
       const kweb_status status =
           SetProfileNetworkPolicy(profile_path, prepared, &result);
       EmitProfileData(request_id, operation, status, std::move(result));
-      return KWEB_STATUS_OK;
-    }
-    if (operation == KWEB_PROFILE_DATA_RESOLVE_PROXY) {
-      auto *context = new std::tuple<Engine *, uint64_t,
-                                     kweb_profile_data_operation_type>(
-          this, request_id, operation);
-      const kweb_status status = ResolveProfileProxy(
-          profile_path, proxy_url, &Engine::ProxyResolved, context);
-      if (status != KWEB_STATUS_OK) {
-        delete context;
-        EmitProfileData(request_id, operation, status, {});
-      }
       return KWEB_STATUS_OK;
     }
     EmitProfileData(request_id, operation, KWEB_STATUS_INVALID_ARGUMENT, {});
@@ -557,8 +526,7 @@ public:
         payload_size > 256 * 1024 ||
         (payload_size > 0 && payload_utf8 == nullptr) ||
         (payload_size > 0 && !IsValidUtf8(payload_utf8, payload_size)) ||
-        (operation != KWEB_PROFILE_DATA_SET_NETWORK_POLICY &&
-         operation != KWEB_PROFILE_DATA_RESOLVE_PROXY)) {
+        operation != KWEB_PROFILE_DATA_SET_NETWORK_POLICY) {
       return KWEB_STATUS_INVALID_ARGUMENT;
     }
     const auto profile_path = PathFromUtf8(profile_path_utf8, profile_path_size);

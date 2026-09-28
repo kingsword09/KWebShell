@@ -15,7 +15,10 @@ class KWebRfcGovernanceCheckerTest {
     private fun fixtureMatrix(): KWebElectronCapabilityMatrixDocument =
         KWebElectronCapabilityMatrix.document().copy(
             entries = KWebElectronCapabilityMatrix.entries.map { entry ->
-                if (entry.id in RFC_0008_ROWS || entry.id in RFC_0009_ROWS) {
+                if (entry.id in RFC_0008_ROWS ||
+                    entry.id in RFC_0009_ROWS ||
+                    entry.id in RFC_0010_ROWS
+                ) {
                     entry.copy(status = KWebElectronMappingStatus.UNSUPPORTED, kweb = "")
                 } else {
                     entry
@@ -38,6 +41,7 @@ class KWebRfcGovernanceCheckerTest {
             "session-spellcheck",
             "session-flush",
         )
+        val RFC_0010_ROWS: Set<String> = setOf("session-web-request")
     }
 
     private fun implementedCatalog(): List<KWebRfcDocument> = listOf(

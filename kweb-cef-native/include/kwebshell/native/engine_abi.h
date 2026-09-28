@@ -109,7 +109,6 @@ typedef uint32_t kweb_profile_data_operation_type;
 #define KWEB_PROFILE_DATA_SET_SPELLCHECK ((kweb_profile_data_operation_type)7)
 #define KWEB_PROFILE_DATA_FLUSH ((kweb_profile_data_operation_type)8)
 #define KWEB_PROFILE_DATA_SET_NETWORK_POLICY ((kweb_profile_data_operation_type)9)
-#define KWEB_PROFILE_DATA_RESOLVE_PROXY ((kweb_profile_data_operation_type)10)
 
 #define KWEB_BROWSER_FLAG_LOADING ((uint32_t)1)
 #define KWEB_BROWSER_FLAG_CAN_GO_BACK ((uint32_t)2)

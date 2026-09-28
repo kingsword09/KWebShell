@@ -258,7 +258,15 @@ val engineIntegrationJavaCommand = buildList {
 val extensionLifecycleIntegrationJavaCommand =
     engineIntegrationJavaCommand.dropLast(1) + "extension-lifecycle-coordinator"
 val networkPolicyIntegrationJavaCommand =
-    engineIntegrationJavaCommand.dropLast(1) + "network-policy"
+    engineIntegrationJavaCommand
+        .map { argument ->
+            if (argument.startsWith("-Dkweb.engine.integration.cdp.port=")) {
+                "-Dkweb.engine.integration.cdp.port=0"
+            } else {
+                argument
+            }
+        }
+        .dropLast(1) + "network-policy"
 
 val engineIntegrationTest = tasks.register<Exec>("engineIntegrationTest") {
     group = "verification"

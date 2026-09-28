@@ -303,7 +303,12 @@ private fun runProfileDataCoordinator() {
 }
 
 private fun runNetworkPolicyIntegration() {
-    val configuration = runtimeConfiguration()
+    val configured = runtimeConfiguration()
+    val configuration = if (configured.remoteDebuggingPort == 0) {
+        configured.copy(remoteDebuggingPort = findFreePort())
+    } else {
+        configured
+    }
     val engine = KWebDesktop.openEngine(
         KWebDesktopEngineConfiguration(
             cefRuntime = configuration.cefRuntime,

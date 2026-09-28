@@ -217,7 +217,7 @@ val expectCustomExtensionRuntime = providers.gradleProperty("kwebExpectCustomExt
 val engineIntegrationMode = providers.gradleProperty("kwebEngineIntegrationMode")
     .orElse("coordinator")
 val engineIntegrationCdpPort = providers.systemProperty("kweb.engine.integration.cdp.port")
-    .orElse("0")
+    .orElse("50571")
 val cleanEngineIntegration = tasks.register<Delete>("cleanEngineIntegration") {
     delete(engineIntegrationRoot)
 }

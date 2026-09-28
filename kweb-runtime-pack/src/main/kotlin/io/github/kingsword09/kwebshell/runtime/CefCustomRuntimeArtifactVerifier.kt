@@ -53,18 +53,38 @@ public object CefCustomRuntimeArtifactVerifier {
         )
         val root = "cef_binary_${catalog.manifest.cefVersion}_${platform}_minimal"
         val libraryEntryName = "$root/${LIBRARY_BY_TARGET.getValue(target)}"
-        val headerEntryName = "$root/include/internal/cef_kweb_extension_abi.h"
-        val headerDigest = catalog.manifest.patches.single().createdPostimages
+        val extensionHeaderEntryName = "$root/include/internal/cef_kweb_extension_abi.h"
+        val networkHeaderEntryName = "$root/include/internal/cef_kweb_network_abi.h"
+        val hasNetworkHeader = catalog.manifest.patches.any { patch ->
+            patch.createdPostimages.any { it.path == "include/internal/cef_kweb_network_abi.h" }
+        }
+        val extensionHeaderDigest = catalog.manifest.patches
+            .flatMap { it.createdPostimages }
             .single { it.path == "include/internal/cef_kweb_extension_abi.h" }
             .sha256
+        val networkHeaderDigest = if (hasNetworkHeader) {
+            catalog.manifest.patches
+                .flatMap { it.createdPostimages }
+                .single { it.path == "include/internal/cef_kweb_network_abi.h" }
+                .sha256
+        } else {
+            ""
+        }
 
         try {
             ZipFile(absolute.toFile()).use { archive ->
                 val entries = archive.entries().asSequence().toList()
                 validateEntries(entries, root)
                 val library = requireFileEntry(entries, libraryEntryName)
-                val header = requireFileEntry(entries, headerEntryName)
-                val needles = (catalog.manifest.exports + catalog.manifest.adapterAbiFingerprint)
+                val extensionHeader = requireFileEntry(entries, extensionHeaderEntryName)
+                val networkHeader = if (hasNetworkHeader) {
+                    requireFileEntry(entries, networkHeaderEntryName)
+                } else {
+                    null
+                }
+                val needles = (catalog.manifest.exports +
+                    catalog.manifest.adapterAbiFingerprint +
+                    if (hasNetworkHeader) listOf(catalog.manifest.networkAbiFingerprint) else emptyList())
                     .map { it.toByteArray(StandardCharsets.US_ASCII) }
                 val libraryResult = archive.getInputStream(library).use { input ->
                     digestAndFind(input, needles)
@@ -89,12 +109,23 @@ public object CefCustomRuntimeArtifactVerifier {
                         message = "The custom libcef binary lacks required adapter ABI evidence.",
                     )
                 }
-                val actualHeaderDigest = archive.getInputStream(header).use(::sha256)
-                if (actualHeaderDigest != headerDigest) {
+                val actualExtensionHeaderDigest = archive.getInputStream(extensionHeader).use(::sha256)
+                if (actualExtensionHeaderDigest != extensionHeaderDigest) {
                     failure(
                         code = "runtime.custom-runtime.abi-header-digest-mismatch",
-                        details = mapOf("expected" to headerDigest, "actual" to actualHeaderDigest),
+                        details = mapOf("expected" to extensionHeaderDigest, "actual" to actualExtensionHeaderDigest),
                         message = "The packaged adapter ABI header differs from the source patch.",
+                    )
+                }
+                val actualNetworkHeaderDigest = networkHeader?.let { archive.getInputStream(it).use(::sha256) }
+                if (hasNetworkHeader && actualNetworkHeaderDigest != networkHeaderDigest) {
+                    failure(
+                        code = "runtime.custom-runtime.network-abi-header-digest-mismatch",
+                        details = mapOf(
+                            "expected" to networkHeaderDigest,
+                            "actual" to (actualNetworkHeaderDigest ?: ""),
+                        ),
+                        message = "The packaged network ABI header differs from the source patch.",
                     )
                 }
             }

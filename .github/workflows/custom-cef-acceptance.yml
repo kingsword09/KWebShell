@@ -120,7 +120,9 @@ jobs:
       - name: Run complete custom-runtime verification
         shell: bash
         run: |
-          ./gradlew --no-daemon check :kweb-desktop:extensionLifecycleIntegrationTest \
+          ./gradlew --no-daemon check \
+            :kweb-desktop:networkPolicyIntegrationTest \
+            :kweb-desktop:extensionLifecycleIntegrationTest \
             -PcefRoot="$KWEB_CUSTOM_CEF_ROOT" \
             -PkwebExpectCustomExtensionRuntime=true \
             -PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}

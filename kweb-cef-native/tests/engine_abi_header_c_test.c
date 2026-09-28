@@ -1,13 +1,26 @@
 #include "kwebshell/native/engine_abi.h"
 #include "kwebshell/native/cef_extension_abi.h"
+#include "kwebshell/native/cef_network_abi.h"
 
 #include <stddef.h>
 #include <stdint.h>
 
 _Static_assert(KWEB_INVALID_ENGINE_HANDLE == 0,
                "the invalid engine handle must remain zero");
-_Static_assert(KWEB_ABI_VERSION == 12,
-               "the Profile data contract requires ABI version 12");
+_Static_assert(KWEB_ABI_VERSION == 14,
+               "eager Profile context creation requires ABI version 14");
+_Static_assert(KWEB_STATUS_PROFILE_CONTEXT_INITIALIZATION_FAILED == 70,
+               "the Profile context initialization status is ABI-stable");
+_Static_assert(sizeof(kweb_engine_config) == 144,
+               "the engine configuration layout is ABI-stable");
+_Static_assert(offsetof(kweb_engine_config, profile_data_callback) == 128,
+               "the engine Profile callback offset is ABI-stable");
+_Static_assert(sizeof(kweb_profile_data_event) == 64,
+               "the Profile data event layout is ABI-stable");
+_Static_assert(sizeof(kweb_browser_config) == 144,
+               "the browser configuration layout is ABI-stable");
+_Static_assert(offsetof(kweb_browser_config, profile_data_callback) == 128,
+               "the browser Profile callback offset is ABI-stable");
 _Static_assert(KWEB_ENGINE_EVENT_OPENED != KWEB_ENGINE_EVENT_CLOSED,
                "engine lifecycle events must remain distinct");
 _Static_assert(KWEB_INVALID_BROWSER_HANDLE == 0,
@@ -100,12 +113,34 @@ _Static_assert(KWEB_BROWSER_EVENT_INPUT_GESTURE == 14,
                "the input-gesture event id is ABI-stable");
 _Static_assert(KWEB_BROWSER_EVENT_RENDERER_TERMINATED == 22,
                "the renderer terminal event id is ABI-stable");
+_Static_assert(KWEB_BROWSER_EVENT_NETWORK_REQUEST == 23,
+               "the network request event id is ABI-stable");
+_Static_assert(KWEB_BROWSER_EVENT_NETWORK_OBSERVATION_FAILED == 24,
+               "the network observation failure event id is ABI-stable");
 _Static_assert(KWEB_BROWSER_EVENT_NAVIGATION_COMMITTED == 15,
                "the navigation committed event id is ABI-stable");
 _Static_assert(KWEB_BROWSER_EVENT_SAME_DOCUMENT_NAVIGATION == 16,
                "the same-document event id is ABI-stable");
 _Static_assert(KWEB_BROWSER_EVENT_POPUP_REQUESTED == 19,
                "the popup request event id is ABI-stable");
+_Static_assert(KWEB_PROFILE_DATA_SET_NETWORK_POLICY == 9,
+               "the network policy operation id is ABI-stable");
+_Static_assert(KWEB_STATUS_NETWORK_POLICY_INVALID == 60,
+               "the network policy invalid status is ABI-stable");
+_Static_assert(KWEB_STATUS_NETWORK_RUNTIME_CAPABILITY_MISSING == 65,
+               "the network capability status is ABI-stable");
+_Static_assert(KWEB_STATUS_NETWORK_PROXY_INVALID == 66,
+               "the network proxy validation status is ABI-stable");
+_Static_assert(KWEB_STATUS_NETWORK_HEADER_FORBIDDEN == 67,
+               "the forbidden network header status is ABI-stable");
+_Static_assert(KWEB_STATUS_NETWORK_REDIRECT_INVALID == 68,
+               "the network redirect validation status is ABI-stable");
+_Static_assert(KWEB_STATUS_NETWORK_POLICY_LIMIT_EXCEEDED == 69,
+               "the network policy limit status is ABI-stable");
+_Static_assert(sizeof(cef_kweb_network_string_view) == 16,
+               "the CEF network string view layout is ABI-stable");
+_Static_assert(sizeof(cef_kweb_network_proxy_config) == 112,
+               "the CEF network proxy config layout is ABI-stable");
 _Static_assert(KWEB_BROWSER_EVENT_CREATED != KWEB_BROWSER_EVENT_CLOSED,
                "browser lifecycle events must remain distinct");
 
@@ -164,6 +199,8 @@ int main(void) {
       {"/cache/cef.log", 14},
       0,
       0,
+      NULL,
+      NULL,
   };
   const kweb_engine_event event = {(uint32_t)sizeof(kweb_engine_event),
                                    KWEB_ABI_VERSION,

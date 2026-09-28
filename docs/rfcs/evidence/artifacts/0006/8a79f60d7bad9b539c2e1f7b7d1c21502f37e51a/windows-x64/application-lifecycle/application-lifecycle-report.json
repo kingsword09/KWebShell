@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "target": "windows-x64",
+  "provider": "windows-named-mutex-authenticated-pipe",
+  "abiVersion": 1,
+  "secondaryForwarded": true,
+  "unicodeFileForwarded": true,
+  "activationSequence": 2,
+  "activationEvents": ["1:INITIAL_ARGUMENTS","2:SECOND_INSTANCE"],
+  "registrationInstallDigest": "fnv1a64:1326ac41bf695613",
+  "registrationRemoveDigest": "fnv1a64:8fbfa2e2a2e9e30a",
+  "registrationCleaned": true,
+  "shutdown": "GRACEFUL",
+  "liveNativeOwners": 0,
+  "status": "PASS"
+}

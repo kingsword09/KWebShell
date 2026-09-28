@@ -17,6 +17,9 @@ import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 
 internal enum class NativeEngineEventType(val value: Int) {
     OPENED(1),
@@ -58,6 +61,9 @@ internal class NativeEngine private constructor(
         failureCallback = ::receiveFfmCallbackFailure,
         callback = ::receiveNativeEvent,
     )
+    internal val profileDataSink = NativeProfileDataEventSink(::receiveNativeProfileData)
+    private val nextProfileNetworkRequestId = AtomicLong(1)
+    private val profileNetworkRequests = ConcurrentHashMap<Long, CompletableDeferred<NativeProfileDataResult>>()
 
     internal val lifecycle: StateFlow<KWebLifecycleState> = mutableLifecycle.asStateFlow()
     internal val remoteDebuggingPort: Int = configuration.remoteDebuggingPort
@@ -80,6 +86,87 @@ internal class NativeEngine private constructor(
     internal fun rootCachePath(): Path = configuration.rootCache
 
     internal fun ownsHandle(handle: Long): Boolean = handle != 0L && callbackHandle.get() == handle
+
+    internal suspend fun profileNetwork(
+        profilePath: Path,
+        operation: Int,
+        payload: String,
+    ): NativeProfileDataResult {
+        val handle = requireLiveHandle("profile-network")
+        val requestId = nextProfileNetworkRequestId.getAndIncrement()
+        if (requestId <= 0L) {
+            throw KWebNativeException(
+                code = "network.operation-pending",
+                details = emptyMap(),
+                message = "The Profile network request identifier was exhausted.",
+            )
+        }
+        val response = CompletableDeferred<NativeProfileDataResult>()
+        if (profileNetworkRequests.putIfAbsent(requestId, response) != null) {
+            throw KWebNativeException(
+                code = "network.operation-pending",
+                details = mapOf("requestId" to requestId.toString()),
+                message = "The Profile network request identifier is already active.",
+            )
+        }
+        try {
+            val status = NativeBindings.engineProfileNetwork(
+                handle,
+                requestId,
+                operation,
+                profilePath.toString(),
+                payload,
+            )
+            if (status != NativeStatus.OK.value) {
+                throw profileNetworkStatusException(
+                    operation = "profile-network",
+                    value = status,
+                    details = mapOf("requestId" to requestId.toString()),
+                )
+            }
+            val result = withTimeoutOrNull(CALLBACK_TIMEOUT.toMillis()) {
+                response.await()
+            } ?: throw KWebNativeException(
+                code = "network.operation-timeout",
+                details = mapOf("requestId" to requestId.toString()),
+                message = "The Profile network operation did not complete in time.",
+            )
+            if (result.status != NativeStatus.OK.value) {
+                throw profileNetworkStatusException(
+                    operation = "profile-network",
+                    value = result.status,
+                    details = mapOf("requestId" to requestId.toString()),
+                )
+            }
+            return result
+        } finally {
+            profileNetworkRequests.remove(requestId, response)
+        }
+    }
+
+    internal fun clearProfileNetworkPolicy(profilePath: Path) {
+        val handle = requireLiveHandle("clear-profile-network-policy")
+        val status = NativeBindings.engineClearProfileNetworkPolicy(handle, profilePath.toString())
+        if (status != NativeStatus.OK.value) {
+            throw profileNetworkStatusException(
+                operation = "clear-profile-network-policy",
+                value = status,
+                details = mapOf("profile" to profilePath.toString()),
+            )
+        }
+    }
+
+    internal fun openProfileContext(profilePath: Path) {
+        val handle = requireLiveHandle("open-profile-context")
+        val status = NativeBindings.engineOpenProfileContext(handle, profilePath.toString())
+        if (status != NativeStatus.OK.value) {
+            throw profileNetworkStatusException(
+                operation = "open-profile-context",
+                value = status,
+                details = mapOf("profile" to profilePath.toString()),
+            )
+        }
+    }
 
     @Synchronized
     override fun close() {
@@ -243,6 +330,33 @@ internal class NativeEngine private constructor(
             message = message,
             cause = cause,
         )
+    }
+
+    private fun receiveNativeProfileData(
+        engineHandle: Long,
+        browserHandle: Long,
+        requestId: Long,
+        operation: Int,
+        status: Int,
+        payload: String,
+    ) {
+        if (!ownsHandle(engineHandle) || browserHandle != 0L || requestId <= 0L) {
+            recordCallbackFailure(
+                code = "native.engine.profile-data.callback-invalid",
+                details = mapOf(
+                    "engine" to engineHandle.toString(),
+                    "browser" to browserHandle.toString(),
+                    "requestId" to requestId.toString(),
+                ),
+                message = "The native engine Profile data callback targeted an invalid operation.",
+            )
+            return
+        }
+        callbackExecutor.execute {
+            profileNetworkRequests[requestId]?.complete(
+                NativeProfileDataResult(operation, status, payload),
+            )
+        }
     }
 
     private fun processNativeEvent(handle: Long, sequence: Long, typeValue: Int) {
@@ -437,6 +551,7 @@ internal class NativeEngine private constructor(
                     check(EventQueue.isDispatchThread())
                     NativeBindings.engineCreate(
                         engine.sink,
+                        engine.profileDataSink,
                         validated.cefRuntime.toString(),
                         validated.browserSubprocess.toString(),
                         validated.resources.toString(),

@@ -71,10 +71,22 @@ public object CefSourcePatchVerifier {
                     "postimage-digest-mismatch",
                 )
             }
-            requireAdapterAbiFingerprint(
-                manifest,
-                resolveRegularFile(overlay, ADAPTER_ABI_HEADER, "abi-header-invalid"),
-            )
+            if (patch.createdPostimages.any { it.path == ADAPTER_ABI_HEADER }) {
+                requireAbiFingerprint(
+                    manifest = manifest,
+                    expected = manifest.adapterAbiFingerprint,
+                    header = resolveRegularFile(overlay, ADAPTER_ABI_HEADER, "abi-header-invalid"),
+                    label = "adapter",
+                )
+            }
+            if (patch.createdPostimages.any { it.path == NETWORK_ABI_HEADER }) {
+                requireAbiFingerprint(
+                    manifest = manifest,
+                    expected = manifest.networkAbiFingerprint,
+                    header = resolveRegularFile(overlay, NETWORK_ABI_HEADER, "network-abi-header-invalid"),
+                    label = "network",
+                )
+            }
         } finally {
             deleteTree(overlay)
         }
@@ -113,33 +125,56 @@ public object CefSourcePatchVerifier {
             )
         }
 
-        val patch = catalog.manifest.patches.single()
-        patch.modifiedPreimages.forEach { file ->
-            val path = resolveRegularFile(source, file.path, "preimage-file-invalid")
-            requireDigest(path, file.sha256, "preimage-digest-mismatch")
-        }
-        patch.createdPostimages.forEach { file ->
-            val path = resolve(source, file.path)
-            if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
-                failure(
-                    code = "runtime.source-patch.created-path-exists",
-                    details = mapOf("path" to path.toString()),
-                    message = "A source path that the CEF patch creates already exists.",
-                )
+        catalog.manifest.patches.forEach { patch ->
+            patch.createdPostimages.forEach { file ->
+                if (Files.exists(resolve(source, file.path), LinkOption.NOFOLLOW_LINKS)) {
+                    failure(
+                        code = "runtime.source-patch.created-path-exists",
+                        details = mapOf("path" to file.path),
+                        message = "A source path that the CEF patch creates already exists.",
+                    )
+                }
             }
         }
         verifyPatchFiles(catalog)
-
-        val patchPath = resolveRegularFile(catalog.root, patch.file, "patch-file-invalid")
-        runGit(
-            source,
-            "apply",
-            "--check",
-            "--index",
-            "--whitespace=error-all",
-            patchPath.toString(),
-        )
-        verifyAppliedOverlay(source, patchPath, patch)
+        val overlay = Files.createTempDirectory("kweb-cef-patch-series-").toAbsolutePath().normalize()
+        try {
+            val allPreimages = catalog.manifest.patches
+                .flatMap { it.modifiedPreimages }
+                .groupBy { it.path }
+                .mapValues { (_, files) -> files.first() }
+            allPreimages.values.forEach { file ->
+                val sourceFile = resolveRegularFile(source, file.path, "preimage-file-invalid")
+                requireDigest(sourceFile, file.sha256, "preimage-digest-mismatch")
+                val destination = resolve(overlay, file.path)
+                Files.createDirectories(requireNotNull(destination.parent))
+                Files.copy(sourceFile, destination)
+            }
+            catalog.manifest.patches.forEach { patch ->
+                patch.modifiedPreimages.forEach { file ->
+                    requireDigest(
+                        resolveRegularFile(overlay, file.path, "series-preimage-file-invalid"),
+                        file.sha256,
+                        "series-preimage-digest-mismatch",
+                    )
+                }
+                val patchPath = resolveRegularFile(catalog.root, patch.file, "patch-file-invalid")
+                applyPatch(
+                    workingDirectory = overlay,
+                    patchPath = patchPath,
+                    failureCode = "runtime.source-patch.series-apply-failed",
+                )
+                patch.createdPostimages.forEach { file ->
+                    requireDigest(
+                        resolveRegularFile(overlay, file.path, "series-postimage-file-invalid"),
+                        file.sha256,
+                        "series-postimage-digest-mismatch",
+                    )
+                }
+            }
+        } finally {
+            deleteTree(overlay)
+        }
     }
 
     private fun verifyAppliedOverlay(source: Path, patchPath: Path, patch: CefSourcePatch) {
@@ -199,7 +234,12 @@ public object CefSourcePatchVerifier {
         return paths
     }
 
-    private fun requireAdapterAbiFingerprint(manifest: CefSourcePatchManifest, header: Path) {
+    private fun requireAbiFingerprint(
+        manifest: CefSourcePatchManifest,
+        expected: String,
+        header: Path,
+        label: String,
+    ) {
         val text = try {
             Files.readString(header)
         } catch (error: Exception) {
@@ -211,14 +251,14 @@ public object CefSourcePatchVerifier {
             )
         }
         val fingerprints = SHA256_HEX.findAll(text).toList()
-        if (fingerprints.size != 1 || fingerprints.single().value != manifest.adapterAbiFingerprint) {
+        if (fingerprints.size != 1 || fingerprints.single().value != expected) {
             failure(
                 code = "runtime.source-patch.abi-header-fingerprint-mismatch",
                 details = mapOf(
-                    "expected" to manifest.adapterAbiFingerprint,
+                    "expected" to expected,
                     "actual" to fingerprints.joinToString(",") { match -> match.value },
                 ),
-                message = "The patched CEF ABI header does not embed the manifest fingerprint exactly once.",
+                message = "The patched CEF $label ABI header does not embed the manifest fingerprint exactly once.",
             )
         }
         val derived = deriveAdapterAbiFingerprint(
@@ -227,10 +267,10 @@ public object CefSourcePatchVerifier {
             chromiumVersion = manifest.chromiumVersion,
             header = text,
         )
-        if (derived != manifest.adapterAbiFingerprint) {
+        if (label == "adapter" && derived != expected) {
             failure(
                 code = "runtime.source-patch.abi-fingerprint-derived-mismatch",
-                details = mapOf("expected" to manifest.adapterAbiFingerprint, "actual" to derived),
+                details = mapOf("expected" to expected, "actual" to derived),
                 message = "The CEF extension adapter fingerprint was not derived from its pinned ABI schema.",
             )
         }
@@ -460,6 +500,7 @@ public object CefSourcePatchVerifier {
     private const val MAXIMUM_PROCESS_OUTPUT_BYTES: Int = 1024 * 1024
     private const val MAXIMUM_ERROR_TEXT_LENGTH: Int = 4096
     private const val ADAPTER_ABI_HEADER: String = "include/internal/cef_kweb_extension_abi.h"
+    private const val NETWORK_ABI_HEADER: String = "include/internal/cef_kweb_network_abi.h"
     private val PATCH_TARGET: Regex = Regex("diff --git a/([^ ]+) b/([^ ]+)")
     private val SHA256_HEX: Regex = Regex("[0-9a-f]{64}")
 }

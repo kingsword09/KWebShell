@@ -1,6 +1,8 @@
 #include "kwebshell/native/engine_abi.h"
 
 #include <atomic>
+#include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -9,6 +11,8 @@
 #include <new>
 #include <thread>
 #include <utility>
+#include <string>
+#include <tuple>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -18,9 +22,16 @@
 #include "browser_session.h"
 #include "engine_internal.h"
 #include "engine_platform.h"
+#include "network_policy.h"
 #include "extension_session.h"
+#include "utf8_validation.h"
+#include "include/base/cef_bind.h"
+#include "include/base/cef_callback.h"
 #include "include/cef_app.h"
 #include "include/cef_browser_process_handler.h"
+#include "include/cef_task.h"
+#include "include/cef_waitable_event.h"
+#include "include/wrapper/cef_closure_task.h"
 
 namespace kwebshell {
 namespace {
@@ -32,6 +43,31 @@ void AssignCefPath(cef_string_t *output, const std::filesystem::path &path) {
 #else
   cef_path = path.string();
 #endif
+}
+
+std::filesystem::path PathFromUtf8(const char *data, size_t size) {
+#if defined(_WIN32)
+  const auto *begin = reinterpret_cast<const char8_t *>(data);
+  return std::filesystem::path(std::u8string(begin, begin + size));
+#else
+  return std::filesystem::path(std::string(data, size));
+#endif
+}
+
+bool IsSupportedProfilePath(const std::filesystem::path &root,
+                            const std::filesystem::path &profile) {
+  if (!root.is_absolute() || !profile.is_absolute()) return false;
+  const auto relative = profile.lexically_normal().lexically_relative(
+      root.lexically_normal());
+  if (relative.empty() || relative.is_absolute() || relative == "." ||
+      relative == ".." || std::distance(relative.begin(), relative.end()) != 1) {
+    return false;
+  }
+  std::string name = profile.filename().string();
+  std::transform(name.begin(), name.end(), name.begin(), [](char value) {
+    return static_cast<char>(std::tolower(static_cast<unsigned char>(value)));
+  });
+  return name != "default" && name != "." && name != "..";
 }
 
 class Engine;
@@ -62,8 +98,12 @@ private:
 class Engine final {
 public:
   Engine(kweb_engine_handle handle, kweb_engine_event_callback callback,
-         void *user_data, ValidatedEngineConfiguration configuration)
+         void *user_data, kweb_profile_data_event_callback profile_data_callback,
+         void *profile_data_user_data,
+         ValidatedEngineConfiguration configuration)
       : handle_(handle), callback_(callback), user_data_(user_data),
+        profile_data_callback_(profile_data_callback),
+        profile_data_user_data_(profile_data_user_data),
         configuration_(std::move(configuration)),
         application_(new EngineApplication(this)) {}
 
@@ -163,11 +203,100 @@ public:
     }
   }
 
+  kweb_status ProfileNetwork(uint64_t request_id,
+                             kweb_profile_data_operation_type operation,
+                             const std::filesystem::path &profile_path,
+                             std::string payload) {
+    if (!profile_data_callback_ || request_id == 0) {
+      return KWEB_STATUS_INVALID_ARGUMENT;
+    }
+    if (CefCurrentlyOn(TID_UI)) return KWEB_STATUS_WRONG_THREAD;
+    std::shared_ptr<PreparedNetworkPolicy> prepared;
+    const kweb_status validation_status =
+        PrepareProfileNetworkPolicy(profile_path, payload, &prepared);
+    if (validation_status != KWEB_STATUS_OK) return validation_status;
+    auto self = this;
+    if (!CefPostTask(
+            TID_UI,
+            base::BindOnce(
+                [](Engine *engine, uint64_t request_id,
+                   kweb_profile_data_operation_type operation,
+                   std::filesystem::path profile_path,
+                   std::shared_ptr<PreparedNetworkPolicy> prepared) {
+                  engine->StartProfileNetwork(engine, request_id, operation,
+                                              profile_path, std::move(prepared));
+                },
+                self, request_id, operation, profile_path, std::move(prepared)))) {
+      return KWEB_STATUS_CEF_UI_TASK_FAILED;
+    }
+    return KWEB_STATUS_OK;
+  }
+
+  kweb_status ClearProfileNetwork(const std::filesystem::path &profile_path) {
+    if (CefCurrentlyOn(TID_UI)) {
+      return ClearProfileNetworkOnUi(profile_path);
+    }
+    CefRefPtr<CefWaitableEvent> completed =
+        CefWaitableEvent::CreateWaitableEvent(false, false);
+    std::atomic<kweb_status> result{KWEB_STATUS_INTERNAL_ERROR};
+    if (!CefPostTask(
+            TID_UI,
+            base::BindOnce(
+                [](Engine *engine, std::filesystem::path path,
+                   std::atomic<kweb_status> *result,
+                   CefRefPtr<CefWaitableEvent> completed) {
+                  result->store(engine->ClearProfileNetworkOnUi(path),
+                                std::memory_order_release);
+                  completed->Signal();
+                },
+                this, profile_path, base::Unretained(&result),
+                completed))) {
+      return KWEB_STATUS_CEF_UI_TASK_FAILED;
+    }
+    completed->Wait();
+    return result.load(std::memory_order_acquire);
+  }
+
   const std::filesystem::path &root_cache_path() const {
     return configuration_.root_cache_path;
   }
 
-private:
+  kweb_status StartProfileNetwork(
+      Engine *engine, uint64_t request_id,
+      kweb_profile_data_operation_type operation,
+      const std::filesystem::path &profile_path,
+      std::shared_ptr<PreparedNetworkPolicy> prepared) {
+    (void)engine;
+    if (operation == KWEB_PROFILE_DATA_SET_NETWORK_POLICY) {
+      std::string result;
+      const kweb_status status =
+          SetProfileNetworkPolicy(profile_path, prepared, &result);
+      EmitProfileData(request_id, operation, status, std::move(result));
+      return KWEB_STATUS_OK;
+    }
+    EmitProfileData(request_id, operation, KWEB_STATUS_INVALID_ARGUMENT, {});
+    return KWEB_STATUS_OK;
+  }
+
+  kweb_status ClearProfileNetworkOnUi(
+      const std::filesystem::path &profile_path) {
+    return ReleaseProfileContext(profile_path);
+  }
+
+  void EmitProfileData(uint64_t request_id,
+                       kweb_profile_data_operation_type operation,
+                       kweb_status status, std::string payload) {
+    if (!profile_data_callback_) {
+      return;
+    }
+    const kweb_profile_data_event event = {
+        sizeof(kweb_profile_data_event), KWEB_ABI_VERSION, operation, 0,
+        handle_, KWEB_INVALID_BROWSER_HANDLE, request_id, status,
+        {payload.data(), payload.size()}};
+    std::lock_guard lock(callback_mutex_);
+    profile_data_callback_(profile_data_user_data_, &event);
+  }
+
   void Emit(kweb_engine_event_type type) {
     std::lock_guard lock(callback_mutex_);
     const kweb_engine_event event = {sizeof(kweb_engine_event),
@@ -182,6 +311,8 @@ private:
   const kweb_engine_handle handle_;
   const kweb_engine_event_callback callback_;
   void *const user_data_;
+  const kweb_profile_data_event_callback profile_data_callback_;
+  void *const profile_data_user_data_;
   const ValidatedEngineConfiguration configuration_;
   CefRefPtr<EngineApplication> application_;
   std::mutex callback_mutex_;
@@ -250,7 +381,7 @@ public:
     if (config->reserved != 0) {
       return KWEB_STATUS_INVALID_ARGUMENT;
     }
-    if (config->callback == nullptr) {
+    if (config->callback == nullptr || config->profile_data_callback == nullptr) {
       return KWEB_STATUS_INVALID_ARGUMENT;
     }
 
@@ -290,7 +421,9 @@ public:
     std::shared_ptr<Engine> engine;
     try {
       engine = std::make_shared<Engine>(
-          handle, config->callback, config->user_data, std::move(validated));
+          handle, config->callback, config->user_data,
+          config->profile_data_callback, config->profile_data_user_data,
+          std::move(validated));
     } catch (...) {
       ResetBeforeInitialization();
       throw;
@@ -365,6 +498,106 @@ public:
           (void)keep_alive;
           CompleteClose(handle, status);
         });
+  }
+
+  kweb_status ProfileNetwork(kweb_engine_handle handle, uint64_t request_id,
+                             kweb_profile_data_operation_type operation,
+                             const char *profile_path_utf8,
+                             size_t profile_path_size,
+                             const char *payload_utf8, size_t payload_size) {
+    std::shared_ptr<Engine> engine;
+    {
+      std::lock_guard lock(mutex_);
+      if (handle == KWEB_INVALID_ENGINE_HANDLE || !engine_ ||
+          handle != current_handle()) {
+        return KWEB_STATUS_INVALID_HANDLE;
+      }
+      if (state_ == RegistryState::kClosing) {
+        return KWEB_STATUS_ENGINE_CLOSING;
+      }
+      if (state_ != RegistryState::kRunning) {
+        return KWEB_STATUS_INVALID_HANDLE;
+      }
+      engine = engine_;
+    }
+    if (request_id == 0 || profile_path_utf8 == nullptr ||
+        profile_path_size == 0 || profile_path_size > 32768 ||
+        !IsValidUtf8(profile_path_utf8, profile_path_size) ||
+        payload_size > 256 * 1024 ||
+        (payload_size > 0 && payload_utf8 == nullptr) ||
+        (payload_size > 0 && !IsValidUtf8(payload_utf8, payload_size)) ||
+        operation != KWEB_PROFILE_DATA_SET_NETWORK_POLICY) {
+      return KWEB_STATUS_INVALID_ARGUMENT;
+    }
+    const auto profile_path = PathFromUtf8(profile_path_utf8, profile_path_size);
+    if (!IsSupportedProfilePath(engine->root_cache_path(), profile_path)) {
+      return KWEB_STATUS_PROFILE_PATH_INVALID;
+    }
+    return engine->ProfileNetwork(
+        request_id, operation, profile_path,
+        std::string(payload_utf8 == nullptr ? "" : payload_utf8,
+                    payload_size));
+  }
+
+  kweb_status ClearProfileNetwork(kweb_engine_handle handle,
+                                  const char *profile_path_utf8,
+                                  size_t profile_path_size) {
+    std::shared_ptr<Engine> engine;
+    {
+      std::lock_guard lock(mutex_);
+      if (handle == KWEB_INVALID_ENGINE_HANDLE || !engine_ ||
+          handle != current_handle()) {
+        return KWEB_STATUS_INVALID_HANDLE;
+      }
+      if (state_ == RegistryState::kClosing) {
+        return KWEB_STATUS_ENGINE_CLOSING;
+      }
+      if (state_ != RegistryState::kRunning) {
+        return KWEB_STATUS_INVALID_HANDLE;
+      }
+      engine = engine_;
+    }
+    if (profile_path_utf8 == nullptr || profile_path_size == 0 ||
+        profile_path_size > 32768 ||
+        !IsValidUtf8(profile_path_utf8, profile_path_size)) {
+      return KWEB_STATUS_INVALID_ARGUMENT;
+    }
+    const auto profile_path = PathFromUtf8(profile_path_utf8, profile_path_size);
+    if (!IsSupportedProfilePath(engine->root_cache_path(), profile_path)) {
+      return KWEB_STATUS_PROFILE_PATH_INVALID;
+    }
+    return engine->ClearProfileNetwork(profile_path);
+  }
+
+  kweb_status OpenProfileContext(kweb_engine_handle handle,
+                                 const char *profile_path_utf8,
+                                 size_t profile_path_size) {
+    std::shared_ptr<Engine> engine;
+    {
+      std::lock_guard lock(mutex_);
+      if (handle == KWEB_INVALID_ENGINE_HANDLE || !engine_ ||
+          handle != current_handle()) {
+        return KWEB_STATUS_INVALID_HANDLE;
+      }
+      if (state_ == RegistryState::kClosing) {
+        return KWEB_STATUS_ENGINE_CLOSING;
+      }
+      if (state_ != RegistryState::kRunning) {
+        return KWEB_STATUS_INVALID_HANDLE;
+      }
+      engine = engine_;
+    }
+    if (CefCurrentlyOn(TID_UI)) return KWEB_STATUS_WRONG_THREAD;
+    if (profile_path_utf8 == nullptr || profile_path_size == 0 ||
+        profile_path_size > 32768 ||
+        !IsValidUtf8(profile_path_utf8, profile_path_size)) {
+      return KWEB_STATUS_INVALID_ARGUMENT;
+    }
+    const auto profile_path = PathFromUtf8(profile_path_utf8, profile_path_size);
+    if (!IsSupportedProfilePath(engine->root_cache_path(), profile_path)) {
+      return KWEB_STATUS_PROFILE_PATH_INVALID;
+    }
+    return EnsureProfileContext(profile_path);
   }
 
   uint64_t LiveCount() const {
@@ -569,6 +802,20 @@ const char *KWEB_ABI_CALL kweb_status_name(kweb_status status) {
     return "profile-data-result-invalid";
   case KWEB_STATUS_PROFILE_DATA_TIMEOUT:
     return "profile-data-timeout";
+  case KWEB_STATUS_NETWORK_POLICY_INVALID:
+    return "network-policy-invalid";
+  case KWEB_STATUS_NETWORK_PROXY_UNAVAILABLE:
+    return "network-proxy-unavailable";
+  case KWEB_STATUS_NETWORK_OPERATION_PENDING:
+    return "network-operation-pending";
+  case KWEB_STATUS_NETWORK_USER_AGENT_REQUIRES_PROFILE_REOPEN:
+    return "network-user-agent-requires-profile-reopen";
+  case KWEB_STATUS_NETWORK_PROFILE_CLOSING:
+    return "network-profile-closing";
+  case KWEB_STATUS_NETWORK_RUNTIME_CAPABILITY_MISSING:
+    return "network-runtime-capability-missing";
+  case KWEB_STATUS_PROFILE_CONTEXT_INITIALIZATION_FAILED:
+    return "profile-context-initialization-failed";
   default:
     return "unknown-status";
   }
@@ -599,6 +846,36 @@ uint64_t KWEB_ABI_CALL kweb_live_engine_count(void) {
   } catch (...) {
     return std::numeric_limits<uint64_t>::max();
   }
+}
+
+kweb_status KWEB_ABI_CALL kweb_engine_profile_network(
+    kweb_engine_handle engine, uint64_t request_id,
+    kweb_profile_data_operation_type operation,
+    const char *profile_path_utf8, size_t profile_path_size,
+    const char *payload_utf8, size_t payload_size) {
+  return kwebshell::GuardStatus([&] {
+    return kwebshell::Registry().ProfileNetwork(
+        engine, request_id, operation, profile_path_utf8, profile_path_size,
+        payload_utf8, payload_size);
+  });
+}
+
+kweb_status KWEB_ABI_CALL kweb_engine_clear_profile_network_policy(
+    kweb_engine_handle engine, const char *profile_path_utf8,
+    size_t profile_path_size) {
+  return kwebshell::GuardStatus([&] {
+    return kwebshell::Registry().ClearProfileNetwork(
+        engine, profile_path_utf8, profile_path_size);
+  });
+}
+
+kweb_status KWEB_ABI_CALL kweb_engine_open_profile_context(
+    kweb_engine_handle engine, const char *profile_path_utf8,
+    size_t profile_path_size) {
+  return kwebshell::GuardStatus([&] {
+    return kwebshell::Registry().OpenProfileContext(
+        engine, profile_path_utf8, profile_path_size);
+  });
 }
 
 kweb_status KWEB_ABI_CALL kweb_browser_create(

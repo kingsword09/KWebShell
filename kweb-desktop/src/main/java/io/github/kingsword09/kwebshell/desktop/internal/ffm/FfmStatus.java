@@ -20,6 +20,17 @@ public final class FfmStatus {
     public static final int PATH_MISMATCH = 22;
     public static final int EXTENSION_OPERATION_NOT_FOUND = 51;
     public static final int EXTENSION_RESULT_INVALID = 52;
+    public static final int NETWORK_POLICY_INVALID = 60;
+    public static final int NETWORK_PROXY_UNAVAILABLE = 61;
+    public static final int NETWORK_OPERATION_PENDING = 62;
+    public static final int NETWORK_USER_AGENT_REQUIRES_PROFILE_REOPEN = 63;
+    public static final int NETWORK_PROFILE_CLOSING = 64;
+    public static final int NETWORK_RUNTIME_CAPABILITY_MISSING = 65;
+    public static final int NETWORK_PROXY_INVALID = 66;
+    public static final int NETWORK_HEADER_FORBIDDEN = 67;
+    public static final int NETWORK_REDIRECT_INVALID = 68;
+    public static final int NETWORK_POLICY_LIMIT_EXCEEDED = 69;
+    public static final int PROFILE_CONTEXT_INITIALIZATION_FAILED = 70;
 
     private FfmStatus() {
     }

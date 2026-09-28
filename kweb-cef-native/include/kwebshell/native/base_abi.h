@@ -11,7 +11,7 @@
 #define KWEB_ABI_CALL
 #endif
 
-#define KWEB_ABI_VERSION ((uint32_t)12)
+#define KWEB_ABI_VERSION ((uint32_t)14)
 
 typedef uint32_t kweb_status;
 
@@ -75,5 +75,16 @@ typedef uint32_t kweb_status;
 #define KWEB_STATUS_PROFILE_DATA_NOT_SUPPORTED ((kweb_status)57)
 #define KWEB_STATUS_PROFILE_DATA_RESULT_INVALID ((kweb_status)58)
 #define KWEB_STATUS_PROFILE_DATA_TIMEOUT ((kweb_status)59)
+#define KWEB_STATUS_NETWORK_POLICY_INVALID ((kweb_status)60)
+#define KWEB_STATUS_NETWORK_PROXY_UNAVAILABLE ((kweb_status)61)
+#define KWEB_STATUS_NETWORK_OPERATION_PENDING ((kweb_status)62)
+#define KWEB_STATUS_NETWORK_USER_AGENT_REQUIRES_PROFILE_REOPEN ((kweb_status)63)
+#define KWEB_STATUS_NETWORK_PROFILE_CLOSING ((kweb_status)64)
+#define KWEB_STATUS_NETWORK_RUNTIME_CAPABILITY_MISSING ((kweb_status)65)
+#define KWEB_STATUS_NETWORK_PROXY_INVALID ((kweb_status)66)
+#define KWEB_STATUS_NETWORK_HEADER_FORBIDDEN ((kweb_status)67)
+#define KWEB_STATUS_NETWORK_REDIRECT_INVALID ((kweb_status)68)
+#define KWEB_STATUS_NETWORK_POLICY_LIMIT_EXCEEDED ((kweb_status)69)
+#define KWEB_STATUS_PROFILE_CONTEXT_INITIALIZATION_FAILED ((kweb_status)70)
 
 #endif // KWEBSHELL_NATIVE_BASE_ABI_H_

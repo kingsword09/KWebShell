@@ -93,6 +93,7 @@ def load_manifest(path=MANIFEST_PATH):
         "depotToolsCommit",
         "adapterAbiVersion",
         "adapterAbiFingerprint",
+        "networkAbiFingerprint",
         "sisoVersion",
         "gnDefines",
         "exports",
@@ -101,7 +102,7 @@ def load_manifest(path=MANIFEST_PATH):
     }
     if set(manifest) != required:
         raise BuildFailure("The source patch manifest fields differ from the build contract.")
-    if manifest["schemaVersion"] != 1 or len(manifest["patches"]) != 1:
+    if manifest["schemaVersion"] != 1 or not manifest["patches"]:
         raise BuildFailure("The source patch manifest schema is unsupported.")
     return manifest
 
@@ -215,16 +216,18 @@ def bootstrap_sources(work_dir, target, manifest):
         ],
         cwd=REPOSITORY_ROOT,
     )
-    patch = REPOSITORY_ROOT / "runtime" / "cef" / manifest["patches"][0]["file"]
-    run(["git", "-C", cef_source, "apply", "--index", "--whitespace=error", patch])
+    for patch_manifest in manifest["patches"]:
+        patch = REPOSITORY_ROOT / "runtime" / "cef" / patch_manifest["file"]
+        run(["git", "-C", cef_source, "apply", "--index", "--whitespace=error", patch])
     changed = run(["git", "-C", cef_source, "diff", "--cached", "--name-only"], capture=True).splitlines()
-    expected = sorted(
+    expected = sorted({
         image["path"]
+        for patch_manifest in manifest["patches"]
         for group in ("modifiedPreimages", "createdPostimages")
-        for image in manifest["patches"][0][group]
-    )
+        for image in patch_manifest[group]
+    })
     if sorted(changed) != expected:
-        raise BuildFailure(f"Applied patch changed unexpected files: {changed}")
+        raise BuildFailure(f"Applied patch series changed unexpected files: {changed}")
     run(["git", "-C", cef_source, "diff", "--cached", "--check"])
     return chromium_source, cef_source, depot_tools
 
@@ -321,7 +324,7 @@ def build_distribution(
         "chromiumCommit": manifest["chromiumCommit"],
         "depotToolsCommit": manifest["depotToolsCommit"],
         "sisoVersion": manifest["sisoVersion"],
-        "sourcePatchSha256": manifest["patches"][0]["sha256"],
+        "sourcePatchSha256s": [patch["sha256"] for patch in manifest["patches"]],
     }
     metadata_path = output_dir / f"{final_name}.metadata.json"
     metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
@@ -334,11 +337,21 @@ def verify_distribution(chromium_source, distribution_root, library, target, man
     header = distribution_root / "include" / "internal" / "cef_kweb_extension_abi.h"
     expected_header_digest = next(
         image["sha256"]
-        for image in manifest["patches"][0]["createdPostimages"]
+        for patch in manifest["patches"]
+        for image in patch["createdPostimages"]
         if image["path"] == "include/internal/cef_kweb_extension_abi.h"
     )
     if not header.is_file() or sha256_file(header) != expected_header_digest:
         raise BuildFailure("The minimal distribution contains the wrong adapter ABI header.")
+    network_header = distribution_root / "include" / "internal" / "cef_kweb_network_abi.h"
+    expected_network_header_digest = next(
+        image["sha256"]
+        for patch in manifest["patches"]
+        for image in patch["createdPostimages"]
+        if image["path"] == "include/internal/cef_kweb_network_abi.h"
+    )
+    if not network_header.is_file() or sha256_file(network_header) != expected_network_header_digest:
+        raise BuildFailure("The minimal distribution contains the wrong network ABI header.")
 
     llvm_bin = chromium_source / "third_party" / "llvm-build" / "Release+Asserts" / "bin"
     if target == "windows-x64":
@@ -369,6 +382,15 @@ def verify_distribution(chromium_source, distribution_root, library, target, man
     if actual_fingerprint != manifest["adapterAbiFingerprint"]:
         raise BuildFailure(
             f"Custom libcef fingerprint is {actual_fingerprint}, expected {manifest['adapterAbiFingerprint']}."
+        )
+    network_fingerprint = cef.cef_kweb_network_abi_fingerprint
+    network_fingerprint.restype = ctypes.c_char_p
+    actual_network_fingerprint = network_fingerprint()
+    actual_network_fingerprint = actual_network_fingerprint.decode("ascii") if actual_network_fingerprint else ""
+    if actual_network_fingerprint != manifest["networkAbiFingerprint"]:
+        raise BuildFailure(
+            f"Custom libcef network fingerprint is {actual_network_fingerprint}, "
+            f"expected {manifest['networkAbiFingerprint']}."
         )
 
 

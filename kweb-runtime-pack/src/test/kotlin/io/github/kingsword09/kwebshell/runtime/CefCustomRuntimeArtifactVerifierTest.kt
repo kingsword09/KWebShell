@@ -31,7 +31,7 @@ class CefCustomRuntimeArtifactVerifierTest {
     }
 
     @Test
-    fun rejectsMissingAdapterEvidence() = withFixture(includeAllEvidence = false) { fixture ->
+    fun rejectsMissingNetworkAbiEvidence() = withFixture(includeAllEvidence = false) { fixture ->
         assertCode("runtime.custom-runtime.adapter-evidence-missing") {
             CefCustomRuntimeArtifactVerifier.verify(fixture.archive, fixture.catalog, TARGET)
         }
@@ -56,8 +56,9 @@ class CefCustomRuntimeArtifactVerifierTest {
                 "kwebshell-cef_${manifest.cefVersion}_${TARGET.id}_abi${manifest.adapterAbiVersion}.zip"
             val archive = root.resolve(fileName)
             val distributionRoot = "cef_binary_${manifest.cefVersion}_macosarm64_minimal"
-            val header = "pinned ABI header\n".toByteArray(StandardCharsets.UTF_8)
-            val evidence = manifest.exports + manifest.adapterAbiFingerprint
+            val header = "pinned extension ABI header\n".toByteArray(StandardCharsets.UTF_8)
+            val networkHeader = "pinned network ABI header\n".toByteArray(StandardCharsets.UTF_8)
+            val evidence = manifest.exports + manifest.adapterAbiFingerprint + manifest.networkAbiFingerprint
             val included = if (includeAllEvidence) evidence else evidence.dropLast(1)
             val library = included.joinToString("\u0000", postfix = "\u0000")
                 .toByteArray(StandardCharsets.US_ASCII)
@@ -67,6 +68,7 @@ class CefCustomRuntimeArtifactVerifierTest {
                     library,
                 )
                 zip.writeEntry("$distributionRoot/include/internal/cef_kweb_extension_abi.h", header)
+                zip.writeEntry("$distributionRoot/include/internal/cef_kweb_network_abi.h", networkHeader)
                 if (extraEntry != null) zip.writeEntry(extraEntry, byteArrayOf(1))
             }
             val artifact = CefCustomRuntimeArtifact(
@@ -83,6 +85,8 @@ class CefCustomRuntimeArtifactVerifierTest {
                         createdPostimages = patch.createdPostimages.map { image ->
                             if (image.path == "include/internal/cef_kweb_extension_abi.h") {
                                 image.copy(sha256 = sha256(header))
+                            } else if (image.path == "include/internal/cef_kweb_network_abi.h") {
+                                image.copy(sha256 = sha256(networkHeader))
                             } else {
                                 image
                             }
@@ -109,6 +113,7 @@ class CefCustomRuntimeArtifactVerifierTest {
         depotToolsCommit = "3".repeat(40),
         adapterAbiVersion = 1,
         adapterAbiFingerprint = "a".repeat(64),
+        networkAbiFingerprint = "b".repeat(64),
         sisoVersion = "git_revision:${"4".repeat(40)}",
         gnDefines = listOf("is_official_build=true", "symbol_level=0"),
         exports = listOf(
@@ -124,6 +129,7 @@ class CefCustomRuntimeArtifactVerifierTest {
                 modifiedPreimages = listOf(CefSourceFileDigest("BUILD.gn", "6".repeat(64))),
                 createdPostimages = listOf(
                     CefSourceFileDigest("include/internal/cef_kweb_extension_abi.h", "7".repeat(64)),
+                    CefSourceFileDigest("include/internal/cef_kweb_network_abi.h", "8".repeat(64)),
                 ),
             ),
         ),

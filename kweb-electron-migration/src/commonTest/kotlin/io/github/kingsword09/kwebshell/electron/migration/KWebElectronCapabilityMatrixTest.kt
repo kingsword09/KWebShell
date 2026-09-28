@@ -53,6 +53,19 @@ class KWebElectronCapabilityMatrixTest {
             KWebElectronMappingStatus.DIRECT,
             KWebElectronCapabilityMatrix.find("session-storage-clear")?.status,
         )
+        assertEquals(
+            KWebElectronMappingStatus.REWRITE,
+            KWebElectronCapabilityMatrix.find("session-web-request")?.status,
+        )
+        assertEquals(
+            KWebElectronMappingStatus.UNSUPPORTED,
+            KWebElectronCapabilityMatrix.find("session-set-proxy")?.status,
+        )
+        assertEquals(
+            KWebElectronMappingStatus.UNSUPPORTED,
+            KWebElectronCapabilityMatrix.find("session-resolve-proxy")?.status,
+        )
+        assertEquals("", KWebElectronCapabilityMatrix.find("session-resolve-proxy")?.kweb)
         assertNotNull(KWebElectronCapabilityMatrix.find("node-runtime"))
         assertTrue(KWebElectronCapabilityMatrix.entries.size >= 18)
     }

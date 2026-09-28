@@ -40,7 +40,9 @@ public final class FfmLayouts {
         STRING_VIEW.withName("root_cache_path"),
         STRING_VIEW.withName("log_path"),
         INT32.withName("remote_debugging_port"),
-        UINT32.withName("reserved")
+        UINT32.withName("reserved"),
+        POINTER.withName("profile_data_callback"),
+        POINTER.withName("profile_data_user_data")
     ).withName("kweb_engine_config");
 
     public static final GroupLayout BROWSER_EVENT = MemoryLayout.structLayout(

@@ -23,11 +23,14 @@ import io.github.kingsword09.kwebshell.core.KWebCookieSpec
 import io.github.kingsword09.kwebshell.core.KWebProfileDataClearResult
 import io.github.kingsword09.kwebshell.core.KWebProfileDataFilter
 import io.github.kingsword09.kwebshell.core.KWebProfileFlushResult
+import io.github.kingsword09.kwebshell.core.KWebNetworkPolicy
+import io.github.kingsword09.kwebshell.core.KWebNetworkRequestEvent
 import io.github.kingsword09.kwebshell.core.KWebSpellcheckConfiguration
 import io.github.kingsword09.kwebshell.core.KWebSpellcheckState
 import io.github.kingsword09.kwebshell.core.KWebStorageUsage
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -173,6 +176,7 @@ private class RecordingProfile : KWebProfile {
 
     override val name: String = "test"
     override val lifecycle = mutableLifecycle
+    override val networkEvents = emptyFlow<KWebNetworkRequestEvent>()
 
     override suspend fun openPage(host: KWebPageHost, initialUrl: String, bounds: KWebRect): KWebPage =
         RecordingPage()
@@ -221,6 +225,8 @@ private class RecordingProfile : KWebProfile {
         enabled = configuration.enabled,
         languages = configuration.languages,
     )
+
+    override suspend fun configureNetworkPolicy(policy: KWebNetworkPolicy) = Unit
 
     override suspend fun flush(target: KWebPage): KWebProfileFlushResult =
         KWebProfileFlushResult(completedEpochMillis = 0)

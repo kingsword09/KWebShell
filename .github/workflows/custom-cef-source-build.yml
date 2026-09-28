@@ -122,6 +122,10 @@ jobs:
             -PcefRoot="$KWEB_CUSTOM_CEF_ROOT" \
             -PkwebExpectCustomExtensionRuntime=true \
             -PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}
+          ./gradlew --no-daemon :kweb-desktop:networkPolicyIntegrationTest \
+            -PcefRoot="$KWEB_CUSTOM_CEF_ROOT" \
+            -PkwebExpectCustomExtensionRuntime=true \
+            -PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}
           ./gradlew --no-daemon :kweb-desktop:extensionLifecycleIntegrationTest \
             -PcefRoot="$KWEB_CUSTOM_CEF_ROOT" \
             -PkwebExpectCustomExtensionRuntime=true \

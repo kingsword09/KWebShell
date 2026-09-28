@@ -2,7 +2,7 @@ package io.github.kingsword09.kwebshell.desktop.internal
 
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 
-internal const val NATIVE_ABI_VERSION: Int = 12
+internal const val NATIVE_ABI_VERSION: Int = 14
 
 internal enum class NativeStatus(
     val value: Int,
@@ -68,6 +68,17 @@ internal enum class NativeStatus(
     PROFILE_DATA_NOT_SUPPORTED(57, "profile-data-not-supported"),
     PROFILE_DATA_RESULT_INVALID(58, "profile-data-result-invalid"),
     PROFILE_DATA_TIMEOUT(59, "profile-data-timeout"),
+    NETWORK_POLICY_INVALID(60, "network-policy-invalid"),
+    NETWORK_PROXY_UNAVAILABLE(61, "network-proxy-unavailable"),
+    NETWORK_OPERATION_PENDING(62, "network-operation-pending"),
+    NETWORK_USER_AGENT_REQUIRES_PROFILE_REOPEN(63, "network-user-agent-requires-profile-reopen"),
+    NETWORK_PROFILE_CLOSING(64, "network-profile-closing"),
+    NETWORK_RUNTIME_CAPABILITY_MISSING(65, "network-runtime-capability-missing"),
+    NETWORK_PROXY_INVALID(66, "network-proxy-invalid"),
+    NETWORK_HEADER_FORBIDDEN(67, "network-header-forbidden"),
+    NETWORK_REDIRECT_INVALID(68, "network-redirect-invalid"),
+    NETWORK_POLICY_LIMIT_EXCEEDED(69, "network-policy-limit-exceeded"),
+    PROFILE_CONTEXT_INITIALIZATION_FAILED(70, "profile-context-initialization-failed"),
     ;
 
     companion object {
@@ -91,5 +102,35 @@ internal fun nativeStatusException(
         ),
         message = "Native operation '$operation' failed with status '$statusId' ($value).",
         cause = cause,
+    )
+}
+
+internal fun profileNetworkStatusException(
+    operation: String,
+    value: Int,
+    details: Map<String, String> = emptyMap(),
+): KWebNativeException {
+    val code = when (value) {
+        NativeStatus.WRONG_THREAD.value -> "network.operation-wrong-thread"
+        NativeStatus.NETWORK_POLICY_INVALID.value -> "network.policy.invalid"
+        NativeStatus.NETWORK_PROXY_INVALID.value -> "network.proxy.invalid"
+        NativeStatus.NETWORK_HEADER_FORBIDDEN.value -> "network.header.forbidden"
+        NativeStatus.NETWORK_REDIRECT_INVALID.value -> "network.redirect.invalid"
+        NativeStatus.NETWORK_POLICY_LIMIT_EXCEEDED.value -> "network.policy.limit-exceeded"
+        NativeStatus.NETWORK_PROXY_UNAVAILABLE.value -> "network.proxy.unavailable"
+        NativeStatus.NETWORK_OPERATION_PENDING.value -> "network.operation-pending"
+        NativeStatus.NETWORK_USER_AGENT_REQUIRES_PROFILE_REOPEN.value ->
+            "network.user-agent-requires-profile-reopen"
+        NativeStatus.NETWORK_PROFILE_CLOSING.value -> "network.profile-closing"
+        NativeStatus.NETWORK_RUNTIME_CAPABILITY_MISSING.value ->
+            "network.runtime-capability-missing"
+        NativeStatus.PROFILE_CONTEXT_INITIALIZATION_FAILED.value ->
+            "profile.context-initialization-failed"
+        else -> return nativeStatusException(operation, value, details)
+    }
+    return KWebNativeException(
+        code = code,
+        details = details + mapOf("operation" to operation, "status" to value.toString()),
+        message = "Native Profile network operation '$operation' failed with '$code'.",
     )
 }

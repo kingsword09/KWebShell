@@ -15,6 +15,7 @@ public final class FfmBindings {
 
     public static long engineCreate(
         FfmCallbacks.EngineEvent sink,
+        FfmCallbacks.ProfileDataEvent profileDataSink,
         FfmCallbacks.Failure failureSink,
         String cefRuntimePath,
         String browserSubprocessPath,
@@ -26,6 +27,7 @@ public final class FfmBindings {
     ) {
         return FfmEngineCalls.create(
             sink,
+            profileDataSink,
             failureSink,
             cefRuntimePath,
             browserSubprocessPath,
@@ -47,6 +49,24 @@ public final class FfmBindings {
 
     public static long liveEngineCount() {
         return FfmEngineCalls.liveCount();
+    }
+
+    public static int engineProfileNetwork(
+        long engine,
+        long requestId,
+        int operation,
+        String profilePath,
+        String payload
+    ) {
+        return FfmEngineCalls.profileNetwork(engine, requestId, operation, profilePath, payload);
+    }
+
+    public static int engineClearProfileNetworkPolicy(long engine, String profilePath) {
+        return FfmEngineCalls.clearProfileNetworkPolicy(engine, profilePath);
+    }
+
+    public static int engineOpenProfileContext(long engine, String profilePath) {
+        return FfmEngineCalls.openProfileContext(engine, profilePath);
     }
 
     public static long browserCreate(

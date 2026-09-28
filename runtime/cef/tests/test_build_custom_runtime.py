@@ -24,6 +24,10 @@ class CustomRuntimeBuildToolTest(unittest.TestCase):
         self.assertEqual("be1e15d8892c064f0299ba18350236a9b272ce7f", manifest["cefCommit"])
         self.assertEqual("28a7a6c409e03c701d3474ef9e3b1f0be6249039", manifest["chromiumCommit"])
         self.assertEqual("94e89b10b92cc9d6e58fc8d1b6474b7d29e8a114", manifest["depotToolsCommit"])
+        self.assertEqual(
+            "4c0d5bdbc917002a5ffa3c2a09be4fb51d12277c8f2cdd8ae28b41b995d43cdb",
+            manifest["networkAbiFingerprint"],
+        )
         self.assertRegex(manifest["sisoVersion"], r"^git_revision:[0-9a-f]{40}$")
         self.assertEqual(["is_official_build=true", "symbol_level=0"], manifest["gnDefines"])
 

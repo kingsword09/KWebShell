@@ -1,5 +1,7 @@
 #include "browser_session.h"
 
+#include "network_policy.h"
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -7,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <functional>
 #include <limits>
 #include <map>
 #include <memory>
@@ -52,6 +55,7 @@ constexpr int64_t kDevToolsOpenTimeoutMs = 30000;
 constexpr int kTerminalQuiescenceTasks = 3;
 constexpr int kProfileContextReleaseQuiescenceTasks = 3;
 constexpr auto kProfileContextReleaseTimeout = std::chrono::seconds(30);
+constexpr auto kProfileContextInitializationTimeout = std::chrono::seconds(30);
 constexpr uint64_t kMaximumBridgeRequestId =
     static_cast<uint64_t>((std::numeric_limits<int64_t>::max)());
 constexpr kweb_browser_handle kMaximumBrowserHandle =
@@ -296,6 +300,11 @@ public:
                                std::filesystem::path *profile_path_out) const;
   void Complete(kweb_browser_handle handle, BrowserSession *session);
   uint64_t LiveCount() const;
+  std::shared_ptr<ProfileContextEntry> GetOrCreateProfileContextEntry(
+      const std::filesystem::path &profile_path);
+  kweb_status EnsureProfileContext(
+      const std::filesystem::path &profile_path,
+      std::function<void(kweb_status)> completion);
 
   // Shared profile request contexts; all access happens on the CEF UI thread.
   std::map<std::filesystem::path, std::shared_ptr<ProfileContextEntry>> &
@@ -305,7 +314,8 @@ public:
   void CompleteProfileContextInitialization(
       const std::shared_ptr<ProfileContextEntry> &entry,
       CefRefPtr<CefRequestContext> context);
-  void ReleaseProfileContexts();
+  kweb_status ReleaseProfileContext(const std::filesystem::path &profile_path);
+  kweb_status ReleaseProfileContexts();
 
 private:
   std::shared_ptr<BrowserSession> Lookup(kweb_browser_handle handle) const;
@@ -342,6 +352,11 @@ public:
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
   CefRefPtr<CefLoadHandler> GetLoadHandler() override { return this; }
   CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
+  CefRefPtr<CefResourceRequestHandler> GetResourceRequestHandler(
+      CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+      CefRefPtr<CefRequest> request, bool is_navigation, bool is_download,
+      const CefString &request_initiator,
+      bool &disable_default_handling) override;
 
   void OnAddressChange(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
                        const CefString &url) override;
@@ -434,6 +449,11 @@ public:
       : entry_(std::move(entry)) {}
   void OnRequestContextInitialized(
       CefRefPtr<CefRequestContext> request_context) override;
+  CefRefPtr<CefResourceRequestHandler> GetResourceRequestHandler(
+      CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+      CefRefPtr<CefRequest> request, bool is_navigation, bool is_download,
+      const CefString &request_initiator,
+      bool &disable_default_handling) override;
 
 private:
   const std::weak_ptr<ProfileContextEntry> entry_;
@@ -501,6 +521,7 @@ struct ProfileContextEntry {
   bool initialized = false;
   bool failed = false;
   PendingWaiters<BrowserSession> pending;
+  std::vector<std::function<void(kweb_status)>> initialization_callbacks;
 };
 
 class BrowserSession final : public std::enable_shared_from_this<BrowserSession> {
@@ -534,6 +555,43 @@ public:
       return KWEB_STATUS_CEF_UI_TASK_FAILED;
     }
     return KWEB_STATUS_OK;
+  }
+
+  CefRefPtr<CefResourceRequestHandler> GetResourceRequestHandler() {
+    const auto state = GetNetworkPolicyState(profile_path_);
+    std::weak_ptr<BrowserSession> weak_session = weak_from_this();
+    return new NetworkPolicyRequestHandler(
+        state, [weak_session](std::string event) {
+          if (auto session = weak_session.lock()) {
+            session->EmitNetworkEvent(std::move(event));
+          }
+        });
+  }
+
+  void EmitNetworkEvent(std::string event) {
+    constexpr size_t kMaximumNetworkEventBytes = 16 * 1024;
+    auto self = shared_from_this();
+    CefPostTask(
+            TID_UI,
+            base::BindOnce(
+                [](std::shared_ptr<BrowserSession> session,
+                   std::string payload) {
+                  if (!session->closing_.load(std::memory_order_acquire) &&
+                      !session->terminal_emitted_.load(std::memory_order_acquire)) {
+                    const bool oversized =
+                        payload.size() > kMaximumNetworkEventBytes;
+                    const std::string event_payload =
+                        oversized ? "network.observation-backpressure"
+                                  : std::move(payload);
+                    session->Emit(
+                        oversized ? KWEB_BROWSER_EVENT_NETWORK_OBSERVATION_FAILED
+                                  : KWEB_BROWSER_EVENT_NETWORK_REQUEST,
+                        0, {}, 0, 0, 0, {}, KWEB_BROWSER_FRAME_MAIN,
+                        KWEB_BROWSER_REASON_NONE, 0, {}, {}, {},
+                        event_payload);
+                  }
+                },
+                std::move(self), std::move(event)));
   }
 
   void ProfileContextFailed(int32_t status_code, const std::string &code) {
@@ -922,6 +980,8 @@ public:
     *profile_path_out = profile_path_;
     return KWEB_STATUS_OK;
   }
+
+  const std::filesystem::path &profile_path() const { return profile_path_; }
 
   bool BridgeQuery(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
                    int64_t query_id, const CefString &request, bool persistent,
@@ -1823,49 +1883,13 @@ private:
       CompleteTerminal();
       return;
     }
-    auto &cache = Registry().ProfileContexts();
-    auto found = cache.find(profile_path_);
-    if (found == cache.end()) {
-      for (auto candidate = cache.begin(); candidate != cache.end();
-           ++candidate) {
-        std::error_code equivalent_error;
-        if (std::filesystem::equivalent(candidate->first, profile_path_,
-                                        equivalent_error) &&
-            !equivalent_error) {
-          found = candidate;
-          break;
-        }
-      }
+    auto entry = Registry().GetOrCreateProfileContextEntry(profile_path_);
+    if (!entry) {
+      TraceCreateStage(handle_, "context-create-failed");
+      Fatal(KWEB_STATUS_BROWSER_CREATE_FAILED, "profile-context-create-failed");
+      return;
     }
-    if (found != cache.end() && found->second->failed) {
-      // The previous initialization of this profile failed; retry with a
-      // fresh context instead of failing every later session on the path.
-      cache.erase(found);
-      found = cache.end();
-    }
-    std::shared_ptr<ProfileContextEntry> entry;
-    if (found != cache.end()) {
-      entry = found->second;
-      profile_path_ = entry->path;
-    } else {
-      entry = std::make_shared<ProfileContextEntry>(profile_path_);
-      CefRequestContextSettings settings;
-#if defined(_WIN32)
-      CefString(&settings.cache_path) = profile_path_.wstring();
-#else
-      CefString(&settings.cache_path) = profile_path_.string();
-#endif
-      settings.persist_session_cookies = true;
-      entry->context = CefRequestContext::CreateContext(
-          settings, new ProfileContextHandler(entry));
-      if (!entry->context) {
-        TraceCreateStage(handle_, "context-create-failed");
-        Fatal(KWEB_STATUS_BROWSER_CREATE_FAILED, "profile-context-create-failed");
-        return;
-      }
-      TraceCreateStage(handle_, "context-create-returned");
-      cache.emplace(profile_path_, entry);
-    }
+    profile_path_ = entry->path;
     if (entry->initialized) {
       TraceCreateStage(handle_, "context-reused");
       ProfileInitialized(entry->context);
@@ -2167,6 +2191,23 @@ SessionClient::~SessionClient() {
   }
 }
 
+CefRefPtr<CefResourceRequestHandler> SessionClient::GetResourceRequestHandler(
+    CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+    CefRefPtr<CefRequest> request, bool is_navigation, bool is_download,
+    const CefString &request_initiator, bool &disable_default_handling) {
+  (void)browser;
+  (void)frame;
+  (void)request;
+  (void)is_navigation;
+  (void)is_download;
+  (void)request_initiator;
+  (void)disable_default_handling;
+  if (auto session = session_.lock()) {
+    return session->GetResourceRequestHandler();
+  }
+  return nullptr;
+}
+
 void SessionClient::OnAddressChange(CefRefPtr<CefBrowser> browser,
                                     CefRefPtr<CefFrame> frame,
                                     const CefString &url) {
@@ -2430,6 +2471,21 @@ void ProfileContextHandler::OnRequestContextInitialized(
   }
 }
 
+CefRefPtr<CefResourceRequestHandler>
+ProfileContextHandler::GetResourceRequestHandler(
+    CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+    CefRefPtr<CefRequest> request, bool is_navigation, bool is_download,
+    const CefString &request_initiator, bool &disable_default_handling) {
+  (void)browser;
+  (void)frame;
+  (void)request;
+  (void)is_navigation;
+  (void)is_download;
+  (void)request_initiator;
+  (void)disable_default_handling;
+  return nullptr;
+}
+
 void CookieFlushCallback::OnComplete() {
   CEF_REQUIRE_UI_THREAD();
   auto session = std::move(session_);
@@ -2548,9 +2604,17 @@ void SessionRegistry::CompleteProfileContextInitialization(
   if (!valid) {
     entry->context = nullptr;
     entry->failed = true;
+    const auto cached = profile_contexts_.find(entry->path);
+    if (cached != profile_contexts_.end() && cached->second == entry) {
+      profile_contexts_.erase(cached);
+    }
     for (const auto &session : pending) {
       session->ProfileContextFailed(KWEB_STATUS_PROFILE_PATH_INVALID,
                                     "profile-context-mismatch");
+    }
+    auto callbacks = std::move(entry->initialization_callbacks);
+    for (auto &callback : callbacks) {
+      callback(KWEB_STATUS_PROFILE_CONTEXT_INITIALIZATION_FAILED);
     }
     return;
   }
@@ -2559,11 +2623,98 @@ void SessionRegistry::CompleteProfileContextInitialization(
   for (const auto &session : pending) {
     session->ProfileInitialized(entry->context);
   }
+  auto callbacks = std::move(entry->initialization_callbacks);
+  for (auto &callback : callbacks) {
+    callback(KWEB_STATUS_OK);
+  }
 }
 
-void SessionRegistry::ReleaseProfileContexts() {
+std::shared_ptr<ProfileContextEntry>
+SessionRegistry::GetOrCreateProfileContextEntry(
+    const std::filesystem::path &profile_path) {
   CEF_REQUIRE_UI_THREAD();
+  auto &cache = ProfileContexts();
+  auto found = cache.find(profile_path);
+  if (found == cache.end()) {
+    for (auto candidate = cache.begin(); candidate != cache.end(); ++candidate) {
+      std::error_code equivalent_error;
+      if (std::filesystem::equivalent(candidate->first, profile_path,
+                                      equivalent_error) &&
+          !equivalent_error) {
+        found = candidate;
+        break;
+      }
+    }
+  }
+  if (found != cache.end() && found->second->failed) {
+    cache.erase(found);
+    found = cache.end();
+  }
+  if (found != cache.end()) {
+    return found->second;
+  }
+
+  auto entry = std::make_shared<ProfileContextEntry>(profile_path);
+  CefRequestContextSettings settings;
+#if defined(_WIN32)
+  CefString(&settings.cache_path) = profile_path.wstring();
+#else
+  CefString(&settings.cache_path) = profile_path.string();
+#endif
+  settings.persist_session_cookies = true;
+  entry->context = CefRequestContext::CreateContext(
+      settings, new ProfileContextHandler(entry));
+  if (!entry->context || entry->failed) {
+    entry->failed = true;
+    return nullptr;
+  }
+  cache.emplace(profile_path, entry);
+  return entry;
+}
+
+kweb_status SessionRegistry::EnsureProfileContext(
+    const std::filesystem::path &profile_path,
+    std::function<void(kweb_status)> completion) {
+  CEF_REQUIRE_UI_THREAD();
+  auto entry = GetOrCreateProfileContextEntry(profile_path);
+  if (!entry) {
+    return KWEB_STATUS_PROFILE_CONTEXT_INITIALIZATION_FAILED;
+  }
+  if (entry->initialized) {
+    completion(KWEB_STATUS_OK);
+  } else if (entry->failed) {
+    completion(KWEB_STATUS_PROFILE_CONTEXT_INITIALIZATION_FAILED);
+  } else {
+    entry->initialization_callbacks.emplace_back(std::move(completion));
+  }
+  return KWEB_STATUS_OK;
+}
+
+kweb_status SessionRegistry::ReleaseProfileContext(
+    const std::filesystem::path &profile_path) {
+  CEF_REQUIRE_UI_THREAD();
+  {
+    std::lock_guard lock(mutex_);
+    const bool profile_has_live_session = std::any_of(
+        sessions_.begin(), sessions_.end(),
+        [&profile_path](const auto &entry) {
+          return entry.second->profile_path() == profile_path;
+        });
+    if (profile_has_live_session) return KWEB_STATUS_NETWORK_PROFILE_CLOSING;
+  }
+
+  const kweb_status network_status = ClearProfileNetworkPolicy(profile_path);
+  if (network_status != KWEB_STATUS_OK) return network_status;
+  profile_contexts_.erase(profile_path);
+  return KWEB_STATUS_OK;
+}
+
+kweb_status SessionRegistry::ReleaseProfileContexts() {
+  CEF_REQUIRE_UI_THREAD();
+  const kweb_status network_status = ReleaseAllProfileNetworkPolicies();
+  if (network_status != KWEB_STATUS_OK) return network_status;
   profile_contexts_.clear();
+  return KWEB_STATUS_OK;
 }
 
 struct ProfileContextReleaseState final {
@@ -2575,6 +2726,27 @@ struct ProfileContextReleaseState final {
 
 void CompleteProfileContextRelease(
     const std::shared_ptr<ProfileContextReleaseState> &state,
+    kweb_status status) {
+  {
+    std::lock_guard lock(state->mutex);
+    if (state->completed) {
+      return;
+    }
+    state->completed = true;
+    state->status = status;
+  }
+  state->completed_condition.notify_one();
+}
+
+struct ProfileContextInitializationState final {
+  std::mutex mutex;
+  std::condition_variable completed_condition;
+  bool completed = false;
+  kweb_status status = KWEB_STATUS_INTERNAL_ERROR;
+};
+
+void CompleteProfileContextInitialization(
+    const std::shared_ptr<ProfileContextInitializationState> &state,
     kweb_status status) {
   {
     std::lock_guard lock(state->mutex);
@@ -2824,10 +2996,78 @@ uint64_t LiveBrowserSessionCount() {
   }
 }
 
+kweb_status ReleaseProfileContext(const std::filesystem::path &profile_path) {
+  if (CefCurrentlyOn(TID_UI)) {
+    return Registry().ReleaseProfileContext(profile_path);
+  }
+
+  auto state = std::make_shared<ProfileContextReleaseState>();
+  if (!CefPostTask(
+          TID_UI,
+          base::BindOnce(
+              [](std::shared_ptr<ProfileContextReleaseState> release_state,
+                 std::filesystem::path path) {
+                CompleteProfileContextRelease(
+                    release_state, Registry().ReleaseProfileContext(path));
+              },
+              state, profile_path))) {
+    return KWEB_STATUS_CEF_UI_TASK_FAILED;
+  }
+
+  std::unique_lock lock(state->mutex);
+  if (!state->completed_condition.wait_for(
+          lock, kProfileContextReleaseTimeout,
+          [&state] { return state->completed; })) {
+    return KWEB_STATUS_CEF_UI_TASK_FAILED;
+  }
+  return state->status;
+}
+
+kweb_status EnsureProfileContext(const std::filesystem::path &profile_path) {
+  if (CefCurrentlyOn(TID_UI)) {
+    return KWEB_STATUS_WRONG_THREAD;
+  }
+
+  auto state = std::make_shared<ProfileContextInitializationState>();
+  if (!CefPostTask(
+          TID_UI,
+          base::BindOnce(
+              [](std::shared_ptr<ProfileContextInitializationState> init_state,
+                 std::filesystem::path path) {
+                const kweb_status status = Registry().EnsureProfileContext(
+                    path, [init_state](kweb_status result) {
+                      if (result != KWEB_STATUS_OK) {
+                        CompleteProfileContextInitialization(init_state, result);
+                        return;
+                      }
+                      CompleteProfileContextInitialization(init_state,
+                                                           KWEB_STATUS_OK);
+                    });
+                if (status != KWEB_STATUS_OK) {
+                  CompleteProfileContextInitialization(init_state, status);
+                }
+              },
+              state, profile_path))) {
+    return KWEB_STATUS_CEF_UI_TASK_FAILED;
+  }
+
+  std::unique_lock lock(state->mutex);
+  if (state->completed_condition.wait_for(
+          lock, kProfileContextInitializationTimeout,
+          [&state] { return state->completed; })) {
+    return state->status;
+  }
+  lock.unlock();
+
+  const kweb_status release_status = ReleaseProfileContext(profile_path);
+  return release_status == KWEB_STATUS_OK
+             ? KWEB_STATUS_PROFILE_CONTEXT_INITIALIZATION_FAILED
+             : release_status;
+}
+
 kweb_status ReleaseEngineProfileContexts() {
   if (CefCurrentlyOn(TID_UI)) {
-    Registry().ReleaseProfileContexts();
-    return KWEB_STATUS_OK;
+    return Registry().ReleaseProfileContexts();
   }
 
   auto state = std::make_shared<ProfileContextReleaseState>();
@@ -2835,7 +3075,11 @@ kweb_status ReleaseEngineProfileContexts() {
           TID_UI,
           base::BindOnce(
               [](std::shared_ptr<ProfileContextReleaseState> release_state) {
-                Registry().ReleaseProfileContexts();
+                const kweb_status status = Registry().ReleaseProfileContexts();
+                if (status != KWEB_STATUS_OK) {
+                  CompleteProfileContextRelease(release_state, status);
+                  return;
+                }
                 PostProfileContextReleaseBarrier(
                     release_state, kProfileContextReleaseQuiescenceTasks);
               },

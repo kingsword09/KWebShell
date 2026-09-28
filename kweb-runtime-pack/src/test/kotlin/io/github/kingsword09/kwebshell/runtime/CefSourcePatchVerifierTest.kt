@@ -33,8 +33,12 @@ class CefSourcePatchVerifierTest {
             "8561856986d1c16cbb95294d7ad3f1e27bed9e102abc0f669a073161614a9c44",
             catalog.manifest.adapterAbiFingerprint,
         )
-        assertEquals(4, catalog.manifest.exports.size)
-        val patch = catalog.manifest.patches.single()
+        assertEquals(8, catalog.manifest.exports.size)
+        assertEquals(
+            "4c0d5bdbc917002a5ffa3c2a09be4fb51d12277c8f2cdd8ae28b41b995d43cdb",
+            catalog.manifest.networkAbiFingerprint,
+        )
+        val patch = catalog.manifest.patches.first()
         assertTrue(
             patch.modifiedPreimages.any {
                 it.path == "libcef/browser/chrome/chrome_context_menu_handler.cc"
@@ -296,6 +300,7 @@ class CefSourcePatchVerifierTest {
             depotToolsCommit = depotToolsCommit,
             adapterAbiVersion = 1,
             adapterAbiFingerprint = adapterAbiFingerprint,
+            networkAbiFingerprint = "b".repeat(64),
             sisoVersion = "git_revision:${"4".repeat(40)}",
             gnDefines = listOf("is_official_build=true", "symbol_level=0"),
             exports = listOf(

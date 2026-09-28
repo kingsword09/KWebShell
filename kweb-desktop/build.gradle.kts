@@ -217,7 +217,7 @@ val expectCustomExtensionRuntime = providers.gradleProperty("kwebExpectCustomExt
 val engineIntegrationMode = providers.gradleProperty("kwebEngineIntegrationMode")
     .orElse("coordinator")
 val engineIntegrationCdpPort = providers.systemProperty("kweb.engine.integration.cdp.port")
-    .orElse("0")
+    .orElse("50571")
 val cleanEngineIntegration = tasks.register<Delete>("cleanEngineIntegration") {
     delete(engineIntegrationRoot)
 }
@@ -257,6 +257,16 @@ val engineIntegrationJavaCommand = buildList {
 }
 val extensionLifecycleIntegrationJavaCommand =
     engineIntegrationJavaCommand.dropLast(1) + "extension-lifecycle-coordinator"
+val networkPolicyIntegrationJavaCommand =
+    engineIntegrationJavaCommand
+        .map { argument ->
+            if (argument.startsWith("-Dkweb.engine.integration.cdp.port=")) {
+                "-Dkweb.engine.integration.cdp.port=0"
+            } else {
+                argument
+            }
+        }
+        .dropLast(1) + "network-policy"
 
 val engineIntegrationTest = tasks.register<Exec>("engineIntegrationTest") {
     group = "verification"
@@ -298,6 +308,44 @@ val engineIntegrationTest = tasks.register<Exec>("engineIntegrationTest") {
         )
     } else {
         commandLine(engineIntegrationJavaCommand)
+    }
+}
+
+tasks.register<Exec>("networkPolicyIntegrationTest") {
+    group = "verification"
+    description = "Verifies RFC 0010 request policy and observation against stock CEF."
+    dependsOn(
+        cleanEngineIntegration,
+        generateConformanceBridge,
+        tasks.testClasses,
+        desktopJar,
+        ":kweb-cef-native:buildNative",
+        ":kweb-service-app-paths:buildNative",
+        ":kweb-service-app-paths:generateAppPathsBridge",
+    )
+    mustRunAfter(tasks.test, ":kweb-cef-native:nativeTest", engineIntegrationTest)
+    inputs.file(nativeEngineLibrary)
+    inputs.file(nativeCefRuntime)
+    inputs.file(nativeBrowserSubprocess)
+    inputs.file(nativeResources.map { it.resolve("resources.pak") })
+    inputs.file(nativeLocales.map { directory ->
+        if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("mac")) {
+            directory.resolve("en.lproj/locale.pak")
+        } else {
+            directory.resolve("en-US.pak")
+        }
+    })
+
+    if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("linux")) {
+        commandLine(
+            listOf(
+                "xvfb-run",
+                "--auto-servernum",
+                "--server-args=-screen 0 1280x1024x24",
+            ) + networkPolicyIntegrationJavaCommand,
+        )
+    } else {
+        commandLine(networkPolicyIntegrationJavaCommand)
     }
 }
 
@@ -346,4 +394,5 @@ val extensionLifecycleIntegrationTest = tasks.register<Exec>("extensionLifecycle
 tasks.named("check") {
     dependsOn(verifyConformanceBridgeTypescript)
     dependsOn(engineIntegrationTest)
+    dependsOn(tasks.named("networkPolicyIntegrationTest"))
 }

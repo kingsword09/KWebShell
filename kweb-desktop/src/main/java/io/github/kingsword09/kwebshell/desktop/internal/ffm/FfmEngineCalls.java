@@ -109,13 +109,19 @@ final class FfmEngineCalls {
             FfmMemory.EncodedUtf8 body = FfmMemory.encode(
                 payload, callArena, FfmMemory.MAXIMUM_PROFILE_DATA_OUTPUT_SIZE
             );
+            MemorySegment profilePointer = profile.size() == 0
+                ? MemorySegment.NULL
+                : profile.segment();
+            MemorySegment bodyPointer = body.size() == 0
+                ? MemorySegment.NULL
+                : body.segment();
             return (int) library().handle("kweb_engine_profile_network").invokeExact(
                 engine,
                 requestId,
                 operation,
-                profile.size() == 0 ? MemorySegment.NULL : profile.segment(),
+                profilePointer,
                 profile.size(),
-                body.size() == 0 ? MemorySegment.NULL : body.segment(),
+                bodyPointer,
                 body.size()
             );
         } catch (FfmTextException error) {
@@ -130,9 +136,12 @@ final class FfmEngineCalls {
             FfmMemory.EncodedUtf8 profile = FfmMemory.encode(
                 profilePath, callArena, FfmMemory.MAXIMUM_PATH_SIZE
             );
+            MemorySegment profilePointer = profile.size() == 0
+                ? MemorySegment.NULL
+                : profile.segment();
             return (int) library().handle("kweb_engine_clear_profile_network_policy").invokeExact(
                 engine,
-                profile.size() == 0 ? MemorySegment.NULL : profile.segment(),
+                profilePointer,
                 profile.size()
             );
         } catch (FfmTextException error) {
@@ -147,9 +156,12 @@ final class FfmEngineCalls {
             FfmMemory.EncodedUtf8 profile = FfmMemory.encode(
                 profilePath, callArena, FfmMemory.MAXIMUM_PATH_SIZE
             );
+            MemorySegment profilePointer = profile.size() == 0
+                ? MemorySegment.NULL
+                : profile.segment();
             return (int) library().handle("kweb_engine_open_profile_context").invokeExact(
                 engine,
-                profile.size() == 0 ? MemorySegment.NULL : profile.segment(),
+                profilePointer,
                 profile.size()
             );
         } catch (FfmTextException error) {

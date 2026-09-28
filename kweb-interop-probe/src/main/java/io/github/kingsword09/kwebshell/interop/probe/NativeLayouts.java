@@ -28,7 +28,8 @@ final class NativeLayouts {
         FfmLayouts.ENGINE_CONFIG,
         "struct_size", "abi_version", "callback", "user_data",
         "cef_runtime_path", "browser_subprocess_path", "resources_path",
-        "locales_path", "root_cache_path", "log_path", "remote_debugging_port", "reserved"
+        "locales_path", "root_cache_path", "log_path", "remote_debugging_port", "reserved",
+        "profile_data_callback", "profile_data_user_data"
     );
     static final LayoutSpec BROWSER_EVENT = spec(
         4,

@@ -592,11 +592,30 @@ private fun runNetworkPolicyIntegration() {
             closeAndAwait(isolatedPage)
             isolatedPage = null
             isolatedCollector?.cancel()
+            liveIsolatedProfile.close()
             isolatedProfile = null
             isolatedCollector = null
 
+            isolatedProfile = engine.openProfile("rfc0010-network-policy-isolated")
+            val reopenedIsolatedProfile = requireNotNull(isolatedProfile)
+            isolatedPage = reopenedIsolatedProfile.openPage(
+                KWebDesktop.composeWindowHost(requireNotNull(isolatedSurface).window),
+                "about:blank",
+                KWebRect(0, 0, 640, 480),
+            )
+            requireNotNull(isolatedPage).navigate(origin.url("/isolated"))
+            origin.awaitRequest("/isolated")
+            check(origin.requestCount("/isolated") == 2) {
+                "A reopened Profile retained the previous request policy."
+            }
+            closeAndAwait(isolatedPage)
+            isolatedPage = null
+            reopenedIsolatedProfile.close()
+            isolatedProfile = null
+
             closeAndAwait(page)
             page = null
+            liveProfile.close()
             profile = null
             eventCollector?.cancel()
             eventCollector = null
@@ -635,9 +654,10 @@ private fun runNetworkPolicyIntegration() {
                 "A3-header-add-remove-and-forbidden-header-rejection",
                 "A4-block-redirect-and-redirect-loop-cancellation",
                 "A5-before-complete-body-free-credential-redacted-bounded-observation",
-                "A9-atomic-replacement-and-profile-isolation",
+                "A9-atomic-replacement-profile-isolation-and-close-reopen",
                 "A10-credential-redaction-and-no-body-or-header-map-observation",
                 "A11-stock-cef-profile-context-and-resource-handler",
+                "A12-profile-context-close-reopen-and-collector-terminal-outcomes",
             ).forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) }
         })
         putJsonObject("deferred") {
@@ -731,6 +751,7 @@ private suspend fun verifyNetworkObservationBackpressure(
         }
         closeAndAwait(page)
         page = null
+        liveProfile.close()
         profile = null
         fastCollector.cancel()
     } finally {

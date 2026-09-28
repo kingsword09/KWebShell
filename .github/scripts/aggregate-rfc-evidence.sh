@@ -48,6 +48,9 @@ record() {
     arguments="$arguments --matrix-row session-spellcheck"
     arguments="$arguments --matrix-row session-flush"
   fi
+  if [ "$rfc" = "0010" ]; then
+    arguments="$arguments --matrix-row session-web-request"
+  fi
   ./gradlew --no-daemon :kweb-rfc-governance:rfcEvidenceRecord \
     -PrfcEvidenceArguments="$arguments"
 }
@@ -63,6 +66,7 @@ for target in macos-arm64 windows-x64 linux-x64; do
     "0006|application.lifecycle.hosted|application-lifecycle|application-lifecycle-report.json|application-lifecycle|application-shutdown|application-shutdown.json|engine-integration"
     "0008|page.lifecycle.hosted|page-lifecycle|page-lifecycle-evidence.json|engine-integration|renderer-lifecycle|renderer-lifecycle-evidence.json|engine-integration"
     "0009|profile.data.hosted|profile-data|profile-data-evidence.json|engine-integration"
+    "0010|network.policy.hosted|network-policy|network-policy-evidence.json|engine-integration"
     "0007|window-controls.hosted|window-controls-report|window-controls-report.json|provider-lifecycle"
   )
   count=0

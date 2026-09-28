@@ -250,7 +250,7 @@ public:
                   completed->Signal();
                 },
                 this, profile_path, base::Unretained(&result),
-                std::move(completed)))) {
+                completed))) {
       return KWEB_STATUS_CEF_UI_TASK_FAILED;
     }
     completed->Wait();

@@ -663,10 +663,11 @@ void NetworkPolicyRequestHandler::OnResourceLoadComplete(
   state_->ClearRedirectDepth(request_id);
   const auto observation = TakeObservation(request_id);
   if (!observation || !observation->snapshot || !event_sink_) return;
-  const std::optional<int> status_code =
-      response && response->GetStatus() > 0
-          ? std::optional<int>(response->GetStatus())
-          : std::nullopt;
+  std::optional<int> status_code;
+  if (response) {
+    const int response_status = response->GetStatus();
+    if (response_status > 0) status_code = response_status;
+  }
   const std::string completion_status =
       observation->initial_action == "block"
           ? "canceled"

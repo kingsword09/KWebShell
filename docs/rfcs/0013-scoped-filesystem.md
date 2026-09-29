@@ -1,6 +1,6 @@
 # RFC 0013: Capability-based files, directories, and workspace access
 
-- Status: Accepted
+- Status: Implementing
 - Priority: P0
 - Owners: `kweb-service-files`, `kweb-bridge`, `kweb-electron-migration`
 - Depends on: RFC 0002, RFC 0003, RFC 0004

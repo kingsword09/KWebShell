@@ -294,6 +294,18 @@
         "kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronCapabilityMatrixTest.kt",
         "kweb-interop-probe/src/main/java/io/github/kingsword09/kwebshell/interop/probe/EngineAbi.java"
       ]
+    },
+    {
+      "rfcId": "0013",
+      "paths": [
+        "docs/rfcs/0013-scoped-filesystem.md",
+        "kweb-service-files/build.gradle.kts",
+        "kweb-service-files/README.md",
+        "kweb-service-files/src",
+        "kweb-rfc-governance/src/main/kotlin/io/github/kingsword09/kwebshell/rfc/KWebRfcServiceCatalog.kt",
+        "kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronCapabilityMatrix.kt",
+        "kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronCapabilityMatrixTest.kt"
+      ]
     }
   ]
 }

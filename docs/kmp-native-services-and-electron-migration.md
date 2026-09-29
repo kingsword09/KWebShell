@@ -453,6 +453,7 @@ The initial mapping direction is:
 | `ipcMain.handle` + `ipcRenderer.invoke` | Typed service implementation plus generated exact-origin client. |
 | `contextBridge.exposeInMainWorld` | Optional generated application-specific preload facade. |
 | `dialog.showOpenDialog`, `dialog.showSaveDialog` | Rewrite path results to `KWebDialogs` scoped handles and generated bounded-I/O clients. |
+| `fs/promises` and relative `path` workflows | Rewrite to `KWebFiles` logical workspaces, owner-bound handles, bounded I/O, directory enumeration, and watch streams. Absolute paths, synchronous fs, `Buffer`, and `webUtils.getPathForFile` remain blocked. |
 | `clipboard`, `shell`, `nativeTheme` | Separate native service families after conformance publication. |
 | `screen`, `globalShortcut`, `Menu`, `Tray`, notifications | Separate UI/system service families after native lifecycle tests. |
 | `utilityProcess`, `child_process` | Explicit policy-controlled process service; never implicit Node execution. |
@@ -574,6 +575,15 @@ operations; it never receives a host path or unrestricted filesystem access.
 The service uses Cocoa sheets, Windows COM `IFileDialog`, or the Linux XDG
 Desktop Portal through a separately packaged C ABI and fails with typed errors
 when the owner, dialog, provider, or handle is unavailable.
+
+RFC 0013 adds `kweb-service-files` for declared filesystem workspaces. The
+PAGE-scoped provider uses JDK 25 NIO no-follow validation, bounded reads and
+writes, atomic same-filesystem copy/move, sorted directory listings, and a
+credit-gated WatchService stream. Renderer code receives logical workspace
+IDs, normalized relative names, and opaque owner-bound handles; absolute roots
+remain host-only. macOS security-scoped bookmark and Linux document-portal
+persistence are not advertised by this objective, and unavailable or sandboxed
+access fails typed without selecting a fallback root or backend.
 
 ## 10. Manifest V3 Is Independent
 

@@ -1,0 +1,178 @@
+{
+  "namespace": "FilesBridge",
+  "kotlinPackage": "io.github.kingsword09.kwebshell.service.files.generated",
+  "version": 1,
+  "types": [
+    {
+      "name": "WorkspaceRequest",
+      "fields": [
+        { "name": "workspaceId", "type": "string" },
+        { "name": "grants", "type": "string", "list": true }
+      ]
+    },
+    {
+      "name": "HandleDescriptor",
+      "fields": [
+        { "name": "handle", "type": "string" },
+        { "name": "kind", "type": "string" },
+        { "name": "name", "type": "string" },
+        { "name": "grants", "type": "string", "list": true }
+      ]
+    },
+    {
+      "name": "OpenFileRequest",
+      "fields": [
+        { "name": "parent", "type": "string" },
+        { "name": "name", "type": "string" },
+        { "name": "mode", "type": "string" },
+        { "name": "createIfMissing", "type": "boolean" }
+      ]
+    },
+    {
+      "name": "OpenDirectoryRequest",
+      "fields": [
+        { "name": "parent", "type": "string" },
+        { "name": "name", "type": "string" },
+        { "name": "createIfMissing", "type": "boolean" }
+      ]
+    },
+    {
+      "name": "ReadFileRequest",
+      "fields": [
+        { "name": "handle", "type": "string" },
+        { "name": "offset", "type": "string" },
+        { "name": "length", "type": "int32" }
+      ]
+    },
+    {
+      "name": "ReadFileResponse",
+      "fields": [
+        { "name": "bytes", "type": "int32", "list": true },
+        { "name": "eof", "type": "boolean" }
+      ]
+    },
+    {
+      "name": "WriteFileRequest",
+      "fields": [
+        { "name": "handle", "type": "string" },
+        { "name": "offset", "type": "string" },
+        { "name": "bytes", "type": "int32", "list": true }
+      ]
+    },
+    {
+      "name": "WriteFileResponse",
+      "fields": [
+        { "name": "written", "type": "int32" }
+      ]
+    },
+    {
+      "name": "TruncateFileRequest",
+      "fields": [
+        { "name": "handle", "type": "string" },
+        { "name": "sizeBytes", "type": "string" }
+      ]
+    },
+    {
+      "name": "TruncateFileResponse",
+      "fields": [
+        { "name": "sizeBytes", "type": "string" }
+      ]
+    },
+    {
+      "name": "ListDirectoryRequest",
+      "fields": [
+        { "name": "handle", "type": "string" },
+        { "name": "limit", "type": "int32" }
+      ]
+    },
+    {
+      "name": "DirectoryEntry",
+      "fields": [
+        { "name": "name", "type": "string" },
+        { "name": "kind", "type": "string" },
+        { "name": "sizeBytes", "type": "string", "nullable": true },
+        { "name": "lastModifiedEpochMillis", "type": "string" }
+      ]
+    },
+    {
+      "name": "ListDirectoryResponse",
+      "fields": [
+        { "name": "entries", "type": "DirectoryEntry", "list": true },
+        { "name": "truncated", "type": "boolean" }
+      ]
+    },
+    {
+      "name": "MetadataRequest",
+      "fields": [
+        { "name": "handle", "type": "string" }
+      ]
+    },
+    {
+      "name": "MetadataResponse",
+      "fields": [
+        { "name": "kind", "type": "string" },
+        { "name": "name", "type": "string" },
+        { "name": "sizeBytes", "type": "string", "nullable": true },
+        { "name": "lastModifiedEpochMillis", "type": "string" }
+      ]
+    },
+    {
+      "name": "CopyMoveRequest",
+      "fields": [
+        { "name": "source", "type": "string" },
+        { "name": "targetDirectory", "type": "string" },
+        { "name": "targetName", "type": "string" },
+        { "name": "conflict", "type": "string" }
+      ]
+    },
+    {
+      "name": "WatchDirectoryRequest",
+      "fields": [
+        { "name": "handle", "type": "string" }
+      ]
+    },
+    {
+      "name": "WatchEvent",
+      "fields": [
+        { "name": "sequence", "type": "string" },
+        { "name": "kind", "type": "string" },
+        { "name": "name", "type": "string", "nullable": true }
+      ]
+    },
+    {
+      "name": "CloseHandleRequest",
+      "fields": [
+        { "name": "handle", "type": "string" }
+      ]
+    },
+    {
+      "name": "CloseHandleResponse",
+      "fields": [
+        { "name": "closed", "type": "boolean" }
+      ]
+    }
+  ],
+  "methods": [
+    { "name": "openWorkspace", "request": "WorkspaceRequest", "response": "HandleDescriptor" },
+    { "name": "openFile", "request": "OpenFileRequest", "response": "HandleDescriptor" },
+    { "name": "openDirectory", "request": "OpenDirectoryRequest", "response": "HandleDescriptor" },
+    { "name": "readFile", "request": "ReadFileRequest", "response": "ReadFileResponse" },
+    { "name": "writeFile", "request": "WriteFileRequest", "response": "WriteFileResponse" },
+    { "name": "truncateFile", "request": "TruncateFileRequest", "response": "TruncateFileResponse" },
+    { "name": "listDirectory", "request": "ListDirectoryRequest", "response": "ListDirectoryResponse" },
+    { "name": "metadata", "request": "MetadataRequest", "response": "MetadataResponse" },
+    { "name": "copyFile", "request": "CopyMoveRequest", "response": "HandleDescriptor" },
+    { "name": "moveFile", "request": "CopyMoveRequest", "response": "HandleDescriptor" },
+    { "name": "closeHandle", "request": "CloseHandleRequest", "response": "CloseHandleResponse" }
+  ],
+  "streams": [
+    {
+      "name": "watchDirectory",
+      "request": "WatchDirectoryRequest",
+      "chunk": "WatchEvent",
+      "binary": false,
+      "capacity": 64,
+      "schemaVersion": 1
+    }
+  ]
+}

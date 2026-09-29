@@ -19,7 +19,8 @@ class KWebRfcGovernanceCheckerTest {
                     entry.id in RFC_0009_ROWS ||
                     entry.id in RFC_0010_ROWS ||
                     entry.id in RFC_0011_ROWS ||
-                    entry.id in RFC_0012_ROWS
+                    entry.id in RFC_0012_ROWS ||
+                    entry.id in RFC_0013_ROWS
                 ) {
                     entry.copy(status = KWebElectronMappingStatus.UNSUPPORTED, kweb = "")
                 } else {
@@ -46,6 +47,7 @@ class KWebRfcGovernanceCheckerTest {
         val RFC_0010_ROWS: Set<String> = setOf("session-web-request")
         val RFC_0011_ROWS: Set<String> = setOf("certificate-error", "select-client-certificate")
         val RFC_0012_ROWS: Set<String> = setOf("downloads")
+        val RFC_0013_ROWS: Set<String> = setOf("node-fs")
     }
 
     private fun implementedCatalog(): List<KWebRfcDocument> = listOf(

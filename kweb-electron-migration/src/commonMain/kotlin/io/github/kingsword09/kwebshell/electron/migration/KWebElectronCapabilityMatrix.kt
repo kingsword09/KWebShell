@@ -55,6 +55,7 @@ public object KWebElectronCapabilityMatrix {
         entry("menu-tray", "Menu + Tray", "menu-tray-service", KWebElectronMappingStatus.UNSUPPORTED, "", "Requires native UI lifecycle conformance."),
         entry("process", "utilityProcess + child_process", "process-service", KWebElectronMappingStatus.UNSUPPORTED, "", "Node execution is never implicit."),
         entry("auto-updater", "autoUpdater", "signed-update-service", KWebElectronMappingStatus.UNSUPPORTED, "", "Requires verified release metadata and recovery."),
+        entry("node-fs", "Node fs/promises + path", "scoped-filesystem", KWebElectronMappingStatus.REWRITE, "KWebFiles + FilesBridge", "Async file workflows migrate to declared workspace capabilities and normalized relative names; absolute paths, sync fs, webUtils.getPathForFile, Buffer, and generic channels remain blocked."),
         entry("node-runtime", "Node fs/path/os and native addons", "kotlin-service-rewrite", KWebElectronMappingStatus.REWRITE, "", "Renderer Node access must be isolated and rewritten."),
     )
 

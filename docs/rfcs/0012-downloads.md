@@ -6,7 +6,6 @@
 - Depends on: RFC 0003, RFC 0004, RFC 0009
 - Electron migration surface: `will-download`, `DownloadItem`
 - Target mapping: `REWRITE`
-- Platform targets: macOS, Windows, Linux
 
 ## Objective
 

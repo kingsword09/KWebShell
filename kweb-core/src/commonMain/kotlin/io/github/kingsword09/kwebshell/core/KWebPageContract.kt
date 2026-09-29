@@ -177,6 +177,7 @@ public interface KWebProfile : AutoCloseable {
     public val name: String
     public val lifecycle: StateFlow<KWebLifecycleState>
     public val networkEvents: Flow<KWebNetworkRequestEvent>
+    public val securityChallenges: Flow<KWebSecurityChallenge>
 
     public suspend fun openPage(
         host: KWebPageHost,
@@ -215,6 +216,11 @@ public interface KWebProfile : AutoCloseable {
     ): KWebSpellcheckState
 
     public suspend fun configureNetworkPolicy(policy: KWebNetworkPolicy)
+
+    public suspend fun respondToSecurityChallenge(
+        requestId: Long,
+        decision: KWebSecurityDecision,
+    ): KWebSecurityChallengeResult
 
     public suspend fun flush(target: KWebPage): KWebProfileFlushResult
 

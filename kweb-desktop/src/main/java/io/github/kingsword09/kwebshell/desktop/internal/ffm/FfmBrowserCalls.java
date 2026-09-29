@@ -151,6 +151,10 @@ final class FfmBrowserCalls {
         return invokeUtf8("kweb_browser_bridge_fail", handle, requestId, failure, true);
     }
 
+    static int securityRespond(long handle, long requestId, String decision) {
+        return invokeUtf8("kweb_browser_security_respond", handle, requestId, decision, true);
+    }
+
     static int profileData(long handle, long requestId, int operation, String payload) {
         try (Arena arena = Arena.ofConfined()) {
             FfmMemory.EncodedUtf8 encoded = FfmMemory.encode(

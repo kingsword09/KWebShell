@@ -11,8 +11,8 @@ final class EngineAbi {
 
     @SuppressWarnings("restricted")
     static void verifyAllBindings(Linker linker, SymbolLookup lookup) {
-        if (FfmAbi.FUNCTIONS.size() != 27) {
-            throw new IllegalStateException("The frozen engine ABI must contain exactly 27 functions.");
+        if (FfmAbi.FUNCTIONS.size() != 28) {
+            throw new IllegalStateException("The frozen engine ABI must contain exactly 28 functions.");
         }
         for (FfmAbi.FunctionSpec function : FfmAbi.FUNCTIONS) {
             linker.downcallHandle(find(lookup, function.name()), function.descriptor());

@@ -149,6 +149,10 @@ public final class FfmBindings {
         return FfmBrowserCalls.bridgeFail(handle, requestId, failureJson);
     }
 
+    public static int browserSecurityRespond(long handle, long requestId, String decisionJson) {
+        return FfmBrowserCalls.securityRespond(handle, requestId, decisionJson);
+    }
+
     public static int browserProfileData(long handle, long requestId, int operation, String payloadJson) {
         return FfmBrowserCalls.profileData(handle, requestId, operation, payloadJson);
     }

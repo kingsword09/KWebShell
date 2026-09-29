@@ -53,6 +53,13 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: Install Linux mTLS provider tools
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libnss3-tools
+
       - name: Verify hardware prerequisites
         shell: bash
         run: |

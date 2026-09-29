@@ -31,6 +31,10 @@ import io.github.kingsword09.kwebshell.core.KWebReloadMode
 import io.github.kingsword09.kwebshell.core.KWebReloadOutcome
 import io.github.kingsword09.kwebshell.core.KWebReloadResult
 import io.github.kingsword09.kwebshell.core.KWebProfile
+import io.github.kingsword09.kwebshell.core.KWebSecurityChallenge
+import io.github.kingsword09.kwebshell.core.KWebSecurityChallengeOutcome
+import io.github.kingsword09.kwebshell.core.KWebSecurityChallengeResult
+import io.github.kingsword09.kwebshell.core.KWebSecurityDecision
 import io.github.kingsword09.kwebshell.core.KWebCookie
 import io.github.kingsword09.kwebshell.core.KWebCookieFilter
 import io.github.kingsword09.kwebshell.core.KWebCookieMutationResult
@@ -49,8 +53,10 @@ import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebShutdown
 import io.github.kingsword09.kwebshell.desktop.internal.NativeBrowser
 import io.github.kingsword09.kwebshell.desktop.internal.NativeBrowserEvent
 import io.github.kingsword09.kwebshell.desktop.internal.NativeBrowserEventType
+import io.github.kingsword09.kwebshell.desktop.internal.NativeBindings
 import io.github.kingsword09.kwebshell.desktop.internal.NativeEngine
 import io.github.kingsword09.kwebshell.desktop.internal.NativeEngineConfiguration
+import io.github.kingsword09.kwebshell.desktop.internal.securityChallengeStatusException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
@@ -290,13 +296,21 @@ internal class KWebDesktopProfile(
     private val networkOperationMutex = Mutex()
     private val mutableLifecycle = MutableStateFlow(KWebLifecycleState.OPEN)
     private val networkEventStream = KWebDesktopNetworkEventStream()
+    private val securityChallengeStream = KWebDesktopSecurityChallengeStream()
     private val pages = linkedSetOf<KWebDesktopPage>()
+    private data class SecurityChallengeOwner(
+        val browserHandle: Long,
+        val challenge: KWebSecurityChallenge,
+    )
+    private val pendingSecurityChallenges = linkedMapOf<Long, SecurityChallengeOwner>()
+    private val resolvedSecurityChallenges = linkedSetOf<Long>()
     private var closedByEngine = false
     private var activeNetworkOperation: CountDownLatch? = null
 
     override val name: String = path.fileName.toString()
     override val lifecycle: StateFlow<KWebLifecycleState> = mutableLifecycle.asStateFlow()
     override val networkEvents: Flow<KWebNetworkRequestEvent> = networkEventStream.events
+    override val securityChallenges: Flow<KWebSecurityChallenge> = securityChallengeStream.events
 
     override suspend fun openPage(
         host: KWebPageHost,
@@ -372,6 +386,40 @@ internal class KWebDesktopProfile(
                                 return@listener
                             }
                             networkEventStream.publish(networkEvent)
+                        } else if (event.type == NativeBrowserEventType.SECURITY_CHALLENGE) {
+                            val challenge = KWebDesktopSecurityJson.parseChallenge(
+                                event = event,
+                                profileId = name,
+                                pageId = pageId,
+                            )
+                            synchronized(lock) {
+                                ensureProfileOperationOpen("security-challenge")
+                                pendingSecurityChallenges[event.requestId] = SecurityChallengeOwner(
+                                    browserHandle = event.browser,
+                                    challenge = challenge,
+                                )
+                            }
+                            if (!securityChallengeStream.publish(challenge)) {
+                                val denyStatus = NativeBindings.browserSecurityRespond(
+                                    event.browser,
+                                    challenge.requestId,
+                                    KWebDesktopSecurityJson.decisionPayload(
+                                        challenge,
+                                        securityDenyDecision(challenge),
+                                    ),
+                                )
+                                synchronized(lock) {
+                                    pendingSecurityChallenges.remove(challenge.requestId)
+                                    resolvedSecurityChallenges += challenge.requestId
+                                }
+                                if (denyStatus != io.github.kingsword09.kwebshell.desktop.internal.NativeStatus.OK.value) {
+                                    throw securityChallengeStatusException(
+                                        "security-challenge-overflow",
+                                        denyStatus,
+                                        mapOf("requestId" to challenge.requestId.toString()),
+                                    )
+                                }
+                            }
                         } else {
                             eventStream.accept(event)
                         }
@@ -381,6 +429,66 @@ internal class KWebDesktopProfile(
                 pages += page
                 page.trackTerminalOwnership()
                 page
+            }
+        }
+    }
+
+    override suspend fun respondToSecurityChallenge(
+        requestId: Long,
+        decision: KWebSecurityDecision,
+    ): KWebSecurityChallengeResult = withContext(Dispatchers.IO) {
+        val owner = synchronized(lock) {
+            if (requestId in resolvedSecurityChallenges) {
+                throw securityChallengeStatusException(
+                    "respond-security-challenge",
+                    io.github.kingsword09.kwebshell.desktop.internal.NativeStatus.SECURITY_CHALLENGE_ALREADY_RESOLVED.value,
+                    mapOf("requestId" to requestId.toString()),
+                )
+            }
+            pendingSecurityChallenges[requestId]
+                ?: throw securityChallengeStatusException(
+                    "respond-security-challenge",
+                    io.github.kingsword09.kwebshell.desktop.internal.NativeStatus.SECURITY_CHALLENGE_NOT_FOUND.value,
+                    mapOf("requestId" to requestId.toString()),
+                )
+        }
+        val payload = KWebDesktopSecurityJson.decisionPayload(owner.challenge, decision)
+        val status = NativeBindings.browserSecurityRespond(owner.browserHandle, requestId, payload)
+        when (status) {
+            io.github.kingsword09.kwebshell.desktop.internal.NativeStatus.OK.value -> {
+                synchronized(lock) {
+                    pendingSecurityChallenges.remove(requestId)
+                    resolvedSecurityChallenges += requestId
+                }
+                val outcome = if (decision.isSecurityDeny()) {
+                    KWebSecurityChallengeOutcome.DENIED
+                } else {
+                    KWebSecurityChallengeOutcome.ACCEPTED
+                }
+                KWebSecurityChallengeResult(requestId, outcome)
+            }
+            io.github.kingsword09.kwebshell.desktop.internal.NativeStatus.SECURITY_CHALLENGE_DEADLINE_EXPIRED.value -> {
+                synchronized(lock) {
+                    pendingSecurityChallenges.remove(requestId)
+                    resolvedSecurityChallenges += requestId
+                }
+                KWebSecurityChallengeResult(requestId, KWebSecurityChallengeOutcome.TIMED_OUT)
+            }
+            else -> {
+                if (status == io.github.kingsword09.kwebshell.desktop.internal.NativeStatus.SECURITY_CHALLENGE_ALREADY_RESOLVED.value ||
+                    status == io.github.kingsword09.kwebshell.desktop.internal.NativeStatus.SECURITY_CHALLENGE_NOT_FOUND.value ||
+                    status == io.github.kingsword09.kwebshell.desktop.internal.NativeStatus.SECURITY_CHALLENGE_PROFILE_CLOSING.value
+                ) {
+                    synchronized(lock) {
+                        pendingSecurityChallenges.remove(requestId)
+                        resolvedSecurityChallenges += requestId
+                    }
+                }
+                throw securityChallengeStatusException(
+                    "respond-security-challenge",
+                    status,
+                    mapOf("requestId" to requestId.toString()),
+                )
             }
         }
     }
@@ -714,6 +822,7 @@ internal class KWebDesktopProfile(
     internal fun removePage(page: KWebDesktopPage) {
         synchronized(lock) {
             pages.remove(page)
+            pendingSecurityChallenges.entries.removeIf { it.value.challenge.pageId == page.id }
         }
     }
 
@@ -735,6 +844,8 @@ internal class KWebDesktopProfile(
             closedByEngine = true
             mutableLifecycle.value = KWebLifecycleState.CLOSED
             networkEventStream.close()
+            pendingSecurityChallenges.clear()
+            resolvedSecurityChallenges.clear()
             orphanedPages = pages.toList()
         }
         // An Engine shutdown is a page-owner close: every page the Profile
@@ -1239,6 +1350,8 @@ private fun NativeBrowserEvent.toPublicEvent(
             throw IllegalStateException("The Profile network event reached the page mapping.")
         NativeBrowserEventType.NETWORK_OBSERVATION_FAILED ->
             throw IllegalStateException("The Profile network observation failure reached the page mapping.")
+        NativeBrowserEventType.SECURITY_CHALLENGE ->
+            throw IllegalStateException("The Profile security challenge reached the page mapping.")
     }
     val flags = buildSet {
         if (this@toPublicEvent.flags and 1 != 0) add(KWebPageEventFlag.LOADING)

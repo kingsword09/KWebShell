@@ -70,6 +70,19 @@ val rfcGovernanceCheck = tasks.register<JavaExec>("rfcGovernanceCheck") {
     outputs.file(rfcGovernanceReport)
 }
 
+val rfcCatalogCheck = tasks.register<JavaExec>("rfcCatalogCheck") {
+    group = "verification"
+    description = "Validates RFC catalog metadata without requiring hosted evidence."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCli")
+    args("catalogCheck", rfcCatalogDirectory.asFile.absolutePath)
+    inputs.dir(rfcCatalogDirectory)
+}
+
+contractTest.configure {
+    dependsOn(rfcCatalogCheck)
+}
+
 tasks.named("check") {
     dependsOn(rfcGovernanceCheck)
 }

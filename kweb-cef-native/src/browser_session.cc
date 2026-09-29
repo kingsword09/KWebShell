@@ -42,6 +42,7 @@
 #include "include/wrapper/cef_closure_task.h"
 #include "include/wrapper/cef_helpers.h"
 #include "pending_waiters.h"
+#include "security_challenges.h"
 #include "utf8_validation.h"
 
 namespace kwebshell {
@@ -292,6 +293,8 @@ public:
   kweb_status CrashRenderer(kweb_browser_handle handle);
   kweb_status BridgeRespond(kweb_browser_handle handle, uint64_t request_id,
                             std::string response, bool success);
+  kweb_status SecurityRespond(kweb_browser_handle handle, uint64_t request_id,
+                              std::string decision);
   kweb_status ProfileData(kweb_browser_handle handle, uint64_t request_id,
                           kweb_profile_data_operation_type operation,
                           std::string payload);
@@ -357,6 +360,15 @@ public:
       CefRefPtr<CefRequest> request, bool is_navigation, bool is_download,
       const CefString &request_initiator,
       bool &disable_default_handling) override;
+  bool OnCertificateError(CefRefPtr<CefBrowser> browser,
+                          ErrorCode cert_error,
+                          const CefString &request_url,
+                          CefRefPtr<CefSSLInfo> ssl_info,
+                          CefRefPtr<CefCallback> callback) override;
+  bool OnSelectClientCertificate(
+      CefRefPtr<CefBrowser> browser, bool is_proxy, const CefString &host,
+      int port, const X509CertificateList &certificates,
+      CefRefPtr<CefSelectClientCertificateCallback> callback) override;
 
   void OnAddressChange(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
                        const CefString &url) override;
@@ -514,9 +526,11 @@ private:
 // thread and released at engine close before CefShutdown.
 struct ProfileContextEntry {
   explicit ProfileContextEntry(std::filesystem::path profile_path)
-      : path(std::move(profile_path)) {}
+      : path(std::move(profile_path)),
+        security_state(std::make_shared<SecurityProfileState>()) {}
 
   const std::filesystem::path path;
+  const std::shared_ptr<SecurityProfileState> security_state;
   CefRefPtr<CefRequestContext> context;
   bool initialized = false;
   bool failed = false;
@@ -566,6 +580,38 @@ public:
             session->EmitNetworkEvent(std::move(event));
           }
         });
+  }
+
+  bool OnCertificateError(CefRefPtr<CefBrowser> browser,
+                          cef_errorcode_t cert_error,
+                          const CefString &request_url,
+                          CefRefPtr<CefSSLInfo> ssl_info,
+                          CefRefPtr<CefCallback> callback) {
+    return security_registry_ &&
+           security_registry_->OnCertificateError(
+               browser, cert_error, request_url, ssl_info, callback);
+  }
+
+  bool OnSelectClientCertificate(
+      CefRefPtr<CefBrowser> browser, bool is_proxy, const CefString &host,
+      int port, const CefRequestHandler::X509CertificateList &certificates,
+      CefRefPtr<CefSelectClientCertificateCallback> callback) {
+    return security_registry_ &&
+           security_registry_->OnSelectClientCertificate(
+               browser, is_proxy, host, port, certificates, callback);
+  }
+
+  kweb_status RespondToSecurityChallenge(uint64_t request_id,
+                                          std::string decision) {
+    if (request_id == 0 || decision.empty()) {
+      return KWEB_STATUS_SECURITY_CHALLENGE_DECISION_INVALID;
+    }
+    if (closing_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_SECURITY_CHALLENGE_PROFILE_CLOSING;
+    }
+    return security_registry_
+               ? security_registry_->Respond(request_id, decision)
+               : KWEB_STATUS_SECURITY_CHALLENGE_NOT_FOUND;
   }
 
   void EmitNetworkEvent(std::string event) {
@@ -1030,7 +1076,9 @@ public:
     EmitBridge(KWEB_BRIDGE_EVENT_CANCELLED, request_id, {});
   }
 
-  void ProfileInitialized(CefRefPtr<CefRequestContext> context) {
+  void ProfileInitialized(
+      CefRefPtr<CefRequestContext> context,
+      std::shared_ptr<SecurityProfileState> security_state) {
     CEF_REQUIRE_UI_THREAD();
     pending_profile_context_.reset();
     TraceCreateStage(handle_, "context-initialized");
@@ -1048,6 +1096,19 @@ public:
       return;
     }
     request_context_ = context;
+    security_registry_ = std::make_shared<SecurityChallengeRegistry>(
+        std::move(security_state),
+        [weak_session = weak_from_this()](uint64_t request_id,
+                                          const std::string &origin,
+                                          const std::string &url,
+                                          const std::string &details) {
+          if (auto session = weak_session.lock()) {
+            session->Emit(KWEB_BROWSER_EVENT_SECURITY_CHALLENGE, 0, {}, 0, 0,
+                          0, {}, KWEB_BROWSER_FRAME_MAIN,
+                          KWEB_BROWSER_REASON_NONE, request_id, origin, url,
+                          {}, details, false);
+          }
+        });
     kweb_status surface_status = KWEB_STATUS_OK;
     surface_ = CreateBrowserSurface(native_parent_, x_, y_, width_, height_,
                                     &surface_status);
@@ -1892,7 +1953,7 @@ private:
     profile_path_ = entry->path;
     if (entry->initialized) {
       TraceCreateStage(handle_, "context-reused");
-      ProfileInitialized(entry->context);
+      ProfileInitialized(entry->context, entry->security_state);
       return;
     }
     TraceCreateStage(handle_, "context-pending");
@@ -1939,6 +2000,9 @@ private:
     TraceCloseStage(handle_, "begin-close");
     closing_.store(true, std::memory_order_release);
     ready_.store(false, std::memory_order_release);
+    if (security_registry_) {
+      security_registry_->Close();
+    }
     CancelPendingPageRequests();
     if (profile_data_active_) {
       FinishProfileData(profile_data_request_id_, profile_data_operation_,
@@ -2086,12 +2150,13 @@ private:
             uint32_t reason = KWEB_BROWSER_REASON_NONE,
             uint64_t request_id = 0, const std::string &origin = {},
             const std::string &url = {}, const std::string &title = {},
-            const std::string &details = {}) {
+            const std::string &details = {}, bool infer_origin = true) {
     const std::string effective_frame_id = frame_id.empty()
                                                ? (main_frame_id_.empty() ? "0" : main_frame_id_)
                                                : frame_id;
     std::string effective_origin = origin;
-    if (effective_origin.empty() && browser_ && browser_->GetMainFrame()) {
+    if (infer_origin && effective_origin.empty() && browser_ &&
+        browser_->GetMainFrame()) {
       effective_origin = BridgeOriginFromUrl(browser_->GetMainFrame()->GetURL()).value_or("");
     }
     const kweb_string_view text_view = {text.data(), text.size()};
@@ -2138,6 +2203,7 @@ private:
   std::unique_ptr<BrowserSurface> surface_;
   CefRefPtr<SessionClient> client_;
   CefRefPtr<CefRequestContext> request_context_;
+  std::shared_ptr<SecurityChallengeRegistry> security_registry_;
   std::weak_ptr<ProfileContextEntry> pending_profile_context_;
   CefRefPtr<CefBrowser> browser_;
   CefRefPtr<DevToolsClient> devtools_client_;
@@ -2206,6 +2272,32 @@ CefRefPtr<CefResourceRequestHandler> SessionClient::GetResourceRequestHandler(
     return session->GetResourceRequestHandler();
   }
   return nullptr;
+}
+
+bool SessionClient::OnCertificateError(
+    CefRefPtr<CefBrowser> browser, ErrorCode cert_error,
+    const CefString &request_url, CefRefPtr<CefSSLInfo> ssl_info,
+    CefRefPtr<CefCallback> callback) {
+  CEF_REQUIRE_UI_THREAD();
+  if (auto session = session_.lock()) {
+    return session->OnCertificateError(browser, cert_error, request_url,
+                                       ssl_info, callback);
+  }
+  if (callback) callback->Cancel();
+  return true;
+}
+
+bool SessionClient::OnSelectClientCertificate(
+    CefRefPtr<CefBrowser> browser, bool is_proxy, const CefString &host,
+    int port, const X509CertificateList &certificates,
+    CefRefPtr<CefSelectClientCertificateCallback> callback) {
+  CEF_REQUIRE_UI_THREAD();
+  if (auto session = session_.lock()) {
+    return session->OnSelectClientCertificate(browser, is_proxy, host, port,
+                                              certificates, callback);
+  }
+  if (callback) callback->Select(nullptr);
+  return true;
 }
 
 void SessionClient::OnAddressChange(CefRefPtr<CefBrowser> browser,
@@ -2621,7 +2713,7 @@ void SessionRegistry::CompleteProfileContextInitialization(
   entry->context = std::move(context);
   entry->initialized = true;
   for (const auto &session : pending) {
-    session->ProfileInitialized(entry->context);
+    session->ProfileInitialized(entry->context, entry->security_state);
   }
   auto callbacks = std::move(entry->initialization_callbacks);
   for (auto &callback : callbacks) {
@@ -2705,6 +2797,10 @@ kweb_status SessionRegistry::ReleaseProfileContext(
 
   const kweb_status network_status = ClearProfileNetworkPolicy(profile_path);
   if (network_status != KWEB_STATUS_OK) return network_status;
+  const auto found = profile_contexts_.find(profile_path);
+  if (found != profile_contexts_.end() && found->second->security_state) {
+    found->second->security_state->Close();
+  }
   profile_contexts_.erase(profile_path);
   return KWEB_STATUS_OK;
 }
@@ -2713,6 +2809,9 @@ kweb_status SessionRegistry::ReleaseProfileContexts() {
   CEF_REQUIRE_UI_THREAD();
   const kweb_status network_status = ReleaseAllProfileNetworkPolicies();
   if (network_status != KWEB_STATUS_OK) return network_status;
+  for (const auto &entry : profile_contexts_) {
+    if (entry.second->security_state) entry.second->security_state->Close();
+  }
   profile_contexts_.clear();
   return KWEB_STATUS_OK;
 }
@@ -2850,7 +2949,16 @@ kweb_status SessionRegistry::BridgeRespond(kweb_browser_handle handle,
                                            bool success) {
   auto session = Lookup(handle);
   return session ? session->BridgeRespond(request_id, std::move(response),
-                                          success)
+                 success)
+                 : KWEB_STATUS_INVALID_HANDLE;
+}
+
+kweb_status SessionRegistry::SecurityRespond(kweb_browser_handle handle,
+                                             uint64_t request_id,
+                                             std::string decision) {
+  auto session = Lookup(handle);
+  return session ? session->RespondToSecurityChallenge(request_id,
+                                                        std::move(decision))
                  : KWEB_STATUS_INVALID_HANDLE;
 }
 
@@ -2934,6 +3042,14 @@ kweb_status RespondToBridgeSession(kweb_browser_handle browser,
   return GuardStatus([&] {
     return Registry().BridgeRespond(
         browser, request_id, std::string(response_utf8, response_size), success);
+  });
+}
+
+kweb_status RespondToSecurityChallengeSession(kweb_browser_handle browser,
+                                              uint64_t request_id,
+                                              const std::string &decision) {
+  return GuardStatus([&] {
+    return Registry().SecurityRespond(browser, request_id, decision);
   });
 }
 

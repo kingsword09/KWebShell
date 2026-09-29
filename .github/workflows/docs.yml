@@ -43,11 +43,39 @@ jobs:
           set -euo pipefail
           git diff --check "${{ github.event.pull_request.base.sha }}" HEAD
 
-      - name: Run RFC governance and schema validation
+      - name: Determine validation scope
+        id: scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          elif [[ -n "${{ github.event.before }}" && "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]]; then
+            base="${{ github.event.before }}"
+          else
+            base="HEAD^"
+          fi
+          implementation_change=false
+          while IFS= read -r path; do
+            case "$path" in
+              *.md|docs/rfcs/evidence/*) ;;
+              *) implementation_change=true ;;
+            esac
+          done < <(git diff --name-only "$base" HEAD)
+          echo "implementation_change=$implementation_change" >> "$GITHUB_OUTPUT"
+
+      - name: Run RFC contract tests before hosted evidence refresh
+        if: steps.scope.outputs.implementation_change == 'true'
+        shell: bash
+        run: ./gradlew --no-daemon :kweb-rfc-governance:contractTest
+
+      - name: Run strict RFC governance and schema validation
+        if: steps.scope.outputs.implementation_change != 'true'
         shell: bash
         run: ./gradlew --no-daemon :kweb-rfc-governance:rfcGovernanceCheck
 
       - name: Upload RFC governance report
+        if: steps.scope.outputs.implementation_change != 'true'
         uses: actions/upload-artifact@v6
         with:
           name: rfc-governance-docs-${{ github.sha }}

@@ -58,7 +58,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libasound2-dev libgtk-3-dev xvfb
+          sudo apt-get install --yes libasound2-dev libgtk-3-dev libnss3-tools xvfb
 
       - name: Install pinned TypeScript compiler
         shell: bash

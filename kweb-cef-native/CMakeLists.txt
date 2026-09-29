@@ -135,6 +135,7 @@ endif()
 add_library(kweb_engine_abi SHARED
   src/bridge_protocol.cc
   src/browser_session.cc
+  src/security_challenges.cc
   src/network_policy.cc
   ${KWEB_BROWSER_SURFACE_SOURCE}
   src/engine_abi.cc

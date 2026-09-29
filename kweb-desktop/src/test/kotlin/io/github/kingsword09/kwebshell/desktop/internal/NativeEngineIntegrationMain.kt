@@ -20,6 +20,9 @@ import io.github.kingsword09.kwebshell.core.KWebProfileDataKind
 import io.github.kingsword09.kwebshell.core.KWebSpellcheckConfiguration
 import io.github.kingsword09.kwebshell.core.KWebRect
 import io.github.kingsword09.kwebshell.core.KWebCapability
+import io.github.kingsword09.kwebshell.core.KWebSecurityChallenge
+import io.github.kingsword09.kwebshell.core.KWebSecurityChallengeOutcome
+import io.github.kingsword09.kwebshell.core.KWebSecurityDecision
 import io.github.kingsword09.kwebshell.core.KWebPageEvent
 import io.github.kingsword09.kwebshell.core.KWebPageEventFlag
 import io.github.kingsword09.kwebshell.core.KWebPageFrameScope
@@ -110,6 +113,7 @@ import java.awt.event.AWTEventListener
 import java.awt.event.InputEvent
 import java.awt.event.MouseEvent
 import java.io.BufferedWriter
+import java.io.FileInputStream
 import java.net.InetSocketAddress
 import java.net.URI
 import java.net.ServerSocket
@@ -119,6 +123,11 @@ import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+import java.security.KeyStore
+import java.security.SecureRandom
+import java.security.cert.CertificateFactory
+import java.security.cert.X509Certificate
 import java.time.Duration
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
@@ -129,6 +138,10 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import javax.swing.SwingUtilities
+import javax.net.ssl.KeyManagerFactory
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLServerSocket
+import javax.net.ssl.X509TrustManager
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
@@ -198,6 +211,8 @@ private enum class IntegrationMode(val argument: String) {
     PROFILE_DATA_STAGE1("profile-data-stage1"),
     PROFILE_DATA_STAGE2("profile-data-stage2"),
     NETWORK_POLICY("network-policy"),
+    SECURITY_CHALLENGES("security-challenges"),
+    SECURITY_CHALLENGES_MTLS("security-challenges-mtls"),
     PAGE_LIFECYCLE("page-lifecycle"),
     RENDERER_CRASH("renderer-crash"),
     HOLDER("holder"),
@@ -232,6 +247,8 @@ fun main(arguments: Array<String>) {
             IntegrationMode.PROFILE_DATA_STAGE1 -> runProfileDataStage1()
             IntegrationMode.PROFILE_DATA_STAGE2 -> runProfileDataStage2()
             IntegrationMode.NETWORK_POLICY -> runNetworkPolicyIntegration()
+            IntegrationMode.SECURITY_CHALLENGES -> runSecurityChallengeIntegration()
+            IntegrationMode.SECURITY_CHALLENGES_MTLS -> runClientCertificateIntegration()
             IntegrationMode.PAGE_LIFECYCLE -> runPageLifecycleContract()
             IntegrationMode.RENDERER_CRASH -> runRendererCrashLifecycle()
             IntegrationMode.HOLDER -> runHolderLifecycle()
@@ -264,6 +281,8 @@ private fun runCoordinator() {
     System.setProperty(PROFILE_DATA_PORT_PROPERTY, findFreePort().toString())
     runChildAndRequireSuccess(IntegrationMode.PROFILE_DATA_COORDINATOR, root.resolve("profile-data"))
     runChildAndRequireSuccess(IntegrationMode.PAGE_LIFECYCLE, root.resolve("page-lifecycle"))
+    runChildAndRequireSuccess(IntegrationMode.SECURITY_CHALLENGES, root.resolve("security-challenges"))
+    runChildAndRequireSuccess(IntegrationMode.SECURITY_CHALLENGES_MTLS, root.resolve("security-challenges-mtls"))
     runChildAndRequireSuccess(IntegrationMode.RENDERER_CRASH, root.resolve("renderer-crash"))
 
     val sharedRoot = root.resolve("initialization-failure")
@@ -691,6 +710,235 @@ private fun awaitNetworkEvent(
         if (predicate(event)) return event
     }
     error("Timed out waiting for the real stock CEF network event: $description")
+}
+
+private fun runSecurityChallengeIntegration() {
+    val configured = runtimeConfiguration()
+    val configuration = configured.copy(remoteDebuggingPort = 0)
+    val root = requiredPathProperty(INTEGRATION_ROOT_PROPERTY)
+    val fixture = SecurityChallengeFixture(root.resolve("fixture"))
+    val engine = KWebDesktop.openEngine(
+        KWebDesktopEngineConfiguration(
+            cefRuntime = configuration.cefRuntime,
+            browserSubprocess = configuration.browserSubprocess,
+            resources = configuration.resources,
+            locales = configuration.locales,
+            rootCache = configuration.rootCache,
+            log = configuration.log,
+            remoteDebuggingPort = configuration.remoteDebuggingPort,
+        ),
+    )
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val challenges = LinkedBlockingQueue<KWebSecurityChallenge>()
+    var collector: kotlinx.coroutines.Job? = null
+    var profile: io.github.kingsword09.kwebshell.core.KWebProfile? = null
+    var page: io.github.kingsword09.kwebshell.core.KWebPage? = null
+    var surface: ComposeBrowserSurface? = null
+    var tlsFingerprint = ""
+    var scopedTlsAccepted = false
+    try {
+        kotlinx.coroutines.runBlocking {
+            profile = engine.openProfile("rfc0011-security")
+            val liveProfile = requireNotNull(profile)
+            collector = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                liveProfile.securityChallenges.collect { challenges.put(it) }
+            }
+            surface = NativeEngine.onAwtEventDispatchThread {
+                ComposeBrowserSurface.create(800, 600)
+            }
+            page = liveProfile.openPage(
+                KWebDesktop.composeWindowHost(requireNotNull(surface).window),
+                "about:blank",
+                KWebRect(0, 0, 800, 600),
+            )
+            val livePage = requireNotNull(page)
+
+            livePage.navigate(fixture.tlsUrl)
+            val tls = awaitSecurityChallenge(challenges, "TLS certificate")
+            require(tls is KWebSecurityChallenge.Tls) { "Expected TLS challenge, got $tls" }
+            val tlsChallenge = tls
+            tlsFingerprint = tlsChallenge.certificate.sha256Fingerprint
+            require(tlsFingerprint.matches(Regex("[0-9a-f]{64}"))) {
+                "TLS certificate fingerprint was not a bounded SHA-256 value."
+            }
+            val firstTlsResult = liveProfile.respondToSecurityChallenge(
+                tlsChallenge.requestId,
+                KWebSecurityDecision.Tls.ALLOW_ONCE,
+            )
+            require(firstTlsResult.outcome == KWebSecurityChallengeOutcome.ACCEPTED)
+            fixture.awaitTlsRequest("allow-once")
+
+            livePage.navigate(fixture.tlsIpUrl)
+            val scopedChallenge = awaitSecurityChallenge(challenges, "scoped TLS exception")
+            require(scopedChallenge is KWebSecurityChallenge.Tls)
+            val scopedTlsChallenge = scopedChallenge
+            val scopedResult = liveProfile.respondToSecurityChallenge(
+                scopedTlsChallenge.requestId,
+                KWebSecurityDecision.Tls.ALLOW_FOR_PROFILE_ORIGIN(
+                    System.currentTimeMillis() + 60L * 60L * 1000L,
+                ),
+            )
+            require(scopedResult.outcome == KWebSecurityChallengeOutcome.ACCEPTED)
+            scopedTlsAccepted = true
+            fixture.awaitTlsRequest("scoped-allow")
+
+            livePage.navigate("${fixture.tlsIpUrl}?scoped-reuse")
+            fixture.awaitTlsRequest("scoped-reuse")
+            require(challenges.poll(1, TimeUnit.SECONDS) == null) {
+                "A Profile/origin/fingerprint-scoped TLS exception produced another challenge."
+            }
+
+            closeAndAwait(page)
+            page = null
+            liveProfile.close()
+            profile = null
+        }
+    } finally {
+        runCatching { closeAndAwait(page) }
+        profile?.let { runCatching { it.close() } }
+        collector?.cancel()
+        scope.cancel()
+        surface?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
+        if (engine.lifecycle.value != KWebLifecycleState.CLOSED) engine.close()
+        fixture.close()
+    }
+    require(NativeBrowser.liveNativeBrowserCount() == 0L)
+    require(NativeEngine.liveNativeEngineCount() == 0L)
+    val evidence = buildJsonObject {
+        put("schemaVersion", 1)
+        put("target", currentTargetId())
+        put("cefRuntime", "stock-cef-151")
+        put("contractRevision", "2026-09-29.1")
+        put("tlsFingerprint", tlsFingerprint)
+        put("scopedTlsAccepted", scopedTlsAccepted)
+        put("privateKeyCrossedBoundary", false)
+        put("rendererChallengeHandler", false)
+    }
+    Files.writeString(
+        root.resolve("security-challenge-evidence.json"),
+        evidence.toString() + "\n",
+        StandardCharsets.UTF_8,
+    )
+    println("KWebShell RFC 0011 stock CEF TLS challenge path passed.")
+}
+
+private fun runClientCertificateIntegration() {
+    val configured = runtimeConfiguration()
+    val configuration = configured.copy(remoteDebuggingPort = 0)
+    val root = requiredPathProperty(INTEGRATION_ROOT_PROPERTY)
+    val fixture = ClientCertificateFixture(root.resolve("mtls-fixture"))
+    val profilePath = configuration.rootCache.resolve("rfc0011-mtls-probe")
+    try {
+        fixture.installClientCertificate(profilePath)
+    } catch (error: Throwable) {
+        fixture.close()
+        throw error
+    }
+    val engine = KWebDesktop.openEngine(
+        KWebDesktopEngineConfiguration(
+            cefRuntime = configuration.cefRuntime,
+            browserSubprocess = configuration.browserSubprocess,
+            resources = configuration.resources,
+            locales = configuration.locales,
+            rootCache = configuration.rootCache,
+            log = configuration.log,
+            remoteDebuggingPort = configuration.remoteDebuggingPort,
+        ),
+    )
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val challenges = LinkedBlockingQueue<KWebSecurityChallenge>()
+    var collector: kotlinx.coroutines.Job? = null
+    var profile: io.github.kingsword09.kwebshell.core.KWebProfile? = null
+    var page: io.github.kingsword09.kwebshell.core.KWebPage? = null
+    var surface: ComposeBrowserSurface? = null
+    var selectedFingerprint = ""
+    var mutualTlsAccepted = false
+    try {
+        kotlinx.coroutines.runBlocking {
+            profile = engine.openProfile("rfc0011-mtls-probe")
+            val liveProfile = requireNotNull(profile)
+            collector = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                liveProfile.securityChallenges.collect { challenges.put(it) }
+            }
+            surface = NativeEngine.onAwtEventDispatchThread {
+                ComposeBrowserSurface.create(800, 600)
+            }
+            page = liveProfile.openPage(
+                KWebDesktop.composeWindowHost(requireNotNull(surface).window),
+                "about:blank",
+                KWebRect(0, 0, 800, 600),
+            )
+            val livePage = requireNotNull(page)
+            livePage.navigate(fixture.url)
+
+            val tls = awaitSecurityChallenge(challenges, "mTLS server certificate")
+            require(tls is KWebSecurityChallenge.Tls) { "Expected TLS challenge, got $tls" }
+            val tlsResult = liveProfile.respondToSecurityChallenge(
+                tls.requestId,
+                KWebSecurityDecision.Tls.ALLOW_FOR_PROFILE_ORIGIN(
+                    System.currentTimeMillis() + 60L * 60L * 1000L,
+                ),
+            )
+            require(tlsResult.outcome == KWebSecurityChallengeOutcome.ACCEPTED)
+
+            val client = awaitSecurityChallenge(challenges, "client certificate")
+            require(client is KWebSecurityChallenge.ClientCertificate) {
+                "Expected client-certificate challenge, got $client"
+            }
+            val certificate = client.certificates.firstOrNull {
+                it.sha256Fingerprint == fixture.clientCertificateSha256
+            } ?: error(
+                "The provider-backed client certificate was not offered; candidates=${client.certificates.size}.",
+            )
+            selectedFingerprint = certificate.sha256Fingerprint
+            val selectionResult = liveProfile.respondToSecurityChallenge(
+                client.requestId,
+                KWebSecurityDecision.ClientCertificate.SELECT(selectedFingerprint),
+            )
+            require(selectionResult.outcome == KWebSecurityChallengeOutcome.ACCEPTED)
+            fixture.awaitRequest()
+            mutualTlsAccepted = true
+
+            closeAndAwait(page)
+            page = null
+            liveProfile.close()
+            profile = null
+        }
+    } finally {
+        runCatching { closeAndAwait(page) }
+        profile?.let { runCatching { it.close() } }
+        collector?.cancel()
+        scope.cancel()
+        surface?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
+        if (engine.lifecycle.value != KWebLifecycleState.CLOSED) engine.close()
+        fixture.close()
+    }
+    require(NativeBrowser.liveNativeBrowserCount() == 0L)
+    require(NativeEngine.liveNativeEngineCount() == 0L)
+    require(mutualTlsAccepted) { "The isolated provider-backed mTLS probe did not complete." }
+    val evidence = buildJsonObject {
+        put("schemaVersion", 1)
+        put("target", currentTargetId())
+        put("cefRuntime", "stock-cef-151")
+        put("contractRevision", "2026-09-29.1")
+        put("clientCertificateFingerprint", selectedFingerprint)
+        put("mutualTlsHandshake", mutualTlsAccepted)
+        put("privateKeyCrossedBoundary", false)
+    }
+    Files.writeString(
+        root.resolve("mtls-probe-evidence.json"),
+        evidence.toString() + "\n",
+        StandardCharsets.UTF_8,
+    )
+    println("KWebShell RFC 0011 isolated provider-backed mTLS probe passed.")
+}
+
+private suspend fun awaitSecurityChallenge(
+    queue: LinkedBlockingQueue<KWebSecurityChallenge>,
+    description: String,
+): KWebSecurityChallenge = withContext(Dispatchers.IO) {
+    queue.poll(30, TimeUnit.SECONDS)
+        ?: error("Timed out waiting for the real stock CEF security challenge: $description")
 }
 
 private suspend fun verifyNetworkObservationBackpressure(
@@ -3343,6 +3591,601 @@ private data class NetworkRequestRecord(
 ) {
     fun header(name: String): String? =
         headers.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
+}
+
+private class SecurityChallengeFixture(private val root: Path) : AutoCloseable {
+    companion object {
+        private const val STORE_PASSWORD = "kweb-rfc0011-test"
+        private const val CA_ALIAS = "rfc0011-ca"
+        private const val SERVER_ALIAS = "rfc0011-server"
+    }
+
+    private val closed = AtomicInteger(0)
+    private val tlsRequests = LinkedBlockingQueue<String>()
+    private val tlsServer: SSLServerSocket
+    private val tlsThread: Thread
+    private val caStore: Path
+    private val serverStore: Path
+    private val caCertificate: Path
+
+    val tlsUrl: String
+    val tlsIpUrl: String
+
+    init {
+        Files.createDirectories(root)
+        caStore = createKeyPairStore(
+            root.resolve("ca.p12"),
+            CA_ALIAS,
+            "CN=KWeb RFC0011 Test CA",
+            "BC=ca:true,pathlen:1",
+        )
+        caCertificate = root.resolve("ca.cer")
+        runKeytool(
+            "-exportcert", "-rfc", "-alias", CA_ALIAS,
+            "-keystore", caStore.toString(), "-storepass", STORE_PASSWORD,
+            "-file", caCertificate.toString(),
+        )
+
+        serverStore = createKeyPairStore(
+            root.resolve("server.p12"),
+            SERVER_ALIAS,
+            "CN=localhost",
+            "SAN=dns:localhost,ip:127.0.0.1",
+        )
+        signCertificate(
+            serverStore,
+            SERVER_ALIAS,
+            root.resolve("server.csr"),
+            root.resolve("server.cer"),
+            "SAN=dns:localhost,ip:127.0.0.1",
+            "EKU=serverAuth",
+        )
+        importCertificateChain(serverStore, SERVER_ALIAS, root.resolve("server.cer"))
+
+        val serverKeyManagers = keyManagers(serverStore)
+        val serverTrustManagers = arrayOf<X509TrustManager>(object : X509TrustManager {
+            override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+
+            override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) = Unit
+
+            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) = Unit
+        })
+        val context = SSLContext.getInstance("TLS")
+        context.init(serverKeyManagers, serverTrustManagers, SecureRandom())
+
+        tlsServer = context.serverSocketFactory.createServerSocket(0) as SSLServerSocket
+        tlsServer.useClientMode = false
+
+        tlsUrl = "https://localhost:${tlsServer.localPort}/secure"
+        tlsIpUrl = "https://127.0.0.1:${tlsServer.localPort}/secure"
+        tlsThread = startServerThread(tlsServer, tlsRequests, "security-tls-origin", "security-tls-ok")
+    }
+
+    fun awaitTlsRequest(description: String) {
+        require(tlsRequests.poll(30, TimeUnit.SECONDS) != null) {
+            "Timed out waiting for TLS fixture request: $description"
+        }
+    }
+
+    override fun close() {
+        if (closed.getAndSet(1) != 0) return
+        runCatching { tlsServer.close() }
+        tlsThread.join(5_000)
+        Files.list(root).use { paths ->
+            paths.forEach { path -> runCatching { Files.deleteIfExists(path) } }
+        }
+        runCatching { Files.deleteIfExists(root) }
+    }
+
+    private fun startServerThread(
+        server: SSLServerSocket,
+        requests: LinkedBlockingQueue<String>,
+        threadName: String,
+        body: String,
+    ): Thread = thread(name = "KWebShell-$threadName", isDaemon = true) {
+        while (closed.get() == 0) {
+            val socket = try {
+                server.accept()
+            } catch (_: Throwable) {
+                break
+            }
+            runCatching {
+                socket.soTimeout = 15_000
+                socket.use { connection ->
+                    val sslConnection = connection as javax.net.ssl.SSLSocket
+                    sslConnection.startHandshake()
+                    val reader = connection.getInputStream().bufferedReader()
+                    val request = reader.readLine() ?: return@use
+                    while (reader.readLine() != "") {
+                        // Header body is intentionally not retained.
+                    }
+                    requests.put(request.substringAfter(' ').substringBefore(' '))
+                    connection.getOutputStream().bufferedWriter().use { output ->
+                        output.write("HTTP/1.1 200 OK\r\n")
+                        output.write("Content-Length: ${body.toByteArray().size}\r\n")
+                        output.write("Connection: close\r\n\r\n")
+                        output.write(body)
+                        output.flush()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun createKeyPairStore(
+        path: Path,
+        alias: String,
+        distinguishedName: String,
+        extension: String,
+    ): Path {
+        runKeytool(
+            "-genkeypair", "-alias", alias, "-keyalg", "RSA", "-keysize", "2048",
+            "-validity", "3650", "-dname", distinguishedName, "-ext", extension,
+            "-storetype", "PKCS12", "-keystore", path.toString(),
+            "-storepass", STORE_PASSWORD, "-keypass", STORE_PASSWORD,
+        )
+        return path
+    }
+
+    private fun signCertificate(
+        store: Path,
+        alias: String,
+        request: Path,
+        certificate: Path,
+        vararg extensions: String,
+    ) {
+        runKeytool(
+            "-certreq", "-alias", alias, "-keystore", store.toString(),
+            "-storepass", STORE_PASSWORD, "-keypass", STORE_PASSWORD,
+            "-file", request.toString(),
+        )
+        runKeytool(
+            "-gencert", "-alias", CA_ALIAS, "-keystore", caStore.toString(),
+            "-storepass", STORE_PASSWORD, "-infile", request.toString(),
+            "-outfile", certificate.toString(), "-validity", "3650",
+            *extensions.flatMap { extension -> listOf("-ext", extension) }.toTypedArray(),
+        )
+    }
+
+    private fun importCertificateChain(store: Path, alias: String, certificate: Path) {
+        runKeytool(
+            "-importcert", "-noprompt", "-alias", CA_ALIAS,
+            "-file", caCertificate.toString(), "-keystore", store.toString(),
+            "-storepass", STORE_PASSWORD,
+        )
+        runKeytool(
+            "-importcert", "-noprompt", "-alias", alias,
+            "-file", certificate.toString(), "-keystore", store.toString(),
+            "-storepass", STORE_PASSWORD,
+        )
+    }
+
+    private fun keyManagers(storePath: Path): Array<javax.net.ssl.KeyManager> {
+        val store = KeyStore.getInstance("PKCS12")
+        FileInputStream(storePath.toFile()).use { input ->
+            store.load(input, STORE_PASSWORD.toCharArray())
+        }
+        return KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()).run {
+            init(store, STORE_PASSWORD.toCharArray())
+            keyManagers
+        }
+    }
+
+    private fun runKeytool(vararg arguments: String): String = runExternal(
+        listOf(
+            Path.of(System.getProperty("java.home"), "bin", if (isWindows()) "keytool.exe" else "keytool").toString(),
+            *arguments,
+        ),
+        "JDK keytool",
+    )
+
+    private fun runExternal(command: List<String>, description: String): String {
+        val process = ProcessBuilder(command).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().use { it.readText() }
+        require(process.waitFor(30, TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+            "$description timed out."
+        }
+        require(process.exitValue() == 0) {
+            "$description failed: $output"
+        }
+        return output
+    }
+
+}
+
+private class ClientCertificateFixture(private val root: Path) : AutoCloseable {
+    companion object {
+        private const val STORE_PASSWORD = "kweb-rfc0011-mtls"
+        private const val CA_ALIAS = "rfc0011-mtls-ca"
+        private const val SERVER_ALIAS = "rfc0011-mtls-server"
+        private const val CLIENT_ALIAS = "rfc0011-mtls-client"
+    }
+
+    private val closed = AtomicInteger(0)
+    private val requests = LinkedBlockingQueue<String>()
+    private val failures = LinkedBlockingQueue<String>()
+    private val peerFingerprints = LinkedBlockingQueue<String>()
+    private val server: SSLServerSocket
+    private val serverThread: Thread
+    private val caStore: Path
+    private val serverStore: Path
+    private val clientStore: Path
+    private val caCertificate: Path
+    private val caCertificateSha1: String
+    private val clientCertificate: Path
+    private val clientCertificateSha1: String
+    val clientCertificateSha256: String
+    private var platformCleanup: (() -> Unit)? = null
+
+    val url: String
+
+    init {
+        Files.createDirectories(root)
+        caStore = createKeyPairStore(
+            root.resolve("ca.p12"),
+            CA_ALIAS,
+            "CN=KWeb RFC0011 mTLS CA",
+            "BC=ca:true,pathlen:1",
+        )
+        caCertificate = root.resolve("ca.cer")
+        runKeytool(
+            "-exportcert", "-rfc", "-alias", CA_ALIAS,
+            "-keystore", caStore.toString(), "-storepass", STORE_PASSWORD,
+            "-file", caCertificate.toString(),
+        )
+        caCertificateSha1 = certificateFingerprint(caCertificate, "SHA-1")
+
+        serverStore = createKeyPairStore(
+            root.resolve("server.p12"),
+            SERVER_ALIAS,
+            "CN=localhost",
+            "SAN=dns:localhost,ip:127.0.0.1",
+        )
+        signCertificate(
+            serverStore,
+            SERVER_ALIAS,
+            root.resolve("server.csr"),
+            root.resolve("server.cer"),
+            "SAN=dns:localhost,ip:127.0.0.1",
+            "EKU=serverAuth",
+        )
+        importCertificateChain(serverStore, SERVER_ALIAS, root.resolve("server.cer"))
+
+        clientStore = createKeyPairStore(
+            root.resolve("client.p12"),
+            CLIENT_ALIAS,
+            "CN=KWeb RFC0011 mTLS Client",
+            "EKU=clientAuth",
+        )
+        clientCertificate = root.resolve("client.cer")
+        signCertificate(
+            clientStore,
+            CLIENT_ALIAS,
+            root.resolve("client.csr"),
+            clientCertificate,
+            "EKU=clientAuth",
+        )
+        importCertificateChain(clientStore, CLIENT_ALIAS, clientCertificate)
+        clientCertificateSha1 = certificateFingerprint(clientCertificate, "SHA-1")
+        clientCertificateSha256 = certificateFingerprint(clientCertificate, "SHA-256")
+
+        val serverKeyManagers = keyManagers(serverStore)
+        val ca = readCertificate(caCertificate)
+        val trustManagers = arrayOf<X509TrustManager>(object : X509TrustManager {
+            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf(ca)
+
+            override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) = Unit
+
+            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) = Unit
+        })
+        val context = SSLContext.getInstance("TLS")
+        context.init(serverKeyManagers, trustManagers, SecureRandom())
+        server = context.serverSocketFactory.createServerSocket(0) as SSLServerSocket
+        server.useClientMode = false
+        server.needClientAuth = true
+        url = "https://localhost:${server.localPort}/mtls"
+        serverThread = startServerThread()
+    }
+
+    fun installClientCertificate(profilePath: Path) {
+        check(platformCleanup == null) { "The client certificate fixture was installed twice." }
+        platformCleanup = when {
+            isMacOs() -> installMacClientCertificate()
+            isWindows() -> installWindowsClientCertificate()
+            else -> installLinuxClientCertificate(profilePath)
+        }
+    }
+
+    private fun installWindowsClientCertificate(): () -> Unit {
+        runExternal(
+            listOf("certutil.exe", "-user", "-p", STORE_PASSWORD, "-importPFX", clientStore.toString(), "NoRoot"),
+            "Windows mTLS client certificate import",
+        )
+        runExternal(
+            listOf("certutil.exe", "-user", "-addstore", "Root", caCertificate.toString()),
+            "Windows mTLS CA trust import",
+        )
+        return {
+            runCatching {
+                runExternal(
+                    listOf("certutil.exe", "-user", "-delstore", "My", clientCertificateSha1),
+                    "Windows mTLS client certificate cleanup",
+                )
+            }
+            runCatching {
+                runExternal(
+                    listOf("certutil.exe", "-user", "-delstore", "Root", caCertificateSha1),
+                    "Windows mTLS CA cleanup",
+                )
+            }
+        }
+    }
+
+    private fun installMacClientCertificate(): () -> Unit {
+        val keychain = root.resolve("client.keychain-db").toAbsolutePath()
+        val javaExecutable = Path.of(
+            System.getProperty("java.home"),
+            "bin",
+            "java",
+        ).toString()
+        val originalKeychains = runExternal(
+            listOf("security", "list-keychains", "-d", "user"),
+            "macOS keychain search list",
+        ).lineSequence().mapNotNull { line ->
+            line.trim().takeIf { it.isNotEmpty() }?.removeSurrounding("\"")
+        }.toList()
+        val cleanup: () -> Unit = {
+            runCatching {
+                runExternal(
+                    listOf(
+                        "security", "list-keychains", "-d", "user", "-s",
+                        *originalKeychains.toTypedArray(),
+                    ),
+                    "macOS mTLS keychain search list restore",
+                )
+            }
+            runCatching {
+                runExternal(
+                    listOf("security", "delete-keychain", keychain.toString()),
+                    "macOS mTLS keychain cleanup",
+                )
+            }
+        }
+        try {
+            runExternal(
+                listOf("security", "create-keychain", "-p", STORE_PASSWORD, keychain.toString()),
+                "macOS mTLS keychain creation",
+            )
+            runExternal(
+                listOf("security", "unlock-keychain", "-p", STORE_PASSWORD, keychain.toString()),
+                "macOS mTLS keychain unlock",
+            )
+            runExternal(
+                listOf(
+                    "security", "import", clientStore.toString(), "-f", "pkcs12",
+                    "-k", keychain.toString(), "-P", STORE_PASSWORD, "-T", javaExecutable,
+                ),
+                "macOS mTLS client identity import",
+            )
+            runExternal(
+                listOf(
+                    "security", "set-key-partition-list",
+                    "-S", "apple-tool:,apple:,codesigning:",
+                    "-s", "-k", STORE_PASSWORD, keychain.toString(),
+                ),
+                "macOS mTLS key partition ACL",
+            )
+            runExternal(
+                listOf(
+                    "security", "list-keychains", "-d", "user", "-s",
+                    keychain.toString(), *originalKeychains.toTypedArray(),
+                ),
+                "macOS mTLS keychain search list update",
+            )
+            platformCleanup = cleanup
+            return cleanup
+        } catch (error: Throwable) {
+            cleanup()
+            throw error
+        }
+    }
+
+    private fun installLinuxClientCertificate(profilePath: Path): () -> Unit {
+        require(commandAvailable("certutil") && commandAvailable("pk12util")) {
+            "Linux mTLS verification requires certutil and pk12util from libnss3-tools."
+        }
+        Files.createDirectories(profilePath)
+        val database = "sql:${profilePath.toAbsolutePath()}"
+        if (!Files.exists(profilePath.resolve("cert9.db"))) {
+            runExternal(
+                listOf("certutil", "-N", "-d", database, "--empty-password"),
+                "Linux NSS database creation",
+            )
+        }
+        runExternal(
+            listOf("pk12util", "-i", clientStore.toString(), "-d", database, "-W", STORE_PASSWORD),
+            "Linux mTLS client certificate import",
+        )
+        runExternal(
+            listOf(
+                "certutil", "-A", "-d", database, "-n", "KWeb RFC0011 mTLS CA",
+                "-t", "C,,", "-i", caCertificate.toString(),
+            ),
+            "Linux mTLS CA trust import",
+        )
+        return { deleteRecursively(profilePath) }
+    }
+
+    private fun commandAvailable(command: String): Boolean = runCatching {
+        val lookup = if (isWindows()) listOf("where", command) else listOf("sh", "-c", "command -v $command")
+        ProcessBuilder(lookup).start().waitFor(5, TimeUnit.SECONDS)
+    }.getOrDefault(false)
+
+    private fun deleteRecursively(path: Path) {
+        if (!Files.exists(path)) return
+        Files.walk(path).use { stream ->
+            stream.sorted(Comparator.reverseOrder()).forEach { candidate ->
+                runCatching { Files.deleteIfExists(candidate) }
+            }
+        }
+    }
+
+    fun awaitRequest() {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+        while (System.nanoTime() < deadline) {
+            requests.poll(100, TimeUnit.MILLISECONDS)?.let {
+                val fingerprint = peerFingerprints.poll(30, TimeUnit.SECONDS)
+                require(fingerprint == clientCertificateSha256) {
+                    "The mTLS server received an unexpected client certificate: $fingerprint"
+                }
+                return
+            }
+            failures.poll()?.let { failure ->
+                error("The mTLS server handshake failed: $failure")
+            }
+        }
+        error("Timed out waiting for the provider-backed mTLS request.")
+    }
+
+    override fun close() {
+        if (closed.getAndSet(1) != 0) return
+        platformCleanup?.invoke()
+        platformCleanup = null
+        runCatching { server.close() }
+        serverThread.join(5_000)
+        Files.list(root).use { paths ->
+            paths.forEach { path -> runCatching { Files.deleteIfExists(path) } }
+        }
+        runCatching { Files.deleteIfExists(root) }
+    }
+
+    private fun startServerThread(): Thread = thread(
+        name = "KWebShell-security-mtls",
+        isDaemon = true,
+    ) {
+        while (closed.get() == 0) {
+            val socket = try {
+                server.accept()
+            } catch (_: Throwable) {
+                break
+            }
+            runCatching {
+                socket.soTimeout = 15_000
+                socket.use { connection ->
+                    val sslConnection = connection as javax.net.ssl.SSLSocket
+                    sslConnection.startHandshake()
+                    val peer = sslConnection.session.peerCertificates.first() as X509Certificate
+                    peerFingerprints.offer(certificateFingerprint(peer, "SHA-256"))
+                    val reader = connection.getInputStream().bufferedReader()
+                    val request = reader.readLine() ?: return@use
+                    while (reader.readLine() != "") {
+                        // Header body is intentionally not retained.
+                    }
+                    requests.put(request.substringAfter(' ').substringBefore(' '))
+                    connection.getOutputStream().bufferedWriter().use { output ->
+                        val body = "security-mtls-ok"
+                        output.write("HTTP/1.1 200 OK\r\n")
+                        output.write("Content-Length: ${body.toByteArray().size}\r\n")
+                        output.write("Connection: close\r\n\r\n")
+                        output.write(body)
+                        output.flush()
+                    }
+                }
+            }.onFailure { failure -> failures.offer(failure.toString()) }
+        }
+    }
+
+    private fun createKeyPairStore(
+        path: Path,
+        alias: String,
+        distinguishedName: String,
+        extension: String,
+    ): Path {
+        runKeytool(
+            "-genkeypair", "-alias", alias, "-keyalg", "RSA", "-keysize", "2048",
+            "-validity", "3650", "-dname", distinguishedName, "-ext", extension,
+            "-storetype", "PKCS12", "-keystore", path.toString(),
+            "-storepass", STORE_PASSWORD, "-keypass", STORE_PASSWORD,
+        )
+        return path
+    }
+
+    private fun signCertificate(
+        store: Path,
+        alias: String,
+        request: Path,
+        certificate: Path,
+        vararg extensions: String,
+    ) {
+        runKeytool(
+            "-certreq", "-alias", alias, "-keystore", store.toString(),
+            "-storepass", STORE_PASSWORD, "-keypass", STORE_PASSWORD,
+            "-file", request.toString(),
+        )
+        runKeytool(
+            "-gencert", "-alias", CA_ALIAS, "-keystore", caStore.toString(),
+            "-storepass", STORE_PASSWORD, "-infile", request.toString(),
+            "-outfile", certificate.toString(), "-validity", "3650",
+            *extensions.flatMap { extension -> listOf("-ext", extension) }.toTypedArray(),
+        )
+    }
+
+    private fun importCertificateChain(store: Path, alias: String, certificate: Path) {
+        runKeytool(
+            "-importcert", "-noprompt", "-alias", CA_ALIAS,
+            "-file", caCertificate.toString(), "-keystore", store.toString(),
+            "-storepass", STORE_PASSWORD,
+        )
+        runKeytool(
+            "-importcert", "-noprompt", "-alias", alias,
+            "-file", certificate.toString(), "-keystore", store.toString(),
+            "-storepass", STORE_PASSWORD,
+        )
+    }
+
+    private fun keyManagers(storePath: Path): Array<javax.net.ssl.KeyManager> {
+        val store = KeyStore.getInstance("PKCS12")
+        FileInputStream(storePath.toFile()).use { input ->
+            store.load(input, STORE_PASSWORD.toCharArray())
+        }
+        return KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()).run {
+            init(store, STORE_PASSWORD.toCharArray())
+            keyManagers
+        }
+    }
+
+    private fun readCertificate(path: Path): X509Certificate = FileInputStream(path.toFile()).use { input ->
+        CertificateFactory.getInstance("X.509").generateCertificate(input) as X509Certificate
+    }
+
+    private fun certificateFingerprint(path: Path, algorithm: String): String =
+        certificateFingerprint(readCertificate(path), algorithm)
+
+    private fun certificateFingerprint(certificate: X509Certificate, algorithm: String): String =
+        MessageDigest.getInstance(algorithm).digest(certificate.encoded)
+            .joinToString("") { byte -> "%02x".format(byte) }
+
+    private fun runKeytool(vararg arguments: String): String = runExternal(
+        listOf(
+            Path.of(System.getProperty("java.home"), "bin", if (isWindows()) "keytool.exe" else "keytool").toString(),
+            *arguments,
+        ),
+        "JDK keytool",
+    )
+
+    private fun runExternal(command: List<String>, description: String): String {
+        val process = ProcessBuilder(command).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().use { it.readText() }
+        require(process.waitFor(30, TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+            "$description timed out."
+        }
+        require(process.exitValue() == 0) {
+            "$description failed: $output"
+        }
+        return output
+    }
 }
 
 private class NetworkPolicyOrigin : AutoCloseable {

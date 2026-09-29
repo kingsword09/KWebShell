@@ -7,8 +7,8 @@
 
 _Static_assert(KWEB_INVALID_ENGINE_HANDLE == 0,
                "the invalid engine handle must remain zero");
-_Static_assert(KWEB_ABI_VERSION == 14,
-               "eager Profile context creation requires ABI version 14");
+_Static_assert(KWEB_ABI_VERSION == 15,
+               "security challenge responses require ABI version 15");
 _Static_assert(KWEB_STATUS_PROFILE_CONTEXT_INITIALIZATION_FAILED == 70,
                "the Profile context initialization status is ABI-stable");
 _Static_assert(sizeof(kweb_engine_config) == 144,
@@ -117,6 +117,8 @@ _Static_assert(KWEB_BROWSER_EVENT_NETWORK_REQUEST == 23,
                "the network request event id is ABI-stable");
 _Static_assert(KWEB_BROWSER_EVENT_NETWORK_OBSERVATION_FAILED == 24,
                "the network observation failure event id is ABI-stable");
+_Static_assert(KWEB_BROWSER_EVENT_SECURITY_CHALLENGE == 25,
+               "the security challenge event id is ABI-stable");
 _Static_assert(KWEB_BROWSER_EVENT_NAVIGATION_COMMITTED == 15,
                "the navigation committed event id is ABI-stable");
 _Static_assert(KWEB_BROWSER_EVENT_SAME_DOCUMENT_NAVIGATION == 16,

@@ -2,7 +2,7 @@ package io.github.kingsword09.kwebshell.desktop.internal
 
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 
-internal const val NATIVE_ABI_VERSION: Int = 14
+internal const val NATIVE_ABI_VERSION: Int = 15
 
 internal enum class NativeStatus(
     val value: Int,
@@ -79,11 +79,53 @@ internal enum class NativeStatus(
     NETWORK_REDIRECT_INVALID(68, "network-redirect-invalid"),
     NETWORK_POLICY_LIMIT_EXCEEDED(69, "network-policy-limit-exceeded"),
     PROFILE_CONTEXT_INITIALIZATION_FAILED(70, "profile-context-initialization-failed"),
+    SECURITY_CHALLENGE_NOT_FOUND(71, "security-challenge-not-found"),
+    SECURITY_CHALLENGE_ALREADY_RESOLVED(72, "security-challenge-already-resolved"),
+    SECURITY_CHALLENGE_DEADLINE_EXPIRED(73, "security-challenge-deadline-expired"),
+    SECURITY_CHALLENGE_CAPACITY_EXCEEDED(74, "security-challenge-capacity-exceeded"),
+    SECURITY_CHALLENGE_PROFILE_CLOSING(75, "security-challenge-profile-closing"),
+    SECURITY_CHALLENGE_DECISION_INVALID(76, "security-challenge-decision-invalid"),
+    SECURITY_TLS_EXPIRY_INVALID(77, "security-tls-expiry-invalid"),
+    SECURITY_CLIENT_CERTIFICATE_NOT_OFFERED(79, "security-client-certificate-not-offered"),
+    SECURITY_CHALLENGE_CALLBACK_FAILED(81, "security-challenge-callback-failed"),
+    SECURITY_STORE_UNAVAILABLE(82, "security-store-unavailable"),
     ;
 
     companion object {
         fun fromValue(value: Int): NativeStatus? = entries.singleOrNull { it.value == value }
     }
+}
+
+internal fun securityChallengeStatusException(
+    operation: String,
+    value: Int,
+    details: Map<String, String> = emptyMap(),
+): KWebNativeException {
+    val code = when (value) {
+        NativeStatus.SECURITY_CHALLENGE_NOT_FOUND.value -> "security.challenge.not-found"
+        NativeStatus.SECURITY_CHALLENGE_ALREADY_RESOLVED.value ->
+            "security.challenge.already-resolved"
+        NativeStatus.SECURITY_CHALLENGE_DEADLINE_EXPIRED.value ->
+            "security.challenge.deadline-expired"
+        NativeStatus.SECURITY_CHALLENGE_CAPACITY_EXCEEDED.value ->
+            "security.challenge.capacity-exceeded"
+        NativeStatus.SECURITY_CHALLENGE_PROFILE_CLOSING.value ->
+            "security.challenge.profile-closing"
+        NativeStatus.SECURITY_CHALLENGE_DECISION_INVALID.value ->
+            "security.challenge.decision-invalid"
+        NativeStatus.SECURITY_TLS_EXPIRY_INVALID.value -> "security.tls.expiry-invalid"
+        NativeStatus.SECURITY_CLIENT_CERTIFICATE_NOT_OFFERED.value ->
+            "security.client-certificate.not-offered"
+        NativeStatus.SECURITY_CHALLENGE_CALLBACK_FAILED.value ->
+            "security.challenge.callback-failed"
+        NativeStatus.SECURITY_STORE_UNAVAILABLE.value -> "security.store.unavailable"
+        else -> return nativeStatusException(operation, value, details)
+    }
+    return KWebNativeException(
+        code = code,
+        details = details + mapOf("operation" to operation, "status" to value.toString()),
+        message = "Native security challenge operation '$operation' failed with '$code'.",
+    )
 }
 
 internal fun nativeStatusException(

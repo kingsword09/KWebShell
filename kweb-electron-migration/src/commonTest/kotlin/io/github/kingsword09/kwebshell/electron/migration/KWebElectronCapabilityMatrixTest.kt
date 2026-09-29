@@ -57,6 +57,18 @@ class KWebElectronCapabilityMatrixTest {
             KWebElectronMappingStatus.REWRITE,
             KWebElectronCapabilityMatrix.find("session-web-request")?.status,
         )
+        listOf("certificate-error", "select-client-certificate").forEach { id ->
+            assertEquals(
+                KWebElectronMappingStatus.UNSUPPORTED,
+                KWebElectronCapabilityMatrix.find(id)?.status,
+            )
+            assertEquals("", KWebElectronCapabilityMatrix.find(id)?.kweb)
+        }
+        assertEquals(
+            KWebElectronMappingStatus.UNSUPPORTED,
+            KWebElectronCapabilityMatrix.find("login")?.status,
+        )
+        assertEquals("", KWebElectronCapabilityMatrix.find("login")?.kweb)
         assertEquals(
             KWebElectronMappingStatus.UNSUPPORTED,
             KWebElectronCapabilityMatrix.find("session-set-proxy")?.status,

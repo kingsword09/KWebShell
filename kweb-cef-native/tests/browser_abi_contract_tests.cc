@@ -139,6 +139,18 @@ int main() {
   Check(kweb_browser_bridge_fail(KWEB_INVALID_BROWSER_HANDLE, 1, "not-json",
                                  8) == KWEB_STATUS_INVALID_HANDLE,
         "stale bridge failure must return invalid handle before CEF parsing");
+  Check(kweb_browser_security_respond(KWEB_INVALID_BROWSER_HANDLE, 0, "{}", 2) ==
+            KWEB_STATUS_SECURITY_CHALLENGE_DECISION_INVALID,
+        "security response must reject a zero request id before handle lookup");
+  Check(kweb_browser_security_respond(KWEB_INVALID_BROWSER_HANDLE, 1, nullptr, 0) ==
+            KWEB_STATUS_SECURITY_CHALLENGE_DECISION_INVALID,
+        "security response must reject an empty decision before handle lookup");
+  Check(kweb_browser_security_respond(KWEB_INVALID_BROWSER_HANDLE, 1, "{}", 2) ==
+            KWEB_STATUS_INVALID_HANDLE,
+        "valid security response must reject a stale browser handle");
+  Check(std::strcmp(kweb_status_name(KWEB_STATUS_SECURITY_CHALLENGE_NOT_FOUND),
+                    "security-challenge-not-found") == 0,
+        "security challenge status names must be stable");
   Check(kweb_live_browser_count() == 0,
         "browser ABI contract must not own a browser in its unit process");
   kweb_extension_operation_handle extension_operation = 99;

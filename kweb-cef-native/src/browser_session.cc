@@ -734,10 +734,12 @@ public:
     const auto staging_root = profile_path_ / ".kwebshell-downloads" /
                               std::to_string(static_cast<unsigned long long>(handle_));
     const auto staging_parent = profile_path_ / ".kwebshell-downloads";
+    const std::filesystem::file_status staging_parent_status =
+        std::filesystem::symlink_status(staging_parent, error);
     const bool staging_root_symlink =
-        std::filesystem::is_symlink(staging_parent, error);
+        !error && std::filesystem::is_symlink(staging_parent_status);
     const bool staging_parent_missing =
-        error == std::make_error_code(std::errc::no_such_file_or_directory);
+        error == std::errc::no_such_file_or_directory;
     if (staging_root_symlink || (error && !staging_parent_missing)) {
       TraceDownload(handle_, "denied-staging-root", cef_id);
       record.status = "denied";

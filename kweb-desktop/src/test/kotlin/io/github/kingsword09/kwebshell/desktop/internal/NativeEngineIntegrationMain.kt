@@ -2367,9 +2367,9 @@ private fun runPublicFacadeLifecycle() {
                     }
                 }
                 println("KWEBSHELL_ENGINE_PROBE_STAGE:browser-terminal")
-                // The sanctioned Page close releases the FFM callback owner
-                // after the terminal event; the ABI close must do the same or
-                // the owner leaks past the Engine close.
+                // A direct ABI close is followed by NativeBrowser's terminal
+                // cleanup thread. Browser owner release is idempotent, so the
+                // explicit ABI probe release safely joins that cleanup path.
                 NativeBindings.releaseBrowserOwner(orphanHandle)?.let { failure ->
                     throw IllegalStateException(
                         "The probe browser FFM owner release failed.",

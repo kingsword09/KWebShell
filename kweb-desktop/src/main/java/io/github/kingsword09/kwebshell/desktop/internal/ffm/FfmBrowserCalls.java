@@ -212,12 +212,10 @@ final class FfmBrowserCalls {
     static Throwable release(long handle) {
         FfmBrowserCallbackOwner owner = OWNERS.get(handle);
         if (owner == null) {
-            throw new IllegalStateException("No FFM browser callback owner exists for handle " + handle + '.');
+            return null;
         }
         Throwable failure = owner.releaseAfterTerminal();
-        if (!OWNERS.remove(handle, owner)) {
-            throw new IllegalStateException("The FFM browser callback owner changed during release.");
-        }
+        OWNERS.remove(handle, owner);
         return failure;
     }
 

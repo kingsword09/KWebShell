@@ -815,7 +815,7 @@ private fun runDownloadsIntegration() {
         collector?.cancel()
         runCatching { page?.close() }
         runCatching { profile?.close() }
-        runCatching { surface?.close() }
+        surface?.let { runCatching { NativeEngine.onAwtEventDispatchThread(it::close) } }
         runCatching { engine.close() }
         scope.cancel()
         fixture.close()

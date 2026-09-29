@@ -3972,7 +3972,9 @@ private class ClientCertificateFixture(private val root: Path) : AutoCloseable {
             runExternal(
                 listOf(
                     "security", "import", clientStore.toString(), "-f", "pkcs12",
-                    "-k", keychain.toString(), "-P", STORE_PASSWORD, "-T", javaExecutable,
+                    // This keychain exists only for the fixture; allow-all avoids a
+                    // hosted-runner Keychain ACL prompt during Chromium signing.
+                    "-k", keychain.toString(), "-P", STORE_PASSWORD, "-A", "-T", javaExecutable,
                 ),
                 "macOS mTLS client identity import",
             )

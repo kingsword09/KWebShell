@@ -59,10 +59,13 @@ class KWebElectronCapabilityMatrixTest {
         )
         listOf("certificate-error", "select-client-certificate").forEach { id ->
             assertEquals(
-                KWebElectronMappingStatus.UNSUPPORTED,
+                KWebElectronMappingStatus.REWRITE,
                 KWebElectronCapabilityMatrix.find(id)?.status,
             )
-            assertEquals("", KWebElectronCapabilityMatrix.find(id)?.kweb)
+            assertEquals(
+                "KWebProfile.securityChallenges + respondToSecurityChallenge",
+                KWebElectronCapabilityMatrix.find(id)?.kweb,
+            )
         }
         assertEquals(
             KWebElectronMappingStatus.UNSUPPORTED,

@@ -437,14 +437,17 @@ std::optional<SecurityChallengeRegistry::ParsedDecision> ParseDecision(
            dictionary->GetType("expiresAtEpochMillis") != VTYPE_DOUBLE)) {
         return std::nullopt;
       }
-      const double value = dictionary->GetType("expiresAtEpochMillis") == VTYPE_INT
-                               ? dictionary->GetInt("expiresAtEpochMillis")
-                               : dictionary->GetDouble("expiresAtEpochMillis");
-      if (!std::isfinite(value) || value <= 0 || std::floor(value) != value ||
-          value > static_cast<double>((std::numeric_limits<int64_t>::max)())) {
+      const double expires_value =
+          dictionary->GetType("expiresAtEpochMillis") == VTYPE_INT
+              ? dictionary->GetInt("expiresAtEpochMillis")
+              : dictionary->GetDouble("expiresAtEpochMillis");
+      if (!std::isfinite(expires_value) || expires_value <= 0 ||
+          std::floor(expires_value) != expires_value ||
+          expires_value >
+              static_cast<double>((std::numeric_limits<int64_t>::max)())) {
         return std::nullopt;
       }
-      decision.expires_at_epoch_millis = static_cast<int64_t>(value);
+      decision.expires_at_epoch_millis = static_cast<int64_t>(expires_value);
     } else if (!HasOnlyKeys(dictionary, {"version", "kind", "decision"}) ||
                (decision.decision != "deny" &&
                 decision.decision != "allow_once")) {

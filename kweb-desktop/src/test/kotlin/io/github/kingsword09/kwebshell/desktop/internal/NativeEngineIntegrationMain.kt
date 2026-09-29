@@ -3900,24 +3900,25 @@ private class ClientCertificateFixture(private val root: Path) : AutoCloseable {
     }
 
     private fun installWindowsClientCertificate(): () -> Unit {
-        runExternal(
-            listOf("certutil.exe", "-user", "-p", STORE_PASSWORD, "-importPFX", clientStore.toString(), "NoRoot"),
+        val passwordVariable = "${'$'}password"
+        runPowerShell(
+            """
+            $passwordVariable = ConvertTo-SecureString ${powershellLiteral(STORE_PASSWORD)} -AsPlainText -Force
+            Import-PfxCertificate -FilePath ${powershellLiteral(clientStore.toString())} -CertStoreLocation ${powershellLiteral("Cert:\\CurrentUser\\My")} -Password $passwordVariable -Exportable -Confirm:${'$'}false | Out-Null
+            Import-Certificate -FilePath ${powershellLiteral(caCertificate.toString())} -CertStoreLocation ${powershellLiteral("Cert:\\CurrentUser\\Root")} -Confirm:${'$'}false | Out-Null
+            """.trimIndent(),
             "Windows mTLS client certificate import",
-        )
-        runExternal(
-            listOf("certutil.exe", "-user", "-addstore", "Root", caCertificate.toString()),
-            "Windows mTLS CA trust import",
         )
         return {
             runCatching {
-                runExternal(
-                    listOf("certutil.exe", "-user", "-delstore", "My", clientCertificateSha1),
+                runPowerShell(
+                    "Remove-Item -Path ${powershellLiteral("Cert:\\CurrentUser\\My\\$clientCertificateSha1")} -Force -ErrorAction SilentlyContinue",
                     "Windows mTLS client certificate cleanup",
                 )
             }
             runCatching {
-                runExternal(
-                    listOf("certutil.exe", "-user", "-delstore", "Root", caCertificateSha1),
+                runPowerShell(
+                    "Remove-Item -Path ${powershellLiteral("Cert:\\CurrentUser\\Root\\$caCertificateSha1")} -Force -ErrorAction SilentlyContinue",
                     "Windows mTLS CA cleanup",
                 )
             }
@@ -4037,6 +4038,17 @@ private class ClientCertificateFixture(private val root: Path) : AutoCloseable {
             }
         }
     }
+
+    private fun powershellLiteral(value: String): String =
+        "'${value.replace("'", "''")}'"
+
+    private fun runPowerShell(script: String, description: String): String = runExternal(
+        listOf(
+            "powershell.exe", "-NoProfile", "-NonInteractive",
+            "-ExecutionPolicy", "Bypass", "-Command", script,
+        ),
+        description,
+    )
 
     fun awaitRequest() {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)

@@ -12,6 +12,8 @@ _kweb_browser_crash_renderer
 _kweb_browser_bridge_respond
 _kweb_browser_bridge_fail
 _kweb_browser_security_respond
+_kweb_browser_download_control
+_kweb_browser_start_download
 _kweb_browser_profile_data
 _kweb_engine_abi_version
 _kweb_engine_close

@@ -23,6 +23,9 @@ import io.github.kingsword09.kwebshell.core.KWebCapability
 import io.github.kingsword09.kwebshell.core.KWebSecurityChallenge
 import io.github.kingsword09.kwebshell.core.KWebSecurityChallengeOutcome
 import io.github.kingsword09.kwebshell.core.KWebSecurityDecision
+import io.github.kingsword09.kwebshell.core.KWebDownload
+import io.github.kingsword09.kwebshell.core.KWebDownloadControlOutcome
+import io.github.kingsword09.kwebshell.core.KWebDownloadStatus
 import io.github.kingsword09.kwebshell.core.KWebPageEvent
 import io.github.kingsword09.kwebshell.core.KWebPageEventFlag
 import io.github.kingsword09.kwebshell.core.KWebPageFrameScope
@@ -36,6 +39,7 @@ import io.github.kingsword09.kwebshell.desktop.KWebComposeWindowHost
 import io.github.kingsword09.kwebshell.desktop.KWebDesktopPage
 import io.github.kingsword09.kwebshell.desktop.KWebDesktop
 import io.github.kingsword09.kwebshell.desktop.KWebDesktopEngineConfiguration
+import io.github.kingsword09.kwebshell.desktop.KWebDesktopDownloadPolicy
 import io.github.kingsword09.kwebshell.desktop.KWebPageDispatcherFactory
 import io.github.kingsword09.kwebshell.extensions.KWebExtensionLifecycleResolution
 import io.github.kingsword09.kwebshell.extensions.JvmKWebExtensionLifecycleCoordinator
@@ -214,6 +218,7 @@ private enum class IntegrationMode(val argument: String) {
     NETWORK_POLICY("network-policy"),
     SECURITY_CHALLENGES("security-challenges"),
     SECURITY_CHALLENGES_MTLS("security-challenges-mtls"),
+    DOWNLOADS("downloads"),
     PAGE_LIFECYCLE("page-lifecycle"),
     RENDERER_CRASH("renderer-crash"),
     HOLDER("holder"),
@@ -250,6 +255,7 @@ fun main(arguments: Array<String>) {
             IntegrationMode.NETWORK_POLICY -> runNetworkPolicyIntegration()
             IntegrationMode.SECURITY_CHALLENGES -> runSecurityChallengeIntegration()
             IntegrationMode.SECURITY_CHALLENGES_MTLS -> runClientCertificateIntegration()
+            IntegrationMode.DOWNLOADS -> runDownloadsIntegration()
             IntegrationMode.PAGE_LIFECYCLE -> runPageLifecycleContract()
             IntegrationMode.RENDERER_CRASH -> runRendererCrashLifecycle()
             IntegrationMode.HOLDER -> runHolderLifecycle()
@@ -284,6 +290,7 @@ private fun runCoordinator() {
     runChildAndRequireSuccess(IntegrationMode.PAGE_LIFECYCLE, root.resolve("page-lifecycle"))
     runChildAndRequireSuccess(IntegrationMode.SECURITY_CHALLENGES, root.resolve("security-challenges"))
     runChildAndRequireSuccess(IntegrationMode.SECURITY_CHALLENGES_MTLS, root.resolve("security-challenges-mtls"))
+    runChildAndRequireSuccess(IntegrationMode.DOWNLOADS, root.resolve("downloads"))
     runChildAndRequireSuccess(IntegrationMode.RENDERER_CRASH, root.resolve("renderer-crash"))
 
     val sharedRoot = root.resolve("initialization-failure")
@@ -712,6 +719,293 @@ private fun awaitNetworkEvent(
     }
     error("Timed out waiting for the real stock CEF network event: $description")
 }
+
+private fun runDownloadsIntegration() {
+    val configured = runtimeConfiguration()
+    val root = requiredPathProperty(INTEGRATION_ROOT_PROPERTY)
+    val output = root.resolve("downloads-output")
+    Files.createDirectories(output)
+    val fixture = DownloadFixture()
+    val expectedHash = sha256Bytes(fixture.bytes)
+    val engine = KWebDesktop.openEngine(
+        KWebDesktopEngineConfiguration(
+            cefRuntime = configured.cefRuntime,
+            browserSubprocess = configured.browserSubprocess,
+            resources = configured.resources,
+            locales = configured.locales,
+            rootCache = configured.rootCache,
+            log = configured.log,
+            downloadPolicy = KWebDesktopDownloadPolicy(
+                directory = output,
+                expectedSha256ByUrl = mapOf(fixture.downloadUrl to expectedHash),
+            ),
+        ),
+    )
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val downloads = LinkedBlockingQueue<KWebDownload>()
+    var collector: kotlinx.coroutines.Job? = null
+    var profile: io.github.kingsword09.kwebshell.core.KWebProfile? = null
+    var page: io.github.kingsword09.kwebshell.core.KWebPage? = null
+    var surface: ComposeBrowserSurface? = null
+    var firstState: io.github.kingsword09.kwebshell.core.KWebDownloadState? = null
+    var secondState: io.github.kingsword09.kwebshell.core.KWebDownloadState? = null
+    var canceledState: io.github.kingsword09.kwebshell.core.KWebDownloadState? = null
+    var pausedBytes = 0L
+    var resumedBytes = 0L
+    var interruptedState: io.github.kingsword09.kwebshell.core.KWebDownloadState? = null
+    var interruptedResumeOutcome: KWebDownloadControlOutcome? = null
+    var interruptedPartialRemoved = false
+    try {
+        kotlinx.coroutines.runBlocking {
+            profile = engine.openProfile("rfc0012-downloads")
+            val liveProfile = requireNotNull(profile)
+            collector = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                liveProfile.downloads.collect { downloads.put(it) }
+            }
+            (liveProfile as io.github.kingsword09.kwebshell.desktop.KWebDesktopProfile)
+                .awaitDownloadSubscriber()
+            surface = NativeEngine.onAwtEventDispatchThread {
+                ComposeBrowserSurface.create(800, 600)
+            }
+            page = liveProfile.openPage(
+                KWebDesktop.composeWindowHost(requireNotNull(surface).window),
+                "about:blank",
+                KWebRect(0, 0, 800, 600),
+            )
+            val livePage = requireNotNull(page) as KWebDesktopPage
+            livePage.startDownload(fixture.downloadUrl)
+            val first = downloads.poll(30, TimeUnit.SECONDS)
+                ?: error("The real CEF download request was not published.")
+            val firstTerminal = awaitDownloadTerminal(first)
+            firstState = firstTerminal
+            require(firstTerminal.status == KWebDownloadStatus.COMPLETE) {
+                "The first download did not complete: $firstTerminal"
+            }
+            require(firstTerminal.sha256 == expectedHash)
+            val firstFile = requireNotNull(firstTerminal.file)
+            require(firstFile.read(0, fixture.bytes.size).bytes.contentEquals(fixture.bytes)) {
+                "The completed download file bytes differ from the fixture."
+            }
+            firstFile.close()
+            println("KWEBSHELL_DOWNLOAD_PROBE:complete-and-hash")
+
+            livePage.startDownload(fixture.downloadUrl)
+            val second = downloads.poll(30, TimeUnit.SECONDS)
+                ?: error("The collision download was not published.")
+            val secondTerminal = awaitDownloadTerminal(second)
+            secondState = secondTerminal
+            require(secondTerminal.status == KWebDownloadStatus.COMPLETE)
+            require(secondTerminal.fileName != firstTerminal.fileName) {
+                "RENAME_UNIQUE did not resolve the completed download collision."
+            }
+            secondTerminal.file?.close()
+            println("KWEBSHELL_DOWNLOAD_PROBE:collision")
+
+            livePage.startDownload(fixture.slowUrl)
+            val canceled = downloads.poll(30, TimeUnit.SECONDS)
+                ?: error("The slow download was not published.")
+            withTimeout(30_000) {
+                canceled.state.first { it.status == KWebDownloadStatus.IN_PROGRESS }
+            }
+            delay(500)
+            require(canceled.pause().outcome == KWebDownloadControlOutcome.ACCEPTED) {
+                "A live transfer did not accept Chromium's pause control."
+            }
+            val paused = withTimeout(15_000) {
+                canceled.state.first { it.status == KWebDownloadStatus.PAUSED }
+            }
+            pausedBytes = paused.receivedBytes
+            println("KWEBSHELL_DOWNLOAD_PROBE:paused:$pausedBytes")
+            delay(250)
+            require(canceled.resume().outcome == KWebDownloadControlOutcome.ACCEPTED) {
+                "A paused live transfer did not accept Chromium's resume control."
+            }
+            val resumed = withTimeout(15_000) {
+                canceled.state.first { it.status == KWebDownloadStatus.IN_PROGRESS }
+            }
+            resumedBytes = resumed.receivedBytes
+            require(resumedBytes >= pausedBytes) {
+                "Download progress regressed across pause/resume: paused=$pausedBytes resumed=$resumedBytes."
+            }
+            println("KWEBSHELL_DOWNLOAD_PROBE:resumed:$resumedBytes")
+            require(canceled.cancel().outcome == KWebDownloadControlOutcome.ACCEPTED)
+            val canceledTerminal = awaitDownloadTerminal(canceled)
+            canceledState = canceledTerminal
+            require(canceledTerminal.status == KWebDownloadStatus.CANCELED) {
+                "Cancel did not produce the declared terminal state: $canceledTerminal"
+            }
+            println("KWEBSHELL_DOWNLOAD_PROBE:canceled")
+
+            livePage.startDownload(fixture.interruptedUrl)
+            val interrupted = downloads.poll(30, TimeUnit.SECONDS)
+                ?: error("The deliberately failing HTTP response was not published.")
+            val interruptedTerminal = awaitDownloadTerminal(interrupted, timeoutMs = 120_000)
+            interruptedState = interruptedTerminal
+            println("KWEBSHELL_DOWNLOAD_PROBE:interrupted:${interruptedTerminal.interruptReason}")
+            require(interruptedTerminal.status == KWebDownloadStatus.INTERRUPTED) {
+                "A server-error response did not become a terminal interruption: $interruptedTerminal"
+            }
+            require(interruptedTerminal.interruptReason in setOf(
+                io.github.kingsword09.kwebshell.core.KWebDownloadInterruptReason.NETWORK,
+                io.github.kingsword09.kwebshell.core.KWebDownloadInterruptReason.SERVER,
+            )) {
+                "The server-error response did not preserve Chromium's network/server interruption reason: $interruptedTerminal"
+            }
+            require(interruptedTerminal.file == null) {
+                "An interrupted download exposed a completed-file capability."
+            }
+            interruptedResumeOutcome = interrupted.resume().outcome
+            require(interruptedResumeOutcome == KWebDownloadControlOutcome.ALREADY_TERMINAL) {
+                "KWebShell must not resume an interrupted terminal object."
+            }
+            val terminalRequestCount = fixture.interruptedRequestCount.get()
+            delay(500)
+            require(fixture.interruptedRequestCount.get() == terminalRequestCount) {
+                "A terminal KWebDownload.resume() initiated a new network request."
+            }
+            require(!Files.exists(output.resolve("interrupted.bin"))) {
+                "An interrupted download escaped Profile staging into the destination."
+            }
+            val staging = configured.rootCache.resolve("rfc0012-downloads/.kwebshell-downloads")
+            interruptedPartialRemoved = !Files.exists(staging) || Files.walk(staging).use { paths ->
+                paths.noneMatch { Files.isRegularFile(it) }
+            }
+            require(interruptedPartialRemoved) {
+                "The interrupted transfer left a partial file in Profile staging."
+            }
+        }
+        println(
+            "KWebShell RFC0012 downloads passed: bytes=${fixture.bytes.size}, " +
+                "sha256=$expectedHash, collision=rename-unique, pause-resume=$pausedBytes/$resumedBytes, " +
+                "cancel=terminal, interrupt=server-cleaned",
+        )
+    } finally {
+        collector?.cancel()
+        runCatching { page?.close() }
+        runCatching { profile?.close() }
+        surface?.let { runCatching { NativeEngine.onAwtEventDispatchThread(it::close) } }
+        runCatching { engine.close() }
+        scope.cancel()
+        fixture.close()
+    }
+    require(NativeBrowser.liveNativeBrowserCount() == 0L)
+    require(NativeEngine.liveNativeEngineCount() == 0L)
+    val evidence = buildJsonObject {
+        put("schemaVersion", 1)
+        put("target", currentTargetId())
+        put("cefRuntime", "stock-cef-151")
+        put("contractRevision", "2026-09-30.2")
+        put("bytes", fixture.bytes.size)
+        put("sha256", expectedHash)
+        put("firstStatus", requireNotNull(firstState).status.name)
+        put("firstFileName", requireNotNull(firstState).fileName.orEmpty())
+        put("collisionStatus", requireNotNull(secondState).status.name)
+        put("collisionFileName", requireNotNull(secondState).fileName.orEmpty())
+        put("cancelStatus", requireNotNull(canceledState).status.name)
+        put("cancelReason", requireNotNull(canceledState).interruptReason.name)
+        put("pauseStatus", "PAUSED")
+        put("pauseReceivedBytes", pausedBytes)
+        put("resumeStatus", "IN_PROGRESS")
+        put("resumeReceivedBytes", resumedBytes)
+        put("interruptedStatus", requireNotNull(interruptedState).status.name)
+        put("interruptedReason", requireNotNull(interruptedState).interruptReason.name)
+        put("interruptedResumeOutcome", requireNotNull(interruptedResumeOutcome).name)
+        put("interruptedRequestCount", fixture.interruptedRequestCount.get())
+        put("interruptedPartialRemoved", interruptedPartialRemoved)
+        put("absolutePathExposed", false)
+        put("stagingPathExposed", false)
+    }
+    Files.writeString(
+        root.resolve("downloads-evidence.json"),
+        evidence.toString() + "\n",
+        StandardCharsets.UTF_8,
+    )
+}
+
+private suspend fun awaitDownloadTerminal(
+    download: KWebDownload,
+    timeoutMs: Long = 30_000,
+): io.github.kingsword09.kwebshell.core.KWebDownloadState =
+    withTimeout(timeoutMs) {
+        download.state.first {
+            it.status == KWebDownloadStatus.COMPLETE ||
+                it.status == KWebDownloadStatus.CANCELED ||
+                it.status == KWebDownloadStatus.INTERRUPTED ||
+                it.status == KWebDownloadStatus.DENIED
+        }
+    }
+
+private class DownloadFixture : AutoCloseable {
+    val bytes = "KWebShell RFC0012 download bytes — 下载🙂\n".toByteArray(StandardCharsets.UTF_8)
+    private val slowBytes = ByteArray(512 * 1024) { (it % 251).toByte() }
+    private val interruptedBytes = ByteArray(128 * 1024) { (it % 239).toByte() }
+    val interruptedRequestCount = AtomicInteger()
+    private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    val pageUrl: String = "http://127.0.0.1:${server.address.port}/page"
+    val downloadUrl: String = "http://127.0.0.1:${server.address.port}/download.bin"
+    val slowUrl: String = "http://127.0.0.1:${server.address.port}/slow.bin"
+    val interruptedUrl: String = "http://127.0.0.1:${server.address.port}/interrupted.bin"
+
+    init {
+        server.createContext("/page") { exchange ->
+            val body = (
+                "<html><body>" +
+                    "<a id=\"download-link\" href=\"/download\">download</a>" +
+                    "<a id=\"slow-link\" href=\"/slow\">slow</a>" +
+                    "</body></html>"
+                ).toByteArray(StandardCharsets.UTF_8)
+            exchange.responseHeaders.add("Content-Type", "text/html; charset=utf-8")
+            exchange.sendResponseHeaders(200, body.size.toLong())
+            exchange.responseBody.use { it.write(body) }
+        }
+        server.createContext("/download.bin") { exchange ->
+            respondDownload(exchange, bytes, "download.bin")
+        }
+        server.createContext("/slow.bin") { exchange ->
+            exchange.responseHeaders.add("Content-Type", "application/octet-stream")
+            exchange.responseHeaders.add("Content-Disposition", "attachment; filename=slow.bin")
+            exchange.sendResponseHeaders(200, 0)
+            exchange.responseBody.use { output ->
+                var offset = 0
+                while (offset < slowBytes.size) {
+                    val count = minOf(4096, slowBytes.size - offset)
+                    output.write(slowBytes, offset, count)
+                    output.flush()
+                    offset += count
+                    Thread.sleep(10)
+                }
+            }
+        }
+        server.createContext("/interrupted.bin") { exchange ->
+            interruptedRequestCount.incrementAndGet()
+            exchange.responseHeaders.add("Cache-Control", "no-store")
+            exchange.responseHeaders.add("ETag", "\"rfc0012-interrupted-v1\"")
+            exchange.responseHeaders.add("Last-Modified", "Wed, 01 Jan 2025 00:00:00 GMT")
+            exchange.responseHeaders.add("Content-Type", "application/octet-stream")
+            exchange.responseHeaders.add("Content-Disposition", "attachment; filename=\"interrupted.bin\"")
+            exchange.sendResponseHeaders(500, interruptedBytes.size.toLong())
+            exchange.responseBody.use { output ->
+                output.write(interruptedBytes)
+                output.flush()
+            }
+        }
+        server.start()
+    }
+
+    override fun close() {
+        server.stop(0)
+    }
+
+    private fun respondDownload(exchange: HttpExchange, body: ByteArray, name: String) {
+        exchange.responseHeaders.add("Content-Type", "application/octet-stream")
+        exchange.responseHeaders.add("Content-Disposition", "attachment; filename=\"$name\"")
+        exchange.sendResponseHeaders(200, body.size.toLong())
+        exchange.responseBody.use { it.write(body) }
+    }
+}
+
+private fun sha256Bytes(bytes: ByteArray): String =
+    MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
 private fun runSecurityChallengeIntegration() {
     val configured = runtimeConfiguration()
@@ -2169,9 +2463,9 @@ private fun runPublicFacadeLifecycle() {
                     }
                 }
                 println("KWEBSHELL_ENGINE_PROBE_STAGE:browser-terminal")
-                // The sanctioned Page close releases the FFM callback owner
-                // after the terminal event; the ABI close must do the same or
-                // the owner leaks past the Engine close.
+                // A direct ABI close is followed by NativeBrowser's terminal
+                // cleanup thread. Browser owner release is idempotent, so the
+                // explicit ABI probe release safely joins that cleanup path.
                 NativeBindings.releaseBrowserOwner(orphanHandle)?.let { failure ->
                     throw IllegalStateException(
                         "The probe browser FFM owner release failed.",
@@ -4068,6 +4362,7 @@ private class ClientCertificateFixture(private val root: Path) : AutoCloseable {
 
     fun awaitRequest() {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+        var lastFailure: String? = null
         while (System.nanoTime() < deadline) {
             requests.poll(100, TimeUnit.MILLISECONDS)?.let {
                 val fingerprint = peerFingerprints.poll(30, TimeUnit.SECONDS)
@@ -4077,10 +4372,18 @@ private class ClientCertificateFixture(private val root: Path) : AutoCloseable {
                 return
             }
             failures.poll()?.let { failure ->
-                error("The mTLS server handshake failed: $failure")
+                // Chromium can retry a client-certificate handshake after a
+                // transient TLS alert. Keep waiting for the request that proves
+                // the selected identity was eventually used; report the last
+                // observed failure only if the retry window expires.
+                lastFailure = failure
             }
         }
-        error("Timed out waiting for the provider-backed mTLS request.")
+        error(
+            lastFailure?.let { failure ->
+                "The mTLS server handshake failed after retries: $failure"
+            } ?: "Timed out waiting for the provider-backed mTLS request.",
+        )
     }
 
     override fun close() {

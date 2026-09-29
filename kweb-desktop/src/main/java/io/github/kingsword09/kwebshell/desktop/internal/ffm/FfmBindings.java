@@ -82,7 +82,8 @@ public final class FfmBindings {
         int y,
         int width,
         int height,
-        String bridgeOrigin
+        String bridgeOrigin,
+        boolean downloadsEnabled
     ) {
         return FfmBrowserCalls.create(
             engine,
@@ -97,7 +98,8 @@ public final class FfmBindings {
             y,
             width,
             height,
-            bridgeOrigin
+            bridgeOrigin,
+            downloadsEnabled
         );
     }
 
@@ -155,6 +157,14 @@ public final class FfmBindings {
 
     public static int browserProfileData(long handle, long requestId, int operation, String payloadJson) {
         return FfmBrowserCalls.profileData(handle, requestId, operation, payloadJson);
+    }
+
+    public static int browserDownloadControl(long handle, long downloadId, int operation) {
+        return FfmBrowserCalls.downloadControl(handle, downloadId, operation);
+    }
+
+    public static int browserStartDownload(long handle, String url) {
+        return FfmBrowserCalls.startDownload(handle, url);
     }
 
     public static Throwable releaseBrowserOwner(long handle) {

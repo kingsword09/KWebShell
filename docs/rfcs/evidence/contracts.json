@@ -252,6 +252,48 @@
         "kweb-interop-probe/src/main/java/io/github/kingsword09/kwebshell/interop/probe/EngineInventoryMain.java",
         "kweb-rfc-governance/src/test/kotlin/io/github/kingsword09/kwebshell/rfc/KWebRfcGovernanceCheckerTest.kt"
       ]
+    },
+    {
+      "rfcId": "0012",
+      "paths": [
+        ".github/scripts/aggregate-rfc-evidence.sh",
+        ".github/workflows/ci.yml",
+        "DESIGN_PLAN.md",
+        "README.md",
+        "docs/rfcs/0012-downloads.md",
+        "docs/rfcs/README.md",
+        "kweb-cef-native/include/kwebshell/native/base_abi.h",
+        "kweb-cef-native/include/kwebshell/native/engine_abi.h",
+        "kweb-cef-native/resources/engine_exports_linux.map",
+        "kweb-cef-native/resources/engine_exports_mac.txt",
+        "kweb-cef-native/src/browser_session.cc",
+        "kweb-cef-native/src/browser_session.h",
+        "kweb-cef-native/src/engine_abi.cc",
+        "kweb-cef-native/tests",
+        "kweb-core/src/commonMain/kotlin/io/github/kingsword09/kwebshell/core/KWebCapability.kt",
+        "kweb-core/src/commonMain/kotlin/io/github/kingsword09/kwebshell/core/KWebDownloadContract.kt",
+        "kweb-core/src/commonMain/kotlin/io/github/kingsword09/kwebshell/core/KWebPageContract.kt",
+        "kweb-core/src/commonTest/kotlin/io/github/kingsword09/kwebshell/core/KWebDownloadContractTest.kt",
+        "kweb-core/src/commonTest/kotlin/io/github/kingsword09/kwebshell/core/KWebPublicContractTest.kt",
+        "kweb-desktop/build.gradle.kts",
+        "kweb-desktop/src/main/java/io/github/kingsword09/kwebshell/desktop/internal/ffm",
+        "kweb-desktop/src/main/kotlin/io/github/kingsword09/kwebshell/desktop/KWebDesktop.kt",
+        "kweb-desktop/src/main/kotlin/io/github/kingsword09/kwebshell/desktop/KWebDesktopDownload.kt",
+        "kweb-desktop/src/main/kotlin/io/github/kingsword09/kwebshell/desktop/KWebDesktopDownloadJson.kt",
+        "kweb-desktop/src/main/kotlin/io/github/kingsword09/kwebshell/desktop/KWebDesktopDownloadStream.kt",
+        "kweb-desktop/src/main/kotlin/io/github/kingsword09/kwebshell/desktop/KWebDesktopDownloads.kt",
+        "kweb-desktop/src/main/kotlin/io/github/kingsword09/kwebshell/desktop/KWebDesktopEngine.kt",
+        "kweb-desktop/src/main/kotlin/io/github/kingsword09/kwebshell/desktop/internal/NativeBindings.kt",
+        "kweb-desktop/src/main/kotlin/io/github/kingsword09/kwebshell/desktop/internal/NativeBrowser.kt",
+        "kweb-desktop/src/main/kotlin/io/github/kingsword09/kwebshell/desktop/internal/NativeContract.kt",
+        "kweb-desktop/src/test/kotlin/io/github/kingsword09/kwebshell/desktop/KWebDesktopDownloadTest.kt",
+        "kweb-desktop/src/test/kotlin/io/github/kingsword09/kwebshell/desktop/internal/NativeEngineIntegrationMain.kt",
+        "kweb-desktop/src/test/kotlin/io/github/kingsword09/kwebshell/desktop/internal/ffm/FfmBindingContractTest.kt",
+        "kweb-electron-migration/README.md",
+        "kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronCapabilityMatrix.kt",
+        "kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronCapabilityMatrixTest.kt",
+        "kweb-interop-probe/src/main/java/io/github/kingsword09/kwebshell/interop/probe/EngineAbi.java"
+      ]
     }
   ]
 }

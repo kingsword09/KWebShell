@@ -2,7 +2,7 @@ package io.github.kingsword09.kwebshell.desktop.internal
 
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 
-internal const val NATIVE_ABI_VERSION: Int = 15
+internal const val NATIVE_ABI_VERSION: Int = 16
 
 internal enum class NativeStatus(
     val value: Int,
@@ -89,6 +89,12 @@ internal enum class NativeStatus(
     SECURITY_CLIENT_CERTIFICATE_NOT_OFFERED(79, "security-client-certificate-not-offered"),
     SECURITY_CHALLENGE_CALLBACK_FAILED(81, "security-challenge-callback-failed"),
     SECURITY_STORE_UNAVAILABLE(82, "security-store-unavailable"),
+    DOWNLOAD_NOT_FOUND(83, "download-not-found"),
+    DOWNLOAD_ALREADY_TERMINAL(84, "download-already-terminal"),
+    DOWNLOAD_CONTROL_INVALID(85, "download-control-invalid"),
+    DOWNLOAD_PROFILE_CLOSING(86, "download-profile-closing"),
+    DOWNLOAD_CAPABILITY_MISSING(87, "download-capability-missing"),
+    DOWNLOAD_LIMIT_EXCEEDED(88, "download-limit-exceeded"),
     ;
 
     companion object {
@@ -174,5 +180,26 @@ internal fun profileNetworkStatusException(
         code = code,
         details = details + mapOf("operation" to operation, "status" to value.toString()),
         message = "Native Profile network operation '$operation' failed with '$code'.",
+    )
+}
+
+internal fun downloadStatusException(
+    operation: String,
+    value: Int,
+    details: Map<String, String> = emptyMap(),
+): KWebNativeException {
+    val code = when (value) {
+        NativeStatus.DOWNLOAD_NOT_FOUND.value -> "download.not-found"
+        NativeStatus.DOWNLOAD_ALREADY_TERMINAL.value -> "download.already-terminal"
+        NativeStatus.DOWNLOAD_CONTROL_INVALID.value -> "download.control-invalid"
+        NativeStatus.DOWNLOAD_PROFILE_CLOSING.value -> "download.profile-closing"
+        NativeStatus.DOWNLOAD_CAPABILITY_MISSING.value -> "download.native-capability-missing"
+        NativeStatus.DOWNLOAD_LIMIT_EXCEEDED.value -> "download.limit-exceeded"
+        else -> return nativeStatusException(operation, value, details)
+    }
+    return KWebNativeException(
+        code = code,
+        details = details + mapOf("operation" to operation, "status" to value.toString()),
+        message = "Native download operation '$operation' failed with '$code'.",
     )
 }

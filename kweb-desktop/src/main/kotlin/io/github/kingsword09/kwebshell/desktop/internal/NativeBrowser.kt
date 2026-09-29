@@ -75,6 +75,7 @@ internal enum class NativeBrowserEventType(val value: Int) {
     NETWORK_REQUEST(23),
     NETWORK_OBSERVATION_FAILED(24),
     SECURITY_CHALLENGE(25),
+    DOWNLOAD(26),
     ;
 
     companion object {
@@ -210,6 +211,16 @@ internal class NativeBrowser private constructor(
     internal fun respondToSecurityChallenge(requestId: Long, decisionJson: String): Int {
         val handle = requireOpenHandle("respond-security-challenge")
         return NativeBindings.browserSecurityRespond(handle, requestId, decisionJson)
+    }
+
+    internal fun controlDownload(downloadId: Long, operation: Int): Int {
+        val handle = requireOpenHandle("download-control")
+        return NativeBindings.browserDownloadControl(handle, downloadId, operation)
+    }
+
+    internal fun startDownload(url: String): Int {
+        val handle = requireOpenHandle("start-download")
+        return NativeBindings.browserStartDownload(handle, url)
     }
 
     internal fun setBounds(x: Int, y: Int, width: Int, height: Int) {
@@ -939,6 +950,10 @@ internal class NativeBrowser private constructor(
 
     private fun requireOpenHandle(operation: String): Long {
         fun requireOpenState() {
+            if (mutableLifecycle.value == KWebLifecycleState.FAILED) {
+                fatalFailure.get()?.let { throw it }
+                callbackFailure.get()?.let { throw it }
+            }
             if (closeStarted.get() || mutableLifecycle.value != KWebLifecycleState.OPEN) {
                 throw KWebNativeException(
                     code = "native.browser.closed",
@@ -1128,6 +1143,7 @@ internal class NativeBrowser private constructor(
             bridgeOrigin: String = "",
             bridgeDispatcher: KWebBridgeDispatcher? = null,
             streamDispatcher: KWebStreamBridgeDispatcher? = null,
+            downloadsEnabled: Boolean = false,
             listener: (NativeBrowserEvent) -> Unit = {},
         ): NativeBrowser {
             if ((bridgeDispatcher == null) != bridgeOrigin.isEmpty()) {
@@ -1187,6 +1203,7 @@ internal class NativeBrowser private constructor(
                     height,
                     bridgeOrigin,
                     browser.bridgeSink,
+                    downloadsEnabled,
                 )
             }
             if (result <= 0L) {

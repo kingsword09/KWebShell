@@ -12,6 +12,13 @@ import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 import io.github.kingsword09.kwebshell.core.KWebNetworkPolicy
 import io.github.kingsword09.kwebshell.core.KWebNetworkRequestEvent
+import io.github.kingsword09.kwebshell.core.KWebDownload
+import io.github.kingsword09.kwebshell.core.KWebDownloadFile
+import io.github.kingsword09.kwebshell.core.KWebDownloadCollisionPolicy
+import io.github.kingsword09.kwebshell.core.KWebDownloadInterruptReason
+import io.github.kingsword09.kwebshell.core.KWebDownloadState
+import io.github.kingsword09.kwebshell.core.KWebDownloadStatus
+import io.github.kingsword09.kwebshell.core.isTerminal
 import io.github.kingsword09.kwebshell.core.KWebPage
 import io.github.kingsword09.kwebshell.core.KWebPageEvent
 import io.github.kingsword09.kwebshell.core.KWebPageEventFlag
@@ -56,6 +63,8 @@ import io.github.kingsword09.kwebshell.desktop.internal.NativeBrowserEventType
 import io.github.kingsword09.kwebshell.desktop.internal.NativeBindings
 import io.github.kingsword09.kwebshell.desktop.internal.NativeEngine
 import io.github.kingsword09.kwebshell.desktop.internal.NativeEngineConfiguration
+import io.github.kingsword09.kwebshell.desktop.internal.NativeStatus
+import io.github.kingsword09.kwebshell.desktop.internal.nativeStatusException
 import io.github.kingsword09.kwebshell.desktop.internal.securityChallengeStatusException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
@@ -71,9 +80,13 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.sync.Mutex
 import java.net.URI
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.nio.file.FileAlreadyExistsException
+import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -93,6 +106,7 @@ public class KWebDesktopEngine private constructor(
     private val configuration: KWebDesktopEngineConfiguration,
 ) : KWebEngine {
     internal val engineId: String = configuration.engineId
+    internal val downloadPolicy: KWebDesktopDownloadPolicy? = configuration.downloadPolicy
 
     internal val openingProfileCount: Int
         get() = synchronized(lock) { openingProfiles.size }
@@ -137,6 +151,9 @@ public class KWebDesktopEngine private constructor(
         add(KWebCapability.DEVTOOLS)
         if (configuration.remoteDebuggingPort != 0) {
             add(KWebCapability.CDP)
+        }
+        if (configuration.downloadPolicy != null) {
+            add(KWebCapability.DOWNLOADS)
         }
     }
 
@@ -268,18 +285,21 @@ public class KWebDesktopEngine private constructor(
 
     internal companion object {
         internal fun open(configuration: KWebDesktopEngineConfiguration): KWebDesktopEngine {
+            val validatedConfiguration = configuration.copy(
+                downloadPolicy = configuration.downloadPolicy?.validated(),
+            )
             val nativeConfiguration = NativeEngineConfiguration(
-                cefRuntime = configuration.cefRuntime,
-                browserSubprocess = configuration.browserSubprocess,
-                resources = configuration.resources,
-                locales = configuration.locales,
-                rootCache = configuration.rootCache,
-                log = configuration.log,
-                remoteDebuggingPort = configuration.remoteDebuggingPort,
+                cefRuntime = validatedConfiguration.cefRuntime,
+                browserSubprocess = validatedConfiguration.browserSubprocess,
+                resources = validatedConfiguration.resources,
+                locales = validatedConfiguration.locales,
+                rootCache = validatedConfiguration.rootCache,
+                log = validatedConfiguration.log,
+                remoteDebuggingPort = validatedConfiguration.remoteDebuggingPort,
             )
             return KWebDesktopEngine(
                 native = NativeEngine.open(nativeConfiguration),
-                configuration = configuration,
+                configuration = validatedConfiguration,
             )
         }
     }
@@ -297,7 +317,9 @@ internal class KWebDesktopProfile(
     private val mutableLifecycle = MutableStateFlow(KWebLifecycleState.OPEN)
     private val networkEventStream = KWebDesktopNetworkEventStream()
     private val securityChallengeStream = KWebDesktopSecurityChallengeStream()
+    private val downloadStream = KWebDesktopDownloadStream()
     private val pages = linkedSetOf<KWebDesktopPage>()
+    private val downloadsById = linkedMapOf<Long, KWebDesktopDownload>()
     private data class SecurityChallengeOwner(
         val browserHandle: Long,
         val challenge: KWebSecurityChallenge,
@@ -311,6 +333,11 @@ internal class KWebDesktopProfile(
     override val lifecycle: StateFlow<KWebLifecycleState> = mutableLifecycle.asStateFlow()
     override val networkEvents: Flow<KWebNetworkRequestEvent> = networkEventStream.events
     override val securityChallenges: Flow<KWebSecurityChallenge> = securityChallengeStream.events
+    override val downloads: Flow<KWebDownload> = downloadStream.flow
+
+    internal suspend fun awaitDownloadSubscriber() {
+        downloadStream.awaitSubscriber()
+    }
 
     override suspend fun openPage(
         host: KWebPageHost,
@@ -347,7 +374,8 @@ internal class KWebDesktopProfile(
                     )
                 }
                 val eventStream = KWebPageEventStream(pageId, name, gestureContext)
-                val nativePage = NativeBrowser.open(
+                lateinit var nativePage: NativeBrowser
+                nativePage = NativeBrowser.open(
                     engine = engine.nativeEngine(),
                     nativeParent = nativeParent,
                     profilePath = path,
@@ -359,6 +387,7 @@ internal class KWebDesktopProfile(
                     bridgeOrigin = composeHost.bridgeOrigin.orEmpty(),
                     bridgeDispatcher = bridgeDispatcher,
                     streamDispatcher = streamDispatcher,
+                    downloadsEnabled = engine.downloadPolicy != null,
                     listener = listener@{ event ->
                         if (event.type == NativeBrowserEventType.NETWORK_OBSERVATION_FAILED) {
                             val code = event.details.takeIf { it == "network.observation-backpressure" }
@@ -419,6 +448,46 @@ internal class KWebDesktopProfile(
                                         mapOf("requestId" to challenge.requestId.toString()),
                                     )
                                 }
+                            }
+                        } else if (event.type == NativeBrowserEventType.DOWNLOAD) {
+                            val update = KWebDesktopDownloadJson.parse(event.details)
+                            if (update.id != event.requestId) {
+                                throw KWebNativeException(
+                                    code = "download.event-invalid",
+                                    details = mapOf("downloadId" to update.id.toString()),
+                                    message = "The native download event ID does not match its ABI request ID.",
+                                )
+                            }
+                            val download: KWebDesktopDownload
+                            val created: Boolean
+                            synchronized(lock) {
+                                val existing = downloadsById[update.id]
+                                if (existing == null) {
+                                    download = KWebDesktopDownload(
+                                        owner = this@KWebDesktopProfile,
+                                        native = nativePage,
+                                        id = update.id,
+                                        profileId = name,
+                                        pageId = pageId,
+                                        initial = update,
+                                    )
+                                    downloadsById[update.id] = download
+                                    created = true
+                                } else {
+                                    download = existing
+                                    created = false
+                                }
+                            }
+                            if (!created) {
+                                download.apply(update)
+                            }
+                            if (created && !downloadStream.publish(download)) {
+                                NativeBindings.browserDownloadControl(
+                                    event.browser,
+                                    update.id,
+                                    1,
+                                )
+                                download.markOwnerClosed()
                             }
                         } else {
                             eventStream.accept(event)
@@ -669,6 +738,182 @@ internal class KWebDesktopProfile(
         }
     }
 
+    internal fun initialDownloadState(
+        id: Long,
+        pageId: String?,
+        update: KWebDesktopDownloadUpdate,
+    ): KWebDownloadState = stateFromUpdate(id, pageId, update, null, null)
+
+    internal fun stateFromUpdate(
+        id: Long,
+        pageId: String?,
+        update: KWebDesktopDownloadUpdate,
+        scopedFile: KWebDownloadFile?,
+        sha256: String?,
+        statusOverride: KWebDownloadStatus? = null,
+        reasonOverride: KWebDownloadInterruptReason? = null,
+    ): KWebDownloadState {
+        val status = statusOverride ?: mapDownloadStatus(update.status)
+        return KWebDownloadState(
+            id = id,
+            profileId = name,
+            pageId = pageId,
+            originalUrl = update.originalUrl,
+            url = update.url,
+            suggestedFileName = update.suggestedFileName,
+            fileName = if (status == KWebDownloadStatus.COMPLETE) {
+                scopedFile?.name
+            } else {
+                null
+            },
+            contentDisposition = update.contentDisposition.takeIf { it.isNotBlank() },
+            mimeType = update.mimeType.takeIf { it.isNotBlank() },
+            receivedBytes = update.receivedBytes,
+            totalBytes = update.totalBytes,
+            currentSpeedBytesPerSecond = update.currentSpeedBytesPerSecond,
+            status = status,
+            interruptReason = reasonOverride ?: mapDownloadInterruptReason(update.interruptReason),
+            sha256 = sha256,
+            file = scopedFile,
+        )
+    }
+
+    internal fun finalizeDownload(
+        id: Long,
+        pageId: String?,
+        update: KWebDesktopDownloadUpdate,
+    ): KWebDownloadState {
+        val policy = engine.downloadPolicy ?: return stateFromUpdate(
+            id, pageId, update, null, null,
+            KWebDownloadStatus.INTERRUPTED,
+            KWebDownloadInterruptReason.DESTINATION_INVALID,
+        )
+        val staging = update.stagingPath?.let { Path.of(it).toAbsolutePath().normalize() }
+        if (staging == null || !isSafeStagingPath(staging) ||
+            !Files.isRegularFile(staging, LinkOption.NOFOLLOW_LINKS)
+        ) {
+            deleteStaging(update.stagingPath)
+            return stateFromUpdate(
+                id, pageId, update, null, null,
+                KWebDownloadStatus.INTERRUPTED,
+                KWebDownloadInterruptReason.DESTINATION_INVALID,
+            )
+        }
+        val actualHash = try {
+            if (policy.computeSha256) sha256(staging) else null
+        } catch (_: Throwable) {
+            deleteStaging(update.stagingPath)
+            return stateFromUpdate(
+                id, pageId, update, null, null,
+                KWebDownloadStatus.INTERRUPTED,
+                KWebDownloadInterruptReason.DESTINATION_INVALID,
+            )
+        }
+        val expected = policy.expectedSha256ByUrl[update.originalUrl]
+            ?: policy.expectedSha256ByUrl[update.url]
+        if (expected != null && expected != actualHash) {
+            deleteStaging(update.stagingPath)
+            return stateFromUpdate(
+                id, pageId, update, null, actualHash,
+                KWebDownloadStatus.INTERRUPTED,
+                KWebDownloadInterruptReason.INTEGRITY_MISMATCH,
+            )
+        }
+        val finalName = safeDownloadName(update.suggestedFileName)
+            ?: run {
+                deleteStaging(update.stagingPath)
+                return stateFromUpdate(
+                    id, pageId, update, null, actualHash,
+                    KWebDownloadStatus.INTERRUPTED,
+                    KWebDownloadInterruptReason.DESTINATION_INVALID,
+                )
+            }
+        val target = try {
+            moveIntoDestination(staging, finalName, policy)
+        } catch (_: FileAlreadyExistsException) {
+            deleteStaging(update.stagingPath)
+            return stateFromUpdate(
+                id, pageId, update, null, actualHash,
+                KWebDownloadStatus.INTERRUPTED,
+                KWebDownloadInterruptReason.FILE_EXISTS,
+            )
+        } catch (_: Throwable) {
+            deleteStaging(update.stagingPath)
+            return stateFromUpdate(
+                id, pageId, update, null, actualHash,
+                KWebDownloadStatus.INTERRUPTED,
+                KWebDownloadInterruptReason.DESTINATION_INVALID,
+            )
+        }
+        val file = KWebDesktopDownloadFile(
+            path = target,
+            name = target.fileName.toString(),
+            sizeBytes = Files.size(target),
+            sha256 = actualHash,
+        )
+        return stateFromUpdate(
+            id, pageId, update, file, actualHash,
+            KWebDownloadStatus.COMPLETE,
+            KWebDownloadInterruptReason.NONE,
+        )
+    }
+
+    internal fun deleteStaging(stagingPath: String?) {
+        val value = stagingPath ?: return
+        val path = runCatching { Path.of(value).toAbsolutePath().normalize() }.getOrNull() ?: return
+        if (isSafeStagingPath(path)) deleteQuietly(path)
+    }
+
+    private fun isSafeStagingPath(path: Path): Boolean {
+        val root = this.path.resolve(".kwebshell-downloads").toAbsolutePath().normalize()
+        return path.isAbsolute && path.startsWith(root) &&
+            !Files.isSymbolicLink(root) && !Files.isSymbolicLink(path) &&
+            runCatching { path.parent?.toRealPath(LinkOption.NOFOLLOW_LINKS)?.startsWith(root.toRealPath(LinkOption.NOFOLLOW_LINKS)) == true }
+                .getOrDefault(false)
+    }
+
+    private fun moveIntoDestination(
+        staging: Path,
+        name: String,
+        policy: KWebDesktopDownloadPolicy,
+    ): Path {
+        val directory = policy.directory.toRealPath(LinkOption.NOFOLLOW_LINKS)
+        if (Files.isSymbolicLink(directory) || !Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) {
+            throw KWebNativeException(
+                code = "download.destination.invalid",
+                details = mapOf("directory" to directory.toString()),
+                message = "The download destination is not a regular directory.",
+            )
+        }
+        var candidate = directory.resolve(name).normalize()
+        if (candidate.parent != directory) throw IOException("Download name escaped destination.")
+        when (policy.collision) {
+            KWebDownloadCollisionPolicy.FAIL -> {
+                if (Files.exists(candidate, LinkOption.NOFOLLOW_LINKS)) throw FileAlreadyExistsException(candidate.toString())
+            }
+            KWebDownloadCollisionPolicy.RENAME_UNIQUE -> {
+                var index = 1
+                while (Files.exists(candidate, LinkOption.NOFOLLOW_LINKS)) {
+                    candidate = directory.resolve(uniqueDownloadName(name, index++)).normalize()
+                    if (index > 10_000) throw IOException("The download destination has too many collisions.")
+                }
+            }
+            KWebDownloadCollisionPolicy.REPLACE_EXISTING -> {
+                if (Files.exists(candidate, LinkOption.NOFOLLOW_LINKS) &&
+                    (Files.isSymbolicLink(candidate) || !Files.isRegularFile(candidate, LinkOption.NOFOLLOW_LINKS))
+                ) throw IOException("The existing download target is not a regular file.")
+            }
+        }
+        val options = when (policy.collision) {
+            KWebDownloadCollisionPolicy.REPLACE_EXISTING -> arrayOf(
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING,
+            )
+            else -> arrayOf(StandardCopyOption.ATOMIC_MOVE)
+        }
+        return Files.move(staging, candidate, *options)
+    }
+
     override suspend fun flush(target: KWebPage): KWebProfileFlushResult =
         withContext(Dispatchers.IO) {
             withProfileDataOperation {
@@ -804,6 +1049,8 @@ internal class KWebDesktopProfile(
                     if (mutableLifecycle.value != KWebLifecycleState.CLOSED) {
                         clearProfileNetworkPolicyWithRetry()
                         networkEventStream.close()
+                        downloadsById.values.forEach { it.close() }
+                        downloadStream.close()
                         mutableLifecycle.value = KWebLifecycleState.CLOSED
                         engine.removeProfile(this)
                     }
@@ -820,10 +1067,13 @@ internal class KWebDesktopProfile(
     }
 
     internal fun removePage(page: KWebDesktopPage) {
+        val ownedDownloads: List<KWebDesktopDownload>
         synchronized(lock) {
             pages.remove(page)
             pendingSecurityChallenges.entries.removeIf { it.value.challenge.pageId == page.id }
+            ownedDownloads = downloadsById.values.filter { it.pageId == page.id }
         }
+        ownedDownloads.forEach { it.markOwnerClosed() }
     }
 
     internal fun isSamePhysicalPath(other: Path): Boolean =
@@ -844,6 +1094,9 @@ internal class KWebDesktopProfile(
             closedByEngine = true
             mutableLifecycle.value = KWebLifecycleState.CLOSED
             networkEventStream.close()
+            downloadsById.values.forEach { it.markOwnerClosed() }
+            downloadsById.values.forEach { it.close() }
+            downloadStream.close()
             pendingSecurityChallenges.clear()
             resolvedSecurityChallenges.clear()
             orphanedPages = pages.toList()
@@ -953,6 +1206,17 @@ internal class KWebDesktopPage(
         }
         native.requireLiveHandle("profile-data")
         return native
+    }
+
+    internal fun startDownload(url: String) {
+        val status = native.startDownload(url)
+        if (status != NativeStatus.OK.value) {
+            throw nativeStatusException(
+                "start-download",
+                status,
+                mapOf("url" to url),
+            )
+        }
     }
 
     override suspend fun navigate(url: String) {
@@ -1352,6 +1616,8 @@ private fun NativeBrowserEvent.toPublicEvent(
             throw IllegalStateException("The Profile network observation failure reached the page mapping.")
         NativeBrowserEventType.SECURITY_CHALLENGE ->
             throw IllegalStateException("The Profile security challenge reached the page mapping.")
+        NativeBrowserEventType.DOWNLOAD ->
+            throw IllegalStateException("The Profile download event reached the page mapping.")
     }
     val flags = buildSet {
         if (this@toPublicEvent.flags and 1 != 0) add(KWebPageEventFlag.LOADING)

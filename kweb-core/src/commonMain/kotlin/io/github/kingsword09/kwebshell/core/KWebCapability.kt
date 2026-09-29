@@ -7,4 +7,5 @@ public enum class KWebCapability(public val id: String) {
     RESIZE("resize"),
     DEVTOOLS("devtools"),
     CDP("cdp"),
+    DOWNLOADS("downloads"),
 }

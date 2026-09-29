@@ -23,7 +23,8 @@ final class FfmBrowserCalls {
         int y,
         int width,
         int height,
-        String bridgeOrigin
+        String bridgeOrigin,
+        boolean downloadsEnabled
     ) {
         if (nativeParent == 0 || (bridgeSink == null) != bridgeOrigin.isEmpty()) {
             return encodeFailure(FfmStatus.INVALID_ARGUMENT);
@@ -49,6 +50,8 @@ final class FfmBrowserCalls {
                 );
                 config.set(FfmLayouts.UINT32, offset("abi_version"), FfmAbi.VERSION);
                 config.set(FfmLayouts.UINT64, offset("engine"), engine);
+                config.set(FfmLayouts.UINT32, offset("reserved"),
+                    downloadsEnabled ? 1 : 0);
                 config.set(FfmLayouts.SIZE_T, offset("native_parent"), nativeParent);
                 config.set(FfmLayouts.INT32, offset("x"), x);
                 config.set(FfmLayouts.INT32, offset("y"), y);
@@ -173,6 +176,31 @@ final class FfmBrowserCalls {
         }
     }
 
+    static int downloadControl(long handle, long downloadId, int operation) {
+        try {
+            return (int) library().handle("kweb_browser_download_control")
+                .invokeExact(handle, downloadId, operation);
+        } catch (Throwable error) {
+            return FfmStatus.INTERNAL_ERROR;
+        }
+    }
+
+    static int startDownload(long handle, String url) {
+        try (Arena arena = Arena.ofConfined()) {
+            FfmMemory.EncodedUtf8 encoded = FfmMemory.encode(
+                url, arena, FfmMemory.MAXIMUM_TEXT_SIZE
+            );
+            return (int) library().handle("kweb_browser_start_download")
+                .invokeExact(handle, encoded.segment(), encoded.size());
+        } catch (FfmTextException error) {
+            return error.status();
+        } catch (OutOfMemoryError error) {
+            return FfmStatus.ALLOCATION_FAILED;
+        } catch (Throwable error) {
+            return FfmStatus.INTERNAL_ERROR;
+        }
+    }
+
     static long liveCount() {
         try {
             return (long) library().handle("kweb_live_browser_count").invokeExact();
@@ -184,12 +212,10 @@ final class FfmBrowserCalls {
     static Throwable release(long handle) {
         FfmBrowserCallbackOwner owner = OWNERS.get(handle);
         if (owner == null) {
-            throw new IllegalStateException("No FFM browser callback owner exists for handle " + handle + '.');
+            return null;
         }
         Throwable failure = owner.releaseAfterTerminal();
-        if (!OWNERS.remove(handle, owner)) {
-            throw new IllegalStateException("The FFM browser callback owner changed during release.");
-        }
+        OWNERS.remove(handle, owner);
         return failure;
     }
 

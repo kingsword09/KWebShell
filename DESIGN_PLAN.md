@@ -1540,6 +1540,15 @@ macOS arm64 passes the complete local task. The identical Windows/Linux task
 and artifact schema remain hosted merge gates before cross-platform results are
 published.
 
+RFC 0012 publishes Profile-scoped downloads on the stock CEF 151 boundary. A
+trusted desktop policy is required to enable the capability; CEF owns the HTTP
+transfer, pause/resume/cancel callbacks, and Profile staging file, while Kotlin
+owns hash verification, collision policy, atomic finalization, and the bounded
+completed-file capability. No absolute path or file handle crosses a renderer
+boundary. The local real-CEF fixture covers downloaded bytes, SHA-256,
+collision renaming, and cancellation; the RFC remains unpromoted until the
+same evidence is retained for macOS arm64, Windows x64, and Linux x64.
+
 ### Phase 11: Compose WebView, KMP native services, and Electron migration
 
 Phase 11 completes the ergonomic Compose host and adds an extensible

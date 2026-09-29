@@ -130,10 +130,10 @@ final class FfmBrowserCallbackOwner extends FfmCallbackOwner {
             if (structureSize < FfmLayouts.BROWSER_EVENT.byteSize()
                 || abiVersion != FfmAbi.VERSION
                 || type < 1
-                || type > 25
+                || type > 26
                 || (frameScope != 1 && frameScope != 2)
                 || reason > 9
-                || ((type == 18 || type == 19 || type == 25) != (requestId > 0))
+                || ((type == 18 || type == 19 || type == 25 || type == 26) != (requestId > 0))
                 || engine <= 0
                 || browser <= 0
                 || sequence <= 0) {

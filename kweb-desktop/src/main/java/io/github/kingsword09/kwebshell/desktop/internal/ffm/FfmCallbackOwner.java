@@ -90,7 +90,7 @@ abstract class FfmCallbackOwner {
     final Throwable releaseAfterTerminal() {
         synchronized (lifecycleLock) {
             if (closed) {
-                throw new IllegalStateException("The FFM callback owner is already closed.");
+                return failure.get();
             }
             long remaining = RELEASE_TIMEOUT_NANOS;
             long started = System.nanoTime();

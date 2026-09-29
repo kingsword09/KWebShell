@@ -18,6 +18,8 @@ set(expected
   kweb_browser_bridge_fail
   kweb_browser_profile_data
   kweb_browser_security_respond
+  kweb_browser_download_control
+  kweb_browser_start_download
   kweb_engine_abi_version
   kweb_engine_clear_profile_network_policy
   kweb_engine_close

@@ -871,17 +871,19 @@ private fun runClientCertificateIntegration() {
             val livePage = requireNotNull(page)
             livePage.navigate(fixture.url)
 
-            val tls = awaitSecurityChallenge(challenges, "mTLS server certificate")
-            require(tls is KWebSecurityChallenge.Tls) { "Expected TLS challenge, got $tls" }
-            val tlsResult = liveProfile.respondToSecurityChallenge(
-                tls.requestId,
-                KWebSecurityDecision.Tls.ALLOW_FOR_PROFILE_ORIGIN(
-                    System.currentTimeMillis() + 60L * 60L * 1000L,
-                ),
-            )
-            require(tlsResult.outcome == KWebSecurityChallengeOutcome.ACCEPTED)
-
-            val client = awaitSecurityChallenge(challenges, "client certificate")
+            val firstChallenge = awaitSecurityChallenge(challenges, "mTLS certificate selection")
+            val client = if (firstChallenge is KWebSecurityChallenge.Tls) {
+                val tlsResult = liveProfile.respondToSecurityChallenge(
+                    firstChallenge.requestId,
+                    KWebSecurityDecision.Tls.ALLOW_FOR_PROFILE_ORIGIN(
+                        System.currentTimeMillis() + 60L * 60L * 1000L,
+                    ),
+                )
+                require(tlsResult.outcome == KWebSecurityChallengeOutcome.ACCEPTED)
+                awaitSecurityChallenge(challenges, "client certificate")
+            } else {
+                firstChallenge
+            }
             require(client is KWebSecurityChallenge.ClientCertificate) {
                 "Expected client-certificate challenge, got $client"
             }

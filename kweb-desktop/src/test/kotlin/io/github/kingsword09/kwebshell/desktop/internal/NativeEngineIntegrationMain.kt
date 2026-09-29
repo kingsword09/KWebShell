@@ -4362,6 +4362,7 @@ private class ClientCertificateFixture(private val root: Path) : AutoCloseable {
 
     fun awaitRequest() {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+        var lastFailure: String? = null
         while (System.nanoTime() < deadline) {
             requests.poll(100, TimeUnit.MILLISECONDS)?.let {
                 val fingerprint = peerFingerprints.poll(30, TimeUnit.SECONDS)
@@ -4371,10 +4372,18 @@ private class ClientCertificateFixture(private val root: Path) : AutoCloseable {
                 return
             }
             failures.poll()?.let { failure ->
-                error("The mTLS server handshake failed: $failure")
+                // Chromium can retry a client-certificate handshake after a
+                // transient TLS alert. Keep waiting for the request that proves
+                // the selected identity was eventually used; report the last
+                // observed failure only if the retry window expires.
+                lastFailure = failure
             }
         }
-        error("Timed out waiting for the provider-backed mTLS request.")
+        error(
+            lastFailure?.let { failure ->
+                "The mTLS server handshake failed after retries: $failure"
+            } ?: "Timed out waiting for the provider-backed mTLS request.",
+        )
     }
 
     override fun close() {

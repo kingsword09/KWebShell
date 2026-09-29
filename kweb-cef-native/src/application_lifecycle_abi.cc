@@ -55,7 +55,7 @@ struct NativeLifecycle {
   std::thread listener;
 #if defined(_WIN32)
   HANDLE mutex = nullptr;
-  HANDLE wake = nullptr;
+  HANDLE listener_stopped = nullptr;
   std::wstring pipe_name;
 #else
   int lock_fd = -1;
@@ -344,7 +344,10 @@ void WindowsListen(NativeLifecycle *lifecycle) {
         PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
         1, static_cast<DWORD>(kMaximumFrameBytes),
         static_cast<DWORD>(kMaximumFrameBytes), 1000, nullptr);
-    if (pipe == INVALID_HANDLE_VALUE) return;
+    if (pipe == INVALID_HANDLE_VALUE) {
+      SetEvent(lifecycle->listener_stopped);
+      return;
+    }
     const BOOL connected = ConnectNamedPipe(pipe, nullptr)
                                ? TRUE
                                : (GetLastError() == ERROR_PIPE_CONNECTED);
@@ -355,6 +358,7 @@ void WindowsListen(NativeLifecycle *lifecycle) {
     DisconnectNamedPipe(pipe);
     CloseHandle(pipe);
   }
+  SetEvent(lifecycle->listener_stopped);
 }
 
 int32_t WindowsAcquire(NativeLifecycle *lifecycle,
@@ -385,19 +389,45 @@ int32_t WindowsAcquire(NativeLifecycle *lifecycle,
     }
     return KWEB_APPLICATION_LIFECYCLE_TRANSPORT_FAILED;
   }
+  lifecycle->listener_stopped = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+  if (lifecycle->listener_stopped == nullptr) {
+    CloseHandle(lifecycle->mutex);
+    lifecycle->mutex = nullptr;
+    return KWEB_APPLICATION_LIFECYCLE_TRANSPORT_FAILED;
+  }
   Register(lifecycle);
-  lifecycle->listener = std::thread(WindowsListen, lifecycle);
+  try {
+    lifecycle->listener = std::thread(WindowsListen, lifecycle);
+  } catch (...) {
+    Unregister(lifecycle);
+    CloseHandle(lifecycle->listener_stopped);
+    lifecycle->listener_stopped = nullptr;
+    CloseHandle(lifecycle->mutex);
+    lifecycle->mutex = nullptr;
+    return KWEB_APPLICATION_LIFECYCLE_TRANSPORT_FAILED;
+  }
   return KWEB_APPLICATION_LIFECYCLE_OK_PRIMARY;
 }
 
 void WindowsRelease(NativeLifecycle *lifecycle) {
   lifecycle->stopping.store(true, std::memory_order_release);
-  if (!lifecycle->pipe_name.empty()) {
-    HANDLE pipe = CreateFileW(lifecycle->pipe_name.c_str(), GENERIC_WRITE, 0,
-                              nullptr, OPEN_EXISTING, 0, nullptr);
-    if (pipe != INVALID_HANDLE_VALUE) CloseHandle(pipe);
+  if (lifecycle->listener.joinable()) {
+    // ConnectNamedPipe is a synchronous wait. Keep attempting a local
+    // connection until the listener reports completion: one best-effort wake
+    // can race with the listener closing the previous instance and creating
+    // the next one, leaving release blocked forever in join(). Closing the
+    // client without a frame makes a connected listener's ReadFile return.
+    while (WaitForSingleObject(lifecycle->listener_stopped, 10) != WAIT_OBJECT_0) {
+      HANDLE pipe = CreateFileW(lifecycle->pipe_name.c_str(), GENERIC_WRITE, 0,
+                                nullptr, OPEN_EXISTING, 0, nullptr);
+      if (pipe != INVALID_HANDLE_VALUE) CloseHandle(pipe);
+    }
+    lifecycle->listener.join();
   }
-  if (lifecycle->listener.joinable()) lifecycle->listener.join();
+  if (lifecycle->listener_stopped != nullptr) {
+    CloseHandle(lifecycle->listener_stopped);
+    lifecycle->listener_stopped = nullptr;
+  }
   if (lifecycle->mutex != nullptr) {
     CloseHandle(lifecycle->mutex);
     lifecycle->mutex = nullptr;

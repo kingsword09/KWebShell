@@ -3980,13 +3980,6 @@ private class ClientCertificateFixture(private val root: Path) : AutoCloseable {
             )
             runExternal(
                 listOf(
-                    "security", "add-trusted-cert", "-r", "trustRoot",
-                    "-k", keychain.toString(), caCertificate.toString(),
-                ),
-                "macOS mTLS CA trust import",
-            )
-            runExternal(
-                listOf(
                     "security", "import", clientStore.toString(), "-f", "pkcs12",
                     // This keychain exists only for the fixture; allow-all avoids a
                     // hosted-runner Keychain ACL prompt during Chromium signing.

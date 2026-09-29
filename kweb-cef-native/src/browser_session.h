@@ -31,6 +31,10 @@ kweb_status RespondToBridgeSession(kweb_browser_handle browser,
 kweb_status RespondToSecurityChallengeSession(kweb_browser_handle browser,
                                               uint64_t request_id,
                                               const std::string& decision);
+kweb_status ControlDownloadSession(kweb_browser_handle browser,
+                                   uint64_t download_id, uint32_t operation);
+kweb_status StartDownloadSession(kweb_browser_handle browser,
+                                 const std::string &url);
 kweb_status ProfileDataSession(
     kweb_browser_handle browser, uint64_t request_id,
     kweb_profile_data_operation_type operation, const char *payload_utf8,

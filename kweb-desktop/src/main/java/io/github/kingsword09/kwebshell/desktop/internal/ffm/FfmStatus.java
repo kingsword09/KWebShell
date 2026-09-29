@@ -31,6 +31,12 @@ public final class FfmStatus {
     public static final int NETWORK_REDIRECT_INVALID = 68;
     public static final int NETWORK_POLICY_LIMIT_EXCEEDED = 69;
     public static final int PROFILE_CONTEXT_INITIALIZATION_FAILED = 70;
+    public static final int DOWNLOAD_NOT_FOUND = 83;
+    public static final int DOWNLOAD_ALREADY_TERMINAL = 84;
+    public static final int DOWNLOAD_CONTROL_INVALID = 85;
+    public static final int DOWNLOAD_PROFILE_CLOSING = 86;
+    public static final int DOWNLOAD_CAPABILITY_MISSING = 87;
+    public static final int DOWNLOAD_LIMIT_EXCEEDED = 88;
 
     private FfmStatus() {
     }

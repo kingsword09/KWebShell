@@ -73,6 +73,15 @@ The earlier Phase 2 boundary used a JNI shared library. Objective 8.2 removes th
 
 The Phase 3 Profile contract runs three real CEF processes against a controlled HTTPS origin. It proves that `localStorage` and a session cookie survive restart in Profile A, remain invisible to Profile B, flush cookies before browser close, and create Chromium Preferences, Cookies, and Local Storage files under each declared Profile after shutdown. The same CTest contract is part of the macOS, Windows, and Linux verification matrix.
 
+RFC 0012 adds the Profile-scoped download contract on stock CEF 151. Downloads
+require an explicit trusted `KWebDesktopDownloadPolicy`; there is no default
+directory, renderer path, or fallback backend. CEF writes to a Profile staging
+directory, Kotlin verifies the bytes and optional SHA-256, then atomically
+publishes a completed-file capability with bounded reads. The local macOS
+integration proves real HTTP bytes, hash verification, collision renaming, and
+host cancellation; Windows and Linux remain required hosted acceptance targets
+before the capability is promoted to `Implemented`.
+
 The in-process engine has a separate opaque C ABI and loads only explicitly supplied absolute paths for the engine library, CEF runtime, subprocess, resources, locales, root cache, and log. Kotlin creates and closes it on the AWT event-dispatch thread. macOS initializes and pumps CEF on AppKit, requests shutdown asynchronously, and confirms completion only after the real AppKit `CefShutdown` returns; Windows and Linux use CEF's windowed multi-threaded loop, with Linux `XInitThreads` running before AWT starts. A close rejected by a live browser preserves the engine handle and OPEN state for a deliberate retry after browser destruction. Dedicated JVM integration processes require the real `OnContextInitialized` callback, clean `CefShutdown`, typed failure behavior, zero live engines and browsers, and terminal rejection of a second lifecycle.
 
 The first Phase 4 slice adds an explicit CDP port to the internal engine configuration. `0` keeps remote debugging disabled; `1024..65535` enables a fixed endpoint constrained to IPv4/IPv6 loopback. The real integration discovers `/json/version` and `/json/list` and executes `Runtime.evaluate` over WebSocket. A port collision or non-loopback endpoint is a typed failure; no ephemeral-port, public-interface, OS debugger, or alternate transport fallback is used.

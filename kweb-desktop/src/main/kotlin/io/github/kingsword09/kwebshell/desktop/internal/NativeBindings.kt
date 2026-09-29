@@ -152,6 +152,7 @@ internal object NativeBindings {
         height: Int,
         bridgeOrigin: String,
         bridgeSink: NativeBridgeEventSink?,
+        downloadsEnabled: Boolean = false,
     ): Long = FfmBindings.browserCreate(
         engine,
         FfmCallbacks.BrowserEvent(sink::onNativeBrowserEvent),
@@ -166,6 +167,7 @@ internal object NativeBindings {
         width,
         height,
         bridgeOrigin,
+        downloadsEnabled,
     )
 
     internal fun browserCreate(
@@ -193,6 +195,7 @@ internal object NativeBindings {
         height = height,
         bridgeOrigin = bridgeOrigin,
         bridgeSink = bridgeSink,
+        downloadsEnabled = false,
     )
 
     internal fun browserNavigate(handle: Long, url: String): Int = FfmBindings.browserNavigate(handle, url)
@@ -235,6 +238,12 @@ internal object NativeBindings {
         operation: Int,
         payloadJson: String,
     ): Int = FfmBindings.browserProfileData(handle, requestId, operation, payloadJson)
+
+    internal fun browserDownloadControl(handle: Long, downloadId: Long, operation: Int): Int =
+        FfmBindings.browserDownloadControl(handle, downloadId, operation)
+
+    internal fun browserStartDownload(handle: Long, url: String): Int =
+        FfmBindings.browserStartDownload(handle, url)
 
     internal fun releaseBrowserOwner(handle: Long): Throwable? =
         releaseOwner("browser", handle) { FfmBindings.releaseBrowserOwner(handle) }

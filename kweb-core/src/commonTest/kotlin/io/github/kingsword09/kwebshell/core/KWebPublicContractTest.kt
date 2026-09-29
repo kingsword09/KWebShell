@@ -29,7 +29,7 @@ class KWebPublicContractTest {
     @Test
     fun capabilitiesHaveStableIdentifiers() {
         assertEquals(
-            listOf("native-child", "persistent-profile", "navigation", "resize", "devtools", "cdp"),
+            listOf("native-child", "persistent-profile", "navigation", "resize", "devtools", "cdp", "downloads"),
             KWebCapability.entries.map { it.id },
         )
     }

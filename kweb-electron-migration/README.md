@@ -76,6 +76,12 @@ are explicitly deferred until a separately reviewed Profile NetworkContext
 proxy contract exists; the migration kit does not emulate them with a
 process-wide switch, system proxy, or Kotlin resolver.
 
+RFC 0012 classifies `will-download` and `DownloadItem` as a typed rewrite to
+`KWebProfile.downloads`. Progress and terminal state remain Profile-scoped,
+while pause/resume/cancel are host operations and completed bytes are exposed
+only through a bounded file capability. `setSavePath`, renderer paths,
+automatic opening, and arbitrary download callbacks remain blocked.
+
 ## Manifest v2 and inventory prerequisites
 
 Manifest v2 requires an exact `rendererOrigin`, an explicit `rendererProfile`,

@@ -65,6 +65,12 @@ typedef uint32_t kweb_profile_data_operation_type;
 #define KWEB_BROWSER_EVENT_NETWORK_REQUEST ((kweb_browser_event_type)23)
 #define KWEB_BROWSER_EVENT_NETWORK_OBSERVATION_FAILED ((kweb_browser_event_type)24)
 #define KWEB_BROWSER_EVENT_SECURITY_CHALLENGE ((kweb_browser_event_type)25)
+#define KWEB_BROWSER_EVENT_DOWNLOAD ((kweb_browser_event_type)26)
+
+#define KWEB_BROWSER_CONFIG_DOWNLOADS_ENABLED ((uint32_t)1)
+#define KWEB_DOWNLOAD_CONTROL_CANCEL ((uint32_t)1)
+#define KWEB_DOWNLOAD_CONTROL_PAUSE ((uint32_t)2)
+#define KWEB_DOWNLOAD_CONTROL_RESUME ((uint32_t)3)
 
 #define KWEB_BROWSER_FRAME_MAIN ((uint32_t)1)
 #define KWEB_BROWSER_FRAME_SUBFRAME ((uint32_t)2)
@@ -340,6 +346,14 @@ kweb_browser_bridge_fail(kweb_browser_handle browser, uint64_t request_id,
 KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
 kweb_browser_security_respond(kweb_browser_handle browser, uint64_t request_id,
                               const char *decision_utf8, size_t decision_size);
+
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
+kweb_browser_download_control(kweb_browser_handle browser, uint64_t download_id,
+                               uint32_t operation);
+
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
+kweb_browser_start_download(kweb_browser_handle browser, const char *url_utf8,
+                            size_t url_size);
 
 KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
 kweb_browser_profile_data(

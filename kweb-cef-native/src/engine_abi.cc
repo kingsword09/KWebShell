@@ -836,6 +836,18 @@ const char *KWEB_ABI_CALL kweb_status_name(kweb_status status) {
     return "security-challenge-callback-failed";
   case KWEB_STATUS_SECURITY_STORE_UNAVAILABLE:
     return "security-store-unavailable";
+  case KWEB_STATUS_DOWNLOAD_NOT_FOUND:
+    return "download-not-found";
+  case KWEB_STATUS_DOWNLOAD_ALREADY_TERMINAL:
+    return "download-already-terminal";
+  case KWEB_STATUS_DOWNLOAD_CONTROL_INVALID:
+    return "download-control-invalid";
+  case KWEB_STATUS_DOWNLOAD_PROFILE_CLOSING:
+    return "download-profile-closing";
+  case KWEB_STATUS_DOWNLOAD_CAPABILITY_MISSING:
+    return "download-capability-missing";
+  case KWEB_STATUS_DOWNLOAD_LIMIT_EXCEEDED:
+    return "download-limit-exceeded";
   default:
     return "unknown-status";
   }
@@ -1009,6 +1021,25 @@ kweb_status KWEB_ABI_CALL kweb_browser_security_respond(
     return kwebshell::RespondToSecurityChallengeSession(
         browser, request_id, std::string(decision_utf8, decision_size));
   });
+}
+
+kweb_status KWEB_ABI_CALL kweb_browser_download_control(
+    kweb_browser_handle browser, uint64_t download_id, uint32_t operation) {
+  if (download_id == 0 || operation < KWEB_DOWNLOAD_CONTROL_CANCEL ||
+      operation > KWEB_DOWNLOAD_CONTROL_RESUME) {
+    return KWEB_STATUS_DOWNLOAD_CONTROL_INVALID;
+  }
+  return kwebshell::ControlDownloadSession(browser, download_id, operation);
+}
+
+kweb_status KWEB_ABI_CALL kweb_browser_start_download(
+    kweb_browser_handle browser, const char *url_utf8, size_t url_size) {
+  if (url_utf8 == nullptr || url_size == 0 || url_size > 1024 * 1024 ||
+      !kwebshell::IsValidUtf8(url_utf8, url_size)) {
+    return KWEB_STATUS_NAVIGATION_INVALID;
+  }
+  return kwebshell::StartDownloadSession(
+      browser, std::string(url_utf8, url_size));
 }
 
 kweb_status KWEB_ABI_CALL kweb_browser_profile_data(

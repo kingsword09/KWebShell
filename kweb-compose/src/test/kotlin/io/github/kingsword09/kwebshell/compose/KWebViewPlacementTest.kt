@@ -19,6 +19,7 @@ import io.github.kingsword09.kwebshell.core.KWebNativeException
 import io.github.kingsword09.kwebshell.core.KWebSecurityChallenge
 import io.github.kingsword09.kwebshell.core.KWebSecurityChallengeResult
 import io.github.kingsword09.kwebshell.core.KWebSecurityDecision
+import io.github.kingsword09.kwebshell.core.KWebDownload
 import io.github.kingsword09.kwebshell.core.KWebRect
 import io.github.kingsword09.kwebshell.core.KWebCookie
 import io.github.kingsword09.kwebshell.core.KWebCookieFilter
@@ -182,6 +183,7 @@ private class RecordingProfile : KWebProfile {
     override val lifecycle = mutableLifecycle
     override val networkEvents = emptyFlow<KWebNetworkRequestEvent>()
     override val securityChallenges = emptyFlow<KWebSecurityChallenge>()
+    override val downloads = emptyFlow<KWebDownload>()
 
     override suspend fun openPage(host: KWebPageHost, initialUrl: String, bounds: KWebRect): KWebPage =
         RecordingPage()

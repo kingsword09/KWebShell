@@ -6,6 +6,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -15,6 +16,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <deque>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -32,6 +34,7 @@
 #include "include/cef_client.h"
 #include "include/cef_devtools_message_observer.h"
 #include "include/cef_cookie.h"
+#include "include/cef_download_handler.h"
 #include "include/cef_keyboard_handler.h"
 #include "include/cef_jsdialog_handler.h"
 #include "include/cef_parser.h"
@@ -61,6 +64,8 @@ constexpr uint64_t kMaximumBridgeRequestId =
     static_cast<uint64_t>((std::numeric_limits<int64_t>::max)());
 constexpr kweb_browser_handle kMaximumBrowserHandle =
     static_cast<kweb_browser_handle>(std::numeric_limits<int64_t>::max());
+constexpr size_t kMaximumLiveDownloads = 64;
+constexpr size_t kMaximumDownloadHistory = 256;
 
 // Opt-in diagnostics for the browser close chain; enabled with the
 // KWEBSHELL_TRACE_CLOSE environment variable.
@@ -99,6 +104,14 @@ void TraceCreateStage(kweb_browser_handle browser, const char *stage) {
     std::fprintf(stderr,
                  "KWEBSHELL_CREATE_TRACE browser=%llu stage=%s ticks=%lu\n",
                  static_cast<unsigned long long>(browser), stage, ticks);
+  }
+}
+
+void TraceDownload(kweb_browser_handle browser, const char *stage,
+                   uint32_t cef_id) {
+  if (std::getenv("KWEBSHELL_TRACE_DOWNLOAD") != nullptr) {
+    std::fprintf(stderr, "KWEBSHELL_DOWNLOAD_TRACE browser=%llu stage=%s id=%u\n",
+                 static_cast<unsigned long long>(browser), stage, cef_id);
   }
 }
 
@@ -260,6 +273,39 @@ std::string ProfileDataJson(CefRefPtr<CefDictionaryValue> dictionary) {
   return CefWriteJSON(value, JSON_WRITER_DEFAULT).ToString();
 }
 
+bool IsSafeDownloadName(const std::string &name) {
+  if (name.empty() || name.size() > 255 || name == "." || name == ".." ||
+      name.back() == '.' || name.back() == ' ') {
+    return false;
+  }
+  if (name.find('/') != std::string::npos || name.find('\\') != std::string::npos) {
+    return false;
+  }
+  for (const unsigned char byte : name) {
+    if (byte < 0x20 || byte == 0x7f || byte == '<' || byte == '>' ||
+        byte == ':' || byte == '"' || byte == '|' || byte == '?' ||
+        byte == '*') {
+      return false;
+    }
+  }
+  const size_t dot = name.find('.');
+  const std::string stem = name.substr(0, dot == std::string::npos ? name.size() : dot);
+  std::string upper;
+  upper.reserve(stem.size());
+  for (const unsigned char byte : stem) {
+    upper.push_back(static_cast<char>(std::toupper(byte)));
+  }
+  return upper != "CON" && upper != "PRN" && upper != "AUX" && upper != "NUL" &&
+         !(upper.size() == 4 && upper.compare(0, 3, "COM") == 0 &&
+           upper[3] >= '1' && upper[3] <= '9') &&
+         !(upper.size() == 4 && upper.compare(0, 3, "LPT") == 0 &&
+           upper[3] >= '1' && upper[3] <= '9');
+}
+
+std::string Decimal(int64_t value) {
+  return std::to_string(value < 0 ? 0 : value);
+}
+
 
 class BrowserSession;
 
@@ -295,6 +341,9 @@ public:
                             std::string response, bool success);
   kweb_status SecurityRespond(kweb_browser_handle handle, uint64_t request_id,
                               std::string decision);
+  kweb_status DownloadControl(kweb_browser_handle handle, uint64_t download_id,
+                              uint32_t operation);
+  kweb_status StartDownload(kweb_browser_handle handle, std::string url);
   kweb_status ProfileData(kweb_browser_handle handle, uint64_t request_id,
                           kweb_profile_data_operation_type operation,
                           std::string payload);
@@ -342,6 +391,7 @@ class SessionClient final : public CefClient,
                             public CefJSDialogHandler,
                             public CefLifeSpanHandler,
                             public CefLoadHandler,
+                            public CefDownloadHandler,
                             public CefRequestHandler {
 public:
   explicit SessionClient(std::weak_ptr<BrowserSession> session)
@@ -354,6 +404,9 @@ public:
   CefRefPtr<CefJSDialogHandler> GetJSDialogHandler() override { return this; }
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
   CefRefPtr<CefLoadHandler> GetLoadHandler() override { return this; }
+  CefRefPtr<CefDownloadHandler> GetDownloadHandler() override { return this; }
+  bool CanDownload(CefRefPtr<CefBrowser> browser, const CefString &url,
+                   const CefString &request_method) override;
   CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
   CefRefPtr<CefResourceRequestHandler> GetResourceRequestHandler(
       CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
@@ -369,6 +422,13 @@ public:
       CefRefPtr<CefBrowser> browser, bool is_proxy, const CefString &host,
       int port, const X509CertificateList &certificates,
       CefRefPtr<CefSelectClientCertificateCallback> callback) override;
+  bool OnBeforeDownload(CefRefPtr<CefBrowser> browser,
+                        CefRefPtr<CefDownloadItem> download_item,
+                        const CefString &suggested_name,
+                        CefRefPtr<CefBeforeDownloadCallback> callback) override;
+  void OnDownloadUpdated(CefRefPtr<CefBrowser> browser,
+                         CefRefPtr<CefDownloadItem> download_item,
+                         CefRefPtr<CefDownloadItemCallback> callback) override;
 
   void OnAddressChange(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
                        const CefString &url) override;
@@ -548,7 +608,7 @@ public:
                  kweb_bridge_event_callback bridge_callback,
                  void *bridge_user_data,
                  kweb_profile_data_event_callback profile_data_callback,
-                 void *profile_data_user_data)
+                 void *profile_data_user_data, bool downloads_enabled)
       : engine_(engine), handle_(handle), native_parent_(native_parent), x_(x),
         y_(y), width_(width), height_(height),
         profile_path_(std::move(profile_path)),
@@ -556,7 +616,8 @@ public:
         user_data_(user_data), bridge_origin_(std::move(bridge_origin)),
         bridge_callback_(bridge_callback), bridge_user_data_(bridge_user_data),
         profile_data_callback_(profile_data_callback),
-        profile_data_user_data_(profile_data_user_data) {}
+        profile_data_user_data_(profile_data_user_data),
+        downloads_enabled_(downloads_enabled) {}
 
   kweb_status Start() {
     TraceCreateStage(handle_, "start-requested");
@@ -612,6 +673,216 @@ public:
     return security_registry_
                ? security_registry_->Respond(request_id, decision)
                : KWEB_STATUS_SECURITY_CHALLENGE_NOT_FOUND;
+  }
+
+  struct DownloadRecord {
+    uint32_t cef_id = 0;
+    uint64_t id = 0;
+    std::filesystem::path staging_path;
+    CefRefPtr<CefDownloadItemCallback> callback;
+    std::string original_url;
+    std::string url;
+    std::string suggested_name;
+    std::string content_disposition;
+    std::string mime_type;
+    int64_t received_bytes = 0;
+    int64_t total_bytes = -1;
+    int64_t speed = 0;
+    int interrupt_reason = 0;
+    std::string status = "starting";
+    bool terminal = false;
+  };
+
+  bool OnBeforeDownload(CefRefPtr<CefBrowser> browser,
+                        CefRefPtr<CefDownloadItem> download_item,
+                        const CefString &suggested_name,
+                        CefRefPtr<CefBeforeDownloadCallback> callback) {
+    CEF_REQUIRE_UI_THREAD();
+    (void)browser;
+    TraceDownload(handle_, "before", download_item ? download_item->GetId() : 0);
+    if (!downloads_enabled_ || closing_.load(std::memory_order_acquire) ||
+        !download_item || !download_item->IsValid() || !callback) {
+      return false;
+    }
+    const uint32_t cef_id = download_item->GetId();
+    const std::string name = suggested_name.ToString();
+    DownloadRecord record;
+    record.cef_id = cef_id;
+    record.id = (handle_ << 32) | static_cast<uint64_t>(++next_download_id_);
+    record.original_url = BoundUtf8(download_item->GetOriginalUrl().ToString(), 8192);
+    record.url = BoundUtf8(download_item->GetURL().ToString(), 8192);
+    record.suggested_name = BoundUtf8(name, 255);
+    record.content_disposition =
+        BoundUtf8(download_item->GetContentDisposition().ToString(), 4096);
+    record.mime_type = BoundUtf8(download_item->GetMimeType().ToString(), 512);
+    record.received_bytes = std::max<int64_t>(0, download_item->GetReceivedBytes());
+    record.total_bytes = download_item->GetTotalBytes();
+    record.speed = std::max<int64_t>(0, download_item->GetCurrentSpeed());
+
+    if (!IsSafeDownloadName(name)) {
+      TraceDownload(handle_, "denied-unsafe-name", cef_id);
+      record.status = "denied";
+      record.terminal = true;
+      record.interrupt_reason = 100;
+      std::lock_guard lock(download_mutex_);
+      download_records_[record.cef_id] = record;
+      EmitDownloadRecord(record);
+      PruneDownloadHistoryLocked();
+      return false;
+    }
+    std::error_code error;
+    const auto staging_root = profile_path_ / ".kwebshell-downloads" /
+                              std::to_string(static_cast<unsigned long long>(handle_));
+    const auto staging_parent = profile_path_ / ".kwebshell-downloads";
+    const bool staging_root_symlink =
+        std::filesystem::is_symlink(staging_parent, error);
+    const bool staging_parent_missing =
+        error == std::make_error_code(std::errc::no_such_file_or_directory);
+    if (staging_root_symlink || (error && !staging_parent_missing)) {
+      TraceDownload(handle_, "denied-staging-root", cef_id);
+      record.status = "denied";
+      record.terminal = true;
+      record.interrupt_reason = 101;
+      std::lock_guard lock(download_mutex_);
+      download_records_[record.cef_id] = record;
+      EmitDownloadRecord(record);
+      PruneDownloadHistoryLocked();
+      return false;
+    }
+    error.clear();
+    std::filesystem::create_directories(staging_root, error);
+    if (error) {
+      TraceDownload(handle_, "denied-staging-create", cef_id);
+      record.status = "denied";
+      record.terminal = true;
+      record.interrupt_reason = 101;
+      std::lock_guard lock(download_mutex_);
+      download_records_[record.cef_id] = record;
+      EmitDownloadRecord(record);
+      PruneDownloadHistoryLocked();
+      return false;
+    }
+    record.staging_path = staging_root /
+                          (std::to_string(cef_id) + "-" + name);
+    {
+      std::lock_guard lock(download_mutex_);
+      size_t live = 0;
+      for (const auto &entry : download_records_) {
+        if (!entry.second.terminal) ++live;
+      }
+      if (live >= kMaximumLiveDownloads) {
+        TraceDownload(handle_, "denied-live-limit", cef_id);
+        record.status = "denied";
+        record.terminal = true;
+        record.interrupt_reason = 102;
+        download_records_[record.cef_id] = record;
+        EmitDownloadRecord(record);
+        PruneDownloadHistoryLocked();
+        return false;
+      }
+      download_records_[record.cef_id] = record;
+      EmitDownloadRecord(record);
+    }
+    TraceDownload(handle_, "continue", cef_id);
+    callback->Continue(PathToUtf8(record.staging_path), false);
+    return true;
+  }
+
+  void OnDownloadUpdated(CefRefPtr<CefBrowser> browser,
+                         CefRefPtr<CefDownloadItem> download_item,
+                         CefRefPtr<CefDownloadItemCallback> callback) {
+    CEF_REQUIRE_UI_THREAD();
+    (void)browser;
+    TraceDownload(handle_, "updated", download_item ? download_item->GetId() : 0);
+    if (!download_item || !download_item->IsValid()) return;
+    const uint32_t cef_id = download_item->GetId();
+    std::lock_guard lock(download_mutex_);
+    auto found = download_records_.find(cef_id);
+    if (found == download_records_.end() || found->second.terminal) return;
+    DownloadRecord &record = found->second;
+    record.callback = callback;
+    record.original_url = BoundUtf8(download_item->GetOriginalUrl().ToString(), 8192);
+    record.url = BoundUtf8(download_item->GetURL().ToString(), 8192);
+    const std::string updated_suggested_name =
+        BoundUtf8(download_item->GetSuggestedFileName().ToString(), 255);
+    if (!updated_suggested_name.empty()) {
+      record.suggested_name = updated_suggested_name;
+    }
+    record.content_disposition =
+        BoundUtf8(download_item->GetContentDisposition().ToString(), 4096);
+    record.mime_type = BoundUtf8(download_item->GetMimeType().ToString(), 512);
+    record.received_bytes = std::max<int64_t>(0, download_item->GetReceivedBytes());
+    record.total_bytes = download_item->GetTotalBytes();
+    record.speed = std::max<int64_t>(0, download_item->GetCurrentSpeed());
+    record.interrupt_reason = static_cast<int>(download_item->GetInterruptReason());
+    const std::string full_path = download_item->GetFullPath().ToString();
+    if (!full_path.empty()) record.staging_path = PathFromUtf8(full_path.data(), full_path.size());
+    if (download_item->IsCanceled()) {
+      record.status = "canceled";
+      record.terminal = true;
+    } else if (download_item->IsInterrupted()) {
+      record.status = "interrupted";
+      record.terminal = true;
+    } else if (download_item->IsComplete()) {
+      record.status = "complete";
+      record.terminal = true;
+    } else if (download_item->IsPaused()) {
+      record.status = "paused";
+    } else {
+      record.status = "in-progress";
+    }
+    EmitDownloadRecord(record);
+    if (record.terminal) PruneDownloadHistoryLocked();
+  }
+
+  kweb_status DownloadControl(uint64_t download_id, uint32_t operation) {
+    if (!downloads_enabled_) return KWEB_STATUS_DOWNLOAD_CAPABILITY_MISSING;
+    if (download_id == 0 || operation < KWEB_DOWNLOAD_CONTROL_CANCEL ||
+        operation > KWEB_DOWNLOAD_CONTROL_RESUME) {
+      return KWEB_STATUS_DOWNLOAD_CONTROL_INVALID;
+    }
+    if (closing_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_DOWNLOAD_PROFILE_CLOSING;
+    }
+    {
+      std::lock_guard lock(download_mutex_);
+      const auto found = FindDownloadLocked(download_id);
+      if (found == download_records_.end()) return KWEB_STATUS_DOWNLOAD_NOT_FOUND;
+      if (found->second.terminal) return KWEB_STATUS_DOWNLOAD_ALREADY_TERMINAL;
+    }
+    auto self = shared_from_this();
+    return CefPostTask(
+               TID_UI,
+               base::BindOnce(
+                   [](std::shared_ptr<BrowserSession> session, uint64_t id,
+                      uint32_t action) { session->ApplyDownloadControl(id, action); },
+                   std::move(self), download_id, operation))
+               ? KWEB_STATUS_OK
+               : KWEB_STATUS_CEF_UI_TASK_FAILED;
+  }
+
+  kweb_status StartDownload(std::string url) {
+    if (closing_.load(std::memory_order_acquire)) return KWEB_STATUS_BROWSER_CLOSING;
+    if (!ready_.load(std::memory_order_acquire) || !browser_) {
+      return KWEB_STATUS_BROWSER_NOT_READY;
+    }
+    auto self = shared_from_this();
+    return CefPostTask(
+               TID_UI,
+               base::BindOnce(
+                   [](std::shared_ptr<BrowserSession> session, std::string target) {
+                     if (!session->closing_.load(std::memory_order_acquire) &&
+                         session->browser_) {
+                       session->browser_->GetHost()->StartDownload(target);
+                     }
+                   },
+                   std::move(self), std::move(url)))
+               ? KWEB_STATUS_OK
+               : KWEB_STATUS_CEF_UI_TASK_FAILED;
+  }
+
+  bool CanDownload() const {
+    return downloads_enabled_ && !closing_.load(std::memory_order_acquire);
   }
 
   void EmitNetworkEvent(std::string event) {
@@ -1028,6 +1299,7 @@ public:
   }
 
   const std::filesystem::path &profile_path() const { return profile_path_; }
+  kweb_browser_handle handle() const { return handle_; }
 
   bool BridgeQuery(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
                    int64_t query_id, const CefString &request, bool persistent,
@@ -1621,6 +1893,83 @@ private:
   friend class ProfileDataCompletionCallback;
   friend class ProfileDataDevToolsObserver;
 
+  std::map<uint32_t, DownloadRecord>::iterator FindDownloadLocked(
+      uint64_t download_id) {
+    return std::find_if(
+        download_records_.begin(), download_records_.end(),
+        [download_id](const auto &entry) { return entry.second.id == download_id; });
+  }
+
+  void EmitDownloadRecord(const DownloadRecord &record) {
+    CefRefPtr<CefDictionaryValue> dictionary = CefDictionaryValue::Create();
+    dictionary->SetInt("version", 1);
+    dictionary->SetString("downloadId", std::to_string(record.id));
+    dictionary->SetString("status", record.status);
+    dictionary->SetString("originalUrl", record.original_url);
+    dictionary->SetString("url", record.url);
+    dictionary->SetString("suggestedFileName", record.suggested_name);
+    dictionary->SetString("contentDisposition", record.content_disposition);
+    dictionary->SetString("mimeType", record.mime_type);
+    dictionary->SetString("receivedBytes", Decimal(record.received_bytes));
+    if (record.total_bytes < 0) {
+      dictionary->SetNull("totalBytes");
+    } else {
+      dictionary->SetString("totalBytes", Decimal(record.total_bytes));
+    }
+    dictionary->SetString("currentSpeedBytesPerSecond", Decimal(record.speed));
+    dictionary->SetInt("interruptReason", record.interrupt_reason);
+    if (record.staging_path.empty()) {
+      dictionary->SetNull("stagingPath");
+    } else {
+      dictionary->SetString("stagingPath", PathToUtf8(record.staging_path));
+    }
+    const std::string payload = ProfileDataJson(dictionary);
+    Emit(KWEB_BROWSER_EVENT_DOWNLOAD, 0, record.status, 0, 0, 0, {},
+         KWEB_BROWSER_FRAME_MAIN, KWEB_BROWSER_REASON_NONE, record.id,
+         BridgeOriginFromUrl(record.url).value_or(""), record.url, {}, payload,
+         false);
+  }
+
+  void ApplyDownloadControl(uint64_t download_id, uint32_t operation) {
+    CEF_REQUIRE_UI_THREAD();
+    std::lock_guard lock(download_mutex_);
+    auto found = FindDownloadLocked(download_id);
+    if (found == download_records_.end() || found->second.terminal) return;
+    if (!found->second.callback) return;
+    if (operation == KWEB_DOWNLOAD_CONTROL_CANCEL) {
+      found->second.callback->Cancel();
+    } else if (operation == KWEB_DOWNLOAD_CONTROL_PAUSE) {
+      found->second.callback->Pause();
+    } else if (operation == KWEB_DOWNLOAD_CONTROL_RESUME) {
+      found->second.callback->Resume();
+    }
+  }
+
+  void CancelDownloads() {
+    CEF_REQUIRE_UI_THREAD();
+    std::lock_guard lock(download_mutex_);
+    for (auto &entry : download_records_) {
+      DownloadRecord &record = entry.second;
+      if (record.terminal) continue;
+      if (record.callback) record.callback->Cancel();
+      record.status = "canceled";
+      record.interrupt_reason = 101;
+      record.terminal = true;
+      EmitDownloadRecord(record);
+    }
+    PruneDownloadHistoryLocked();
+  }
+
+  void PruneDownloadHistoryLocked() {
+    while (download_records_.size() > kMaximumDownloadHistory) {
+      auto found = std::find_if(
+          download_records_.begin(), download_records_.end(),
+          [](const auto &entry) { return entry.second.terminal; });
+      if (found == download_records_.end()) break;
+      download_records_.erase(found);
+    }
+  }
+
   void StartProfileData(uint64_t request_id,
                         kweb_profile_data_operation_type operation,
                         std::string payload) {
@@ -2000,6 +2349,7 @@ private:
     TraceCloseStage(handle_, "begin-close");
     closing_.store(true, std::memory_order_release);
     ready_.store(false, std::memory_order_release);
+    CancelDownloads();
     if (security_registry_) {
       security_registry_->Close();
     }
@@ -2200,6 +2550,10 @@ private:
   void *const bridge_user_data_;
   const kweb_profile_data_event_callback profile_data_callback_;
   void *const profile_data_user_data_;
+  const bool downloads_enabled_;
+  std::mutex download_mutex_;
+  std::map<uint32_t, DownloadRecord> download_records_;
+  uint32_t next_download_id_ = 0;
   std::unique_ptr<BrowserSurface> surface_;
   CefRefPtr<SessionClient> client_;
   CefRefPtr<CefRequestContext> request_context_;
@@ -2298,6 +2652,41 @@ bool SessionClient::OnSelectClientCertificate(
   }
   if (callback) callback->Select(nullptr);
   return true;
+}
+
+bool SessionClient::OnBeforeDownload(
+    CefRefPtr<CefBrowser> browser, CefRefPtr<CefDownloadItem> download_item,
+    const CefString &suggested_name,
+    CefRefPtr<CefBeforeDownloadCallback> callback) {
+  CEF_REQUIRE_UI_THREAD();
+  if (auto session = session_.lock()) {
+    return session->OnBeforeDownload(browser, download_item, suggested_name,
+                                     callback);
+  }
+  return false;
+}
+
+void SessionClient::OnDownloadUpdated(
+    CefRefPtr<CefBrowser> browser, CefRefPtr<CefDownloadItem> download_item,
+    CefRefPtr<CefDownloadItemCallback> callback) {
+  CEF_REQUIRE_UI_THREAD();
+  if (auto session = session_.lock()) {
+    session->OnDownloadUpdated(browser, download_item, callback);
+  }
+}
+
+bool SessionClient::CanDownload(CefRefPtr<CefBrowser> browser,
+                                const CefString &url,
+                                const CefString &request_method) {
+  CEF_REQUIRE_UI_THREAD();
+  (void)browser;
+  (void)url;
+  (void)request_method;
+  if (auto session = session_.lock()) {
+    TraceDownload(session->handle(), "can", 0);
+    return session->CanDownload();
+  }
+  return false;
 }
 
 void SessionClient::OnAddressChange(CefRefPtr<CefBrowser> browser,
@@ -2624,6 +3013,9 @@ kweb_status SessionRegistry::Create(const kweb_browser_config *config,
   if (config->callback == nullptr || config->native_parent == 0) {
     return KWEB_STATUS_INVALID_ARGUMENT;
   }
+  if ((config->reserved & ~KWEB_BROWSER_CONFIG_DOWNLOADS_ENABLED) != 0) {
+    return KWEB_STATUS_INVALID_ARGUMENT;
+  }
   const bool bridge_enabled = config->bridge_callback != nullptr;
   if (bridge_enabled != (config->bridge_origin.data != nullptr &&
                          config->bridge_origin.size != 0)) {
@@ -2672,7 +3064,8 @@ kweb_status SessionRegistry::Create(const kweb_browser_config *config,
         config->width, config->height, *profile, *url, config->callback,
         config->user_data, std::move(bridge_origin), config->bridge_callback,
         config->bridge_user_data, config->profile_data_callback,
-        config->profile_data_user_data);
+        config->profile_data_user_data,
+        (config->reserved & KWEB_BROWSER_CONFIG_DOWNLOADS_ENABLED) != 0);
     sessions_.emplace(handle, session);
   }
   const kweb_status start_status = session->Start();
@@ -2962,6 +3355,21 @@ kweb_status SessionRegistry::SecurityRespond(kweb_browser_handle handle,
                  : KWEB_STATUS_INVALID_HANDLE;
 }
 
+kweb_status SessionRegistry::DownloadControl(kweb_browser_handle handle,
+                                             uint64_t download_id,
+                                             uint32_t operation) {
+  auto session = Lookup(handle);
+  return session ? session->DownloadControl(download_id, operation)
+                 : KWEB_STATUS_INVALID_HANDLE;
+}
+
+kweb_status SessionRegistry::StartDownload(kweb_browser_handle handle,
+                                           std::string url) {
+  auto session = Lookup(handle);
+  return session ? session->StartDownload(std::move(url))
+                 : KWEB_STATUS_INVALID_HANDLE;
+}
+
 kweb_status SessionRegistry::ProfileData(
     kweb_browser_handle handle, uint64_t request_id,
     kweb_profile_data_operation_type operation, std::string payload) {
@@ -3051,6 +3459,20 @@ kweb_status RespondToSecurityChallengeSession(kweb_browser_handle browser,
   return GuardStatus([&] {
     return Registry().SecurityRespond(browser, request_id, decision);
   });
+}
+
+kweb_status ControlDownloadSession(kweb_browser_handle browser,
+                                   uint64_t download_id, uint32_t operation) {
+  return GuardStatus([&] {
+    return Registry().DownloadControl(browser, download_id, operation);
+  });
+}
+
+kweb_status StartDownloadSession(kweb_browser_handle browser,
+                                 const std::string &url) {
+  const auto validated = ValidateUrl(url.data(), url.size(), false);
+  if (!validated) return KWEB_STATUS_NAVIGATION_INVALID;
+  return GuardStatus([&] { return Registry().StartDownload(browser, *validated); });
 }
 
 kweb_status CreateBrowserSession(const kweb_browser_config *config,

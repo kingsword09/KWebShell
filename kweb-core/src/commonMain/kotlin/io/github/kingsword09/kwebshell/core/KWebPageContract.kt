@@ -178,6 +178,7 @@ public interface KWebProfile : AutoCloseable {
     public val lifecycle: StateFlow<KWebLifecycleState>
     public val networkEvents: Flow<KWebNetworkRequestEvent>
     public val securityChallenges: Flow<KWebSecurityChallenge>
+    public val downloads: Flow<KWebDownload>
 
     public suspend fun openPage(
         host: KWebPageHost,

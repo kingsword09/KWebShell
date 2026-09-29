@@ -11,7 +11,7 @@
 #define KWEB_ABI_CALL
 #endif
 
-#define KWEB_ABI_VERSION ((uint32_t)15)
+#define KWEB_ABI_VERSION ((uint32_t)16)
 
 typedef uint32_t kweb_status;
 
@@ -96,5 +96,11 @@ typedef uint32_t kweb_status;
 #define KWEB_STATUS_SECURITY_CLIENT_CERTIFICATE_NOT_OFFERED ((kweb_status)79)
 #define KWEB_STATUS_SECURITY_CHALLENGE_CALLBACK_FAILED ((kweb_status)81)
 #define KWEB_STATUS_SECURITY_STORE_UNAVAILABLE ((kweb_status)82)
+#define KWEB_STATUS_DOWNLOAD_NOT_FOUND ((kweb_status)83)
+#define KWEB_STATUS_DOWNLOAD_ALREADY_TERMINAL ((kweb_status)84)
+#define KWEB_STATUS_DOWNLOAD_CONTROL_INVALID ((kweb_status)85)
+#define KWEB_STATUS_DOWNLOAD_PROFILE_CLOSING ((kweb_status)86)
+#define KWEB_STATUS_DOWNLOAD_CAPABILITY_MISSING ((kweb_status)87)
+#define KWEB_STATUS_DOWNLOAD_LIMIT_EXCEEDED ((kweb_status)88)
 
 #endif // KWEBSHELL_NATIVE_BASE_ABI_H_

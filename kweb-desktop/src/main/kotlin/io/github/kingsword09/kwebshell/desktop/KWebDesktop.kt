@@ -39,6 +39,7 @@ public data class KWebDesktopEngineConfiguration(
     public val rootCache: Path,
     public val log: Path,
     public val remoteDebuggingPort: Int = 0,
+    public val downloadPolicy: KWebDesktopDownloadPolicy? = null,
     public val userGestureIssuer: KWebUserGestureIssuer? = null,
     public val engineId: String = "engine-" + java.util.UUID.randomUUID(),
 )

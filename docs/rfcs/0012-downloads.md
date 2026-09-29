@@ -1,6 +1,6 @@
 # RFC 0012: Profile downloads and scoped results
 
-- Status: Accepted
+- Status: Implemented
 - Priority: P0
 - Owners: `kweb-core`, `kweb-desktop`, Chromium download adapter
 - Depends on: RFC 0003, RFC 0004, RFC 0009

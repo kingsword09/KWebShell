@@ -3905,9 +3905,14 @@ private class ClientCertificateFixture(private val root: Path) : AutoCloseable {
             """
             $passwordVariable = ConvertTo-SecureString ${powershellLiteral(STORE_PASSWORD)} -AsPlainText -Force
             Import-PfxCertificate -FilePath ${powershellLiteral(clientStore.toString())} -CertStoreLocation ${powershellLiteral("Cert:\\CurrentUser\\My")} -Password $passwordVariable -Exportable -Confirm:${'$'}false | Out-Null
-            Import-Certificate -FilePath ${powershellLiteral(caCertificate.toString())} -CertStoreLocation ${powershellLiteral("Cert:\\CurrentUser\\Root")} -Confirm:${'$'}false | Out-Null
             """.trimIndent(),
             "Windows mTLS client certificate import",
+        )
+        runExternal(
+            listOf(
+                "certutil.exe", "-addstore", "-f", "Root", caCertificate.toString(),
+            ),
+            "Windows mTLS CA trust import",
         )
         return {
             runCatching {

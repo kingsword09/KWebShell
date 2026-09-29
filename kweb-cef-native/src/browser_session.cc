@@ -679,6 +679,7 @@ public:
     uint32_t cef_id = 0;
     uint64_t id = 0;
     std::filesystem::path staging_path;
+    CefRefPtr<CefDownloadItem> item;
     CefRefPtr<CefDownloadItemCallback> callback;
     std::string original_url;
     std::string url;
@@ -715,8 +716,13 @@ public:
     record.content_disposition =
         BoundUtf8(download_item->GetContentDisposition().ToString(), 4096);
     record.mime_type = BoundUtf8(download_item->GetMimeType().ToString(), 512);
-    record.received_bytes = std::max<int64_t>(0, download_item->GetReceivedBytes());
+    record.received_bytes = std::max(
+        record.received_bytes,
+        std::max<int64_t>(0, download_item->GetReceivedBytes()));
     record.total_bytes = download_item->GetTotalBytes();
+    if (record.total_bytes >= 0 && record.received_bytes > record.total_bytes) {
+      record.total_bytes = -1;
+    }
     record.speed = std::max<int64_t>(0, download_item->GetCurrentSpeed());
 
     if (!IsSafeDownloadName(name)) {
@@ -802,6 +808,7 @@ public:
     auto found = download_records_.find(cef_id);
     if (found == download_records_.end() || found->second.terminal) return;
     DownloadRecord &record = found->second;
+    record.item = download_item;
     record.callback = callback;
     record.original_url = BoundUtf8(download_item->GetOriginalUrl().ToString(), 8192);
     record.url = BoundUtf8(download_item->GetURL().ToString(), 8192);
@@ -813,8 +820,13 @@ public:
     record.content_disposition =
         BoundUtf8(download_item->GetContentDisposition().ToString(), 4096);
     record.mime_type = BoundUtf8(download_item->GetMimeType().ToString(), 512);
-    record.received_bytes = std::max<int64_t>(0, download_item->GetReceivedBytes());
+    record.received_bytes = std::max(
+        record.received_bytes,
+        std::max<int64_t>(0, download_item->GetReceivedBytes()));
     record.total_bytes = download_item->GetTotalBytes();
+    if (record.total_bytes >= 0 && record.received_bytes > record.total_bytes) {
+      record.total_bytes = -1;
+    }
     record.speed = std::max<int64_t>(0, download_item->GetCurrentSpeed());
     record.interrupt_reason = static_cast<int>(download_item->GetInterruptReason());
     const std::string full_path = download_item->GetFullPath().ToString();
@@ -1942,9 +1954,38 @@ private:
       found->second.callback->Cancel();
     } else if (operation == KWEB_DOWNLOAD_CONTROL_PAUSE) {
       found->second.callback->Pause();
+      ScheduleDownloadControlState(download_id);
     } else if (operation == KWEB_DOWNLOAD_CONTROL_RESUME) {
       found->second.callback->Resume();
+      ScheduleDownloadControlState(download_id);
     }
+  }
+
+  void ScheduleDownloadControlState(uint64_t download_id) {
+    auto self = shared_from_this();
+    CefPostDelayedTask(
+        TID_UI,
+        base::BindOnce(
+            [](std::shared_ptr<BrowserSession> session, uint64_t id) {
+              session->PublishDownloadControlState(id);
+            },
+            std::move(self), download_id),
+        50);
+  }
+
+  void PublishDownloadControlState(uint64_t download_id) {
+    CEF_REQUIRE_UI_THREAD();
+    std::lock_guard lock(download_mutex_);
+    auto found = FindDownloadLocked(download_id);
+    if (found == download_records_.end()) return;
+    DownloadRecord &record = found->second;
+    if (!record.item || !record.item->IsValid() || record.terminal ||
+        record.item->IsComplete() || record.item->IsCanceled() ||
+        record.item->IsInterrupted()) {
+      return;
+    }
+    record.status = record.item->IsPaused() ? "paused" : "in-progress";
+    EmitDownloadRecord(record);
   }
 
   void CancelDownloads() {

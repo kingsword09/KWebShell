@@ -950,6 +950,10 @@ internal class NativeBrowser private constructor(
 
     private fun requireOpenHandle(operation: String): Long {
         fun requireOpenState() {
+            if (mutableLifecycle.value == KWebLifecycleState.FAILED) {
+                fatalFailure.get()?.let { throw it }
+                callbackFailure.get()?.let { throw it }
+            }
             if (closeStarted.get() || mutableLifecycle.value != KWebLifecycleState.OPEN) {
                 throw KWebNativeException(
                     code = "native.browser.closed",

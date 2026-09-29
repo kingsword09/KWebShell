@@ -750,6 +750,11 @@ private fun runDownloadsIntegration() {
     var firstState: io.github.kingsword09.kwebshell.core.KWebDownloadState? = null
     var secondState: io.github.kingsword09.kwebshell.core.KWebDownloadState? = null
     var canceledState: io.github.kingsword09.kwebshell.core.KWebDownloadState? = null
+    var pausedBytes = 0L
+    var resumedBytes = 0L
+    var interruptedState: io.github.kingsword09.kwebshell.core.KWebDownloadState? = null
+    var interruptedResumeOutcome: KWebDownloadControlOutcome? = null
+    var interruptedPartialRemoved = false
     try {
         kotlinx.coroutines.runBlocking {
             profile = engine.openProfile("rfc0012-downloads")
@@ -782,6 +787,7 @@ private fun runDownloadsIntegration() {
                 "The completed download file bytes differ from the fixture."
             }
             firstFile.close()
+            println("KWEBSHELL_DOWNLOAD_PROBE:complete-and-hash")
 
             livePage.startDownload(fixture.downloadUrl)
             val second = downloads.poll(30, TimeUnit.SECONDS)
@@ -793,6 +799,7 @@ private fun runDownloadsIntegration() {
                 "RENAME_UNIQUE did not resolve the completed download collision."
             }
             secondTerminal.file?.close()
+            println("KWEBSHELL_DOWNLOAD_PROBE:collision")
 
             livePage.startDownload(fixture.slowUrl)
             val canceled = downloads.poll(30, TimeUnit.SECONDS)
@@ -800,16 +807,77 @@ private fun runDownloadsIntegration() {
             withTimeout(30_000) {
                 canceled.state.first { it.status == KWebDownloadStatus.IN_PROGRESS }
             }
+            delay(500)
+            require(canceled.pause().outcome == KWebDownloadControlOutcome.ACCEPTED) {
+                "A live transfer did not accept Chromium's pause control."
+            }
+            val paused = withTimeout(15_000) {
+                canceled.state.first { it.status == KWebDownloadStatus.PAUSED }
+            }
+            pausedBytes = paused.receivedBytes
+            println("KWEBSHELL_DOWNLOAD_PROBE:paused:$pausedBytes")
+            delay(250)
+            require(canceled.resume().outcome == KWebDownloadControlOutcome.ACCEPTED) {
+                "A paused live transfer did not accept Chromium's resume control."
+            }
+            val resumed = withTimeout(15_000) {
+                canceled.state.first { it.status == KWebDownloadStatus.IN_PROGRESS }
+            }
+            resumedBytes = resumed.receivedBytes
+            require(resumedBytes >= pausedBytes) {
+                "Download progress regressed across pause/resume: paused=$pausedBytes resumed=$resumedBytes."
+            }
+            println("KWEBSHELL_DOWNLOAD_PROBE:resumed:$resumedBytes")
             require(canceled.cancel().outcome == KWebDownloadControlOutcome.ACCEPTED)
             val canceledTerminal = awaitDownloadTerminal(canceled)
             canceledState = canceledTerminal
             require(canceledTerminal.status == KWebDownloadStatus.CANCELED) {
                 "Cancel did not produce the declared terminal state: $canceledTerminal"
             }
+            println("KWEBSHELL_DOWNLOAD_PROBE:canceled")
+
+            livePage.startDownload(fixture.interruptedUrl)
+            val interrupted = downloads.poll(30, TimeUnit.SECONDS)
+                ?: error("The deliberately failing HTTP response was not published.")
+            val interruptedTerminal = awaitDownloadTerminal(interrupted, timeoutMs = 120_000)
+            interruptedState = interruptedTerminal
+            println("KWEBSHELL_DOWNLOAD_PROBE:interrupted:${interruptedTerminal.interruptReason}")
+            require(interruptedTerminal.status == KWebDownloadStatus.INTERRUPTED) {
+                "A server-error response did not become a terminal interruption: $interruptedTerminal"
+            }
+            require(interruptedTerminal.interruptReason in setOf(
+                io.github.kingsword09.kwebshell.core.KWebDownloadInterruptReason.NETWORK,
+                io.github.kingsword09.kwebshell.core.KWebDownloadInterruptReason.SERVER,
+            )) {
+                "The server-error response did not preserve Chromium's network/server interruption reason: $interruptedTerminal"
+            }
+            require(interruptedTerminal.file == null) {
+                "An interrupted download exposed a completed-file capability."
+            }
+            interruptedResumeOutcome = interrupted.resume().outcome
+            require(interruptedResumeOutcome == KWebDownloadControlOutcome.ALREADY_TERMINAL) {
+                "KWebShell must not resume an interrupted terminal object."
+            }
+            val terminalRequestCount = fixture.interruptedRequestCount.get()
+            delay(500)
+            require(fixture.interruptedRequestCount.get() == terminalRequestCount) {
+                "A terminal KWebDownload.resume() initiated a new network request."
+            }
+            require(!Files.exists(output.resolve("interrupted.bin"))) {
+                "An interrupted download escaped Profile staging into the destination."
+            }
+            val staging = configured.rootCache.resolve("rfc0012-downloads/.kwebshell-downloads")
+            interruptedPartialRemoved = !Files.exists(staging) || Files.walk(staging).use { paths ->
+                paths.noneMatch { Files.isRegularFile(it) }
+            }
+            require(interruptedPartialRemoved) {
+                "The interrupted transfer left a partial file in Profile staging."
+            }
         }
         println(
             "KWebShell RFC0012 downloads passed: bytes=${fixture.bytes.size}, " +
-                "sha256=$expectedHash, collision=rename-unique, cancel=terminal",
+                "sha256=$expectedHash, collision=rename-unique, pause-resume=$pausedBytes/$resumedBytes, " +
+                "cancel=terminal, interrupt=server-cleaned",
         )
     } finally {
         collector?.cancel()
@@ -826,7 +894,7 @@ private fun runDownloadsIntegration() {
         put("schemaVersion", 1)
         put("target", currentTargetId())
         put("cefRuntime", "stock-cef-151")
-        put("contractRevision", "2026-09-29.1")
+        put("contractRevision", "2026-09-30.2")
         put("bytes", fixture.bytes.size)
         put("sha256", expectedHash)
         put("firstStatus", requireNotNull(firstState).status.name)
@@ -835,6 +903,15 @@ private fun runDownloadsIntegration() {
         put("collisionFileName", requireNotNull(secondState).fileName.orEmpty())
         put("cancelStatus", requireNotNull(canceledState).status.name)
         put("cancelReason", requireNotNull(canceledState).interruptReason.name)
+        put("pauseStatus", "PAUSED")
+        put("pauseReceivedBytes", pausedBytes)
+        put("resumeStatus", "IN_PROGRESS")
+        put("resumeReceivedBytes", resumedBytes)
+        put("interruptedStatus", requireNotNull(interruptedState).status.name)
+        put("interruptedReason", requireNotNull(interruptedState).interruptReason.name)
+        put("interruptedResumeOutcome", requireNotNull(interruptedResumeOutcome).name)
+        put("interruptedRequestCount", fixture.interruptedRequestCount.get())
+        put("interruptedPartialRemoved", interruptedPartialRemoved)
         put("absolutePathExposed", false)
         put("stagingPathExposed", false)
     }
@@ -845,8 +922,11 @@ private fun runDownloadsIntegration() {
     )
 }
 
-private suspend fun awaitDownloadTerminal(download: KWebDownload): io.github.kingsword09.kwebshell.core.KWebDownloadState =
-    withTimeout(30_000) {
+private suspend fun awaitDownloadTerminal(
+    download: KWebDownload,
+    timeoutMs: Long = 30_000,
+): io.github.kingsword09.kwebshell.core.KWebDownloadState =
+    withTimeout(timeoutMs) {
         download.state.first {
             it.status == KWebDownloadStatus.COMPLETE ||
                 it.status == KWebDownloadStatus.CANCELED ||
@@ -858,10 +938,13 @@ private suspend fun awaitDownloadTerminal(download: KWebDownload): io.github.kin
 private class DownloadFixture : AutoCloseable {
     val bytes = "KWebShell RFC0012 download bytes — 下载🙂\n".toByteArray(StandardCharsets.UTF_8)
     private val slowBytes = ByteArray(512 * 1024) { (it % 251).toByte() }
+    private val interruptedBytes = ByteArray(128 * 1024) { (it % 239).toByte() }
+    val interruptedRequestCount = AtomicInteger()
     private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
     val pageUrl: String = "http://127.0.0.1:${server.address.port}/page"
     val downloadUrl: String = "http://127.0.0.1:${server.address.port}/download.bin"
     val slowUrl: String = "http://127.0.0.1:${server.address.port}/slow.bin"
+    val interruptedUrl: String = "http://127.0.0.1:${server.address.port}/interrupted.bin"
 
     init {
         server.createContext("/page") { exchange ->
@@ -891,6 +974,19 @@ private class DownloadFixture : AutoCloseable {
                     offset += count
                     Thread.sleep(10)
                 }
+            }
+        }
+        server.createContext("/interrupted.bin") { exchange ->
+            interruptedRequestCount.incrementAndGet()
+            exchange.responseHeaders.add("Cache-Control", "no-store")
+            exchange.responseHeaders.add("ETag", "\"rfc0012-interrupted-v1\"")
+            exchange.responseHeaders.add("Last-Modified", "Wed, 01 Jan 2025 00:00:00 GMT")
+            exchange.responseHeaders.add("Content-Type", "application/octet-stream")
+            exchange.responseHeaders.add("Content-Disposition", "attachment; filename=\"interrupted.bin\"")
+            exchange.sendResponseHeaders(500, interruptedBytes.size.toLong())
+            exchange.responseBody.use { output ->
+                output.write(interruptedBytes)
+                output.flush()
             }
         }
         server.start()

@@ -35,6 +35,14 @@ generalize it without exposing the download's absolute path.
 - No retained partial-file capability. Canceled, interrupted, rejected, and
   integrity-failed staging files are deleted before the terminal state is
   published.
+- Pause and resume apply only to a live Chromium-owned download. An
+  `INTERRUPTED` download is terminal: `resume()` returns
+  `ALREADY_TERMINAL`, partial bytes are deleted, and KWebShell does not start
+  another transfer or issue an application-level Range retry. Chromium may
+  perform its own internal network recovery before it publishes interruption;
+  that behavior remains Chromium-owned. Applications that want a fresh
+  transfer after terminal interruption must explicitly start another download
+  through a Page.
 - Native dialogs are not required for this vertical slice. The desktop host
   supplies a trusted Kotlin/JVM `Path` in `KWebDesktopDownloadPolicy`; the
   path is never placed in a renderer bridge or public download state.
@@ -193,7 +201,10 @@ messages, migration output, logs, or retained evidence.
   `download.event-backpressure`; it is never silently accepted.
 - A download first enters `STARTING`, then `IN_PROGRESS` or `PAUSED`, and
   ends exactly once in `COMPLETE`, `CANCELED`, `INTERRUPTED`, or
-  `DENIED`. Chromium's canceled result wins over a host cancel race; owner
+  `DENIED`. Pause/resume use the Chromium-owned item callback only while the
+  item is live. Interruption is terminal; KWebShell does not restart or
+  range-retry it, while any pre-terminal Chromium recovery remains owned by
+  Chromium. Chromium's canceled result wins over a host cancel race; owner
   close maps to `CANCELED` with `OWNER_CLOSED`; integrity mismatch maps a
   Chromium complete result to `INTERRUPTED` after staging cleanup.
 - Progress bytes are monotonic per object. Unknown total remains unknown;
@@ -211,11 +222,11 @@ messages, migration output, logs, or retained evidence.
 | Current state | Trigger / race | Preconditions and thread | Next state / terminal result | Resource effects | Acceptance IDs |
 |---|---|---|---|---|---|
 | `STARTING` | CEF accepts path | UI callback, valid policy and safe name | `IN_PROGRESS` | Retain only CEF callback and staging record | A1, A2 |
-| `IN_PROGRESS` | pause/resume/cancel | Host operation, marshalled to UI | `PAUSED`, `IN_PROGRESS`, or terminal | Callback invoked once per accepted control | A3 |
+| `IN_PROGRESS` | pause/resume/cancel | Host operation, marshalled to UI | `PAUSED`, `IN_PROGRESS`, or terminal | Callback invoked once per accepted control | A3, A9 |
 | live | renderer navigation/crash | Native Browser remains owner | Continue, interrupt, or cancel per Chromium | No cross-Page ownership | A4 |
 | live | Page/Profile/Engine close | Owner close wins over new controls | `CANCELED(OWNER_CLOSED)` | Cancel callback, delete partial, release refs | A5, A7 |
 | live | Chromium complete | File exists in staging | `COMPLETE` or `INTERRUPTED(INTEGRITY_MISMATCH)` | Hash/finalize or delete staging | A6, A8 |
-| terminal | duplicate update/control/close | Any caller thread | No transition; typed stale/terminal error | No second callback or file mutation | A3, A5 |
+| terminal | duplicate update/control/close or resume after interruption | Any caller thread | No transition; `resume()` returns `ALREADY_TERMINAL` | No KWebShell restart, retained partial, second callback or file mutation | A3, A5, A9 |
 
 ### Errors, renderer and migration policy
 
@@ -289,10 +300,10 @@ evidence is not support.
 | A6 / destination security | Safe filename, staging, collision, symlink/reparse and atomic-finalize rules are enforced. | Traversal; separators; reserved device names; Unicode; symlink replacement; `FAIL`, rename, replace; destination race. | JVM filesystem tests on all targets plus real downloaded bytes. | `safeDownloadName`, `moveIntoDestination`, staging checks, file/collision tests. | Local traversal, reserved-name, collision, staging and byte finalization passed; hosted filesystem evidence pending. | NOT_RUN — hosted target evidence is pending. |
 | A7 / scoped file capability | Only completed downloads expose a bounded non-serializable file handle; partial files are deleted. | Read ranges/EOF; closed handle; non-complete access; path serialization attempt; partial interruption. | Core/desktop file tests and real complete/interrupted fixtures on all targets. | `KWebDownloadFile`, `KWebDesktopDownloadFile`, bounded-read tests, path-disclosure fields. | Local bounded reads, close, and no-path evidence fields passed; hosted records pending. | NOT_RUN — hosted target evidence is pending. |
 | A8 / integrity | Optional SHA-256 is computed from final bytes and expected URL hashes reject mismatches without exposing the file. | Hash enabled/disabled; correct hash; wrong hash; empty file; large file. | Real bytes and retained hash records on all targets. | `KWebDesktopDownloadPolicy`, `sha256`, `finalizeDownload`, downloads evidence. | Local real hash and retained digest passed; hosted records pending. | NOT_RUN — hosted target evidence is pending. |
-| A9 / resume and interruption | Chromium-owned pause/resume and range/no-range interruption behavior is surfaced without Kotlin reimplementation. | Range resume; no-range restart rejection; network timeout; disk/full-like failure; server errors. | Slow/range HTTP fixture and real CEF download interrupt evidence on all targets. | Native item controls/status mapping and slow HTTP fixture; resume coverage remains hosted pending. | Local cancellation/interruption passed; resume/range evidence pending. | NOT_RUN — required resume evidence is pending. |
+| A9 / pause, resume, and interruption | Pause/resume delegate to Chromium while the item is live; an interrupted item is terminal, partial bytes are deleted, and KWebShell never restarts a terminal item. Chromium may perform internal recovery before reporting interruption. | Live pause; paused state; resume returns to live progress without byte regression; an explicit HTTP server-error response becomes an interruption; no partial destination/staging file; `resume()` after interruption returns `ALREADY_TERMINAL`; no request follows the terminal resume call. | Real stock-CEF slow and server-error HTTP responses on macOS arm64, Windows x64, and Linux x64; desktop terminal-control tests. | `KWebDesktopDownload.control`, native `DownloadControl`/`ApplyDownloadControl`, `runDownloadsIntegration`, `DownloadFixture`. | Previous hosted records bind only normal/collision/cancel behavior; fresh revision `2026-09-30.2` evidence is required. | NOT_RUN — clarified scenarios and three-target evidence are pending. |
 | A10 / migration | Electron download APIs are rewritten to named typed state; path mutation and arbitrary callbacks are blocked. | `will-download`; `DownloadItem` progress; `setSavePath`; `open`; unknown API. | Migration matrix, validator and golden fixture tests. | `KWebElectronCapabilityMatrix`, migration README, matrix contract tests. | Local migration matrix tests passed; hosted migration records pending. | NOT_RUN — hosted target evidence is pending. |
 | A11 / packaging and docs | Public capability, docs, packaging and schema agree; no staging/test workspace is packaged. | Capability absent with null policy; package scan; stale docs/matrix. | Docs, package, capability and `git diff --check` gates. | README, DESIGN_PLAN, RFC, capability metadata, evidence contracts, diff check. | Local docs/schema checks passed; hosted package/governance refresh pending. | NOT_RUN — hosted target evidence is pending. |
-| A12 / hosted evidence | Evidence contains real bytes, hash, progress, resume/terminal facts and zero live native owners for macOS arm64, Windows x64 and Linux x64. | Missing target; stale source/runtime; private absolute path; skipped fixture. | Hosted `runtimeCheck`, evidence recorder, strict governance. | `downloads-evidence.json`, aggregate recorder `0012` spec, contracts binding. | Local macOS evidence exists; Windows/Linux records are pending. | NOT_RUN — three-target hosted evidence is pending. |
+| A12 / hosted evidence | Evidence contains real bytes, hash, progress, pause/resume, interruption cleanup and terminal-resume facts, terminal facts and zero live native owners for macOS arm64, Windows x64 and Linux x64. | Missing target; stale source/runtime; private absolute path; skipped fixture; interrupted partial remains; terminal resume issues another request. | Hosted `runtimeCheck`, evidence recorder, strict governance on all three targets. | `downloads-evidence.json`, `runDownloadsIntegration`, aggregate recorder `0012` spec, contracts binding. | Previous hosted records verified bytes/hash/collision/cancel only; fresh evidence is required for revision `2026-09-30.2`. | NOT_RUN — fresh three-target acceptance evidence is pending. |
 | A13 / universal completion | Implementation, tests, native packaging, migration, evidence, reviewed revision and clean worktree are complete in one focused PR. | Any skipped required target/test or changed contract without refresh. | Full PR diff review and all required CI jobs. | Complete focused diff, local test gates, PR evidence/governance refresh. | Local gates passed except expected stale pre-refresh governance; hosted refresh pending. | NOT_RUN — merge acceptance remains pending. |
 
 ## Contract review record
@@ -317,12 +328,34 @@ evidence is not support.
 - Decision: **READY**. The contract is complete and falsifiable; no unresolved
   required behavior or native feasibility finding blocks implementation.
 
+- Contract clarification review: 2026-09-30, Codex acceptance audit (same
+  contributor, separate review pass). Reviewed the existing public lifecycle
+  contract and pinned CEF 151 callback boundary. `resume()` is a control for a
+  live/paused `CefDownloadItem`; terminal state is immutable, partial files are
+  deleted, and there is no API or retained state for a post-interruption retry.
+  The prior A9 range-resume wording exceeded the declared API and had no
+  implementation. A9 is narrowed to falsifiable live pause/resume plus
+  terminal interruption/no-retry behavior; no new retry behavior is claimed.
+  Decision: **READY** for this clarified contract, subject to the required
+  three-target real CEF scenarios before merge.
+
+- Verification-contract review: 2026-09-30, Codex acceptance audit (same
+  contributor, separate review pass). The stock CEF 151 fixture was exercised
+  locally. A clean Content-Length truncation can remain in Chromium's internal
+  recovery loop in this harness, so the falsifiable cross-platform interruption
+  scenario uses an explicit HTTP 500 response with attachment metadata. CEF
+  reports `INTERRUPTED(SERVER)`, KWebShell deletes staging, and terminal
+  `resume()` does not issue another request. This records server-error
+  interruption support without claiming application-level retry or a stable
+  clean-truncation outcome. Reviewed revision: `2026-09-30.2`. Decision:
+  **READY** for the verified contract.
+
 ## Merge acceptance record
 
-To be completed in the implementation PR after the final hosted run. It must
-record the final reviewed revision, separate acceptance review identity, every
-applicable A1-A13 result, target artifacts, full diff review, and `PASS` before
-the RFC moves to `Implemented`.
+Pending fresh revision `2026-09-30.2` three-target download evidence and a
+row-by-row final diff review. The catalog status remains `Implemented` only
+after that evidence and review pass; revert to `Accepted` if the required
+scenarios cannot be completed in this PR.
 
 ## Non-goals
 

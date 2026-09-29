@@ -3829,6 +3829,7 @@ private class ClientCertificateFixture(private val root: Path) : AutoCloseable {
             CA_ALIAS,
             "CN=KWeb RFC0011 mTLS CA",
             "BC=ca:true,pathlen:1",
+            "KU=keyCertSign,cRLSign",
         )
         caCertificate = root.resolve("ca.cer")
         runKeytool(
@@ -3843,6 +3844,7 @@ private class ClientCertificateFixture(private val root: Path) : AutoCloseable {
             SERVER_ALIAS,
             "CN=localhost",
             "SAN=dns:localhost,ip:127.0.0.1",
+            "KU=digitalSignature,keyEncipherment",
         )
         signCertificate(
             serverStore,
@@ -3851,6 +3853,7 @@ private class ClientCertificateFixture(private val root: Path) : AutoCloseable {
             root.resolve("server.cer"),
             "SAN=dns:localhost,ip:127.0.0.1",
             "EKU=serverAuth",
+            "KU=digitalSignature,keyEncipherment",
         )
         importCertificateChain(serverStore, SERVER_ALIAS, root.resolve("server.cer"))
 
@@ -3859,6 +3862,7 @@ private class ClientCertificateFixture(private val root: Path) : AutoCloseable {
             CLIENT_ALIAS,
             "CN=KWeb RFC0011 mTLS Client",
             "EKU=clientAuth",
+            "KU=digitalSignature,keyEncipherment",
         )
         clientCertificate = root.resolve("client.cer")
         signCertificate(
@@ -3867,6 +3871,7 @@ private class ClientCertificateFixture(private val root: Path) : AutoCloseable {
             root.resolve("client.csr"),
             clientCertificate,
             "EKU=clientAuth",
+            "KU=digitalSignature,keyEncipherment",
         )
         importCertificateChain(clientStore, CLIENT_ALIAS, clientCertificate)
         clientCertificateSha1 = certificateFingerprint(clientCertificate, "SHA-1")
@@ -3968,6 +3973,17 @@ private class ClientCertificateFixture(private val root: Path) : AutoCloseable {
             runExternal(
                 listOf("security", "unlock-keychain", "-p", STORE_PASSWORD, keychain.toString()),
                 "macOS mTLS keychain unlock",
+            )
+            runExternal(
+                listOf("security", "set-keychain-settings", keychain.toString()),
+                "macOS mTLS keychain no-timeout policy",
+            )
+            runExternal(
+                listOf(
+                    "security", "add-trusted-cert", "-r", "trustRoot",
+                    "-k", keychain.toString(), caCertificate.toString(),
+                ),
+                "macOS mTLS CA trust import",
             )
             runExternal(
                 listOf(
@@ -4123,11 +4139,12 @@ private class ClientCertificateFixture(private val root: Path) : AutoCloseable {
         path: Path,
         alias: String,
         distinguishedName: String,
-        extension: String,
+        vararg extensions: String,
     ): Path {
         runKeytool(
             "-genkeypair", "-alias", alias, "-keyalg", "RSA", "-keysize", "2048",
-            "-validity", "3650", "-dname", distinguishedName, "-ext", extension,
+            "-validity", "3650", "-dname", distinguishedName,
+            *extensions.flatMap { extension -> listOf("-ext", extension) }.toTypedArray(),
             "-storetype", "PKCS12", "-keystore", path.toString(),
             "-storepass", STORE_PASSWORD, "-keypass", STORE_PASSWORD,
         )

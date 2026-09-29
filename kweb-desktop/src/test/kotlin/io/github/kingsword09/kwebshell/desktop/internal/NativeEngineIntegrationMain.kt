@@ -146,6 +146,7 @@ import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
 private const val INTEGRATION_ROOT_PROPERTY = "kweb.engine.integration.root"
+private const val LINUX_MTLS_HOME_PROPERTY = "kweb.engine.integration.linux.mtls.home"
 
 private fun currentTargetId(): String {
     val operatingSystem = System.getProperty("os.name").lowercase().let {
@@ -827,9 +828,8 @@ private fun runClientCertificateIntegration() {
     val configuration = configured.copy(remoteDebuggingPort = 0)
     val root = requiredPathProperty(INTEGRATION_ROOT_PROPERTY)
     val fixture = ClientCertificateFixture(root.resolve("mtls-fixture"))
-    val profilePath = configuration.rootCache.resolve("rfc0011-mtls-probe")
     try {
-        fixture.installClientCertificate(profilePath)
+        fixture.installClientCertificate()
     } catch (error: Throwable) {
         fixture.close()
         throw error
@@ -3888,12 +3888,12 @@ private class ClientCertificateFixture(private val root: Path) : AutoCloseable {
         serverThread = startServerThread()
     }
 
-    fun installClientCertificate(profilePath: Path) {
+    fun installClientCertificate() {
         check(platformCleanup == null) { "The client certificate fixture was installed twice." }
         platformCleanup = when {
             isMacOs() -> installMacClientCertificate()
             isWindows() -> installWindowsClientCertificate()
-            else -> installLinuxClientCertificate(profilePath)
+            else -> installLinuxClientCertificate()
         }
     }
 
@@ -3991,13 +3991,18 @@ private class ClientCertificateFixture(private val root: Path) : AutoCloseable {
         }
     }
 
-    private fun installLinuxClientCertificate(profilePath: Path): () -> Unit {
+    private fun installLinuxClientCertificate(): () -> Unit {
         require(commandAvailable("certutil") && commandAvailable("pk12util")) {
             "Linux mTLS verification requires certutil and pk12util from libnss3-tools."
         }
-        Files.createDirectories(profilePath)
-        val database = "sql:${profilePath.toAbsolutePath()}"
-        if (!Files.exists(profilePath.resolve("cert9.db"))) {
+        val nssHome = Path.of(
+            System.getProperty(LINUX_MTLS_HOME_PROPERTY)
+                ?: error("Linux mTLS verification requires an isolated NSS home.")
+        )
+        val databasePath = nssHome.resolve(".pki").resolve("nssdb")
+        Files.createDirectories(databasePath)
+        val database = "sql:${databasePath.toAbsolutePath()}"
+        if (!Files.exists(databasePath.resolve("cert9.db"))) {
             runExternal(
                 listOf("certutil", "-N", "-d", database, "--empty-password"),
                 "Linux NSS database creation",
@@ -4014,7 +4019,7 @@ private class ClientCertificateFixture(private val root: Path) : AutoCloseable {
             ),
             "Linux mTLS CA trust import",
         )
-        return { deleteRecursively(profilePath) }
+        return { deleteRecursively(nssHome) }
     }
 
     private fun commandAvailable(command: String): Boolean = runCatching {
@@ -4054,10 +4059,7 @@ private class ClientCertificateFixture(private val root: Path) : AutoCloseable {
         platformCleanup = null
         runCatching { server.close() }
         serverThread.join(5_000)
-        Files.list(root).use { paths ->
-            paths.forEach { path -> runCatching { Files.deleteIfExists(path) } }
-        }
-        runCatching { Files.deleteIfExists(root) }
+        deleteRecursively(root)
     }
 
     private fun startServerThread(): Thread = thread(
@@ -5440,6 +5442,8 @@ private fun isMacOs(): Boolean = System.getProperty("os.name").startsWith("Mac",
 
 private fun isWindows(): Boolean = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
 
+private fun isLinux(): Boolean = !isMacOs() && !isWindows()
+
 private fun collectTimeoutDiagnostics(process: Process): String = buildString {
     appendLine("JVM thread dump:")
     appendLine(
@@ -5481,6 +5485,9 @@ private fun runDiagnostic(vararg command: String): String {
 
 private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
     Files.createDirectories(root)
+    val isolatedLinuxMtlsHome = root.resolve("mtls-fixture/linux-home")
+    val useIsolatedLinuxMtlsHome = mode == IntegrationMode.SECURITY_CHALLENGES_MTLS && isLinux()
+    if (useIsolatedLinuxMtlsHome) Files.createDirectories(isolatedLinuxMtlsHome)
     val javaExecutable = Path.of(
         System.getProperty("java.home"),
         "bin",
@@ -5520,6 +5527,9 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
             add("-D$name=${System.getProperty(name) ?: error("Missing '$name'.")}")
         }
         add("-D$INTEGRATION_ROOT_PROPERTY=$root")
+        if (useIsolatedLinuxMtlsHome) {
+            add("-D$LINUX_MTLS_HOME_PROPERTY=$isolatedLinuxMtlsHome")
+        }
         if (mode == IntegrationMode.SUCCESS ||
             mode == IntegrationMode.PUBLIC_FACADE ||
             mode == IntegrationMode.PROFILE_DATA_STAGE1 ||
@@ -5537,7 +5547,13 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
         add("$DESKTOP_MODULE_NAME/$MAIN_CLASS")
         add(mode.argument)
     }
-    val process = ProcessBuilder(command).redirectErrorStream(true).start()
+    val processBuilder = ProcessBuilder(command).redirectErrorStream(true)
+    if (useIsolatedLinuxMtlsHome) {
+        processBuilder.environment()["HOME"] = isolatedLinuxMtlsHome.toString()
+        processBuilder.environment()["XDG_CONFIG_HOME"] =
+            isolatedLinuxMtlsHome.resolve(".config").toString()
+    }
+    val process = processBuilder.start()
     val lines = CopyOnWriteArrayList<String>()
     val opened = CountDownLatch(1)
     val crashStateDurable = CountDownLatch(1)

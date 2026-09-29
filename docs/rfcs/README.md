@@ -209,7 +209,7 @@ Agents may work in parallel only when dependencies do not overlap.
 | [0008](0008-page-lifecycle-and-popups.md) | P0 | 0004, 0007 | Typed Page events, lifecycle, reload, before-unload, and owner-bound popup requests |
 | [0009](0009-profile-data-and-session.md) | P0 | 0002, 0003 | Cookies, cache, storage, spellcheck, session state |
 | [0010](0010-network-policy-and-proxy.md) | P0 | 0004, 0009 | Request policy and network observation; Profile proxy deferred |
-| [0011](0011-tls-auth-and-certificates.md) | P1 | 0003, 0010 | TLS errors, client certificates, HTTP authentication |
+| [0011](0011-tls-auth-and-certificates.md) | P1 | 0003, 0010 | TLS errors and client-certificate selection; HTTP/proxy authentication deferred |
 | [0012](0012-downloads.md) | P0 | 0003, 0004, 0009 | Profile downloads and scoped results |
 
 ### Wave 2 — common desktop-native services

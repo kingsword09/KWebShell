@@ -15,6 +15,10 @@ import io.github.kingsword09.kwebshell.core.KWebReloadOutcome
 import io.github.kingsword09.kwebshell.core.KWebReloadResult
 import io.github.kingsword09.kwebshell.core.KWebPageHost
 import io.github.kingsword09.kwebshell.core.KWebProfile
+import io.github.kingsword09.kwebshell.core.KWebNativeException
+import io.github.kingsword09.kwebshell.core.KWebSecurityChallenge
+import io.github.kingsword09.kwebshell.core.KWebSecurityChallengeResult
+import io.github.kingsword09.kwebshell.core.KWebSecurityDecision
 import io.github.kingsword09.kwebshell.core.KWebRect
 import io.github.kingsword09.kwebshell.core.KWebCookie
 import io.github.kingsword09.kwebshell.core.KWebCookieFilter
@@ -177,6 +181,7 @@ private class RecordingProfile : KWebProfile {
     override val name: String = "test"
     override val lifecycle = mutableLifecycle
     override val networkEvents = emptyFlow<KWebNetworkRequestEvent>()
+    override val securityChallenges = emptyFlow<KWebSecurityChallenge>()
 
     override suspend fun openPage(host: KWebPageHost, initialUrl: String, bounds: KWebRect): KWebPage =
         RecordingPage()
@@ -227,6 +232,15 @@ private class RecordingProfile : KWebProfile {
     )
 
     override suspend fun configureNetworkPolicy(policy: KWebNetworkPolicy) = Unit
+
+    override suspend fun respondToSecurityChallenge(
+        requestId: Long,
+        decision: KWebSecurityDecision,
+    ): KWebSecurityChallengeResult = throw KWebNativeException(
+        code = "security.challenge.not-found",
+        details = mapOf("requestId" to requestId.toString()),
+        message = "The recording Profile has no live security challenge.",
+    )
 
     override suspend fun flush(target: KWebPage): KWebProfileFlushResult =
         KWebProfileFlushResult(completedEpochMillis = 0)

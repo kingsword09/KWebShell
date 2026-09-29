@@ -74,6 +74,7 @@ internal enum class NativeBrowserEventType(val value: Int) {
     RENDERER_TERMINATED(22),
     NETWORK_REQUEST(23),
     NETWORK_OBSERVATION_FAILED(24),
+    SECURITY_CHALLENGE(25),
     ;
 
     companion object {
@@ -204,6 +205,11 @@ internal class NativeBrowser private constructor(
     internal fun respondToPopup(requestId: Long, allow: Boolean): Int {
         val handle = requireOpenHandle("respond-popup")
         return NativeBindings.browserRespondToPopup(handle, requestId, allow)
+    }
+
+    internal fun respondToSecurityChallenge(requestId: Long, decisionJson: String): Int {
+        val handle = requireOpenHandle("respond-security-challenge")
+        return NativeBindings.browserSecurityRespond(handle, requestId, decisionJson)
     }
 
     internal fun setBounds(x: Int, y: Int, width: Int, height: Int) {

@@ -64,6 +64,7 @@ typedef uint32_t kweb_profile_data_operation_type;
 #define KWEB_BROWSER_EVENT_RENDERER_TERMINATED ((kweb_browser_event_type)22)
 #define KWEB_BROWSER_EVENT_NETWORK_REQUEST ((kweb_browser_event_type)23)
 #define KWEB_BROWSER_EVENT_NETWORK_OBSERVATION_FAILED ((kweb_browser_event_type)24)
+#define KWEB_BROWSER_EVENT_SECURITY_CHALLENGE ((kweb_browser_event_type)25)
 
 #define KWEB_BROWSER_FRAME_MAIN ((uint32_t)1)
 #define KWEB_BROWSER_FRAME_SUBFRAME ((uint32_t)2)
@@ -335,6 +336,10 @@ kweb_browser_bridge_respond(kweb_browser_handle browser, uint64_t request_id,
 KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
 kweb_browser_bridge_fail(kweb_browser_handle browser, uint64_t request_id,
                          const char *failure_utf8, size_t failure_size);
+
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
+kweb_browser_security_respond(kweb_browser_handle browser, uint64_t request_id,
+                              const char *decision_utf8, size_t decision_size);
 
 KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
 kweb_browser_profile_data(

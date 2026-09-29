@@ -231,6 +231,14 @@ val engineIntegrationJavaCommand = buildList {
     add("-Djava.awt.headless=false")
     add("-Dkweb.native.library.path=${nativeEngineLibrary.get().absolutePath}")
     add("-Dkweb.engine.integration.root=${engineIntegrationRoot.get().asFile.absolutePath}")
+    if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("linux") &&
+        engineIntegrationMode.get() == "security-challenges-mtls"
+    ) {
+        add(
+            "-Dkweb.engine.integration.linux.mtls.home=" +
+                engineIntegrationRoot.get().asFile.resolve("mtls-fixture/linux-home").absolutePath,
+        )
+    }
     add("-Dkweb.engine.cef.runtime.path=${nativeCefRuntime.get().absolutePath}")
     add("-Dkweb.engine.subprocess.path=${nativeBrowserSubprocess.get().absolutePath}")
     add("-Dkweb.engine.resources.path=${nativeResources.get().absolutePath}")
@@ -308,6 +316,13 @@ val engineIntegrationTest = tasks.register<Exec>("engineIntegrationTest") {
         )
     } else {
         commandLine(engineIntegrationJavaCommand)
+    }
+    if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("linux") &&
+        engineIntegrationMode.get() == "security-challenges-mtls"
+    ) {
+        val linuxMtlsHome = engineIntegrationRoot.get().asFile.resolve("mtls-fixture/linux-home")
+        environment("HOME", linuxMtlsHome.absolutePath)
+        environment("XDG_CONFIG_HOME", linuxMtlsHome.resolve(".config").absolutePath)
     }
 }
 

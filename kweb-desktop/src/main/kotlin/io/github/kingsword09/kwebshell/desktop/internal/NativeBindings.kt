@@ -226,6 +226,9 @@ internal object NativeBindings {
     internal fun browserBridgeFail(handle: Long, requestId: Long, failureJson: String): Int =
         FfmBindings.browserBridgeFail(handle, requestId, failureJson)
 
+    internal fun browserSecurityRespond(handle: Long, requestId: Long, decisionJson: String): Int =
+        FfmBindings.browserSecurityRespond(handle, requestId, decisionJson)
+
     internal fun browserProfileData(
         handle: Long,
         requestId: Long,

@@ -13,6 +13,9 @@ import kotlinx.serialization.json.put
 /**
  * Governance command line.
  *
+ * catalogCheck <catalog-dir>
+ *   Validates the RFC catalog without consulting hosted evidence.
+ *
  * check <catalog-dir> <manifest.json> <runtime.json> <contracts.json>
  *       --repository-root <dir> [--report <out.json>]
  *   Validates the RFC catalog, the capability evidence manifest, the published
@@ -55,10 +58,17 @@ public object KWebRfcGovernanceCli {
 
     private fun run(arguments: Array<String>) {
         when (arguments.firstOrNull()) {
+            "catalogCheck" -> catalogCheck(arguments.drop(1))
             "check" -> check(arguments.drop(1))
             "record" -> record(arguments.drop(1))
-            else -> throw IllegalArgumentException("Usage: check|record ...")
+            else -> throw IllegalArgumentException("Usage: catalogCheck|check|record ...")
         }
+    }
+
+    private fun catalogCheck(arguments: List<String>) {
+        require(arguments.size == 1) { "Usage: catalogCheck <catalog-dir>" }
+        val catalog = KWebRfcCatalog.load(Path.of(arguments.single()))
+        println("RFC catalog valid: ${catalog.size} documents.")
     }
 
     private fun check(arguments: List<String>) {

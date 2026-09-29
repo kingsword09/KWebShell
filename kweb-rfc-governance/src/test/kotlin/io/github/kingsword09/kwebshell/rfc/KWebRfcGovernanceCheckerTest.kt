@@ -17,7 +17,8 @@ class KWebRfcGovernanceCheckerTest {
             entries = KWebElectronCapabilityMatrix.entries.map { entry ->
                 if (entry.id in RFC_0008_ROWS ||
                     entry.id in RFC_0009_ROWS ||
-                    entry.id in RFC_0010_ROWS
+                    entry.id in RFC_0010_ROWS ||
+                    entry.id in RFC_0011_ROWS
                 ) {
                     entry.copy(status = KWebElectronMappingStatus.UNSUPPORTED, kweb = "")
                 } else {
@@ -42,6 +43,7 @@ class KWebRfcGovernanceCheckerTest {
             "session-flush",
         )
         val RFC_0010_ROWS: Set<String> = setOf("session-web-request")
+        val RFC_0011_ROWS: Set<String> = setOf("certificate-error", "select-client-certificate")
     }
 
     private fun implementedCatalog(): List<KWebRfcDocument> = listOf(
@@ -229,7 +231,7 @@ class KWebRfcGovernanceCheckerTest {
         assertTrue(report.findings.any { it.code == KWebRfcFindingCode.EVIDENCE_UNKNOWN_MATRIX_ROW })
     }
 
-    /** The real matrix has no RFC-backed supported row yet; this fixture promotes one. */
+    /** This fixture promotes one otherwise unsupported row independently of the real matrix. */
     private fun promotedClipboardMatrix(): KWebElectronCapabilityMatrixDocument = matrix.copy(
         entries = matrix.entries.map { entry ->
             if (entry.id == "clipboard") {

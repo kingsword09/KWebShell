@@ -816,6 +816,26 @@ const char *KWEB_ABI_CALL kweb_status_name(kweb_status status) {
     return "network-runtime-capability-missing";
   case KWEB_STATUS_PROFILE_CONTEXT_INITIALIZATION_FAILED:
     return "profile-context-initialization-failed";
+  case KWEB_STATUS_SECURITY_CHALLENGE_NOT_FOUND:
+    return "security-challenge-not-found";
+  case KWEB_STATUS_SECURITY_CHALLENGE_ALREADY_RESOLVED:
+    return "security-challenge-already-resolved";
+  case KWEB_STATUS_SECURITY_CHALLENGE_DEADLINE_EXPIRED:
+    return "security-challenge-deadline-expired";
+  case KWEB_STATUS_SECURITY_CHALLENGE_CAPACITY_EXCEEDED:
+    return "security-challenge-capacity-exceeded";
+  case KWEB_STATUS_SECURITY_CHALLENGE_PROFILE_CLOSING:
+    return "security-challenge-profile-closing";
+  case KWEB_STATUS_SECURITY_CHALLENGE_DECISION_INVALID:
+    return "security-challenge-decision-invalid";
+  case KWEB_STATUS_SECURITY_TLS_EXPIRY_INVALID:
+    return "security-tls-expiry-invalid";
+  case KWEB_STATUS_SECURITY_CLIENT_CERTIFICATE_NOT_OFFERED:
+    return "security-client-certificate-not-offered";
+  case KWEB_STATUS_SECURITY_CHALLENGE_CALLBACK_FAILED:
+    return "security-challenge-callback-failed";
+  case KWEB_STATUS_SECURITY_STORE_UNAVAILABLE:
+    return "security-store-unavailable";
   default:
     return "unknown-status";
   }
@@ -972,6 +992,23 @@ kweb_status KWEB_ABI_CALL kweb_browser_bridge_fail(
     const char *failure_utf8, size_t failure_size) {
   return kwebshell::RespondToBridgeSession(
       browser, request_id, failure_utf8, failure_size, false);
+}
+
+kweb_status KWEB_ABI_CALL kweb_browser_security_respond(
+    kweb_browser_handle browser, uint64_t request_id,
+    const char *decision_utf8, size_t decision_size) {
+  if (request_id == 0 || decision_utf8 == nullptr || decision_size == 0) {
+    return KWEB_STATUS_SECURITY_CHALLENGE_DECISION_INVALID;
+  }
+  if (decision_size > 64 * 1024 ||
+      !kwebshell::IsValidUtf8(decision_utf8, decision_size)) {
+    return decision_size > 64 * 1024 ? KWEB_STATUS_TEXT_TOO_LARGE
+                                     : KWEB_STATUS_INVALID_TEXT_ENCODING;
+  }
+  return kwebshell::GuardStatus([&] {
+    return kwebshell::RespondToSecurityChallengeSession(
+        browser, request_id, std::string(decision_utf8, decision_size));
+  });
 }
 
 kweb_status KWEB_ABI_CALL kweb_browser_profile_data(

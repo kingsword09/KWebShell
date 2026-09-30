@@ -34,6 +34,7 @@ kotlin {
             runtimeOnly(libs.junit.platform.launcher)
             implementation(project(":kweb-desktop"))
             implementation(project(":kweb-service-app-paths"))
+            implementation(project(":kweb-service-files"))
             implementation(project(":kweb-example-support"))
             implementation(libs.compose.ui.desktop)
             implementation(libs.kotlinx.coroutines.core)
@@ -202,6 +203,9 @@ val servicesNativeLibrary = operatingSystem.map { name ->
 val appPathsBridgeJavascript = rootProject.layout.projectDirectory.file(
     "kweb-service-app-paths/build/generated/kwebBridge/appPaths/AppPathsBridgeBridge.js",
 )
+val filesBridgeJavascript = rootProject.layout.projectDirectory.file(
+    "kweb-service-files/build/generated/kwebBridge/files/FilesBridgeBridge.js",
+)
 val migrationIntegrationRoot = layout.buildDirectory.dir("migration-integration")
 val migrationIntegrationReport = compatibilityOutput
 val migrationIntegrationCommand = providers.provider {
@@ -217,6 +221,7 @@ val migrationIntegrationCommand = providers.provider {
         add("-Dkweb.engine.locales.path=${nativeLocales.get().absolutePath}")
         add("-Dkweb.migration.integration.root=${migrationIntegrationRoot.get().asFile.absolutePath}")
         add("-Dkweb.migration.app-paths.bridge.javascript=${appPathsBridgeJavascript.asFile.absolutePath}")
+        add("-Dkweb.migration.files.bridge.javascript=${filesBridgeJavascript.asFile.absolutePath}")
         add("-Dkweb.migration.preload.javascript=${generatedDirectory.get().file("KWebElectronPreload.js").asFile.absolutePath}")
         add("-Dkweb.migration.manifest=${fixtureManifest.asFile.absolutePath}")
         add("-Dkweb.migration.inventory=${inventoryOutput.get().asFile.absolutePath}")
@@ -242,6 +247,7 @@ val electronMigrationIntegrationTest = tasks.register<Exec>("electronMigrationIn
         ":kweb-cef-native:buildNative",
         ":kweb-service-app-paths:buildNative",
         ":kweb-service-app-paths:generateAppPathsBridge",
+        ":kweb-service-files:generateFilesBridge",
     )
     inputs.file(nativeEngineLibrary)
     inputs.file(nativeCefRuntime)
@@ -255,6 +261,7 @@ val electronMigrationIntegrationTest = tasks.register<Exec>("electronMigrationIn
         }
     })
     inputs.file(appPathsBridgeJavascript)
+    inputs.file(filesBridgeJavascript)
     inputs.file(servicesNativeLibrary)
     inputs.file(generatedDirectory.get().file("KWebElectronPreload.js"))
     inputs.file(migrationIntegrationReport)

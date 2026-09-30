@@ -8,13 +8,47 @@ import io.github.kingsword09.kwebshell.services.policy.KWebInMemoryConsentStore
 import io.github.kingsword09.kwebshell.services.policy.KWebPolicyAudit
 import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
 import io.github.kingsword09.kwebshell.services.policy.KWebUserGestureRegistry
+import io.github.kingsword09.kwebshell.bridge.KWebBridgeException
 import kotlinx.coroutines.runBlocking
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFalse
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class KWebFilesBridgeTest {
+    @Test
+    fun rendererOpenWorkspacePreservesGestureDenialReason() = runBlocking {
+        val root = createTempDirectory("kweb-files-bridge-gesture")
+        try {
+            val service = JvmKWebFiles.open(
+                owner(),
+                JvmKWebFilesConfiguration(mapOf("documents" to JvmKWebWorkspace(root, KWebFileGrant.entries.toSet()))),
+            )
+            val grants = KWebFiles.DESCRIPTOR.operations.mapTo(mutableSetOf()) {
+                KWebServiceGrant(KWebFiles.DESCRIPTOR.id, it.id)
+            }
+            val policy = KWebServicePolicyEngine(
+                rendererGrants = KWebServicePermissionPolicy.exact(grants),
+                gestures = KWebUserGestureRegistry(),
+                consentStore = KWebInMemoryConsentStore("files-bridge-gesture"),
+                osConsent = null,
+                audit = KWebPolicyAudit(),
+            )
+            val dispatcher = service.bridgeDispatcher(policy, owner().toPolicySubject(hostCall = false))
+            val error = assertFailsWith<KWebBridgeException> {
+                dispatcher.dispatch(
+                    """{"version":1,"method":"openWorkspace","payload":{"workspaceId":"documents","grants":["read"]}}""",
+                )
+            }
+            assertEquals("service.user-gesture-required", error.code)
+            service.close()
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
     @Test
     fun hostMetadataUsesNamedGeneratedOperationWithoutPathDisclosure() = runBlocking {
         val root = createTempDirectory("kweb-files-bridge")

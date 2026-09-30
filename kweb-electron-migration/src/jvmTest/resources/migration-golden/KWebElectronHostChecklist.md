@@ -6,6 +6,7 @@ Renderer origin: `app://migration-fixture`; profile: `default`.
 
 ## 1. Required KMP Native Services
 - [ ] Install `app-paths` (version `1.0.0`)
+- [ ] Install `files` (version `1.0.0`)
 
 ## 2. Window & Hierarchy Definitions
 - [ ] Window `main`: "KWebShell Migration Fixture" [Main] (Profile: `default`)
@@ -16,8 +17,15 @@ Renderer origin: `app://migration-fixture`; profile: `default`.
 - [ ] Profile `default` (persistent, storage: `profiles/default`)
 
 ## 4. Preload Methods & Streams
+- [ ] Preload method `closeHandle` -> Channel `fs.closeHandle` (Status: `ADAPTER`)
 - [ ] Preload method `getPath` -> Channel `app.getPath` (Status: `ADAPTER`)
+- [ ] Preload method `listDirectory` -> Channel `fs.listDirectory` (Status: `ADAPTER`)
+- [ ] Preload method `openFile` -> Channel `fs.openFile` (Status: `ADAPTER`)
+- [ ] Preload method `openWorkspace` -> Channel `fs.openWorkspace` (Status: `ADAPTER`)
+- [ ] Preload method `readFile` -> Channel `fs.readFile` (Status: `ADAPTER`)
+- [ ] Preload method `writeFile` -> Channel `fs.writeFile` (Status: `ADAPTER`)
 - [ ] Stream `progress` -> Method `downloadProgress` (Capacity: `32`, Status: `ADAPTER`)
+- [ ] Stream `watchDirectory` -> Method `watchDirectory` (Capacity: `64`, Status: `ADAPTER`)
 
 ## 5. Node & Native Dependencies
 - (None)

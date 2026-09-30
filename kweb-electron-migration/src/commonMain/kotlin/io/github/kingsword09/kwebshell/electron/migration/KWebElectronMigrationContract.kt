@@ -16,6 +16,8 @@ public enum class KWebElectronMappingStatus {
 
 public enum class KWebElectronAdapterKind {
     APP_PATHS_GET_PATH,
+    FILES_OPERATION,
+    FILES_WATCH_DIRECTORY,
     NAMED_APPLICATION_STREAM,
 }
 
@@ -307,6 +309,13 @@ public object KWebElectronManifestValidator {
     private const val APP_PATHS_GRANT: String = "native.app-paths.resolve"
     private const val APP_PATHS_GESTURE: Boolean = false
     private const val APP_PATHS_CONSENT: Boolean = false
+    private const val FILES_SERVICE: String = "files"
+    private const val FILES_VERSION: String = "1.0.0"
+    private val FILES_OPERATIONS: Set<String> = setOf(
+        "open-workspace", "open-file", "open-directory", "read-file", "write-file",
+        "truncate-file", "list-directory", "metadata", "copy-file", "move-file",
+        "close-handle",
+    )
 
     private fun validateChannelPolicy(channel: KWebElectronChannel) {
         if (channel.status != KWebElectronMappingStatus.ADAPTER) {
@@ -458,6 +467,23 @@ public object KWebElectronManifestValidator {
                     )
                 }
             }
+            if (channel.adapter == KWebElectronAdapterKind.FILES_OPERATION) {
+                val operation = channel.operationId
+                val policy = channel.policy
+                if (channel.name.substringBefore('.').lowercase() != "fs" ||
+                    channel.serviceId != FILES_SERVICE || channel.serviceVersion != FILES_VERSION ||
+                    operation == null || operation !in FILES_OPERATIONS || policy == null ||
+                    policy.rendererGrant != "native.files.$operation" ||
+                    policy.requiresUserGesture != (operation == "open-workspace") ||
+                    policy.requiresOsConsent
+                ) {
+                    invalid(
+                        KWebElectronMigrationErrorCode.MAPPING_UNRESOLVED,
+                        "channel" to channel.name,
+                        message = "The files adapter must bind one published files operation and its exact policy.",
+                    )
+                }
+            }
         }
 
         manifest.preloadMethods.forEachIndexed { index, method ->
@@ -486,6 +512,15 @@ public object KWebElectronManifestValidator {
                     message = "The app-paths preload method shape is incompatible with the generated adapter.",
                 )
             }
+            if (method.adapter == KWebElectronAdapterKind.FILES_OPERATION &&
+                (!IDENTIFIER.matches(method.parameterType) || !method.returnType.startsWith("Promise<"))
+            ) {
+                invalid(
+                    KWebElectronMigrationErrorCode.MAPPING_UNRESOLVED,
+                    "method" to method.name,
+                    message = "A files preload method must use a named request type and Promise response.",
+                )
+            }
         }
 
         manifest.streams.forEachIndexed { index, stream ->
@@ -499,14 +534,26 @@ public object KWebElectronManifestValidator {
                 invalid("streams[$index].capacity", stream.capacity.toString(), message = "A stream capacity must be between 1 and 65536.")
             }
             if (stream.status != KWebElectronMappingStatus.ADAPTER ||
-                stream.adapter != KWebElectronAdapterKind.NAMED_APPLICATION_STREAM
+                stream.adapter !in setOf(
+                    KWebElectronAdapterKind.NAMED_APPLICATION_STREAM,
+                    KWebElectronAdapterKind.FILES_WATCH_DIRECTORY,
+                )
             ) {
-                invalid("streams[$index]", message = "Only named application stream adapters are publishable.")
+                invalid("streams[$index]", message = "Only published application or files stream adapters are publishable.")
             }
             val policy = stream.policy
                 ?: invalid("streams[$index]", message = "A stream adapter must declare its policy.")
             if (policy.rendererGrant == null || policy.requiresUserGesture || policy.requiresOsConsent) {
-                invalid("streams[$index]", message = "A named application stream must declare a renderer grant and explicit native policy.")
+                invalid("streams[$index]", message = "A stream adapter must declare a renderer grant and explicit native policy.")
+            }
+            if (stream.adapter == KWebElectronAdapterKind.FILES_WATCH_DIRECTORY &&
+                (stream.name != "watchDirectory" || stream.method != "watchDirectory" ||
+                    policy.rendererGrant != "native.files.watch-directory")
+            ) {
+                invalid(
+                    "streams[$index]",
+                    message = "The files watch adapter must bind the published watch-directory operation exactly.",
+                )
             }
         }
 

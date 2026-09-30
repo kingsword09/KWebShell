@@ -155,9 +155,13 @@ private suspend fun authorize(
     operationId: String,
 ) {
     val operation = KWebFiles.DESCRIPTOR.operations.first { it.id == operationId }
-    when (val verdict = policyEngine.authorize(subject, KWebFiles.DESCRIPTOR.id, operation).decision) {
+    val verdict = policyEngine.authorize(subject, KWebFiles.DESCRIPTOR.id, operation)
+    when (verdict.decision) {
         KWebPolicyDecision.ALLOW -> Unit
-        KWebPolicyDecision.DENY -> throw KWebBridgeException("service.permission-denied", "The KWebFiles operation was denied.")
+        KWebPolicyDecision.DENY -> throw KWebBridgeException(
+            verdict.reasonCode,
+            "The KWebFiles operation was denied.",
+        )
         KWebPolicyDecision.PROMPT_REQUIRED -> throw KWebBridgeException("service.policy.prompt-required", "The KWebFiles operation requires consent.")
     }
 }

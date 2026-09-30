@@ -5,6 +5,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.first
+import io.github.kingsword09.kwebshell.core.KWebNativeException
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
@@ -44,6 +45,13 @@ class JvmKWebFilesTest {
                 KWebFileConflictPolicy.FAIL,
             )
             assertContentEquals("hello".encodeToByteArray(), service.readFile(KWebFileHandle(copy.handle), 0, 16).bytes)
+            val replaced = service.copyFile(
+                KWebFileHandle(file.handle),
+                KWebFileHandle(workspace.handle),
+                "copy.txt",
+                KWebFileConflictPolicy.REPLACE,
+            )
+            assertContentEquals("hello".encodeToByteArray(), service.readFile(KWebFileHandle(replaced.handle), 0, 16).bytes)
             val moved = service.moveFile(
                 KWebFileHandle(copy.handle),
                 KWebFileHandle(workspace.handle),
@@ -58,6 +66,46 @@ class JvmKWebFilesTest {
             }
         } finally {
             root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun moveRejectsCrossWorkspaceFallback() = runBlocking {
+        val firstRoot = createTempDirectory("kweb-files-move-first")
+        val secondRoot = createTempDirectory("kweb-files-move-second")
+        try {
+            val service = JvmKWebFiles.open(
+                owner(),
+                JvmKWebFilesConfiguration(
+                    mapOf(
+                        "first" to JvmKWebWorkspace(firstRoot, KWebFileGrant.entries.toSet()),
+                        "second" to JvmKWebWorkspace(secondRoot, KWebFileGrant.entries.toSet()),
+                    ),
+                ),
+            )
+            val first = service.openWorkspace(KWebWorkspaceRequest("first", KWebFileGrant.entries.toSet()))
+            val second = service.openWorkspace(KWebWorkspaceRequest("second", KWebFileGrant.entries.toSet()))
+            val file = service.openFile(
+                KWebFileOpenRequest(
+                    KWebFileHandle(first.handle),
+                    "cross.txt",
+                    KWebFileOpenMode.READ_WRITE,
+                    createIfMissing = true,
+                ),
+            )
+            val error = assertFailsWith<KWebNativeException> {
+                service.moveFile(
+                    KWebFileHandle(file.handle),
+                    KWebFileHandle(second.handle),
+                    "cross.txt",
+                    KWebFileConflictPolicy.FAIL,
+                )
+            }
+            assertEquals(KWebFilesErrorCode.ATOMIC_MOVE_UNAVAILABLE, error.code)
+            service.close()
+        } finally {
+            firstRoot.toFile().deleteRecursively()
+            secondRoot.toFile().deleteRecursively()
         }
     }
 

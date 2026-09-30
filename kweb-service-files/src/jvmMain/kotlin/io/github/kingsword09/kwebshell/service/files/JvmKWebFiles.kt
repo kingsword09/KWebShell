@@ -254,7 +254,7 @@ private class JvmKWebFilesProvider(
                 throw mapIo(error, KWebServiceFallback.NATIVE_FAILED, "copy-file")
             }
             try {
-                Files.copy(sourceNode.path, temporary, NOFOLLOW_LINKS, COPY_ATTRIBUTES)
+                Files.copy(sourceNode.path, temporary, NOFOLLOW_LINKS, COPY_ATTRIBUTES, REPLACE_EXISTING)
                 atomicPublish(temporary, target, conflict, "copy-file")
                 register(Node(
                     target,
@@ -285,6 +285,13 @@ private class JvmKWebFilesProvider(
             requireGrant(sourceNode, KWebFileGrant.MOVE, "move-file")
             val targetNode = requireDirectory(targetDirectory, "move-file")
             requireGrant(targetNode, KWebFileGrant.CREATE, "move-file")
+            if (sourceNode.workspaceId != targetNode.workspaceId) {
+                throw failure(
+                    KWebFilesErrorCode.ATOMIC_MOVE_UNAVAILABLE,
+                    "A move cannot cross logical workspace boundaries.",
+                    "move-file",
+                )
+            }
             requireFileName(targetName, "targetName")
             val target = childPath(targetNode, targetName, "move-file")
             ensureTargetAvailable(target, conflict, "move-file")
@@ -334,7 +341,11 @@ private class JvmKWebFilesProvider(
         var sequence = 1L
         try {
             while (currentCoroutineContext().isActive) {
-                val next = withContext(Dispatchers.IO) { service.poll(100, java.util.concurrent.TimeUnit.MILLISECONDS) }
+                val next = try {
+                    withContext(Dispatchers.IO) { service.poll(100, java.util.concurrent.TimeUnit.MILLISECONDS) }
+                } catch (_: java.nio.file.ClosedWatchServiceException) {
+                    break
+                }
                     ?: continue
                 val events = next.pollEvents()
                 // Polling and native WatchService implementations may coalesce

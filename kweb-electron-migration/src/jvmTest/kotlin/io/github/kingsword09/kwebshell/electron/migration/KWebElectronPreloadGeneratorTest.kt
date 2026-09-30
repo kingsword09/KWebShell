@@ -74,6 +74,71 @@ class KWebElectronPreloadGeneratorTest {
     }
 
     @Test
+    fun filesOperationGeneratesNamedFilesBridgeCall() {
+        val filesManifest = manifest().copy(
+            channels = manifest().channels + KWebElectronChannel(
+                name = "fs.readFile",
+                schemaVersion = 2,
+                requestType = "FilesReadRequest",
+                responseType = "FilesReadResponse",
+                serviceId = "files",
+                serviceVersion = "1.0.0",
+                operationId = "read-file",
+                status = KWebElectronMappingStatus.ADAPTER,
+                adapter = KWebElectronAdapterKind.FILES_OPERATION,
+                policy = KWebElectronChannelPolicy(
+                    rendererGrant = "native.files.read-file",
+                    requiresUserGesture = false,
+                    requiresOsConsent = false,
+                ),
+            ),
+            preloadMethods = manifest().preloadMethods + KWebElectronPreloadMethod(
+                name = "readFile",
+                channel = "fs.readFile",
+                parameterName = "request",
+                parameterType = "FilesReadRequest",
+                returnType = "Promise<FilesReadResponse>",
+                status = KWebElectronMappingStatus.ADAPTER,
+                adapter = KWebElectronAdapterKind.FILES_OPERATION,
+            ),
+            requiredServices = manifest().requiredServices + KWebElectronServiceRequirement("files", "1.0.0"),
+        )
+        val sources = KWebElectronPreloadGenerator().generate(filesManifest)
+        assertContains(sources.typescript, "readFile(request: FilesReadRequest")
+        assertContains(sources.typescript, "interface FilesReadRequest")
+        assertContains(sources.typescript, "bytes: readonly number[]")
+        assertContains(sources.typescript, "FilesBridge")
+        assertContains(sources.javascript, "filesClient.readFile(request, options)")
+    }
+
+    @Test
+    fun filesWatchGeneratesFilesStreamCall() {
+        val filesManifest = manifest().copy(
+            streams = listOf(
+                KWebElectronStream(
+                    name = "watchDirectory",
+                    method = "watchDirectory",
+                    requestType = "FilesWatchRequest",
+                    chunkType = "FilesWatchEvent",
+                    capacity = 64,
+                    status = KWebElectronMappingStatus.ADAPTER,
+                    adapter = KWebElectronAdapterKind.FILES_WATCH_DIRECTORY,
+                    policy = KWebElectronChannelPolicy(
+                        rendererGrant = "native.files.watch-directory",
+                        requiresUserGesture = false,
+                        requiresOsConsent = false,
+                    ),
+                ),
+            ),
+        )
+        val sources = KWebElectronPreloadGenerator().generate(filesManifest)
+        assertContains(sources.typescript, "watchDirectory: (request: FilesWatchRequest")
+        assertContains(sources.typescript, "FilesBridge")
+        assertContains(sources.javascript, "filesClient.openWatchDirectory(request, options)")
+        kotlin.test.assertTrue(!sources.javascript.contains("KWebApplicationStreamsBridge"))
+    }
+
+    @Test
     fun generatedArtifactsMatchSharedCrossPlatformGoldenBytes() {
         val root = java.nio.file.Path.of("kweb-electron-migration/src/jvmTest/resources")
         val fixture = KWebElectronMigrationJson.decode(java.nio.file.Files.readString(root.resolve("migration-fixture/migration-manifest.json")))

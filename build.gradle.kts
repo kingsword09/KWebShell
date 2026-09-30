@@ -22,6 +22,7 @@ tasks.register("runtimeCheck") {
     dependsOn(":kweb-service-app-paths:check")
     dependsOn(":kweb-service-window-controls:check")
     dependsOn(":kweb-service-dialogs:check")
+    dependsOn(":kweb-service-files:check")
     dependsOn(":kweb-electron-migration:check")
     dependsOn(":kweb-rfc-governance:contractTest")
     dependsOn(":kweb-bridge:check")

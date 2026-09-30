@@ -54,6 +54,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     runtimeOnly("org.jetbrains.skiko:skiko-awt-runtime-${skikoTarget.get()}:${libs.versions.skiko.get()}")
     testImplementation(project(":kweb-service-app-paths"))
+    testImplementation(project(":kweb-service-files"))
     testImplementation(libs.kotlinx.serialization.json)
 
     testImplementation(kotlin("test-junit5"))
@@ -83,6 +84,9 @@ dependencies {
 val conformanceBridgeSchema = layout.projectDirectory.file("src/testBridge/conformance-bridge.json")
 val appPathsBridgeJavascript = rootProject.layout.projectDirectory.file(
     "kweb-service-app-paths/build/generated/kwebBridge/appPaths/AppPathsBridgeBridge.js",
+)
+val filesBridgeJavascript = rootProject.layout.projectDirectory.file(
+    "kweb-service-files/build/generated/kwebBridge/files/FilesBridgeBridge.js",
 )
 val appPathsNativeLibrary = providers.systemProperty("os.name").map { operatingSystem ->
     val fileName = when {
@@ -248,6 +252,7 @@ val engineIntegrationJavaCommand = buildList {
             generatedBridgeDirectory.get().file("ConformanceBridgeBridge.js").asFile.absolutePath,
     )
     add("-Dkweb.engine.integration.app-paths.bridge.javascript=${appPathsBridgeJavascript.asFile.absolutePath}")
+    add("-Dkweb.engine.integration.files.bridge.javascript=${filesBridgeJavascript.asFile.absolutePath}")
     add("-Dkweb.services.native.library.path=${appPathsNativeLibrary.get().absolutePath}")
     add("-Dkweb.engine.integration.extension.path=${extensionLifecycleFixture.asFile.absolutePath}")
     add("-Dkweb.engine.integration.lifecycle.v1=${mv3LifecycleFixture.dir("v1").asFile.absolutePath}")
@@ -287,6 +292,7 @@ val engineIntegrationTest = tasks.register<Exec>("engineIntegrationTest") {
         ":kweb-cef-native:buildNative",
         ":kweb-service-app-paths:buildNative",
         ":kweb-service-app-paths:generateAppPathsBridge",
+        ":kweb-service-files:generateFilesBridge",
     )
     mustRunAfter(tasks.test, ":kweb-cef-native:nativeTest")
 
@@ -303,6 +309,7 @@ val engineIntegrationTest = tasks.register<Exec>("engineIntegrationTest") {
     })
     inputs.file(generatedBridgeDirectory.map { it.file("ConformanceBridgeBridge.js") })
     inputs.file(appPathsBridgeJavascript)
+    inputs.file(filesBridgeJavascript)
     inputs.file(appPathsNativeLibrary)
     inputs.dir(extensionLifecycleFixture)
 

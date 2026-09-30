@@ -4,12 +4,17 @@ import androidx.compose.ui.awt.ComposeWindow
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeDispatcher
+import io.github.kingsword09.kwebshell.bridge.KWebBridgeDispatchers
+import io.github.kingsword09.kwebshell.bridge.KWebBridgeRoute
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeProtocol
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebPage
+import io.github.kingsword09.kwebshell.core.KWebPageEventType
 import io.github.kingsword09.kwebshell.core.KWebRect
 import io.github.kingsword09.kwebshell.desktop.KWebDesktop
 import io.github.kingsword09.kwebshell.desktop.KWebDesktopEngineConfiguration
+import io.github.kingsword09.kwebshell.desktop.KWebPageDispatcherFactory
+import io.github.kingsword09.kwebshell.desktop.KWebPageStreamDispatcherFactory
 import io.github.kingsword09.kwebshell.example.support.KWebExampleCdpClient
 import io.github.kingsword09.kwebshell.example.support.KWebExampleCdpSession
 import io.github.kingsword09.kwebshell.service.apppaths.JvmKWebAppPaths
@@ -17,20 +22,37 @@ import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPathKind
 import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPaths
 import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPathsConfiguration
 import io.github.kingsword09.kwebshell.service.apppaths.bridgeDispatcher
+import io.github.kingsword09.kwebshell.service.files.JvmKWebFiles
+import io.github.kingsword09.kwebshell.service.files.JvmKWebFilesConfiguration
+import io.github.kingsword09.kwebshell.service.files.JvmKWebWorkspace
+import io.github.kingsword09.kwebshell.service.files.KWebFileGrant
+import io.github.kingsword09.kwebshell.service.files.KWebFileOwnerScope
+import io.github.kingsword09.kwebshell.service.files.KWebFiles
+import io.github.kingsword09.kwebshell.service.files.bridgeDispatcher as filesBridgeDispatcher
+import io.github.kingsword09.kwebshell.service.files.bridgeStreamDispatcher as filesBridgeStreamDispatcher
 import io.github.kingsword09.kwebshell.services.KWebPolicySubject
-import io.github.kingsword09.kwebshell.services.KWebServiceGrant
 import io.github.kingsword09.kwebshell.services.KWebServicePermissionPolicy
 import io.github.kingsword09.kwebshell.services.KWebServiceScope
+import io.github.kingsword09.kwebshell.services.KWebServiceGrant
 import io.github.kingsword09.kwebshell.services.policy.KWebInMemoryConsentStore
 import io.github.kingsword09.kwebshell.services.policy.KWebPolicyAudit
 import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
 import io.github.kingsword09.kwebshell.services.policy.KWebUserGestureRegistry
+import io.github.kingsword09.kwebshell.services.policy.KWebGestureBinding
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import java.awt.EventQueue
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -53,6 +75,7 @@ private const val RESOURCES_PROPERTY = "kweb.engine.resources.path"
 private const val LOCALES_PROPERTY = "kweb.engine.locales.path"
 private const val ROOT_PROPERTY = "kweb.migration.integration.root"
 private const val APP_PATHS_BRIDGE_PROPERTY = "kweb.migration.app-paths.bridge.javascript"
+private const val FILES_BRIDGE_PROPERTY = "kweb.migration.files.bridge.javascript"
 private const val PRELOAD_PROPERTY = "kweb.migration.preload.javascript"
 private const val REPORT_PROPERTY = "kweb.migration.report"
 
@@ -67,12 +90,15 @@ public fun main() {
     val appRoot = root.resolve("app-data")
     val sessionRoot = root.resolve("session-data")
     val profileRoot = root.resolve("profiles")
+    val workspaceRoot = root.resolve("files-workspace")
     Files.createDirectories(appRoot)
     Files.createDirectories(sessionRoot)
     Files.createDirectories(profileRoot)
+    Files.createDirectories(workspaceRoot)
     val port = findFreePort()
     val server = MigrationFixtureServer(
         appPathsBridge = Files.readString(requiredPath(APP_PATHS_BRIDGE_PROPERTY)),
+        filesBridge = Files.readString(requiredPath(FILES_BRIDGE_PROPERTY)),
         preload = Files.readString(requiredPath(PRELOAD_PROPERTY)),
     )
     val window = onAwtThread {
@@ -84,6 +110,7 @@ public fun main() {
             require(isDisplayable && isShowing && windowHandle != 0L)
         }
     }
+    val gestures = KWebUserGestureRegistry()
     val engine = KWebDesktop.openEngine(
         KWebDesktopEngineConfiguration(
             cefRuntime = requiredPath(CEF_RUNTIME_PROPERTY),
@@ -93,6 +120,8 @@ public fun main() {
             rootCache = profileRoot,
             log = profileRoot.resolve("cef.log"),
             remoteDebuggingPort = port,
+            userGestureIssuer = gestures,
+            engineId = "migration-fixture",
         ),
     )
     val appPaths = JvmKWebAppPaths.open(
@@ -124,6 +153,18 @@ public fun main() {
         osConsent = null,
         audit = KWebPolicyAudit(),
     )
+    val filesPolicy = KWebServicePermissionPolicy.exact(
+        KWebFiles.DESCRIPTOR.operations.map { operation ->
+            KWebServiceGrant(KWebFiles.DESCRIPTOR.id, operation.id)
+        }.toSet(),
+    )
+    val filesPolicyEngine = KWebServicePolicyEngine(
+        rendererGrants = filesPolicy,
+        gestures = gestures,
+        consentStore = KWebInMemoryConsentStore("migration-files"),
+        osConsent = null,
+        audit = KWebPolicyAudit(),
+    )
     val slowDispatcher = SlowAppPathsDispatcher(
         appPaths.bridgeDispatcher(
             allowPolicyEngine,
@@ -136,6 +177,8 @@ public fun main() {
             ),
         ),
     )
+    val filesService = AtomicReference<KWebFiles?>()
+    val ownerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     var activePage: KWebPage? = null
     var failure: Throwable? = null
     try {
@@ -143,12 +186,79 @@ public fun main() {
         val directDownloads = runBlocking { appPaths.resolve(KWebAppPathKind.DOWNLOADS) }.path
         val page = runBlocking {
             profile.openPage(
-                KWebDesktop.composeWindowHost(window, server.origin, slowDispatcher),
+                KWebDesktop.composeWindowHost(
+                    window,
+                    server.origin,
+                    KWebPageDispatcherFactory { pageId ->
+                        val service = JvmKWebFiles.open(
+                            KWebFileOwnerScope(
+                                engineId = "migration-fixture",
+                                profileId = "electron-migration-fixture",
+                                pageId = pageId,
+                                origin = server.origin,
+                                navigationId = 1,
+                            ),
+                            JvmKWebFilesConfiguration(
+                                mapOf(
+                                    "documents" to JvmKWebWorkspace(
+                                        workspaceRoot,
+                                        KWebFileGrant.entries.toSet(),
+                                    ),
+                                ),
+                            ),
+                        )
+                        require(filesService.compareAndSet(null, service)) {
+                            "The migration fixture created more than one PAGE-scoped files service."
+                        }
+                        KWebBridgeDispatchers.exact(
+                            KWebBridgeRoute(
+                                methods = setOf("resolve"),
+                                dispatcher = slowDispatcher,
+                            ),
+                            KWebBridgeRoute(
+                                methods = setOf(
+                                    "openWorkspace",
+                                    "openFile",
+                                    "writeFile",
+                                    "readFile",
+                                    "listDirectory",
+                                    "closeHandle",
+                                ),
+                                dispatcher = service.filesBridgeDispatcher(
+                                    filesPolicyEngine,
+                                    KWebPolicySubject(
+                                        engineId = "migration-fixture",
+                                        profileId = "electron-migration-fixture",
+                                        pageId = pageId,
+                                        origin = server.origin,
+                                        scope = KWebServiceScope.PAGE,
+                                    ),
+                                ),
+                            ),
+                        )
+                    },
+                    KWebPageStreamDispatcherFactory { pageId ->
+                        filesService.get()?.filesBridgeStreamDispatcher(
+                            filesPolicyEngine,
+                            KWebPolicySubject(
+                                engineId = "migration-fixture",
+                                profileId = "electron-migration-fixture",
+                                pageId = pageId,
+                                origin = server.origin,
+                                scope = KWebServiceScope.PAGE,
+                            ),
+                        ) ?: error("The files stream dispatcher was requested before the PAGE service existed.")
+                    },
+                ),
                 server.indexUrl,
                 KWebRect(0, 0, 960, 700),
             )
         }
         activePage = page
+        ownerScope.launch {
+            page.events.first { it.type == KWebPageEventType.CLOSED }
+            filesService.get()?.close()
+        }
         cdp.awaitPage(server.indexUrl)
         cdp.openPageSession(server.indexUrl).use { session ->
             session.awaitExpression("typeof globalThis.desktop === 'object'")
@@ -159,6 +269,77 @@ public fun main() {
             require(pathValues == listOf(directHome, directDownloads)) {
                 "Concurrent preload calls crossed responses: $pathValues"
             }
+            val gestureDenied = session.evaluateString(
+                "(async()=>{try{await window.desktop.openWorkspace({workspaceId:'documents',grants:['read']});return 'unexpected'}catch(e){return e.code}})()",
+            )
+            require(gestureDenied == "service.user-gesture-required") {
+                "The migration files adapter did not enforce its native gesture policy: $gestureDenied"
+            }
+            onAwtThread {
+                window.toFront()
+                window.requestFocus()
+                window.requestFocusInWindow()
+            }
+            session.command("Page.bringToFront")
+            session.command(
+                "Input.dispatchKeyEvent",
+                buildJsonObject {
+                    put("type", "rawKeyDown")
+                    put("windowsVirtualKeyCode", 65)
+                    put("nativeVirtualKeyCode", 65)
+                    put("key", "a")
+                    put("code", "KeyA")
+                },
+            )
+            awaitGestureMint(
+                gestures,
+                KWebGestureBinding(
+                    engineId = "migration-fixture",
+                    profileId = "electron-migration-fixture",
+                    pageId = page.id,
+                    origin = server.origin,
+                ),
+            )
+            val files = session.evaluateString(
+                """
+                (async()=>{
+                  const grants=["read","write","create","enumerate","watch","metadata","copy","move"];
+                  const workspace=await window.desktop.openWorkspace({workspaceId:"documents",grants});
+                  const file=await window.desktop.openFile({parent:workspace.handle,name:"fixture.txt",mode:"read-write",createIfMissing:true});
+                  await window.desktop.writeFile({handle:file.handle,offset:"0",bytes:[109,105,103,114,97,116,105,111,110]});
+                  const read=await window.desktop.readFile({handle:file.handle,offset:"0",length:64});
+                  const listing=await window.desktop.listDirectory({handle:workspace.handle,limit:16});
+                  await window.desktop.closeHandle({handle:file.handle});
+                  globalThis.__migrationWorkspace=workspace;
+                  return JSON.stringify({bytes:read.bytes,eof:read.eof,entries:listing.entries.map(entry=>entry.name),descriptor:workspace});
+                })()
+                """.trimIndent(),
+            )
+            val filesJson = Json.parseToJsonElement(files).jsonObject
+            require(filesJson["eof"]?.jsonPrimitive?.content == "true")
+            require(filesJson["entries"]?.jsonArray?.any { it.jsonPrimitive.content == "fixture.txt" } == true)
+            require(!files.contains(workspaceRoot.toString())) { "The migration files descriptor exposed an absolute path." }
+            require(!files.contains("\"path\"")) { "The migration files descriptor exposed a path field." }
+            val watchStart = session.evaluateString(
+                """
+                (async()=>{
+                  globalThis.__migrationWatch=(async()=>{
+                    const stream=window.desktop.watchDirectory({handle:globalThis.__migrationWorkspace.handle});
+                    try { for await(const event of stream){ stream.close(); return JSON.stringify(event); } }
+                    catch(e){ return JSON.stringify({code:e.code}); }
+                    return "closed";
+                  })();
+                  return "watching";
+                })()
+                """.trimIndent(),
+            )
+            require(watchStart == "watching")
+            Thread.sleep(2_000)
+            Files.writeString(workspaceRoot.resolve("watch.txt"), "watch", StandardCharsets.UTF_8)
+            val watchResult = session.evaluateString("globalThis.__migrationWatch")
+            val watchJson = Json.parseToJsonElement(watchResult).jsonObject
+            require(watchJson["kind"]?.jsonPrimitive?.content == "created")
+            require(watchJson["name"]?.jsonPrimitive?.content == "watch.txt")
             val progress = session.evaluateString(
                 "(async()=>{const values=[];for await(const chunk of window.desktop.progress({downloadId:'fixture'})) values.push(chunk);return JSON.stringify(values)})()",
             )
@@ -217,6 +398,14 @@ public fun main() {
         page.close()
         activePage = null
         slowDispatcher.awaitCancelled("documents")
+        val filesOwner = requireNotNull(filesService.get())
+        val filesCloseDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+        while (filesOwner.lifecycle.value != KWebLifecycleState.CLOSED && System.nanoTime() < filesCloseDeadline) {
+            Thread.sleep(25)
+        }
+        require(filesOwner.lifecycle.value == KWebLifecycleState.CLOSED) {
+            "The PAGE-scoped files service did not close with the migration page owner."
+        }
 
         val deniedPage = runBlocking {
             profile.openPage(
@@ -305,6 +494,12 @@ public fun main() {
         } catch (error: Throwable) {
             failure = failure.append(error)
         }
+        try {
+            filesService.get()?.close()
+            ownerScope.cancel()
+        } catch (error: Throwable) {
+            failure = failure.append(error)
+        }
     }
     failure?.let { throw it }
     println("KWebShell typed Electron migration fixture passed against real CEF.")
@@ -349,6 +544,7 @@ private class SlowAppPathsDispatcher(
 
 private class MigrationFixtureServer(
     appPathsBridge: String,
+    filesBridge: String,
     preload: String,
 ) : AutoCloseable {
     private val executor = Executors.newCachedThreadPool { task ->
@@ -360,6 +556,7 @@ private class MigrationFixtureServer(
         "<!doctype html><meta charset=\"utf-8\"><title>KWebShell Migration Fixture</title>" +
             "<iframe id=\"fixture-frame\" src=\"/frame\"></iframe>" +
             "<script>$appPathsBridge</script>" +
+            "<script>$filesBridge</script>" +
             "<script>globalThis.KWebApplicationStreamsBridge={createClient(){return {openDownloadProgress:async function* (request){yield {downloadId:request.downloadId,done:false};yield {downloadId:request.downloadId,done:true}}}}}</script>" +
             "<script>$preload</script>"
         ).toByteArray(StandardCharsets.UTF_8)
@@ -429,6 +626,18 @@ private fun requiredPath(name: String): Path =
 
 private fun findFreePort(): Int = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { socket ->
     socket.localPort.takeIf { it in 1024..65535 } ?: error("The OS allocated an invalid CDP port.")
+}
+
+private fun awaitGestureMint(
+    gestures: KWebUserGestureRegistry,
+    binding: KWebGestureBinding,
+) {
+    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+    while (System.nanoTime() < deadline) {
+        if (gestures.current(binding) != null) return
+        Thread.sleep(25)
+    }
+    error("The migration fixture did not receive a native user gesture.")
 }
 
 private fun <T> onAwtThread(operation: () -> T): T {

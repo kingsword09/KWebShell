@@ -41,6 +41,7 @@ import io.github.kingsword09.kwebshell.desktop.KWebDesktop
 import io.github.kingsword09.kwebshell.desktop.KWebDesktopEngineConfiguration
 import io.github.kingsword09.kwebshell.desktop.KWebDesktopDownloadPolicy
 import io.github.kingsword09.kwebshell.desktop.KWebPageDispatcherFactory
+import io.github.kingsword09.kwebshell.desktop.KWebPageStreamDispatcherFactory
 import io.github.kingsword09.kwebshell.extensions.KWebExtensionLifecycleResolution
 import io.github.kingsword09.kwebshell.extensions.JvmKWebExtensionLifecycleCoordinator
 import io.github.kingsword09.kwebshell.extensions.KWebExtensionRuntime
@@ -65,6 +66,14 @@ import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPathKind
 import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPaths
 import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPathsConfiguration
 import io.github.kingsword09.kwebshell.service.apppaths.bridgeDispatcher
+import io.github.kingsword09.kwebshell.service.files.JvmKWebFilesConfiguration
+import io.github.kingsword09.kwebshell.service.files.JvmKWebWorkspace
+import io.github.kingsword09.kwebshell.service.files.KWebFileGrant
+import io.github.kingsword09.kwebshell.service.files.KWebFiles
+import io.github.kingsword09.kwebshell.service.files.JvmKWebFilesPageOwner
+import io.github.kingsword09.kwebshell.service.files.KWebFilesErrorCode
+import io.github.kingsword09.kwebshell.service.files.bridgeDispatcher as filesBridgeDispatcher
+import io.github.kingsword09.kwebshell.service.files.bridgeStreamDispatcher as filesBridgeStreamDispatcher
 import io.github.kingsword09.kwebshell.services.KWebPolicySubject
 import io.github.kingsword09.kwebshell.services.KWebServiceGrant
 import io.github.kingsword09.kwebshell.services.KWebServicePermissionPolicy
@@ -141,6 +150,7 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import javax.swing.SwingUtilities
 import javax.net.ssl.KeyManagerFactory
 import javax.net.ssl.SSLContext
@@ -175,6 +185,8 @@ private const val PROFILE_DATA_PORT_PROPERTY = "kweb.engine.integration.profile-
 private const val BRIDGE_JAVASCRIPT_PROPERTY = "kweb.engine.integration.bridge.javascript"
 private const val APP_PATHS_BRIDGE_JAVASCRIPT_PROPERTY =
     "kweb.engine.integration.app-paths.bridge.javascript"
+private const val FILES_BRIDGE_JAVASCRIPT_PROPERTY =
+    "kweb.engine.integration.files.bridge.javascript"
 private const val APP_PATHS_NATIVE_LIBRARY_PROPERTY = "kweb.services.native.library.path"
 private const val EXTENSION_PATH_PROPERTY = "kweb.engine.integration.extension.path"
 private const val LIFECYCLE_V1_PROPERTY = "kweb.engine.integration.lifecycle.v1"
@@ -219,6 +231,7 @@ private enum class IntegrationMode(val argument: String) {
     SECURITY_CHALLENGES("security-challenges"),
     SECURITY_CHALLENGES_MTLS("security-challenges-mtls"),
     DOWNLOADS("downloads"),
+    FILES_WORKSPACE("files-workspace"),
     PAGE_LIFECYCLE("page-lifecycle"),
     RENDERER_CRASH("renderer-crash"),
     HOLDER("holder"),
@@ -256,6 +269,7 @@ fun main(arguments: Array<String>) {
             IntegrationMode.SECURITY_CHALLENGES -> runSecurityChallengeIntegration()
             IntegrationMode.SECURITY_CHALLENGES_MTLS -> runClientCertificateIntegration()
             IntegrationMode.DOWNLOADS -> runDownloadsIntegration()
+            IntegrationMode.FILES_WORKSPACE -> runFilesWorkspaceIntegration()
             IntegrationMode.PAGE_LIFECYCLE -> runPageLifecycleContract()
             IntegrationMode.RENDERER_CRASH -> runRendererCrashLifecycle()
             IntegrationMode.HOLDER -> runHolderLifecycle()
@@ -291,6 +305,7 @@ private fun runCoordinator() {
     runChildAndRequireSuccess(IntegrationMode.SECURITY_CHALLENGES, root.resolve("security-challenges"))
     runChildAndRequireSuccess(IntegrationMode.SECURITY_CHALLENGES_MTLS, root.resolve("security-challenges-mtls"))
     runChildAndRequireSuccess(IntegrationMode.DOWNLOADS, root.resolve("downloads"))
+    runChildAndRequireSuccess(IntegrationMode.FILES_WORKSPACE, root.resolve("files-workspace"))
     runChildAndRequireSuccess(IntegrationMode.RENDERER_CRASH, root.resolve("renderer-crash"))
 
     val sharedRoot = root.resolve("initialization-failure")
@@ -920,6 +935,291 @@ private fun runDownloadsIntegration() {
         evidence.toString() + "\n",
         StandardCharsets.UTF_8,
     )
+}
+
+private fun runFilesWorkspaceIntegration() {
+    val configured = runtimeConfiguration()
+    val root = requiredPathProperty(INTEGRATION_ROOT_PROPERTY)
+    val workspaceRoot = root.resolve("files-workspace-root")
+    Files.createDirectories(workspaceRoot)
+    val gestures = KWebUserGestureRegistry()
+    val engine = KWebDesktop.openEngine(
+        KWebDesktopEngineConfiguration(
+            cefRuntime = configured.cefRuntime,
+            browserSubprocess = configured.browserSubprocess,
+            resources = configured.resources,
+            locales = configured.locales,
+            rootCache = configured.rootCache,
+            log = configured.log,
+            remoteDebuggingPort = configured.remoteDebuggingPort,
+            userGestureIssuer = gestures,
+        ),
+    )
+    val grants = KWebFileGrant.entries.toSet()
+    val policy = KWebServicePermissionPolicy.exact(
+        KWebFiles.DESCRIPTOR.operations.map { operation ->
+            KWebServiceGrant(KWebFiles.DESCRIPTOR.id, operation.id)
+        }.toSet(),
+    )
+    val policyAudit = KWebPolicyAudit()
+    val policyEngine = KWebServicePolicyEngine(
+        rendererGrants = policy,
+        gestures = gestures,
+        consentStore = KWebInMemoryConsentStore("rfc0013-files"),
+        osConsent = null,
+        audit = policyAudit,
+    )
+    val filesOwner = AtomicReference<JvmKWebFilesPageOwner?>()
+    val navigationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    var profile: io.github.kingsword09.kwebshell.core.KWebProfile? = null
+    var page: io.github.kingsword09.kwebshell.core.KWebPage? = null
+    var surface: ComposeBrowserSurface? = null
+    var bridgeResult: String? = null
+    var watchResult: String? = null
+    var unauthorizedResult: String? = null
+    var lifecycleAfterClose: KWebLifecycleState? = null
+    try {
+        BrowserOrigin(includeAppPathsBridge = false, includeFilesBridge = true).use { origin ->
+            kotlinx.coroutines.runBlocking {
+                profile = engine.openProfile("rfc0013-files")
+                val liveProfile = requireNotNull(profile)
+                surface = NativeEngine.onAwtEventDispatchThread {
+                    ComposeBrowserSurface.create(800, 600)
+                }
+                val pageHost = KWebDesktop.composeWindowHost(
+                    requireNotNull(surface).window,
+                    origin.origin,
+                    KWebPageDispatcherFactory { pageId ->
+                        val owner = JvmKWebFilesPageOwner(
+                            engineId = engine.engineId,
+                            profileId = "rfc0013-files",
+                            pageId = pageId,
+                            expectedOrigin = origin.origin,
+                            configuration = JvmKWebFilesConfiguration(
+                                mapOf("documents" to JvmKWebWorkspace(workspaceRoot, grants)),
+                            ),
+                            policyEngine = policyEngine,
+                        )
+                        require(filesOwner.compareAndSet(null, owner)) {
+                            owner.close()
+                            "The PAGE-scoped files owner was created more than once."
+                        }
+                        owner.bridgeDispatcher()
+                    },
+                    KWebPageStreamDispatcherFactory { pageId ->
+                        filesOwner.get()?.bridgeStreamDispatcher()
+                            ?: error("The files PAGE owner was not created before its stream dispatcher.")
+                    },
+                )
+                page = liveProfile.openPage(
+                    pageHost,
+                    origin.firstUrl,
+                    KWebRect(0, 0, 800, 600),
+                )
+            }
+            val pageOwner = requireNotNull(filesOwner.get())
+            navigationScope.launch {
+                requireNotNull(page).events.collect { event ->
+                    when (event.type) {
+                        KWebPageEventType.NAVIGATION_STARTED -> pageOwner.onNavigationStarted()
+                        KWebPageEventType.NAVIGATION_COMMITTED -> {
+                            pageOwner.onNavigationCommitted(event.origin.orEmpty())
+                        }
+                        KWebPageEventType.CLOSED -> pageOwner.close()
+                        else -> Unit
+                    }
+                }
+            }
+            kotlinx.coroutines.runBlocking {
+                withTimeout(30_000) {
+                    requireNotNull(page).events.first {
+                        it.type == KWebPageEventType.NAVIGATION_COMMITTED &&
+                            it.origin?.trimEnd('/') == origin.origin.trimEnd('/')
+                    }
+                }
+            }
+
+            val cdp = CdpClient(configured.remoteDebuggingPort)
+            cdp.awaitPage(origin.firstUrl)
+            cdp.awaitFilesBridge()
+            require(cdp.evaluate("typeof globalThis.FilesBridge") == "object") {
+                "The exact-origin FilesBridge script was not installed."
+            }
+            require(
+                cdp.evaluate("typeof document.getElementById('bridge-frame').contentWindow.__kwebBridgeQuery") ==
+                    "undefined",
+            ) {
+                "The files bridge transport was exposed to a child frame."
+            }
+
+            unauthorizedResult = cdp.evaluate(
+                """
+                (async()=>{try{
+                  await FilesBridge.createClient().openWorkspace({workspaceId:"documents",grants:["read"]});
+                  return "unexpected";
+                }catch(e){return e.code}})()
+                """.trimIndent(),
+            )
+            require(unauthorizedResult == "service.user-gesture-required") {
+                "open-workspace without a native gesture returned '$unauthorizedResult'; " +
+                    "policy audit=${policyAudit.snapshot()}"
+            }
+
+            cdp.dispatchTrustedKeyDown()
+            val gestureBinding = KWebGestureBinding(
+                engineId = engine.engineId,
+                profileId = "rfc0013-files",
+                pageId = requireNotNull(page).id,
+                origin = origin.origin,
+            )
+            awaitGestureMint(gestures, gestureBinding)
+            bridgeResult = cdp.evaluate(
+                """
+                (async()=>{let stage="openWorkspace";try{
+                  const client=FilesBridge.createClient();
+                  const grants=["read","write","create","enumerate","watch","metadata","copy","move"];
+                  const workspace=await client.openWorkspace({workspaceId:"documents",grants});
+                  globalThis.__filesWorkspaceHandle=workspace.handle;
+                  stage="openDirectory";
+                  const nested=await client.openDirectory({parent:workspace.handle,name:"nested",createIfMissing:true});
+                  stage="openFile";
+                  const file=await client.openFile({parent:nested.handle,name:"hello.txt",mode:"read-write",createIfMissing:true});
+                  stage="writeFile";
+                  const written=await client.writeFile({handle:file.handle,offset:"0",bytes:[104,101,108,108,111]});
+                  stage="readFile";
+                  const read=await client.readFile({handle:file.handle,offset:"0",length:16});
+                  stage="metadata";
+                  const metadata=await client.metadata({handle:file.handle});
+                  stage="listDirectory";
+                  const listing=await client.listDirectory({handle:nested.handle,limit:4});
+                  stage="copyFile";
+                  const copy=await client.copyFile({source:file.handle,targetDirectory:workspace.handle,targetName:"copy.txt",conflict:"fail"});
+                  stage="moveFile";
+                  const moved=await client.moveFile({source:copy.handle,targetDirectory:workspace.handle,targetName:"moved.txt",conflict:"fail"});
+                  stage="conflict";
+                  let conflict="unexpected";
+                  try { await client.copyFile({source:file.handle,targetDirectory:workspace.handle,targetName:"moved.txt",conflict:"fail"}); }
+                  catch(e) { conflict=e.code; }
+                  stage="invalidName";
+                  let invalidName="unexpected";
+                  try { await client.openFile({parent:nested.handle,name:"../escape",mode:"read",createIfMissing:false}); }
+                  catch(e) { invalidName=e.code; }
+                  return JSON.stringify({
+                    workspaceKind:workspace.kind,nestedKind:nested.kind,fileKind:file.kind,
+                    written:written.written,bytes:read.bytes,eof:read.eof,metadataName:metadata.name,
+                    listingName:listing.entries[0].name,copyName:copy.name,movedName:moved.name,
+                    conflict,invalidName,workspaceHandle:workspace.handle,
+                    descriptor:JSON.stringify({workspace,nested,file,copy,moved})
+                  });
+                }catch(e){return JSON.stringify({stage,code:e.code,message:e.message});}})()
+                """.trimIndent(),
+            )
+            val bridgeJson = kotlinx.serialization.json.Json.parseToJsonElement(requireNotNull(bridgeResult)).jsonObject
+            require(bridgeJson["stage"] == null) {
+                "The files normal workflow failed at ${bridgeJson["stage"]?.jsonPrimitive?.content}: " +
+                    "${bridgeJson["code"]?.jsonPrimitive?.content}: ${bridgeJson["message"]?.jsonPrimitive?.content}"
+            }
+            require(bridgeJson["workspaceKind"]?.jsonPrimitive?.content == "directory")
+            require(bridgeJson["fileKind"]?.jsonPrimitive?.content == "file")
+            require(bridgeJson["written"]?.jsonPrimitive?.content?.toInt() == 5)
+            require(bridgeJson["eof"]?.jsonPrimitive?.content?.toBoolean() == true)
+            require(bridgeJson["metadataName"]?.jsonPrimitive?.content == "hello.txt")
+            require(bridgeJson["listingName"]?.jsonPrimitive?.content == "hello.txt")
+            require(bridgeJson["copyName"]?.jsonPrimitive?.content == "copy.txt")
+            require(bridgeJson["movedName"]?.jsonPrimitive?.content == "moved.txt")
+            require(bridgeJson["conflict"]?.jsonPrimitive?.content == KWebFilesErrorCode.CONFLICT)
+            require(bridgeJson["invalidName"]?.jsonPrimitive?.content == KWebFilesErrorCode.NAME_INVALID) {
+                "Invalid path component returned '${bridgeJson["invalidName"]?.jsonPrimitive?.content}': $bridgeResult"
+            }
+            require(!requireNotNull(bridgeResult).contains(workspaceRoot.toString())) {
+                "The files bridge response exposed the configured absolute workspace root."
+            }
+            require(!requireNotNull(bridgeResult).contains("path")) {
+                "The files bridge response exposed a path field."
+            }
+
+            cdp.evaluate(
+                """
+                (async()=>{
+                  const client=FilesBridge.createClient();
+                  const workspace={handle:globalThis.__filesWorkspaceHandle};
+                  globalThis.__filesWatch=(async()=>{
+                    const stream=client.openWatchDirectory({handle:workspace.handle});
+                    try { for await(const event of stream){ stream.close(); return JSON.stringify(event); } }
+                    catch(e){ return JSON.stringify({code:e.code}); }
+                    return "none";
+                  })();
+                  return "watching";
+                })()
+                """.trimIndent(),
+            )
+            Thread.sleep(2_000)
+            Files.writeString(workspaceRoot.resolve("watch.txt"), "watch", StandardCharsets.UTF_8)
+            watchResult = cdp.evaluate("globalThis.__filesWatch")
+            val watchJson = kotlinx.serialization.json.Json.parseToJsonElement(requireNotNull(watchResult)).jsonObject
+            require(watchJson["kind"]?.jsonPrimitive?.content == "created") {
+                "The real WatchService did not deliver a created event: $watchResult"
+            }
+            require(watchJson["name"]?.jsonPrimitive?.content == "watch.txt")
+
+            kotlinx.coroutines.runBlocking { requireNotNull(page).navigate(origin.crossOriginUrl) }
+            cdp.awaitPage(origin.crossOriginUrl)
+            require(cdp.evaluate("typeof globalThis.__kwebBridgeQuery") == "undefined") {
+                "The exact-origin files bridge remained available after cross-origin navigation."
+            }
+            kotlinx.coroutines.runBlocking { requireNotNull(page).navigate(origin.firstUrl) }
+            cdp.awaitPage(origin.firstUrl)
+            cdp.awaitFilesBridge()
+            val staleHandle = bridgeJson["workspaceHandle"]?.jsonPrimitive?.content
+                ?: error("The files integration did not retain the initial workspace handle.")
+            val staleCode = cdp.evaluate(
+                "(async()=>{try{await FilesBridge.createClient().metadata({handle:\"$staleHandle\"});return 'unexpected'}catch(e){return e.code}})()",
+            )
+            require(staleCode == KWebFilesErrorCode.HANDLE_NOT_FOUND) {
+                "A handle from the previous navigation remained usable after returning to the origin: $staleCode"
+            }
+            kotlinx.coroutines.runBlocking { requireNotNull(page).close() }
+        }
+        filesOwner.get()?.close()
+        lifecycleAfterClose = if (filesOwner.get()?.isClosed() == true) {
+            KWebLifecycleState.CLOSED
+        } else {
+            KWebLifecycleState.OPEN
+        }
+        require(lifecycleAfterClose == KWebLifecycleState.CLOSED) {
+            "The PAGE-scoped files provider did not close with its owner."
+        }
+    } finally {
+        filesOwner.get()?.let { runCatching { it.close() } }
+        navigationScope.cancel()
+        runCatching { page?.close() }
+        runCatching { profile?.close() }
+        surface?.let { runCatching { NativeEngine.onAwtEventDispatchThread(it::close) } }
+        runCatching { engine.close() }
+    }
+    require(NativeBrowser.liveNativeBrowserCount() == 0L)
+    require(NativeEngine.liveNativeEngineCount() == 0L)
+    val evidence = buildJsonObject {
+        put("schemaVersion", 1)
+        put("target", currentTargetId())
+        put("cefRuntime", "stock-cef-151")
+        put("contractRevision", "2026-09-30.1")
+        put("workspaceId", "documents")
+        put("normalWorkflow", bridgeResult != null)
+        put("watchCreated", watchResult != null)
+        put("gestureDeniedWithoutNativeInput", unauthorizedResult == "service.user-gesture-required")
+        put("crossOriginBridgeAbsent", true)
+        put("childFrameTransportAbsent", true)
+        put("ownerClosed", lifecycleAfterClose == KWebLifecycleState.CLOSED)
+        put("absolutePathExposed", false)
+        put("symlinkTraversal", "rejected-by-jvm-provider-tests")
+    }
+    Files.writeString(
+        root.resolve("files-evidence.json"),
+        evidence.toString() + "\n",
+        StandardCharsets.UTF_8,
+    )
+    println("KWebShell RFC0013 scoped files exact-origin and WatchService integration passed.")
 }
 
 private suspend fun awaitDownloadTerminal(
@@ -4590,6 +4890,7 @@ private class NetworkPolicyOrigin : AutoCloseable {
 
 private class BrowserOrigin(
     private val includeAppPathsBridge: Boolean = true,
+    private val includeFilesBridge: Boolean = true,
     private val fixedPort: Int? = null,
 ) : AutoCloseable {
     private val server = HttpServer.create(
@@ -4601,6 +4902,8 @@ private class BrowserOrigin(
     private val bridgeJavascript = Files.readString(requiredPathProperty(BRIDGE_JAVASCRIPT_PROPERTY))
     private val appPathsBridgeJavascript =
         Files.readString(requiredPathProperty(APP_PATHS_BRIDGE_JAVASCRIPT_PROPERTY))
+    private val filesBridgeJavascript =
+        Files.readString(requiredPathProperty(FILES_BRIDGE_JAVASCRIPT_PROPERTY))
 
     val origin: String
     val firstUrl: String
@@ -4709,6 +5012,7 @@ private class BrowserOrigin(
                 bodyExtras +
                 "<script>$bridgeJavascript</script>" +
                 (if (includeAppPathsBridge) "<script>$appPathsBridgeJavascript</script>" else "") +
+                (if (includeFilesBridge) "<script>$filesBridgeJavascript</script>" else "") +
                 "<script>$script</script>"
             ).toByteArray(StandardCharsets.UTF_8)
         exchange.responseHeaders.set("Content-Type", "text/html; charset=utf-8")
@@ -5492,6 +5796,13 @@ private class CdpClient(private val port: Int) {
         )
     }
 
+    fun awaitFilesBridge() {
+        awaitExpression(
+            "typeof globalThis.FilesBridge === 'object' && " +
+                "typeof globalThis.__kwebBridgeQuery === 'function'",
+        )
+    }
+
     fun dispatchTrustedKeyDown() {
         val targetId = checkNotNull(activePageTargetId) {
             "awaitPage must select a browser page before CDP input dispatch."
@@ -5835,6 +6146,7 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
         add(LOCALES_PROPERTY)
         add(BRIDGE_JAVASCRIPT_PROPERTY)
         add(APP_PATHS_BRIDGE_JAVASCRIPT_PROPERTY)
+        add(FILES_BRIDGE_JAVASCRIPT_PROPERTY)
         add(APP_PATHS_NATIVE_LIBRARY_PROPERTY)
         add(EXTENSION_PATH_PROPERTY)
         add(LIFECYCLE_V1_PROPERTY)
@@ -5870,6 +6182,7 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
             mode == IntegrationMode.PROFILE_DATA_STAGE2 ||
             mode == IntegrationMode.PAGE_LIFECYCLE ||
             mode == IntegrationMode.RENDERER_CRASH ||
+            mode == IntegrationMode.FILES_WORKSPACE ||
             mode == IntegrationMode.EXTENSION_LIFECYCLE_CRASH ||
             mode.name.startsWith("EXTENSION_LIFECYCLE_STAGE")
         ) {

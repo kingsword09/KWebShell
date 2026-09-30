@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "target": "macos-arm64",
+  "format": "MACOS_APP_ZIP",
+  "packageSha256": "190f8b6eccdcfd58a2795ab4cae544c05e94ba89d324736635f20146b1321ebf",
+  "manifestSha256": "aa97285bb9a2b288dae8d0758cc48286ab157fb87b6c7d5e31650f8c01c96073",
+  "runtimeReleaseSha256": "35b22efe17f88a749268263ae599ff50c2b6af8f436ff1eb61b5125fbf903742",
+  "signingMode": "TEST",
+  "status": "PASS"
+}

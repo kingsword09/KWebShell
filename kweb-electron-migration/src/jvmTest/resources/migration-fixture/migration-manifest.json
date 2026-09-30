@@ -4,7 +4,7 @@
   "rendererGlobal": "desktop",
   "rendererRoot": "renderer",
   "rendererEntry": "renderer.ts",
-  "rendererSha256": "cefbfa5f8441b596c76bbd38e32afa63beccf3387577fec0af47fba0f78a247a",
+  "rendererSha256": "e525692e00bf9985513ab6f3c3dceb6791f8759cc91c28f8cf8237ff4adb7c0b",
   "electronFixtureMajor": 44,
   "electronImports": [
     {
@@ -36,6 +36,102 @@
         "requiresUserGesture": false,
         "requiresOsConsent": false
       }
+    },
+    {
+      "name": "fs.openWorkspace",
+      "schemaVersion": 2,
+      "requestType": "FilesWorkspaceRequest",
+      "responseType": "FilesHandleDescriptor",
+      "serviceId": "files",
+      "serviceVersion": "1.0.0",
+      "operationId": "open-workspace",
+      "status": "ADAPTER",
+      "adapter": "FILES_OPERATION",
+      "policy": {
+        "rendererGrant": "native.files.open-workspace",
+        "requiresUserGesture": true,
+        "requiresOsConsent": false
+      }
+    },
+    {
+      "name": "fs.openFile",
+      "schemaVersion": 2,
+      "requestType": "FilesOpenFileRequest",
+      "responseType": "FilesHandleDescriptor",
+      "serviceId": "files",
+      "serviceVersion": "1.0.0",
+      "operationId": "open-file",
+      "status": "ADAPTER",
+      "adapter": "FILES_OPERATION",
+      "policy": {
+        "rendererGrant": "native.files.open-file",
+        "requiresUserGesture": false,
+        "requiresOsConsent": false
+      }
+    },
+    {
+      "name": "fs.writeFile",
+      "schemaVersion": 2,
+      "requestType": "FilesWriteFileRequest",
+      "responseType": "FilesWriteFileResponse",
+      "serviceId": "files",
+      "serviceVersion": "1.0.0",
+      "operationId": "write-file",
+      "status": "ADAPTER",
+      "adapter": "FILES_OPERATION",
+      "policy": {
+        "rendererGrant": "native.files.write-file",
+        "requiresUserGesture": false,
+        "requiresOsConsent": false
+      }
+    },
+    {
+      "name": "fs.readFile",
+      "schemaVersion": 2,
+      "requestType": "FilesReadFileRequest",
+      "responseType": "FilesReadFileResponse",
+      "serviceId": "files",
+      "serviceVersion": "1.0.0",
+      "operationId": "read-file",
+      "status": "ADAPTER",
+      "adapter": "FILES_OPERATION",
+      "policy": {
+        "rendererGrant": "native.files.read-file",
+        "requiresUserGesture": false,
+        "requiresOsConsent": false
+      }
+    },
+    {
+      "name": "fs.listDirectory",
+      "schemaVersion": 2,
+      "requestType": "FilesListDirectoryRequest",
+      "responseType": "FilesListDirectoryResponse",
+      "serviceId": "files",
+      "serviceVersion": "1.0.0",
+      "operationId": "list-directory",
+      "status": "ADAPTER",
+      "adapter": "FILES_OPERATION",
+      "policy": {
+        "rendererGrant": "native.files.list-directory",
+        "requiresUserGesture": false,
+        "requiresOsConsent": false
+      }
+    },
+    {
+      "name": "fs.closeHandle",
+      "schemaVersion": 2,
+      "requestType": "FilesCloseHandleRequest",
+      "responseType": "FilesCloseHandleResponse",
+      "serviceId": "files",
+      "serviceVersion": "1.0.0",
+      "operationId": "close-handle",
+      "status": "ADAPTER",
+      "adapter": "FILES_OPERATION",
+      "policy": {
+        "rendererGrant": "native.files.close-handle",
+        "requiresUserGesture": false,
+        "requiresOsConsent": false
+      }
     }
   ],
   "preloadMethods": [
@@ -47,6 +143,60 @@
       "returnType": "Promise<string>",
       "status": "ADAPTER",
       "adapter": "APP_PATHS_GET_PATH"
+    },
+    {
+      "name": "openWorkspace",
+      "channel": "fs.openWorkspace",
+      "parameterName": "request",
+      "parameterType": "FilesWorkspaceRequest",
+      "returnType": "Promise<FilesHandleDescriptor>",
+      "status": "ADAPTER",
+      "adapter": "FILES_OPERATION"
+    },
+    {
+      "name": "openFile",
+      "channel": "fs.openFile",
+      "parameterName": "request",
+      "parameterType": "FilesOpenFileRequest",
+      "returnType": "Promise<FilesHandleDescriptor>",
+      "status": "ADAPTER",
+      "adapter": "FILES_OPERATION"
+    },
+    {
+      "name": "writeFile",
+      "channel": "fs.writeFile",
+      "parameterName": "request",
+      "parameterType": "FilesWriteFileRequest",
+      "returnType": "Promise<FilesWriteFileResponse>",
+      "status": "ADAPTER",
+      "adapter": "FILES_OPERATION"
+    },
+    {
+      "name": "readFile",
+      "channel": "fs.readFile",
+      "parameterName": "request",
+      "parameterType": "FilesReadFileRequest",
+      "returnType": "Promise<FilesReadFileResponse>",
+      "status": "ADAPTER",
+      "adapter": "FILES_OPERATION"
+    },
+    {
+      "name": "listDirectory",
+      "channel": "fs.listDirectory",
+      "parameterName": "request",
+      "parameterType": "FilesListDirectoryRequest",
+      "returnType": "Promise<FilesListDirectoryResponse>",
+      "status": "ADAPTER",
+      "adapter": "FILES_OPERATION"
+    },
+    {
+      "name": "closeHandle",
+      "channel": "fs.closeHandle",
+      "parameterName": "request",
+      "parameterType": "FilesCloseHandleRequest",
+      "returnType": "Promise<FilesCloseHandleResponse>",
+      "status": "ADAPTER",
+      "adapter": "FILES_OPERATION"
     }
   ],
   "streams": [
@@ -63,11 +213,29 @@
         "requiresUserGesture": false,
         "requiresOsConsent": false
       }
+    },
+    {
+      "name": "watchDirectory",
+      "method": "watchDirectory",
+      "requestType": "FilesWatchRequest",
+      "chunkType": "FilesWatchEvent",
+      "capacity": 64,
+      "status": "ADAPTER",
+      "adapter": "FILES_WATCH_DIRECTORY",
+      "policy": {
+        "rendererGrant": "native.files.watch-directory",
+        "requiresUserGesture": false,
+        "requiresOsConsent": false
+      }
     }
   ],
   "requiredServices": [
     {
       "id": "app-paths",
+      "version": "1.0.0"
+    },
+    {
+      "id": "files",
       "version": "1.0.0"
     }
   ],

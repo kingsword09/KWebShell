@@ -5,6 +5,10 @@
   if (!bridge || typeof bridge.createClient !== "function") {
     throw new Error("KWebAppPathsBridge is required by this migration facade.");
   }
+  const filesBridge = globalThis.FilesBridge;
+  if (!filesBridge || typeof filesBridge.createClient !== "function") {
+    throw new Error("FilesBridge is required by this migration facade.");
+  }
   class KWebElectronMigrationError extends Error {
     constructor(code, message) {
       super(message);
@@ -26,10 +30,12 @@
     videos: "videos",
   });
   const client = bridge.createClient();
+  const filesClient = filesBridge.createClient();
   const streamBridge = globalThis.KWebApplicationStreamsBridge;
   if (!streamBridge || typeof streamBridge.createClient !== "function") throw new Error("KWebApplicationStreamsBridge is required by this migration facade.");
   const bridgeStreams = streamBridge.createClient();
   const api = Object.freeze({
+    closeHandle: (request, options) => filesClient.closeHandle(request, options),
     getPath: (name, options) => {
       const kind = pathKinds[name];
       if (typeof kind !== "string") {
@@ -37,7 +43,13 @@
       }
       return client.resolve({ kind }, options).then(result => result.path);
     },
+    listDirectory: (request, options) => filesClient.listDirectory(request, options),
+    openFile: (request, options) => filesClient.openFile(request, options),
+    openWorkspace: (request, options) => filesClient.openWorkspace(request, options),
+    readFile: (request, options) => filesClient.readFile(request, options),
+    writeFile: (request, options) => filesClient.writeFile(request, options),
     progress: (request, options) => bridgeStreams.openDownloadProgress(request, options),
+    watchDirectory: (request, options) => filesClient.openWatchDirectory(request, options),
   });
   Object.defineProperty(globalThis, "desktop", {
     configurable: false,

@@ -82,6 +82,11 @@ class KWebElectronCapabilityMatrixTest {
         )
         assertEquals("", KWebElectronCapabilityMatrix.find("session-resolve-proxy")?.kweb)
         assertNotNull(KWebElectronCapabilityMatrix.find("node-runtime"))
+        assertEquals(
+            KWebElectronMappingStatus.REWRITE,
+            KWebElectronCapabilityMatrix.find("node-fs")?.status,
+        )
+        assertEquals("KWebFiles + FilesBridge", KWebElectronCapabilityMatrix.find("node-fs")?.kweb)
         assertTrue(KWebElectronCapabilityMatrix.entries.size >= 18)
     }
 }

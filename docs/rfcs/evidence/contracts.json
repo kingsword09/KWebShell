@@ -294,6 +294,31 @@
         "kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronCapabilityMatrixTest.kt",
         "kweb-interop-probe/src/main/java/io/github/kingsword09/kwebshell/interop/probe/EngineAbi.java"
       ]
+    },
+    {
+      "rfcId": "0013",
+      "paths": [
+        ".github/scripts/aggregate-rfc-evidence.sh",
+        ".github/workflows/ci.yml",
+        "build.gradle.kts",
+        "docs/rfcs/0013-scoped-filesystem.md",
+        "docs/rfcs/README.md",
+        "kweb-desktop/build.gradle.kts",
+        "kweb-desktop/src/test/kotlin/io/github/kingsword09/kwebshell/desktop/internal/NativeEngineIntegrationMain.kt",
+        "kweb-electron-migration/build.gradle.kts",
+        "kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronCapabilityMatrix.kt",
+        "kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronMigrationContract.kt",
+        "kweb-electron-migration/src/jvmMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronPreloadGenerator.kt",
+        "kweb-electron-migration/src/jvmTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronMigrationIntegrationMain.kt",
+        "kweb-electron-migration/src/jvmTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronPreloadGeneratorTest.kt",
+        "kweb-electron-migration/src/jvmTest/resources/migration-fixture",
+        "kweb-electron-migration/src/jvmTest/resources/preload-runtime-test.mjs",
+        "kweb-rfc-governance/src/main/kotlin/io/github/kingsword09/kwebshell/rfc/KWebRfcServiceCatalog.kt",
+        "kweb-service-files/README.md",
+        "kweb-service-files/build.gradle.kts",
+        "kweb-service-files/src",
+        "settings.gradle.kts"
+      ]
     }
   ]
 }

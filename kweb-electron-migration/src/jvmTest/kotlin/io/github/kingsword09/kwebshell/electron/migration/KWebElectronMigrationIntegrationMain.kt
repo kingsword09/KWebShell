@@ -34,6 +34,7 @@ import io.github.kingsword09.kwebshell.service.files.KWebFileGrant
 import io.github.kingsword09.kwebshell.service.files.KWebFileOwnerScope
 import io.github.kingsword09.kwebshell.service.files.KWebFiles
 import io.github.kingsword09.kwebshell.service.shell.JvmKWebShell
+import io.github.kingsword09.kwebshell.service.shell.JvmKWebShellHandle
 import io.github.kingsword09.kwebshell.service.shell.KWebShell
 import io.github.kingsword09.kwebshell.service.shell.KWebShellConfiguration
 import io.github.kingsword09.kwebshell.service.shell.bridgeDispatcher as shellBridgeDispatcher
@@ -231,11 +232,11 @@ public fun main() {
         ),
     )
     val filesOwner = AtomicReference<JvmKWebFilesPageOwner?>()
-    val shellService = AtomicReference<KWebShell?>()
+    val shellService = AtomicReference<JvmKWebShellHandle?>()
     val ownerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     var activePage: KWebPage? = null
     var deniedFiles: KWebFiles? = null
-    var deniedShell: KWebShell? = null
+    var deniedShell: JvmKWebShellHandle? = null
     var failure: Throwable? = null
     try {
         val directHome = runBlocking { appPaths.resolve(KWebAppPathKind.HOME) }.path
@@ -335,8 +336,14 @@ public fun main() {
         ownerScope.launch {
             page.events.collect { event ->
                 when (event.type) {
-                    KWebPageEventType.NAVIGATION_STARTED -> filesOwner.get()?.onNavigationStarted()
-                    KWebPageEventType.NAVIGATION_COMMITTED -> filesOwner.get()?.onNavigationCommitted(event.origin.orEmpty())
+                    KWebPageEventType.NAVIGATION_STARTED -> {
+                        shellService.get()?.onNavigationStarted()
+                        filesOwner.get()?.onNavigationStarted()
+                    }
+                    KWebPageEventType.NAVIGATION_COMMITTED -> {
+                        shellService.get()?.onNavigationCommitted()
+                        filesOwner.get()?.onNavigationCommitted(event.origin.orEmpty())
+                    }
                     KWebPageEventType.CLOSED -> {
                         shellService.get()?.close()
                         filesOwner.get()?.close()

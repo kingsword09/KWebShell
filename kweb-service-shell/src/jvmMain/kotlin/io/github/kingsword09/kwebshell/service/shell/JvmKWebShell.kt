@@ -24,42 +24,72 @@ public object JvmKWebShell {
         libraryPath: Path,
         configuration: KWebShellConfiguration,
         resolver: JvmKWebFilesShellResolver,
-    ): KWebShell = NativeKWebShell(ShellFfm.open(libraryPath), configuration, resolver)
+    ): JvmKWebShellHandle = NativeKWebShell(FfmShellNative(ShellFfm.open(libraryPath)), configuration, resolver)
+}
+
+/**
+ * JVM shell handle owned by one PAGE lifecycle.
+ *
+ * Hosts must forward main-frame navigation boundaries so actions admitted for
+ * the previous document cannot reach the native provider after navigation has
+ * started.
+ */
+public interface JvmKWebShellHandle : KWebShell {
+    public fun onNavigationStarted()
+    public fun onNavigationCommitted()
+}
+
+internal interface ShellNativeExecutor {
+    public fun execute(action: Int, resourceKind: Int, value: String): ShellFfm.NativeResult
+    public fun close()
+}
+
+private class FfmShellNative(
+    private val delegate: ShellFfm,
+) : ShellNativeExecutor {
+    override fun execute(action: Int, resourceKind: Int, value: String): ShellFfm.NativeResult =
+        delegate.execute(action, resourceKind, value)
+
+    override fun close() {
+        delegate.close()
+    }
 }
 
 internal class NativeKWebShell(
-    private val native: ShellFfm,
+    private val native: ShellNativeExecutor,
     private val configuration: KWebShellConfiguration,
     private val resolver: JvmKWebFilesShellResolver,
-) : KWebShell {
+) : JvmKWebShellHandle {
     private val lock = ReentrantLock()
     private val closeCondition = lock.newCondition()
     private val actionMutex = Mutex()
     private val lifecycleState = MutableStateFlow(KWebLifecycleState.OPEN)
     private var pendingActions = 0
+    private var navigationGeneration = 0L
+    private var navigationInProgress = false
     private var closeFailure: KWebNativeException? = null
 
     override val descriptor = KWebShell.DESCRIPTOR
     override val lifecycle: StateFlow<KWebLifecycleState> = lifecycleState.asStateFlow()
 
     override suspend fun openExternal(request: KWebShellExternalUriRequest): KWebShellActionResult =
-        action("open-external") {
+        action("open-external") { generation ->
             val uri = ShellPolicy.normalizeExternalUri(request, configuration)
-            executeNative(KWebShellAction.OPEN_EXTERNAL, null, uri)
+            executeNative(KWebShellAction.OPEN_EXTERNAL, null, uri, generation)
         }
 
     override suspend fun openResource(handle: KWebShellResourceHandle): KWebShellActionResult =
-        resourceAction("open-resource", handle, JvmKWebFilesShellAccess.OPEN) { resource ->
-            executeNative(KWebShellAction.OPEN_RESOURCE, resource, resource.path.toString())
+        resourceAction("open-resource", handle, JvmKWebFilesShellAccess.OPEN) { resource, generation ->
+            executeNative(KWebShellAction.OPEN_RESOURCE, resource, resource.path.toString(), generation)
         }
 
     override suspend fun revealResource(handle: KWebShellResourceHandle): KWebShellActionResult =
-        resourceAction("reveal-resource", handle, JvmKWebFilesShellAccess.REVEAL) { resource ->
-            executeNative(KWebShellAction.REVEAL_RESOURCE, resource, resource.path.toString())
+        resourceAction("reveal-resource", handle, JvmKWebFilesShellAccess.REVEAL) { resource, generation ->
+            executeNative(KWebShellAction.REVEAL_RESOURCE, resource, resource.path.toString(), generation)
         }
 
     override suspend fun trashResource(handle: KWebShellResourceHandle): KWebShellActionResult =
-        resourceAction("trash-resource", handle, JvmKWebFilesShellAccess.TRASH) { resource ->
+        resourceAction("trash-resource", handle, JvmKWebFilesShellAccess.TRASH) { resource, generation ->
             if (resource.kind == KWebFileNodeKind.DIRECTORY && !configuration.allowDirectoryTrash) {
                 throw ShellPolicy.failure(
                     KWebShellErrorCode.DIRECTORY_NOT_ALLOWED,
@@ -67,8 +97,23 @@ internal class NativeKWebShell(
                     "trash-resource",
                 )
             }
-            executeNative(KWebShellAction.TRASH_RESOURCE, resource, resource.path.toString())
+            executeNative(KWebShellAction.TRASH_RESOURCE, resource, resource.path.toString(), generation)
         }
+
+    override fun onNavigationStarted() {
+        lock.withLock {
+            if (lifecycleState.value != KWebLifecycleState.OPEN) return
+            navigationGeneration++
+            navigationInProgress = true
+        }
+    }
+
+    override fun onNavigationCommitted() {
+        lock.withLock {
+            if (lifecycleState.value != KWebLifecycleState.OPEN) return
+            navigationInProgress = false
+        }
+    }
 
     override fun close() {
         lock.withLock {
@@ -107,19 +152,23 @@ internal class NativeKWebShell(
 
     private suspend fun <T> action(
         operation: String,
-        block: suspend () -> T,
+        block: suspend (Long) -> T,
     ): T {
-        lock.withLock {
+        val generation = lock.withLock {
             if (lifecycleState.value != KWebLifecycleState.OPEN) {
                 throw ShellPolicy.failure(KWebServiceErrorCode.OWNER_CLOSED, "The shell service is not open.", operation)
+            }
+            if (navigationInProgress) {
+                throw ShellPolicy.failure(KWebServiceErrorCode.CANCELLED, "The shell operation was cancelled by navigation.", operation)
             }
             if (pendingActions >= MAX_PENDING_ACTIONS) {
                 throw ShellPolicy.failure(KWebShellErrorCode.BUSY, "The shell action queue is full.", operation)
             }
             pendingActions++
+            navigationGeneration
         }
         try {
-            val result: T = actionMutex.withLock { withContext(Dispatchers.IO) { block() } }
+            val result: T = actionMutex.withLock { withContext(Dispatchers.IO) { block(generation) } }
             return result
         } finally {
             lock.withLock {
@@ -133,16 +182,19 @@ internal class NativeKWebShell(
         operation: String,
         handle: KWebShellResourceHandle,
         access: JvmKWebFilesShellAccess,
-        block: (JvmKWebFilesShellResource) -> KWebShellActionResult,
+        block: (JvmKWebFilesShellResource, Long) -> KWebShellActionResult,
     ): KWebShellActionResult {
         ShellPolicy.validateHandle(handle.token, operation)
-        return action(operation) { resolver.withResource(handle.token, access, block) }
+        return action(operation) { generation ->
+            resolver.withResource(handle.token, access) { resource -> block(resource, generation) }
+        }
     }
 
     private fun executeNative(
         action: KWebShellAction,
         resource: JvmKWebFilesShellResource?,
         value: String,
+        generation: Long,
     ): KWebShellActionResult {
         val kind = resource?.kind?.let {
             when (it) {
@@ -151,6 +203,7 @@ internal class NativeKWebShell(
             }
         } ?: 0
         return try {
+            enterNativeBoundary(action.operationId, generation)
             val result = native.execute(action.nativeId, kind, value)
             val expected = if (action == KWebShellAction.TRASH_RESOURCE) {
                 ShellFfm.OUTCOME_MOVED_TO_TRASH
@@ -172,6 +225,17 @@ internal class NativeKWebShell(
             })
         } catch (error: ShellFfm.NativeFailure) {
             throw mapFailure(action, error)
+        }
+    }
+
+    private fun enterNativeBoundary(operation: String, generation: Long) {
+        lock.withLock {
+            if (lifecycleState.value != KWebLifecycleState.OPEN) {
+                throw ShellPolicy.failure(KWebServiceErrorCode.OWNER_CLOSED, "The shell owner closed before native dispatch.", operation)
+            }
+            if (navigationInProgress || generation != navigationGeneration) {
+                throw ShellPolicy.failure(KWebServiceErrorCode.CANCELLED, "The shell operation was cancelled by navigation.", operation)
+            }
         }
     }
 

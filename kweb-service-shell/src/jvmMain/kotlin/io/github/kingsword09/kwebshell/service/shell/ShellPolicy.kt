@@ -17,7 +17,7 @@ internal object ShellPolicy {
         val uri = request.uri
         val bytes = uri.toByteArray(StandardCharsets.UTF_8)
         if (bytes.isEmpty() || bytes.size > KWEB_SHELL_MAX_URI_BYTES ||
-            uri.any { it == '\u0000' || it.code < 0x20 || it == '\\' }
+            uri.any { it == '\u0000' || it.code < 0x20 || it.code == 0x7f || it == '\\' }
         ) {
             throw failure(KWebShellErrorCode.URI_INVALID, "The URI contains invalid bytes.", "open-external")
         }
@@ -47,7 +47,17 @@ internal object ShellPolicy {
         if (normalizedScheme == "mailto" && parsed.rawSchemeSpecificPart.startsWith("//")) {
             throw failure(KWebShellErrorCode.URI_INVALID, "Mailto URIs cannot contain an authority.", "open-external")
         }
-        val decoded = runCatching { URLDecoder.decode(uri, StandardCharsets.UTF_8) }.getOrDefault(uri)
+        if (normalizedScheme == "mailto" && parsed.rawSchemeSpecificPart.substringBefore('?').isEmpty()) {
+            throw failure(KWebShellErrorCode.URI_INVALID, "Mailto URIs require a non-empty address payload.", "open-external")
+        }
+        val decoded = try {
+            URLDecoder.decode(uri, StandardCharsets.UTF_8)
+        } catch (error: IllegalArgumentException) {
+            throw failure(KWebShellErrorCode.URI_INVALID, "The URI contains an invalid percent encoding.", "open-external", error)
+        }
+        if (decoded.any { it.code < 0x20 || it.code == 0x7f || it == '\\' }) {
+            throw failure(KWebShellErrorCode.URI_INVALID, "The URI contains an encoded control or separator.", "open-external")
+        }
         if (dangerousNested.containsMatchIn(decoded.substringAfter(':'))) {
             throw failure(KWebShellErrorCode.SCHEME_DENIED, "The URI contains a nested dangerous scheme.", "open-external")
         }

@@ -410,6 +410,7 @@ public fun main() {
             )
             val clipboardClearJson = Json.parseToJsonElement(clipboardClear).jsonObject
             require(clipboardClearJson["cleared"]?.jsonObject?.get("sequence")?.jsonPrimitive?.content?.toLongOrNull() != null)
+            mintClipboardGesture()
             val files = session.evaluateString(
                 """
                 (async()=>{

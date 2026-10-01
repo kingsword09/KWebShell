@@ -52,6 +52,12 @@ EOF
 desktop-file-validate "$desktop_file"
 update-desktop-database "$data_home/applications"
 
+export XDG_DATA_HOME="$data_home"
+export XDG_CONFIG_HOME="$config_home"
+export XDG_CACHE_HOME="$cache_home"
+export XDG_CURRENT_DESKTOP=GNOME
+export KWEB_SHELL_FIXTURE_LOG="$handler_log"
+
 {
   echo "XDG_DATA_HOME=$data_home"
   echo "XDG_CONFIG_HOME=$config_home"

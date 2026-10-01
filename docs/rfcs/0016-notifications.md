@@ -1,6 +1,6 @@
 # RFC 0016: Native notifications and activation
 
-- Status: Proposed
+- Status: Accepted
 - Priority: P0
 - Owners: new `kweb-service-notifications` KMP service and desktop host
 - Depends on: RFC 0003, RFC 0004, RFC 0006, RFC 0030
@@ -337,8 +337,35 @@ menu/dialog contract exists.
 
 ## Readiness review
 
-To be added after the contract review pass, before changing this RFC to
-`Accepted` or adding implementation code.
+- Reviewed revision: `2310c32` (`docs: define RFC 0016 notification contract`).
+- Review pass: Codex contract review pass, same contributor as the eventual
+  implementation; this is not an independent-person approval.
+- Date: 2026-10-02.
+- Findings and dispositions:
+  - The original proposal did not define public signatures, field bounds,
+    stable errors, event precedence, rate limits, or evidence redaction. The
+    contract above fixes those decisions and gives every acceptance row a
+    falsifiable scenario.
+  - RFC 0027 is not implemented yet. Custom image bytes, URLs, and paths are
+    removed from v1; `APPLICATION` is the only icon value and A15 records the
+    explicit boundary.
+  - RFC 0006 had no notification activation input. The host-only
+    `KWebApplicationActivationSink` extension and canonical `kweb:` protocol
+    envelope are now part of this reviewed contract; the RFC 0006 descriptor
+    and renderer surface remain unchanged. Its implementation and regression
+    evidence are required in the same focused PR.
+  - Linux freedesktop notifications has no portable permission store and no
+    text-reply action. Those facts are represented as `NOT_APPLICABLE` and a
+    false `replies` capability; they are never reported as granted or silently
+    downgraded.
+  - Windows and macOS require packaged identity for activation. Unpackaged or
+    missing identity is typed unavailable, not a permission to use a hidden
+    window, browser page, or alternate backend.
+  - Local feasibility probes found the macOS UserNotifications SDK headers and
+    Linux GIO/GLib build prerequisites. The first native implementation gate
+    must compile and exercise the declared Windows WinRT/AUMID provider on the
+    hosted Windows target before any supported-state promotion.
+- Decision: `READY`.
 
 ## Evidence and invalidation
 

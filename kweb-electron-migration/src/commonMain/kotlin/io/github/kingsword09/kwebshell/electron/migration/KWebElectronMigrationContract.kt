@@ -18,6 +18,7 @@ public enum class KWebElectronAdapterKind {
     APP_PATHS_GET_PATH,
     FILES_OPERATION,
     CLIPBOARD_OPERATION,
+    SHELL_OPERATION,
     FILES_WATCH_DIRECTORY,
     NAMED_APPLICATION_STREAM,
 }
@@ -317,6 +318,11 @@ public object KWebElectronManifestValidator {
     private val CLIPBOARD_OPERATIONS: Set<String> = setOf(
         "read", "read-payload", "write", "clear", "close-payload",
     )
+    private const val SHELL_SERVICE: String = "shell"
+    private const val SHELL_VERSION: String = "1.0.0"
+    private val SHELL_OPERATIONS: Set<String> = setOf(
+        "open-external", "open-resource", "reveal-resource", "trash-resource",
+    )
     private val FILES_OPERATIONS: Set<String> = setOf(
         "open-workspace", "open-file", "open-directory", "read-file", "write-file",
         "truncate-file", "list-directory", "metadata", "copy-file", "move-file",
@@ -506,6 +512,22 @@ public object KWebElectronManifestValidator {
                     )
                 }
             }
+            if (channel.adapter == KWebElectronAdapterKind.SHELL_OPERATION) {
+                val operation = channel.operationId
+                val policy = channel.policy
+                if (channel.name.substringBefore('.').lowercase() != "shell" ||
+                    channel.serviceId != SHELL_SERVICE || channel.serviceVersion != SHELL_VERSION ||
+                    operation == null || operation !in SHELL_OPERATIONS || policy == null ||
+                    policy.rendererGrant != "native.shell.$operation" ||
+                    !policy.requiresUserGesture || policy.requiresOsConsent
+                ) {
+                    invalid(
+                        KWebElectronMigrationErrorCode.MAPPING_UNRESOLVED,
+                        "channel" to channel.name,
+                        message = "The shell adapter must bind one published shell operation and its exact gesture policy.",
+                    )
+                }
+            }
         }
 
         manifest.preloadMethods.forEachIndexed { index, method ->
@@ -550,6 +572,15 @@ public object KWebElectronManifestValidator {
                     KWebElectronMigrationErrorCode.MAPPING_UNRESOLVED,
                     "method" to method.name,
                     message = "A clipboard preload method must use a named request type and Promise response.",
+                )
+            }
+            if (method.adapter == KWebElectronAdapterKind.SHELL_OPERATION &&
+                (!IDENTIFIER.matches(method.parameterType) || !method.returnType.startsWith("Promise<"))
+            ) {
+                invalid(
+                    KWebElectronMigrationErrorCode.MAPPING_UNRESOLVED,
+                    "method" to method.name,
+                    message = "A shell preload method must use a named request type and Promise response.",
                 )
             }
         }

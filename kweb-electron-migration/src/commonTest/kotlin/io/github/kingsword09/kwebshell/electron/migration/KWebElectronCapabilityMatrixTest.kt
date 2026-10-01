@@ -19,6 +19,11 @@ class KWebElectronCapabilityMatrixTest {
         )
         assertEquals(
             KWebElectronMappingStatus.REWRITE,
+            KWebElectronCapabilityMatrix.find("shell")?.status,
+        )
+        assertEquals("KWebShell + ShellBridge", KWebElectronCapabilityMatrix.find("shell")?.kweb)
+        assertEquals(
+            KWebElectronMappingStatus.REWRITE,
             KWebElectronCapabilityMatrix.find("dialog")?.status,
         )
         assertEquals(

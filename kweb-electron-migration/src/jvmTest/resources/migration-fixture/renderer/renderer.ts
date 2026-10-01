@@ -60,3 +60,19 @@ export async function writeClipboardText(value: string): Promise<unknown> {
 export async function clearClipboard(): Promise<unknown> {
   return window.desktop.clearClipboard({ selection: "system" });
 }
+
+export async function openExternal(): Promise<unknown> {
+  return window.desktop.openExternal({ uri: "https://example.invalid" });
+}
+
+export async function openResource(handle: string): Promise<unknown> {
+  return window.desktop.openResource({ handle });
+}
+
+export async function revealResource(handle: string): Promise<unknown> {
+  return window.desktop.revealResource({ handle });
+}
+
+export async function trashResource(handle: string): Promise<unknown> {
+  return window.desktop.trashResource({ handle });
+}

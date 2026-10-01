@@ -455,7 +455,8 @@ The initial mapping direction is:
 | `dialog.showOpenDialog`, `dialog.showSaveDialog` | Rewrite path results to `KWebDialogs` scoped handles and generated bounded-I/O clients. |
 | `fs/promises` and relative `path` workflows | Rewrite to `KWebFiles` logical workspaces, owner-bound handles, bounded I/O, directory enumeration, and watch streams. Absolute paths, synchronous fs, `Buffer`, and `webUtils.getPathForFile` remain blocked. |
 | `clipboard` | `KWebClipboard` + generated `ClipboardBridge`; SYSTEM text/HTML/RTF/URI-list only. Linux PRIMARY, images, custom native formats, and direct renderer clipboard access remain unsupported. |
-| `shell`, `nativeTheme` | Separate native service families after conformance publication. |
+| `shell` | `KWebShell` + generated `ShellBridge`: allowlisted external URI launch, RFC 0013 handle open/reveal, and verified OS trash/recycle. Raw paths, commands, permanent deletion, and shortcut metadata remain blocked. |
+| `nativeTheme` | Separate native service family after conformance publication. |
 | `screen`, `globalShortcut`, `Menu`, `Tray`, notifications | Separate UI/system service families after native lifecycle tests. |
 | `utilityProcess`, `child_process` | Explicit policy-controlled process service; never implicit Node execution. |
 | `autoUpdater` | Future signed update service built on verified KWebShell release metadata. |
@@ -593,6 +594,16 @@ ownership/change metadata, and explicit lifecycle errors. The generated
 `ClipboardBridge` is exact-origin and main-frame only; renderer read/write/clear
 operations require a native-verified gesture. Linux PRIMARY, images, arbitrary
 native formats, and direct renderer clipboard access are not advertised.
+
+RFC 0015 adds `kweb-service-shell` for the OS shell boundary. The PAGE-scoped
+provider accepts only an explicitly allowlisted external URI or a resolver-
+validated RFC 0013 resource handle. Windows uses ShellExecute/PIDL/recycle-bin
+APIs, macOS uses `NSWorkspace`, and Linux uses GLib/GIO plus the session
+`FileManager1` reveal contract. Every renderer call is exact-origin, main-frame,
+permission- and native-gesture-checked; trash succeeds only after the provider
+verifies that the original resource identity is absent. Missing handlers,
+headless sessions, and missing desktop facilities fail typed without selecting
+a fallback backend.
 
 ## 10. Manifest V3 Is Independent
 

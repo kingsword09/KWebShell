@@ -65,6 +65,12 @@ text/plain, HTML, RTF, and URI-list payloads through a native C ABI and JDK 25
 FFM; Linux PRIMARY, images, arbitrary custom formats, and direct renderer
 clipboard access remain explicitly unsupported until separate RFCs.
 
+RFC 0015 adds `kweb-service-shell` for four typed desktop actions: allowlisted
+external URI launch, scoped resource open, exact file-manager reveal, and
+verified OS trash/recycle. Renderer calls use gesture-checked `ShellBridge`
+operations over RFC 0013 handles; raw paths, commands, permanent deletion, and
+silent backend fallbacks remain outside the contract.
+
 All further Electron-class capabilities are split into reviewable KMP-first
 contracts in the [RFC catalog](docs/rfcs/README.md). An RFC is not a support
 claim: each capability enters the public matrix only after its common contract,

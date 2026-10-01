@@ -85,6 +85,16 @@ globalThis.ClipboardBridge = Object.freeze({
     };
   },
 });
+globalThis.ShellBridge = Object.freeze({
+  createClient() {
+    return {
+      openExternal(request, options) { return Promise.resolve({ action: "open-external", outcome: "handler-accepted", resourceKind: null }); },
+      openResource(request, options) { return Promise.resolve({ action: "open-resource", outcome: "handler-accepted", resourceKind: "file" }); },
+      revealResource(request, options) { return Promise.resolve({ action: "reveal-resource", outcome: "handler-accepted", resourceKind: "file" }); },
+      trashResource(request, options) { return Promise.resolve({ action: "trash-resource", outcome: "moved-to-trash", resourceKind: "file" }); },
+    };
+  },
+});
 
 eval(source);
 const home = await globalThis.desktop.getPath("home", { timeoutMs: 123 });
@@ -114,6 +124,10 @@ const clipboardChunk = await globalThis.desktop.readClipboardPayload({ handle: c
 if (new TextDecoder().decode(new Uint8Array(clipboardChunk.bytes)) !== "test" || !clipboardChunk.eof) throw new Error("The generated clipboard adapter did not expose bounded payload reads.");
 const clipboardClosed = await globalThis.desktop.closeClipboardPayload({ handle: clipboardRead.available[0].handle });
 if (!clipboardClosed.closed) throw new Error("The generated clipboard adapter did not close payload handles.");
+const shellExternal = await globalThis.desktop.openExternal({ uri: "https://example.invalid" });
+if (shellExternal.outcome !== "handler-accepted") throw new Error("The generated shell external adapter did not preserve typed outcomes.");
+const shellTrash = await globalThis.desktop.trashResource({ handle: file.handle });
+if (shellTrash.outcome !== "moved-to-trash") throw new Error("The generated shell trash adapter did not preserve typed outcomes.");
 const watch = globalThis.desktop.watchDirectory({ handle: workspace.handle });
 const watchValues = [];
 for await (const event of watch) watchValues.push(event);

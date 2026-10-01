@@ -14,7 +14,7 @@ input="docs/rfcs/evidence/manifest.json"
 # The recorder refuses a non-Implemented catalog: normalize the statuses in
 # this workspace before recording. The checked-in flip lands in the same commit
 # as the checked-in records.
-for rfc in 0001 0002 0003 0004 0006 0007 0008 0009 0011 0012 0013 0014 0030; do
+for rfc in 0001 0002 0003 0004 0006 0007 0008 0009 0011 0012 0013 0014 0015 0030; do
   file=$(ls docs/rfcs/${rfc}-*.md)
   sed 's/^- Status: .*$/- Status: Implemented/' "$file" > "$file.recorded"
   mv "$file.recorded" "$file"
@@ -70,6 +70,9 @@ record() {
     fi
     arguments="$arguments --service clipboard --from-compatibility-report $clipboard_report"
   fi
+  if [ "$rfc" = "0015" ]; then
+    arguments="$arguments --service shell --matrix-row shell --from-compatibility-report $extra_file"
+  fi
   ./gradlew --no-daemon :kweb-rfc-governance:rfcEvidenceRecord \
     -PrfcEvidenceArguments="$arguments"
 }
@@ -90,6 +93,7 @@ for target in macos-arm64 windows-x64 linux-x64; do
     "0012|downloads.hosted|downloads|downloads-evidence.json|engine-integration"
     "0013|files.hosted|files|files-evidence.json|engine-integration|migration-files|compatibility.json|electron-migration"
     "0014|clipboard.hosted|clipboard|clipboard-evidence.json|clipboard|migration-clipboard|migration-clipboard-evidence.json|electron-migration"
+    "0015|shell.hosted|shell|migration-shell-evidence.json|electron-migration|migration-shell|compatibility.json|electron-migration"
     "0007|window-controls.hosted|window-controls-report|window-controls-report.json|provider-lifecycle"
   )
   count=0

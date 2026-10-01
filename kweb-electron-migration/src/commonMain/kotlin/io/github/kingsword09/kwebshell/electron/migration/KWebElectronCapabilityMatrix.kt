@@ -48,7 +48,7 @@ public object KWebElectronCapabilityMatrix {
         entry("context-bridge", "contextBridge.exposeInMainWorld", "generated-preload", KWebElectronMappingStatus.ADAPTER, "Generated preload facade", "No universal ipcRenderer object is installed."),
         entry("dialog", "dialog.showOpenDialog + dialog.showSaveDialog", "native-dialog-service", KWebElectronMappingStatus.REWRITE, "KWebDialogs + DialogsBridge", "Path results must migrate to owner-scoped handles and explicit bounded I/O."),
         entry("clipboard", "clipboard", "typed-clipboard-service", KWebElectronMappingStatus.REWRITE, "KWebClipboard + ClipboardBridge", "SYSTEM text/HTML/RTF/URI-list workflows rewrite to bounded typed operations with gesture and exact-origin policy; Linux PRIMARY, images, custom formats, and direct renderer access remain unsupported."),
-        entry("shell", "shell", "external-launch-service", KWebElectronMappingStatus.UNSUPPORTED, "", "Requires scheme and path policy."),
+        entry("shell", "shell", "external-launch-service", KWebElectronMappingStatus.REWRITE, "KWebShell + ShellBridge", "External URI, scoped open/reveal, and verified OS trash rewrite to named shell operations; raw paths, commands, and shortcut metadata remain blocked."),
         entry("native-theme", "nativeTheme", "theme-service", KWebElectronMappingStatus.UNSUPPORTED, "", "Requires observation and lifecycle conformance."),
         entry("screen", "screen", "screen-service", KWebElectronMappingStatus.UNSUPPORTED, "", "Requires multi-monitor and DPI conformance."),
         entry("global-shortcut", "globalShortcut", "shortcut-service", KWebElectronMappingStatus.UNSUPPORTED, "", "Requires ownership and permission conformance."),

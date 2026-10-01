@@ -4,7 +4,7 @@
   "rendererGlobal": "desktop",
   "rendererRoot": "renderer",
   "rendererEntry": "renderer.ts",
-  "rendererSha256": "a77338d59b9dcd587473ec1515a1d6fe3eef76b5b243cdff878623007533100c",
+  "rendererSha256": "b7fabcd614c511b5afdccace8d80d7684b12da3eecff0ea3beab3af05da36e90",
   "electronFixtureMajor": 44,
   "electronImports": [
     {
@@ -212,6 +212,70 @@
         "requiresUserGesture": true,
         "requiresOsConsent": false
       }
+    },
+    {
+      "name": "shell.openExternal",
+      "schemaVersion": 2,
+      "requestType": "ShellExternalUriRequest",
+      "responseType": "ShellActionResponse",
+      "serviceId": "shell",
+      "serviceVersion": "1.0.0",
+      "operationId": "open-external",
+      "status": "ADAPTER",
+      "adapter": "SHELL_OPERATION",
+      "policy": {
+        "rendererGrant": "native.shell.open-external",
+        "requiresUserGesture": true,
+        "requiresOsConsent": false
+      }
+    },
+    {
+      "name": "shell.openResource",
+      "schemaVersion": 2,
+      "requestType": "ShellResourceRequest",
+      "responseType": "ShellActionResponse",
+      "serviceId": "shell",
+      "serviceVersion": "1.0.0",
+      "operationId": "open-resource",
+      "status": "ADAPTER",
+      "adapter": "SHELL_OPERATION",
+      "policy": {
+        "rendererGrant": "native.shell.open-resource",
+        "requiresUserGesture": true,
+        "requiresOsConsent": false
+      }
+    },
+    {
+      "name": "shell.revealResource",
+      "schemaVersion": 2,
+      "requestType": "ShellResourceRequest",
+      "responseType": "ShellActionResponse",
+      "serviceId": "shell",
+      "serviceVersion": "1.0.0",
+      "operationId": "reveal-resource",
+      "status": "ADAPTER",
+      "adapter": "SHELL_OPERATION",
+      "policy": {
+        "rendererGrant": "native.shell.reveal-resource",
+        "requiresUserGesture": true,
+        "requiresOsConsent": false
+      }
+    },
+    {
+      "name": "shell.trashResource",
+      "schemaVersion": 2,
+      "requestType": "ShellResourceRequest",
+      "responseType": "ShellActionResponse",
+      "serviceId": "shell",
+      "serviceVersion": "1.0.0",
+      "operationId": "trash-resource",
+      "status": "ADAPTER",
+      "adapter": "SHELL_OPERATION",
+      "policy": {
+        "rendererGrant": "native.shell.trash-resource",
+        "requiresUserGesture": true,
+        "requiresOsConsent": false
+      }
     }
   ],
   "preloadMethods": [
@@ -322,6 +386,42 @@
       "returnType": "Promise<ClipboardClosePayloadResponse>",
       "status": "ADAPTER",
       "adapter": "CLIPBOARD_OPERATION"
+    },
+    {
+      "name": "openExternal",
+      "channel": "shell.openExternal",
+      "parameterName": "request",
+      "parameterType": "ShellExternalUriRequest",
+      "returnType": "Promise<ShellActionResponse>",
+      "status": "ADAPTER",
+      "adapter": "SHELL_OPERATION"
+    },
+    {
+      "name": "openResource",
+      "channel": "shell.openResource",
+      "parameterName": "request",
+      "parameterType": "ShellResourceRequest",
+      "returnType": "Promise<ShellActionResponse>",
+      "status": "ADAPTER",
+      "adapter": "SHELL_OPERATION"
+    },
+    {
+      "name": "revealResource",
+      "channel": "shell.revealResource",
+      "parameterName": "request",
+      "parameterType": "ShellResourceRequest",
+      "returnType": "Promise<ShellActionResponse>",
+      "status": "ADAPTER",
+      "adapter": "SHELL_OPERATION"
+    },
+    {
+      "name": "trashResource",
+      "channel": "shell.trashResource",
+      "parameterName": "request",
+      "parameterType": "ShellResourceRequest",
+      "returnType": "Promise<ShellActionResponse>",
+      "status": "ADAPTER",
+      "adapter": "SHELL_OPERATION"
     }
   ],
   "streams": [
@@ -365,6 +465,10 @@
     },
     {
       "id": "clipboard",
+      "version": "1.0.0"
+    },
+    {
+      "id": "shell",
       "version": "1.0.0"
     }
   ],

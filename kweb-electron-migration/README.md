@@ -82,6 +82,13 @@ while pause/resume/cancel are host operations and completed bytes are exposed
 only through a bounded file capability. `setSavePath`, renderer paths,
 automatic opening, and arbitrary download callbacks remain blocked.
 
+RFC 0014 classifies Electron clipboard workflows as a typed rewrite to
+`KWebClipboard` and the generated `ClipboardBridge`. The fixture covers
+SYSTEM text/plain round trips through bounded lazy payload handles and named
+write/clear operations. HTML, RTF, and URI-list are part of the service
+contract; Linux PRIMARY, images, custom native formats, synchronous/direct
+renderer clipboard use, and arbitrary polling remain blocked.
+
 ## Manifest v2 and inventory prerequisites
 
 Manifest v2 requires an exact `rendererOrigin`, an explicit `rendererProfile`,

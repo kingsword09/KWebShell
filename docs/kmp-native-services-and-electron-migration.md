@@ -454,7 +454,8 @@ The initial mapping direction is:
 | `contextBridge.exposeInMainWorld` | Optional generated application-specific preload facade. |
 | `dialog.showOpenDialog`, `dialog.showSaveDialog` | Rewrite path results to `KWebDialogs` scoped handles and generated bounded-I/O clients. |
 | `fs/promises` and relative `path` workflows | Rewrite to `KWebFiles` logical workspaces, owner-bound handles, bounded I/O, directory enumeration, and watch streams. Absolute paths, synchronous fs, `Buffer`, and `webUtils.getPathForFile` remain blocked. |
-| `clipboard`, `shell`, `nativeTheme` | Separate native service families after conformance publication. |
+| `clipboard` | `KWebClipboard` + generated `ClipboardBridge`; SYSTEM text/HTML/RTF/URI-list only. Linux PRIMARY, images, custom native formats, and direct renderer clipboard access remain unsupported. |
+| `shell`, `nativeTheme` | Separate native service families after conformance publication. |
 | `screen`, `globalShortcut`, `Menu`, `Tray`, notifications | Separate UI/system service families after native lifecycle tests. |
 | `utilityProcess`, `child_process` | Explicit policy-controlled process service; never implicit Node execution. |
 | `autoUpdater` | Future signed update service built on verified KWebShell release metadata. |
@@ -584,6 +585,14 @@ IDs, normalized relative names, and opaque owner-bound handles; absolute roots
 remain host-only. macOS security-scoped bookmark and Linux document-portal
 persistence are not advertised by this objective, and unavailable or sandboxed
 access fails typed without selecting a fallback root or backend.
+
+RFC 0014 adds `kweb-service-clipboard` for the desktop SYSTEM clipboard. The
+provider uses one versioned native C ABI behind JDK 25 FFM and exposes bounded
+text/plain, HTML, RTF, and URI-list payloads with lazy opaque handles,
+ownership/change metadata, and explicit lifecycle errors. The generated
+`ClipboardBridge` is exact-origin and main-frame only; renderer read/write/clear
+operations require a native-verified gesture. Linux PRIMARY, images, arbitrary
+native formats, and direct renderer clipboard access are not advertised.
 
 ## 10. Manifest V3 Is Independent
 

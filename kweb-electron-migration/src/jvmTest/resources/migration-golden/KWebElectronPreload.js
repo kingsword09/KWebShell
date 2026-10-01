@@ -31,10 +31,15 @@
   });
   const client = bridge.createClient();
   const filesClient = filesBridge.createClient();
+  const clipboardBridge = globalThis.ClipboardBridge;
+  if (!clipboardBridge || typeof clipboardBridge.createClient !== "function") throw new Error("ClipboardBridge is required by this migration facade.");
+  const clipboardClient = clipboardBridge.createClient();
   const streamBridge = globalThis.KWebApplicationStreamsBridge;
   if (!streamBridge || typeof streamBridge.createClient !== "function") throw new Error("KWebApplicationStreamsBridge is required by this migration facade.");
   const bridgeStreams = streamBridge.createClient();
   const api = Object.freeze({
+    clearClipboard: (request, options) => clipboardClient.clear(request, options),
+    closeClipboardPayload: (request, options) => clipboardClient.closePayload(request, options),
     closeHandle: (request, options) => filesClient.closeHandle(request, options),
     getPath: (name, options) => {
       const kind = pathKinds[name];
@@ -46,7 +51,10 @@
     listDirectory: (request, options) => filesClient.listDirectory(request, options),
     openFile: (request, options) => filesClient.openFile(request, options),
     openWorkspace: (request, options) => filesClient.openWorkspace(request, options),
+    readClipboard: (request, options) => clipboardClient.read(request, options),
+    readClipboardPayload: (request, options) => clipboardClient.readPayload(request, options),
     readFile: (request, options) => filesClient.readFile(request, options),
+    writeClipboard: (request, options) => clipboardClient.write(request, options),
     writeFile: (request, options) => filesClient.writeFile(request, options),
     progress: (request, options) => bridgeStreams.openDownloadProgress(request, options),
     watchDirectory: (request, options) => filesClient.openWatchDirectory(request, options),

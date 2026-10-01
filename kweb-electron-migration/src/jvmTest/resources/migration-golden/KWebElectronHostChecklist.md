@@ -6,6 +6,7 @@ Renderer origin: `app://migration-fixture`; profile: `default`.
 
 ## 1. Required KMP Native Services
 - [ ] Install `app-paths` (version `1.0.0`)
+- [ ] Install `clipboard` (version `1.0.0`)
 - [ ] Install `files` (version `1.0.0`)
 
 ## 2. Window & Hierarchy Definitions
@@ -17,12 +18,17 @@ Renderer origin: `app://migration-fixture`; profile: `default`.
 - [ ] Profile `default` (persistent, storage: `profiles/default`)
 
 ## 4. Preload Methods & Streams
+- [ ] Preload method `clearClipboard` -> Channel `clipboard.clear` (Status: `ADAPTER`)
+- [ ] Preload method `closeClipboardPayload` -> Channel `clipboard.closePayload` (Status: `ADAPTER`)
 - [ ] Preload method `closeHandle` -> Channel `fs.closeHandle` (Status: `ADAPTER`)
 - [ ] Preload method `getPath` -> Channel `app.getPath` (Status: `ADAPTER`)
 - [ ] Preload method `listDirectory` -> Channel `fs.listDirectory` (Status: `ADAPTER`)
 - [ ] Preload method `openFile` -> Channel `fs.openFile` (Status: `ADAPTER`)
 - [ ] Preload method `openWorkspace` -> Channel `fs.openWorkspace` (Status: `ADAPTER`)
+- [ ] Preload method `readClipboard` -> Channel `clipboard.read` (Status: `ADAPTER`)
+- [ ] Preload method `readClipboardPayload` -> Channel `clipboard.readPayload` (Status: `ADAPTER`)
 - [ ] Preload method `readFile` -> Channel `fs.readFile` (Status: `ADAPTER`)
+- [ ] Preload method `writeClipboard` -> Channel `clipboard.write` (Status: `ADAPTER`)
 - [ ] Preload method `writeFile` -> Channel `fs.writeFile` (Status: `ADAPTER`)
 - [ ] Stream `progress` -> Method `downloadProgress` (Capacity: `32`, Status: `ADAPTER`)
 - [ ] Stream `watchDirectory` -> Method `watchDirectory` (Capacity: `64`, Status: `ADAPTER`)

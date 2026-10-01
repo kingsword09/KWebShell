@@ -64,6 +64,27 @@ globalThis.FilesBridge = Object.freeze({
     };
   },
 });
+globalThis.ClipboardBridge = Object.freeze({
+  createClient() {
+    return {
+      read(request, options) {
+        return Promise.resolve({ sequence: "7", available: [{ handle: "opaque-handle", format: request.formats[0], encoding: "utf8", sizeBytes: "4" }] });
+      },
+      readPayload(request, options) {
+        return Promise.resolve({ bytes: [116, 101, 115, 116], eof: true });
+      },
+      write(request, options) {
+        return Promise.resolve({ sequence: "8" });
+      },
+      clear(request, options) {
+        return Promise.resolve({ sequence: "9" });
+      },
+      closePayload(request, options) {
+        return Promise.resolve({ closed: true });
+      },
+    };
+  },
+});
 
 eval(source);
 const home = await globalThis.desktop.getPath("home", { timeoutMs: 123 });
@@ -88,6 +109,11 @@ const file = await globalThis.desktop.openFile({ parent: workspace.handle, name:
 await globalThis.desktop.writeFile({ handle: file.handle, offset: "0", bytes: [1, 2, 3] });
 const fileResult = await globalThis.desktop.readFile({ handle: file.handle, offset: "0", length: 16 });
 if (fileResult.bytes.length !== 9 || !fileResult.eof) throw new Error("The generated files adapter did not preserve bounded file results.");
+const clipboardRead = await globalThis.desktop.readClipboard({ selection: "system", formats: ["text/plain"] });
+const clipboardChunk = await globalThis.desktop.readClipboardPayload({ handle: clipboardRead.available[0].handle, offset: "0", length: 4 });
+if (new TextDecoder().decode(new Uint8Array(clipboardChunk.bytes)) !== "test" || !clipboardChunk.eof) throw new Error("The generated clipboard adapter did not expose bounded payload reads.");
+const clipboardClosed = await globalThis.desktop.closeClipboardPayload({ handle: clipboardRead.available[0].handle });
+if (!clipboardClosed.closed) throw new Error("The generated clipboard adapter did not close payload handles.");
 const watch = globalThis.desktop.watchDirectory({ handle: workspace.handle });
 const watchValues = [];
 for await (const event of watch) watchValues.push(event);

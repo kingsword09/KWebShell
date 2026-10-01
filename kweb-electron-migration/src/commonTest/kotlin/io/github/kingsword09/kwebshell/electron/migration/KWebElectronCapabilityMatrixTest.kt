@@ -14,7 +14,7 @@ class KWebElectronCapabilityMatrixTest {
             KWebElectronCapabilityMatrix.find("context-bridge")?.status,
         )
         assertEquals(
-            KWebElectronMappingStatus.UNSUPPORTED,
+            KWebElectronMappingStatus.REWRITE,
             KWebElectronCapabilityMatrix.find("clipboard")?.status,
         )
         assertEquals(

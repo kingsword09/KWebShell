@@ -57,11 +57,13 @@ operations on opaque file handles. Renderer calls receive token metadata only;
 paths, unrestricted filesystem access, and hidden dialog windows remain outside
 the contract.
 
-RFC 0013 is the accepted next slice for host-declared PAGE-scoped workspace
-capabilities. Its `kweb-service-files` implementation is intentionally kept
-separate from the picker service: logical roots, normalized child names,
-bounded file/directory operations, atomic copy/move, and watch streams are
-being verified before the capability is promoted to the supported matrix.
+RFC 0013 supplies host-declared PAGE-scoped workspace capabilities through
+`kweb-service-files`: logical roots, normalized child names, bounded
+file/directory operations, atomic copy/move, and watch streams. RFC 0014 is now
+the implementing clipboard slice. Its SYSTEM provider covers bounded
+text/plain, HTML, RTF, and URI-list payloads through a native C ABI and JDK 25
+FFM; Linux PRIMARY, images, arbitrary custom formats, and direct renderer
+clipboard access remain explicitly unsupported until separate RFCs.
 
 All further Electron-class capabilities are split into reviewable KMP-first
 contracts in the [RFC catalog](docs/rfcs/README.md). An RFC is not a support

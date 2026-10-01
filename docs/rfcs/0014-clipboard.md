@@ -314,8 +314,8 @@ evidence import, and the final `Implemented` state.
 
 Final acceptance review: 2026-10-01, Codex acceptance audit (same contributor,
 separate review pass). Reviewed contract revision `2026-09-30.3`, the three
-`READY` RFC 0014 records from hosted run `36808023495` (attempt 1, source
-revision recorded in `docs/rfcs/evidence/manifest.json`), imported target
+`READY` RFC 0014 records from hosted run `36812725294` (attempt 2, source
+revision `264125cebc957b522ecb0a241ab19e5db1701b2a`), imported target
 artifacts, and the complete PR #66 diff including the native Win32/AppKit/GTK
 providers, JDK 25 FFM binding, Kotlin service and bridge, Electron migration
 fixture, documentation, acceptance matrix, and retained evidence. Local

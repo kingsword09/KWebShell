@@ -13,4 +13,8 @@ contextBridge.exposeInMainWorld("desktop", {
   clearClipboard: (request: unknown) => ipcRenderer.invoke("clipboard.clear", request),
   readClipboardPayload: (request: unknown) => ipcRenderer.invoke("clipboard.readPayload", request),
   closeClipboardPayload: (request: unknown) => ipcRenderer.invoke("clipboard.closePayload", request),
+  openExternal: (request: unknown) => ipcRenderer.invoke("shell.openExternal", request),
+  openResource: (request: unknown) => ipcRenderer.invoke("shell.openResource", request),
+  revealResource: (request: unknown) => ipcRenderer.invoke("shell.revealResource", request),
+  trashResource: (request: unknown) => ipcRenderer.invoke("shell.trashResource", request),
 });

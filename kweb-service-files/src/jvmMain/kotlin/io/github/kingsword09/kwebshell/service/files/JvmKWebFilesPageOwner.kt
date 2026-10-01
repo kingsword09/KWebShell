@@ -107,6 +107,24 @@ public class JvmKWebFilesPageOwner(
         }
     }
 
+    /**
+     * Supplies the shell service with an owner-checked resolver. The resolver
+     * keeps the files provider lock while the shell provider performs its
+     * native action, so a navigation cannot swap the path between validation
+     * and native dispatch.
+     */
+    public fun shellResourceResolver(): JvmKWebFilesShellResolver = object : JvmKWebFilesShellResolver {
+        override suspend fun <T> withResource(
+            token: String,
+            access: JvmKWebFilesShellAccess,
+            action: (JvmKWebFilesShellResource) -> T,
+        ): T {
+            val current = snapshot().service as? JvmKWebFilesShellResolver
+                ?: throw KWebBridgeException("service.native-failed", "The files provider cannot resolve shell resources.")
+            return current.withResource(token, access, action)
+        }
+    }
+
     public fun isClosed(): Boolean = synchronized(lock) { closed }
 
     override fun close() {

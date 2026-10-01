@@ -89,6 +89,13 @@ write/clear operations. HTML, RTF, and URI-list are part of the service
 contract; Linux PRIMARY, images, custom native formats, synchronous/direct
 renderer clipboard use, and arbitrary polling remain blocked.
 
+RFC 0015 classifies Electron shell workflows as named `ShellBridge` operations:
+allowlisted `openExternal`, RFC 0013 handle-based open/reveal, and verified OS
+trash/recycle. The real CEF fixture covers native gesture enforcement,
+exact-origin isolation, resource-handle ownership, directory-trash policy, and
+post-trash source absence. Raw renderer paths, commands, permanent deletion,
+and shortcut metadata remain explicit migration blockers.
+
 ## Manifest v2 and inventory prerequisites
 
 Manifest v2 requires an exact `rendererOrigin`, an explicit `rendererProfile`,

@@ -36,6 +36,7 @@ kotlin {
             implementation(project(":kweb-service-app-paths"))
             implementation(project(":kweb-service-files"))
             implementation(project(":kweb-service-clipboard"))
+            implementation(project(":kweb-service-shell"))
             implementation(project(":kweb-example-support"))
             implementation(libs.compose.ui.desktop)
             implementation(libs.kotlinx.coroutines.core)
@@ -207,6 +208,18 @@ val appPathsBridgeJavascript = rootProject.layout.projectDirectory.file(
 val filesBridgeJavascript = rootProject.layout.projectDirectory.file(
     "kweb-service-files/build/generated/kwebBridge/files/FilesBridgeBridge.js",
 )
+val shellNativeLibrary = operatingSystem.map { name ->
+    val fileName = when {
+        name.lowercase(Locale.ROOT).startsWith("windows") -> "kwebshell_shell.dll"
+        name.lowercase(Locale.ROOT).startsWith("mac") -> "libkwebshell_shell.dylib"
+        name.lowercase(Locale.ROOT).startsWith("linux") -> "libkwebshell_shell.so"
+        else -> throw GradleException("Unsupported desktop operating system '$name'.")
+    }
+    rootProject.layout.projectDirectory.file("kweb-service-shell/build/native/contract/$fileName").asFile
+}
+val shellBridgeJavascript = rootProject.layout.projectDirectory.file(
+    "kweb-service-shell/build/generated/kwebBridge/shell/ShellBridgeBridge.js",
+)
 val clipboardNativeLibrary = operatingSystem.map { name ->
     val fileName = when {
         name.lowercase(Locale.ROOT).startsWith("windows") -> "kwebshell_clipboard.dll"
@@ -228,6 +241,7 @@ val migrationIntegrationCommand = providers.provider {
         add("-Djava.awt.headless=false")
         add("-Dkweb.native.library.path=${nativeEngineLibrary.get().absolutePath}")
         add("-Dkweb.services.native.library.path=${servicesNativeLibrary.get().absolutePath}")
+        add("-Dkweb.shell.native.library.path=${shellNativeLibrary.get().absolutePath}")
         add("-Dkweb.clipboard.native.library.path=${clipboardNativeLibrary.get().absolutePath}")
         add("-Dkweb.engine.cef.runtime.path=${nativeCefRuntime.get().absolutePath}")
         add("-Dkweb.engine.subprocess.path=${nativeBrowserSubprocess.get().absolutePath}")
@@ -236,6 +250,7 @@ val migrationIntegrationCommand = providers.provider {
         add("-Dkweb.migration.integration.root=${migrationIntegrationRoot.get().asFile.absolutePath}")
         add("-Dkweb.migration.app-paths.bridge.javascript=${appPathsBridgeJavascript.asFile.absolutePath}")
         add("-Dkweb.migration.files.bridge.javascript=${filesBridgeJavascript.asFile.absolutePath}")
+        add("-Dkweb.migration.shell.bridge.javascript=${shellBridgeJavascript.asFile.absolutePath}")
         add("-Dkweb.migration.clipboard.bridge.javascript=${clipboardBridgeJavascript.asFile.absolutePath}")
         add("-Dkweb.migration.preload.javascript=${generatedDirectory.get().file("KWebElectronPreload.js").asFile.absolutePath}")
         add("-Dkweb.migration.manifest=${fixtureManifest.asFile.absolutePath}")
@@ -263,6 +278,8 @@ val electronMigrationIntegrationTest = tasks.register<Exec>("electronMigrationIn
         ":kweb-service-app-paths:buildNative",
         ":kweb-service-app-paths:generateAppPathsBridge",
         ":kweb-service-files:generateFilesBridge",
+        ":kweb-service-shell:buildNative",
+        ":kweb-service-shell:generateShellBridge",
         ":kweb-service-clipboard:buildNative",
         ":kweb-service-clipboard:generateClipboardBridge",
     )
@@ -279,6 +296,8 @@ val electronMigrationIntegrationTest = tasks.register<Exec>("electronMigrationIn
     })
     inputs.file(appPathsBridgeJavascript)
     inputs.file(filesBridgeJavascript)
+    inputs.file(shellBridgeJavascript)
+    inputs.file(shellNativeLibrary)
     inputs.file(clipboardBridgeJavascript)
     inputs.file(clipboardNativeLibrary)
     inputs.file(servicesNativeLibrary)

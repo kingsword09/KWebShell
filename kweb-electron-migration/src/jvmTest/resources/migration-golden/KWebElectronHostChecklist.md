@@ -8,6 +8,7 @@ Renderer origin: `app://migration-fixture`; profile: `default`.
 - [ ] Install `app-paths` (version `1.0.0`)
 - [ ] Install `clipboard` (version `1.0.0`)
 - [ ] Install `files` (version `1.0.0`)
+- [ ] Install `shell` (version `1.0.0`)
 
 ## 2. Window & Hierarchy Definitions
 - [ ] Window `main`: "KWebShell Migration Fixture" [Main] (Profile: `default`)
@@ -23,11 +24,15 @@ Renderer origin: `app://migration-fixture`; profile: `default`.
 - [ ] Preload method `closeHandle` -> Channel `fs.closeHandle` (Status: `ADAPTER`)
 - [ ] Preload method `getPath` -> Channel `app.getPath` (Status: `ADAPTER`)
 - [ ] Preload method `listDirectory` -> Channel `fs.listDirectory` (Status: `ADAPTER`)
+- [ ] Preload method `openExternal` -> Channel `shell.openExternal` (Status: `ADAPTER`)
 - [ ] Preload method `openFile` -> Channel `fs.openFile` (Status: `ADAPTER`)
+- [ ] Preload method `openResource` -> Channel `shell.openResource` (Status: `ADAPTER`)
 - [ ] Preload method `openWorkspace` -> Channel `fs.openWorkspace` (Status: `ADAPTER`)
 - [ ] Preload method `readClipboard` -> Channel `clipboard.read` (Status: `ADAPTER`)
 - [ ] Preload method `readClipboardPayload` -> Channel `clipboard.readPayload` (Status: `ADAPTER`)
 - [ ] Preload method `readFile` -> Channel `fs.readFile` (Status: `ADAPTER`)
+- [ ] Preload method `revealResource` -> Channel `shell.revealResource` (Status: `ADAPTER`)
+- [ ] Preload method `trashResource` -> Channel `shell.trashResource` (Status: `ADAPTER`)
 - [ ] Preload method `writeClipboard` -> Channel `clipboard.write` (Status: `ADAPTER`)
 - [ ] Preload method `writeFile` -> Channel `fs.writeFile` (Status: `ADAPTER`)
 - [ ] Stream `progress` -> Method `downloadProgress` (Capacity: `32`, Status: `ADAPTER`)

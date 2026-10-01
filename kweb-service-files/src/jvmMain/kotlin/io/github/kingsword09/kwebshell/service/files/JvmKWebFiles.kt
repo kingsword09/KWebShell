@@ -59,10 +59,10 @@ public object JvmKWebFiles {
         JvmKWebFilesProvider(owner, configuration)
 }
 
-private class JvmKWebFilesProvider(
+internal class JvmKWebFilesProvider(
     private val owner: KWebFileOwnerScope,
     configuration: JvmKWebFilesConfiguration,
-) : KWebFiles {
+) : KWebFiles, JvmKWebFilesShellResolver {
     private val lock = Any()
     private val mutableLifecycle = MutableStateFlow(KWebLifecycleState.OPEN)
     private val random = SecureRandom()
@@ -379,6 +379,23 @@ private class JvmKWebFilesProvider(
             val token = handle.token
             if (handles[token] == null) throw failure(KWebFilesErrorCode.HANDLE_NOT_FOUND, "The file handle is not open.", "close-handle")
             closeAndRemove(token)
+        }
+    }
+
+    override suspend fun <T> withResource(
+        token: String,
+        access: JvmKWebFilesShellAccess,
+        action: (JvmKWebFilesShellResource) -> T,
+    ): T = withContext(Dispatchers.IO) {
+        synchronized(lock) {
+            requireOpen("shell-resource")
+            val node = requireNode(KWebFileHandle(token), "shell-resource")
+            requireGrant(node, KWebFileGrant.METADATA, "shell-resource")
+            if (access == JvmKWebFilesShellAccess.TRASH) {
+                requireGrant(node, KWebFileGrant.WRITE, "shell-resource")
+            }
+            validateExisting(node.path, node.kind, "shell-resource")
+            action(JvmKWebFilesShellResource(node.path, node.kind))
         }
     }
 

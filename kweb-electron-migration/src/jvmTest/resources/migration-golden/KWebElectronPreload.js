@@ -9,6 +9,9 @@
   if (!filesBridge || typeof filesBridge.createClient !== "function") {
     throw new Error("FilesBridge is required by this migration facade.");
   }
+  const shellBridge = globalThis.ShellBridge;
+  if (!shellBridge || typeof shellBridge.createClient !== "function") throw new Error("ShellBridge is required by this migration facade.");
+  const shellClient = shellBridge.createClient();
   class KWebElectronMigrationError extends Error {
     constructor(code, message) {
       super(message);
@@ -49,11 +52,15 @@
       return client.resolve({ kind }, options).then(result => result.path);
     },
     listDirectory: (request, options) => filesClient.listDirectory(request, options),
+    openExternal: (request, options) => shellClient.openExternal(request, options),
     openFile: (request, options) => filesClient.openFile(request, options),
+    openResource: (request, options) => shellClient.openResource(request, options),
     openWorkspace: (request, options) => filesClient.openWorkspace(request, options),
     readClipboard: (request, options) => clipboardClient.read(request, options),
     readClipboardPayload: (request, options) => clipboardClient.readPayload(request, options),
     readFile: (request, options) => filesClient.readFile(request, options),
+    revealResource: (request, options) => shellClient.revealResource(request, options),
+    trashResource: (request, options) => shellClient.trashResource(request, options),
     writeClipboard: (request, options) => clipboardClient.write(request, options),
     writeFile: (request, options) => filesClient.writeFile(request, options),
     progress: (request, options) => bridgeStreams.openDownloadProgress(request, options),

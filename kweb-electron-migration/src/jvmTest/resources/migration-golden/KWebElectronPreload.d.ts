@@ -75,6 +75,9 @@ export interface ClipboardWriteResponse { sequence: string; }
 export interface ClipboardClearResponse { sequence: string; }
 export interface ClipboardClosePayloadRequest { handle: string; }
 export interface ClipboardClosePayloadResponse { closed: boolean; }
+export interface ShellExternalUriRequest { uri: string; }
+export interface ShellResourceRequest { handle: string; }
+export interface ShellActionResponse { action: string; outcome: string; resourceKind: string | null; }
 
 export interface KWebBridgeCallOptions {
   readonly signal?: AbortSignal;
@@ -87,11 +90,15 @@ export interface DesktopApi {
   closeHandle(request: FilesCloseHandleRequest, options?: KWebBridgeCallOptions): Promise<FilesCloseHandleResponse>;
   getPath(name: ElectronPathName, options?: KWebBridgeCallOptions): Promise<string>;
   listDirectory(request: FilesListDirectoryRequest, options?: KWebBridgeCallOptions): Promise<FilesListDirectoryResponse>;
+  openExternal(request: ShellExternalUriRequest, options?: KWebBridgeCallOptions): Promise<ShellActionResponse>;
   openFile(request: FilesOpenFileRequest, options?: KWebBridgeCallOptions): Promise<FilesHandleDescriptor>;
+  openResource(request: ShellResourceRequest, options?: KWebBridgeCallOptions): Promise<ShellActionResponse>;
   openWorkspace(request: FilesWorkspaceRequest, options?: KWebBridgeCallOptions): Promise<FilesHandleDescriptor>;
   readClipboard(request: ClipboardReadRequest, options?: KWebBridgeCallOptions): Promise<ClipboardReadResponse>;
   readClipboardPayload(request: ClipboardReadPayloadRequest, options?: KWebBridgeCallOptions): Promise<ClipboardReadPayloadResponse>;
   readFile(request: FilesReadFileRequest, options?: KWebBridgeCallOptions): Promise<FilesReadFileResponse>;
+  revealResource(request: ShellResourceRequest, options?: KWebBridgeCallOptions): Promise<ShellActionResponse>;
+  trashResource(request: ShellResourceRequest, options?: KWebBridgeCallOptions): Promise<ShellActionResponse>;
   writeClipboard(request: ClipboardWriteRequest, options?: KWebBridgeCallOptions): Promise<ClipboardWriteResponse>;
   writeFile(request: FilesWriteFileRequest, options?: KWebBridgeCallOptions): Promise<FilesWriteFileResponse>;
   progress(request: DownloadRequest, options?: KWebElectronStreamOptions): KWebElectronStream<ProgressChunk>;
@@ -118,6 +125,9 @@ declare global {
     };
     ClipboardBridge: {
       createClient(): { clear(request: ClipboardClearRequest, options?: KWebBridgeCallOptions): Promise<ClipboardClearResponse>; closePayload(request: ClipboardClosePayloadRequest, options?: KWebBridgeCallOptions): Promise<ClipboardClosePayloadResponse>; read(request: ClipboardReadRequest, options?: KWebBridgeCallOptions): Promise<ClipboardReadResponse>; readPayload(request: ClipboardReadPayloadRequest, options?: KWebBridgeCallOptions): Promise<ClipboardReadPayloadResponse>; write(request: ClipboardWriteRequest, options?: KWebBridgeCallOptions): Promise<ClipboardWriteResponse> };
+    };
+    ShellBridge: {
+      createClient(): { openExternal(request: ShellExternalUriRequest, options?: KWebBridgeCallOptions): Promise<ShellActionResponse>; openResource(request: ShellResourceRequest, options?: KWebBridgeCallOptions): Promise<ShellActionResponse>; revealResource(request: ShellResourceRequest, options?: KWebBridgeCallOptions): Promise<ShellActionResponse>; trashResource(request: ShellResourceRequest, options?: KWebBridgeCallOptions): Promise<ShellActionResponse> };
     };
     KWebApplicationStreamsBridge: {
       createClient(): { openDownloadProgress(request: DownloadRequest, options?: KWebElectronStreamOptions): KWebElectronStream<ProgressChunk> };

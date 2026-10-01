@@ -23,6 +23,7 @@ dependencies {
     implementation(project(":kweb-service-dialogs"))
     implementation(project(":kweb-service-files"))
     implementation(project(":kweb-service-clipboard"))
+    implementation(project(":kweb-service-shell"))
     implementation(libs.kotlinx.serialization.json)
     testImplementation(kotlin("test-junit5"))
     testRuntimeOnly(libs.junit.platform.launcher)

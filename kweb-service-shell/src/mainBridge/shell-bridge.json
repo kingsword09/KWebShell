@@ -1,0 +1,33 @@
+{
+  "namespace": "ShellBridge",
+  "kotlinPackage": "io.github.kingsword09.kwebshell.service.shell.generated",
+  "version": 1,
+  "types": [
+    {
+      "name": "ExternalUriRequest",
+      "fields": [
+        { "name": "uri", "type": "string" }
+      ]
+    },
+    {
+      "name": "ResourceRequest",
+      "fields": [
+        { "name": "handle", "type": "string" }
+      ]
+    },
+    {
+      "name": "ActionResponse",
+      "fields": [
+        { "name": "action", "type": "string" },
+        { "name": "outcome", "type": "string" },
+        { "name": "resourceKind", "type": "string", "nullable": true }
+      ]
+    }
+  ],
+  "methods": [
+    { "name": "openExternal", "request": "ExternalUriRequest", "response": "ActionResponse" },
+    { "name": "openResource", "request": "ResourceRequest", "response": "ActionResponse" },
+    { "name": "revealResource", "request": "ResourceRequest", "response": "ActionResponse" },
+    { "name": "trashResource", "request": "ResourceRequest", "response": "ActionResponse" }
+  ]
+}

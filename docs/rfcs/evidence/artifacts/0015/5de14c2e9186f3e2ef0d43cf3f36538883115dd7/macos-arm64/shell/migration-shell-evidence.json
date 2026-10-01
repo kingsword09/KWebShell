@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "target": "macos-arm64",
+  "cefRuntime": "stock-cef-151",
+  "contractRevision": "2026-10-01.1",
+  "exactOriginMainFrame": true,
+  "childFrameTransportAbsent": true,
+  "crossOriginBridgeAbsent": true,
+  "gestureDeniedWithoutNativeInput": true,
+  "externalUriAccepted": true,
+  "resourceOpenAccepted": true,
+  "resourceRevealAccepted": true,
+  "directoryTrashDeniedByPolicy": true,
+  "resourceTrashMovedToOsTrash": true,
+  "sourceResourceAbsentAfterTrash": true,
+  "permissionDenied": true,
+  "ownerClosed": true
+}

@@ -5,14 +5,14 @@ set -euo pipefail
 # disposable desktop application as the default URI/MIME handler; it is not a
 # product fallback or an alternate shell implementation.
 fixture_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/kwebshell-linux-shell-fixture"
-data_home="$fixture_root/xdg-data"
-config_home="$fixture_root/xdg-config"
-cache_home="$fixture_root/xdg-cache"
+user_home="$(getent passwd "$(id -u)" | cut -d: -f6)"
+data_home="${XDG_DATA_HOME:-$user_home/.local/share}"
+config_home="${XDG_CONFIG_HOME:-$user_home/.config}"
 handler="$fixture_root/kwebshell-shell-handler"
 handler_log="$fixture_root/handler.log"
 desktop_file="$data_home/applications/kwebshell-hosted-shell-fixture.desktop"
 
-mkdir -p "$data_home/applications" "$config_home" "$cache_home"
+mkdir -p "$data_home/applications" "$config_home"
 
 cat > "$handler" <<'EOF'
 #!/usr/bin/env bash
@@ -52,17 +52,10 @@ EOF
 desktop-file-validate "$desktop_file"
 update-desktop-database "$data_home/applications"
 
-export XDG_DATA_HOME="$data_home"
-export XDG_CONFIG_HOME="$config_home"
-export XDG_CACHE_HOME="$cache_home"
 export XDG_CURRENT_DESKTOP=GNOME
 export KWEB_SHELL_FIXTURE_LOG="$handler_log"
 
 {
-  echo "XDG_DATA_HOME=$data_home"
-  echo "XDG_CONFIG_HOME=$config_home"
-  echo "XDG_CACHE_HOME=$cache_home"
-  echo "XDG_CURRENT_DESKTOP=GNOME"
   echo "KWEB_SHELL_FIXTURE_LOG=$handler_log"
 } >> "${GITHUB_ENV:?}"
 

@@ -356,6 +356,7 @@
       "paths": [
         ".github/scripts/aggregate-rfc-evidence.sh",
         ".github/scripts/configure-linux-shell-fixture.sh",
+        ".github/scripts/linux-file-manager-fixture.c",
         ".github/workflows/ci.yml",
         "README.md",
         "build.gradle.kts",

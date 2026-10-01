@@ -88,7 +88,6 @@ jobs:
             libglib2.0-dev \
             libgtk-3-dev \
             libnss3-tools \
-            nautilus \
             openbox \
             desktop-file-utils \
             x11-utils \

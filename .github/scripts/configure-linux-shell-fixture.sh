@@ -11,8 +11,12 @@ config_home="${XDG_CONFIG_HOME:-$user_home/.config}"
 handler="$fixture_root/kwebshell-shell-handler"
 handler_log="$fixture_root/handler.log"
 desktop_file="$data_home/applications/kwebshell-hosted-shell-fixture.desktop"
+file_manager_source="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/linux-file-manager-fixture.c"
+file_manager_binary="$fixture_root/kwebshell-file-manager-fixture"
+file_manager_service_dir="$data_home/dbus-1/services"
+file_manager_service="$file_manager_service_dir/org.freedesktop.FileManager1.service"
 
-mkdir -p "$fixture_root" "$data_home/applications" "$config_home"
+mkdir -p "$fixture_root" "$data_home/applications" "$file_manager_service_dir" "$config_home"
 
 cat > "$handler" <<'EOF'
 #!/usr/bin/env bash
@@ -21,6 +25,16 @@ set -euo pipefail
 printf '%s\n' "$@" >> "${KWEB_SHELL_FIXTURE_LOG:?}"
 EOF
 chmod 755 "$handler"
+
+gio_flags=( $(pkg-config --cflags --libs gio-2.0) )
+cc -std=c11 -Wall -Wextra -Werror "$file_manager_source" "${gio_flags[@]}" -o "$file_manager_binary"
+chmod 755 "$file_manager_binary"
+
+cat > "$file_manager_service" <<EOF
+[D-BUS Service]
+Name=org.freedesktop.FileManager1
+Exec=$file_manager_binary
+EOF
 
 cat > "$desktop_file" <<EOF
 [Desktop Entry]
@@ -51,6 +65,13 @@ EOF
 
 desktop-file-validate "$desktop_file"
 update-desktop-database "$data_home/applications"
+
+XDG_DATA_HOME="$data_home" dbus-run-session -- \
+  gdbus introspect \
+    --session \
+    --dest org.freedesktop.FileManager1 \
+    --object-path /org/freedesktop/FileManager1 \
+    >/dev/null
 
 export XDG_CURRENT_DESKTOP=GNOME
 export KWEB_SHELL_FIXTURE_LOG="$handler_log"

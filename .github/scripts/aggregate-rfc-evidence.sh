@@ -14,7 +14,7 @@ input="docs/rfcs/evidence/manifest.json"
 # The recorder refuses a non-Implemented catalog: normalize the statuses in
 # this workspace before recording. The checked-in flip lands in the same commit
 # as the checked-in records.
-for rfc in 0001 0002 0003 0004 0006 0007 0008 0009 0011 0012 0013 0030; do
+for rfc in 0001 0002 0003 0004 0006 0007 0008 0009 0011 0012 0013 0014 0030; do
   file=$(ls docs/rfcs/${rfc}-*.md)
   sed 's/^- Status: .*$/- Status: Implemented/' "$file" > "$file.recorded"
   mv "$file.recorded" "$file"
@@ -61,6 +61,15 @@ record() {
   if [ "$rfc" = "0013" ]; then
     arguments="$arguments --matrix-row node-fs"
   fi
+  if [ "$rfc" = "0014" ]; then
+    arguments="$arguments --matrix-row clipboard"
+    clipboard_report=$(find "$downloaded" -type f -name compatibility.json -path "*electron-migration-${target}-*" | head -1)
+    if [ -z "$clipboard_report" ] || [ ! -f "$clipboard_report" ]; then
+      echo "Missing clipboard migration compatibility report for $target" >&2
+      exit 1
+    fi
+    arguments="$arguments --service clipboard --from-compatibility-report $clipboard_report"
+  fi
   ./gradlew --no-daemon :kweb-rfc-governance:rfcEvidenceRecord \
     -PrfcEvidenceArguments="$arguments"
 }
@@ -80,6 +89,7 @@ for target in macos-arm64 windows-x64 linux-x64; do
     "0011|security.hosted|security-challenge|security-challenge-evidence.json|engine-integration|mtls-probe|mtls-probe-evidence.json|engine-integration"
     "0012|downloads.hosted|downloads|downloads-evidence.json|engine-integration"
     "0013|files.hosted|files|files-evidence.json|engine-integration|migration-files|compatibility.json|electron-migration"
+    "0014|clipboard.hosted|clipboard|clipboard-evidence.json|clipboard|migration-clipboard|migration-clipboard-evidence.json|electron-migration"
     "0007|window-controls.hosted|window-controls-report|window-controls-report.json|provider-lifecycle"
   )
   count=0

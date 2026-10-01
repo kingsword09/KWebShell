@@ -1,0 +1,122 @@
+{
+  "namespace": "ClipboardBridge",
+  "kotlinPackage": "io.github.kingsword09.kwebshell.service.clipboard.generated",
+  "version": 1,
+  "types": [
+    {
+      "name": "ReadRequest",
+      "fields": [
+        { "name": "selection", "type": "string" },
+        { "name": "formats", "type": "string", "list": true }
+      ]
+    },
+    {
+      "name": "PayloadDescriptor",
+      "fields": [
+        { "name": "handle", "type": "string" },
+        { "name": "format", "type": "string" },
+        { "name": "encoding", "type": "string" },
+        { "name": "sizeBytes", "type": "string" }
+      ]
+    },
+    {
+      "name": "ReadResponse",
+      "fields": [
+        { "name": "sequence", "type": "string" },
+        { "name": "available", "type": "PayloadDescriptor", "list": true }
+      ]
+    },
+    {
+      "name": "ReadPayloadRequest",
+      "fields": [
+        { "name": "handle", "type": "string" },
+        { "name": "offset", "type": "string" },
+        { "name": "length", "type": "int32" }
+      ]
+    },
+    {
+      "name": "ReadPayloadResponse",
+      "fields": [
+        { "name": "bytes", "type": "int32", "list": true },
+        { "name": "eof", "type": "boolean" }
+      ]
+    },
+    {
+      "name": "WriteItem",
+      "fields": [
+        { "name": "format", "type": "string" },
+        { "name": "encoding", "type": "string" },
+        { "name": "bytes", "type": "int32", "list": true }
+      ]
+    },
+    {
+      "name": "WriteRequest",
+      "fields": [
+        { "name": "selection", "type": "string" },
+        { "name": "items", "type": "WriteItem", "list": true }
+      ]
+    },
+    {
+      "name": "WriteResponse",
+      "fields": [
+        { "name": "sequence", "type": "string" }
+      ]
+    },
+    {
+      "name": "ClearRequest",
+      "fields": [
+        { "name": "selection", "type": "string" }
+      ]
+    },
+    {
+      "name": "ClearResponse",
+      "fields": [
+        { "name": "sequence", "type": "string" }
+      ]
+    },
+    {
+      "name": "ChangesRequest",
+      "fields": [
+        { "name": "selection", "type": "string" }
+      ]
+    },
+    {
+      "name": "ChangeEvent",
+      "fields": [
+        { "name": "sequence", "type": "string" },
+        { "name": "selection", "type": "string" },
+        { "name": "formats", "type": "string", "list": true },
+        { "name": "ownership", "type": "string" }
+      ]
+    },
+    {
+      "name": "ClosePayloadRequest",
+      "fields": [
+        { "name": "handle", "type": "string" }
+      ]
+    },
+    {
+      "name": "ClosePayloadResponse",
+      "fields": [
+        { "name": "closed", "type": "boolean" }
+      ]
+    }
+  ],
+  "methods": [
+    { "name": "read", "request": "ReadRequest", "response": "ReadResponse" },
+    { "name": "readPayload", "request": "ReadPayloadRequest", "response": "ReadPayloadResponse" },
+    { "name": "write", "request": "WriteRequest", "response": "WriteResponse" },
+    { "name": "clear", "request": "ClearRequest", "response": "ClearResponse" },
+    { "name": "closePayload", "request": "ClosePayloadRequest", "response": "ClosePayloadResponse" }
+  ],
+  "streams": [
+    {
+      "name": "changes",
+      "request": "ChangesRequest",
+      "chunk": "ChangeEvent",
+      "binary": false,
+      "capacity": 64,
+      "schemaVersion": 1
+    }
+  ]
+}

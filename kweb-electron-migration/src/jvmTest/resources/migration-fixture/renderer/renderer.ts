@@ -30,3 +30,33 @@ export async function watchScopedDirectory(): Promise<string> {
   }
   return "closed";
 }
+
+export async function readClipboardText(): Promise<unknown> {
+  const result = await window.desktop.readClipboard({
+    selection: "system",
+    formats: ["text/plain"],
+  });
+  const payload = result.available.find((item) => item.format === "text/plain");
+  if (!payload) return "";
+  try {
+    const chunk = await window.desktop.readClipboardPayload({
+      handle: payload.handle,
+      offset: "0",
+      length: Number(payload.sizeBytes),
+    });
+    return new TextDecoder().decode(new Uint8Array(chunk.bytes));
+  } finally {
+    await window.desktop.closeClipboardPayload({ handle: payload.handle });
+  }
+}
+
+export async function writeClipboardText(value: string): Promise<unknown> {
+  return window.desktop.writeClipboard({
+    selection: "system",
+    items: [{ format: "text/plain", encoding: "utf8", bytes: Array.from(new TextEncoder().encode(value)) }],
+  });
+}
+
+export async function clearClipboard(): Promise<unknown> {
+  return window.desktop.clearClipboard({ selection: "system" });
+}

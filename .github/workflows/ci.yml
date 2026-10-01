@@ -232,7 +232,18 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: electron-migration-${{ matrix.target }}-${{ github.sha }}
-          path: kweb-electron-migration/build/reports/electron-migration/
+          path: |
+            kweb-electron-migration/build/reports/electron-migration/
+            kweb-electron-migration/build/migration-integration/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload clipboard evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: clipboard-${{ matrix.target }}-${{ github.sha }}
+          path: kweb-service-clipboard/build/clipboard-integration/
           if-no-files-found: error
           retention-days: 14
 
@@ -339,7 +350,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p build/rfc-evidence/downloaded
-          for family in rfc-governance provider-lifecycle native-dialogs engine-integration electron-migration application-package application-lifecycle; do
+          for family in rfc-governance provider-lifecycle native-dialogs engine-integration electron-migration clipboard application-package application-lifecycle; do
             gh run download "$GITHUB_RUN_ID" \
               --repo "$GITHUB_REPOSITORY" \
               --pattern "$family-*-${{ github.sha }}" \

@@ -61,6 +61,20 @@ export interface FilesWatchEvent {
   kind: string;
   name: string | null;
 }
+export interface ClipboardPayloadDescriptor {
+  handle: string; format: string; encoding: string; sizeBytes: string;
+}
+export interface ClipboardReadRequest { selection: string; formats: readonly string[]; }
+export interface ClipboardReadResponse { sequence: string; available: readonly ClipboardPayloadDescriptor[]; }
+export interface ClipboardReadPayloadRequest { handle: string; offset: string; length: number; }
+export interface ClipboardReadPayloadResponse { bytes: readonly number[]; eof: boolean; }
+export interface ClipboardWriteItem { format: string; encoding: string; bytes: readonly number[]; }
+export interface ClipboardWriteRequest { selection: string; items: readonly ClipboardWriteItem[]; }
+export interface ClipboardClearRequest { selection: string; }
+export interface ClipboardWriteResponse { sequence: string; }
+export interface ClipboardClearResponse { sequence: string; }
+export interface ClipboardClosePayloadRequest { handle: string; }
+export interface ClipboardClosePayloadResponse { closed: boolean; }
 
 export interface KWebBridgeCallOptions {
   readonly signal?: AbortSignal;
@@ -68,12 +82,17 @@ export interface KWebBridgeCallOptions {
 }
 
 export interface DesktopApi {
+  clearClipboard(request: ClipboardClearRequest, options?: KWebBridgeCallOptions): Promise<ClipboardClearResponse>;
+  closeClipboardPayload(request: ClipboardClosePayloadRequest, options?: KWebBridgeCallOptions): Promise<ClipboardClosePayloadResponse>;
   closeHandle(request: FilesCloseHandleRequest, options?: KWebBridgeCallOptions): Promise<FilesCloseHandleResponse>;
   getPath(name: ElectronPathName, options?: KWebBridgeCallOptions): Promise<string>;
   listDirectory(request: FilesListDirectoryRequest, options?: KWebBridgeCallOptions): Promise<FilesListDirectoryResponse>;
   openFile(request: FilesOpenFileRequest, options?: KWebBridgeCallOptions): Promise<FilesHandleDescriptor>;
   openWorkspace(request: FilesWorkspaceRequest, options?: KWebBridgeCallOptions): Promise<FilesHandleDescriptor>;
+  readClipboard(request: ClipboardReadRequest, options?: KWebBridgeCallOptions): Promise<ClipboardReadResponse>;
+  readClipboardPayload(request: ClipboardReadPayloadRequest, options?: KWebBridgeCallOptions): Promise<ClipboardReadPayloadResponse>;
   readFile(request: FilesReadFileRequest, options?: KWebBridgeCallOptions): Promise<FilesReadFileResponse>;
+  writeClipboard(request: ClipboardWriteRequest, options?: KWebBridgeCallOptions): Promise<ClipboardWriteResponse>;
   writeFile(request: FilesWriteFileRequest, options?: KWebBridgeCallOptions): Promise<FilesWriteFileResponse>;
   progress(request: DownloadRequest, options?: KWebElectronStreamOptions): KWebElectronStream<ProgressChunk>;
   watchDirectory(request: FilesWatchRequest, options?: KWebElectronStreamOptions): KWebElectronStream<FilesWatchEvent>;
@@ -120,10 +139,17 @@ export function installDesktopPreload(): void {
     throw new KWebElectronMigrationError("migration.files-bridge.missing", "FilesBridge is required by this migration facade.");
   }
   const filesClient = filesBridge.createClient();
+  const clipboardBridge = window.ClipboardBridge;
+  if (!clipboardBridge || typeof clipboardBridge.createClient !== "function") {
+    throw new KWebElectronMigrationError("migration.clipboard-bridge.missing", "ClipboardBridge is required by this migration facade.");
+  }
+  const clipboardClient = clipboardBridge.createClient();
   const streamBridge = window.KWebApplicationStreamsBridge;
   if (!streamBridge || typeof streamBridge.createClient !== "function") throw new KWebElectronMigrationError("migration.stream-bridge.missing", "KWebApplicationStreamsBridge is required by this migration facade.");
   const bridgeStreams = streamBridge.createClient();
   const api: DesktopApi = Object.freeze({
+    clearClipboard: (request: ClipboardClearRequest, options?: KWebBridgeCallOptions) => clipboardClient.clear(request, options) as Promise<ClipboardClearResponse>,
+    closeClipboardPayload: (request: ClipboardClosePayloadRequest, options?: KWebBridgeCallOptions) => clipboardClient.closePayload(request, options) as Promise<ClipboardClosePayloadResponse>,
     closeHandle: (request: FilesCloseHandleRequest, options?: KWebBridgeCallOptions) => filesClient.closeHandle(request, options) as Promise<FilesCloseHandleResponse>,
     getPath: (name: ElectronPathName, options?: KWebBridgeCallOptions) => {
       const kind = pathKinds[name];
@@ -135,7 +161,10 @@ export function installDesktopPreload(): void {
     listDirectory: (request: FilesListDirectoryRequest, options?: KWebBridgeCallOptions) => filesClient.listDirectory(request, options) as Promise<FilesListDirectoryResponse>,
     openFile: (request: FilesOpenFileRequest, options?: KWebBridgeCallOptions) => filesClient.openFile(request, options) as Promise<FilesHandleDescriptor>,
     openWorkspace: (request: FilesWorkspaceRequest, options?: KWebBridgeCallOptions) => filesClient.openWorkspace(request, options) as Promise<FilesHandleDescriptor>,
+    readClipboard: (request: ClipboardReadRequest, options?: KWebBridgeCallOptions) => clipboardClient.read(request, options) as Promise<ClipboardReadResponse>,
+    readClipboardPayload: (request: ClipboardReadPayloadRequest, options?: KWebBridgeCallOptions) => clipboardClient.readPayload(request, options) as Promise<ClipboardReadPayloadResponse>,
     readFile: (request: FilesReadFileRequest, options?: KWebBridgeCallOptions) => filesClient.readFile(request, options) as Promise<FilesReadFileResponse>,
+    writeClipboard: (request: ClipboardWriteRequest, options?: KWebBridgeCallOptions) => clipboardClient.write(request, options) as Promise<ClipboardWriteResponse>,
     writeFile: (request: FilesWriteFileRequest, options?: KWebBridgeCallOptions) => filesClient.writeFile(request, options) as Promise<FilesWriteFileResponse>,
     progress: (request: DownloadRequest, options?: KWebElectronStreamOptions) => bridgeStreams.openDownloadProgress(request, options),
     watchDirectory: (request: FilesWatchRequest, options?: KWebElectronStreamOptions) => filesClient.openWatchDirectory(request, options),
@@ -156,6 +185,9 @@ declare global {
     };
     FilesBridge: {
       createClient(): { closeHandle(request: FilesCloseHandleRequest, options?: KWebBridgeCallOptions): Promise<FilesCloseHandleResponse>; listDirectory(request: FilesListDirectoryRequest, options?: KWebBridgeCallOptions): Promise<FilesListDirectoryResponse>; openFile(request: FilesOpenFileRequest, options?: KWebBridgeCallOptions): Promise<FilesHandleDescriptor>; openWorkspace(request: FilesWorkspaceRequest, options?: KWebBridgeCallOptions): Promise<FilesHandleDescriptor>; readFile(request: FilesReadFileRequest, options?: KWebBridgeCallOptions): Promise<FilesReadFileResponse>; writeFile(request: FilesWriteFileRequest, options?: KWebBridgeCallOptions): Promise<FilesWriteFileResponse>; openWatchDirectory(request: FilesWatchRequest, options?: KWebElectronStreamOptions): KWebElectronStream<FilesWatchEvent> };
+    };
+    ClipboardBridge: {
+      createClient(): { clear(request: ClipboardClearRequest, options?: KWebBridgeCallOptions): Promise<ClipboardClearResponse>; closePayload(request: ClipboardClosePayloadRequest, options?: KWebBridgeCallOptions): Promise<ClipboardClosePayloadResponse>; read(request: ClipboardReadRequest, options?: KWebBridgeCallOptions): Promise<ClipboardReadResponse>; readPayload(request: ClipboardReadPayloadRequest, options?: KWebBridgeCallOptions): Promise<ClipboardReadPayloadResponse>; write(request: ClipboardWriteRequest, options?: KWebBridgeCallOptions): Promise<ClipboardWriteResponse> };
     };
     KWebApplicationStreamsBridge: {
       createClient(): { openDownloadProgress(request: DownloadRequest, options?: KWebElectronStreamOptions): KWebElectronStream<ProgressChunk> };

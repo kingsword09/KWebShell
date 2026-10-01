@@ -4,7 +4,7 @@
   "rendererGlobal": "desktop",
   "rendererRoot": "renderer",
   "rendererEntry": "renderer.ts",
-  "rendererSha256": "e525692e00bf9985513ab6f3c3dceb6791f8759cc91c28f8cf8237ff4adb7c0b",
+  "rendererSha256": "a77338d59b9dcd587473ec1515a1d6fe3eef76b5b243cdff878623007533100c",
   "electronFixtureMajor": 44,
   "electronImports": [
     {
@@ -132,6 +132,86 @@
         "requiresUserGesture": false,
         "requiresOsConsent": false
       }
+    },
+    {
+      "name": "clipboard.read",
+      "schemaVersion": 2,
+      "requestType": "ClipboardReadRequest",
+      "responseType": "ClipboardReadResponse",
+      "serviceId": "clipboard",
+      "serviceVersion": "1.0.0",
+      "operationId": "read",
+      "status": "ADAPTER",
+      "adapter": "CLIPBOARD_OPERATION",
+      "policy": {
+        "rendererGrant": "native.clipboard.read",
+        "requiresUserGesture": true,
+        "requiresOsConsent": false
+      }
+    },
+    {
+      "name": "clipboard.write",
+      "schemaVersion": 2,
+      "requestType": "ClipboardWriteRequest",
+      "responseType": "ClipboardWriteResponse",
+      "serviceId": "clipboard",
+      "serviceVersion": "1.0.0",
+      "operationId": "write",
+      "status": "ADAPTER",
+      "adapter": "CLIPBOARD_OPERATION",
+      "policy": {
+        "rendererGrant": "native.clipboard.write",
+        "requiresUserGesture": true,
+        "requiresOsConsent": false
+      }
+    },
+    {
+      "name": "clipboard.readPayload",
+      "schemaVersion": 2,
+      "requestType": "ClipboardReadPayloadRequest",
+      "responseType": "ClipboardReadPayloadResponse",
+      "serviceId": "clipboard",
+      "serviceVersion": "1.0.0",
+      "operationId": "read-payload",
+      "status": "ADAPTER",
+      "adapter": "CLIPBOARD_OPERATION",
+      "policy": {
+        "rendererGrant": "native.clipboard.read-payload",
+        "requiresUserGesture": false,
+        "requiresOsConsent": false
+      }
+    },
+    {
+      "name": "clipboard.closePayload",
+      "schemaVersion": 2,
+      "requestType": "ClipboardClosePayloadRequest",
+      "responseType": "ClipboardClosePayloadResponse",
+      "serviceId": "clipboard",
+      "serviceVersion": "1.0.0",
+      "operationId": "close-payload",
+      "status": "ADAPTER",
+      "adapter": "CLIPBOARD_OPERATION",
+      "policy": {
+        "rendererGrant": "native.clipboard.close-payload",
+        "requiresUserGesture": false,
+        "requiresOsConsent": false
+      }
+    },
+    {
+      "name": "clipboard.clear",
+      "schemaVersion": 2,
+      "requestType": "ClipboardClearRequest",
+      "responseType": "ClipboardClearResponse",
+      "serviceId": "clipboard",
+      "serviceVersion": "1.0.0",
+      "operationId": "clear",
+      "status": "ADAPTER",
+      "adapter": "CLIPBOARD_OPERATION",
+      "policy": {
+        "rendererGrant": "native.clipboard.clear",
+        "requiresUserGesture": true,
+        "requiresOsConsent": false
+      }
     }
   ],
   "preloadMethods": [
@@ -197,6 +277,51 @@
       "returnType": "Promise<FilesCloseHandleResponse>",
       "status": "ADAPTER",
       "adapter": "FILES_OPERATION"
+    },
+    {
+      "name": "readClipboard",
+      "channel": "clipboard.read",
+      "parameterName": "request",
+      "parameterType": "ClipboardReadRequest",
+      "returnType": "Promise<ClipboardReadResponse>",
+      "status": "ADAPTER",
+      "adapter": "CLIPBOARD_OPERATION"
+    },
+    {
+      "name": "writeClipboard",
+      "channel": "clipboard.write",
+      "parameterName": "request",
+      "parameterType": "ClipboardWriteRequest",
+      "returnType": "Promise<ClipboardWriteResponse>",
+      "status": "ADAPTER",
+      "adapter": "CLIPBOARD_OPERATION"
+    },
+    {
+      "name": "clearClipboard",
+      "channel": "clipboard.clear",
+      "parameterName": "request",
+      "parameterType": "ClipboardClearRequest",
+      "returnType": "Promise<ClipboardClearResponse>",
+      "status": "ADAPTER",
+      "adapter": "CLIPBOARD_OPERATION"
+    },
+    {
+      "name": "readClipboardPayload",
+      "channel": "clipboard.readPayload",
+      "parameterName": "request",
+      "parameterType": "ClipboardReadPayloadRequest",
+      "returnType": "Promise<ClipboardReadPayloadResponse>",
+      "status": "ADAPTER",
+      "adapter": "CLIPBOARD_OPERATION"
+    },
+    {
+      "name": "closeClipboardPayload",
+      "channel": "clipboard.closePayload",
+      "parameterName": "request",
+      "parameterType": "ClipboardClosePayloadRequest",
+      "returnType": "Promise<ClipboardClosePayloadResponse>",
+      "status": "ADAPTER",
+      "adapter": "CLIPBOARD_OPERATION"
     }
   ],
   "streams": [
@@ -236,6 +361,10 @@
     },
     {
       "id": "files",
+      "version": "1.0.0"
+    },
+    {
+      "id": "clipboard",
       "version": "1.0.0"
     }
   ],

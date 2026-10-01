@@ -218,7 +218,7 @@ Agents may work in parallel only when dependencies do not overlap.
 |---|---:|---|---|
 | [0027](0027-native-image-and-icons.md) | P0 | 0002 | Shared bounded image/icon value model |
 | [0013](0013-scoped-filesystem.md) | P0 | 0002, 0003, 0004 | Capability-based files and directories |
-| [0014](0014-clipboard.md) | P0 | 0003, 0004, 0027 | Typed system clipboard |
+| [0014](0014-clipboard.md) | P0 | 0003, 0004 | Typed system clipboard |
 | [0015](0015-shell-integration.md) | P0 | 0003, 0013 | External URLs, reveal, and trash |
 | [0016](0016-notifications.md) | P0 | 0003, 0004, 0027, 0030 | Native notifications and activation |
 | [0017](0017-native-menus.md) | P0 | 0003, 0004, 0027 | Application/window/context menus |

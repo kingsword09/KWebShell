@@ -17,6 +17,7 @@ public enum class KWebElectronMappingStatus {
 public enum class KWebElectronAdapterKind {
     APP_PATHS_GET_PATH,
     FILES_OPERATION,
+    CLIPBOARD_OPERATION,
     FILES_WATCH_DIRECTORY,
     NAMED_APPLICATION_STREAM,
 }
@@ -311,12 +312,16 @@ public object KWebElectronManifestValidator {
     private const val APP_PATHS_CONSENT: Boolean = false
     private const val FILES_SERVICE: String = "files"
     private const val FILES_VERSION: String = "1.0.0"
+    private const val CLIPBOARD_SERVICE: String = "clipboard"
+    private const val CLIPBOARD_VERSION: String = "1.0.0"
+    private val CLIPBOARD_OPERATIONS: Set<String> = setOf(
+        "read", "read-payload", "write", "clear", "close-payload",
+    )
     private val FILES_OPERATIONS: Set<String> = setOf(
         "open-workspace", "open-file", "open-directory", "read-file", "write-file",
         "truncate-file", "list-directory", "metadata", "copy-file", "move-file",
         "close-handle",
     )
-
     private fun validateChannelPolicy(channel: KWebElectronChannel) {
         if (channel.status != KWebElectronMappingStatus.ADAPTER) {
             if (channel.policy != null) {
@@ -484,6 +489,23 @@ public object KWebElectronManifestValidator {
                     )
                 }
             }
+            if (channel.adapter == KWebElectronAdapterKind.CLIPBOARD_OPERATION) {
+                val operation = channel.operationId
+                val policy = channel.policy
+                if (channel.name.substringBefore('.').lowercase() != "clipboard" ||
+                    channel.serviceId != CLIPBOARD_SERVICE || channel.serviceVersion != CLIPBOARD_VERSION ||
+                    operation == null || operation !in CLIPBOARD_OPERATIONS || policy == null ||
+                    policy.rendererGrant != "native.clipboard.$operation" ||
+                    policy.requiresUserGesture != (operation in setOf("read", "write", "clear")) ||
+                    policy.requiresOsConsent
+                ) {
+                    invalid(
+                        KWebElectronMigrationErrorCode.MAPPING_UNRESOLVED,
+                        "channel" to channel.name,
+                        message = "The clipboard adapter must bind one published clipboard operation and its exact policy.",
+                    )
+                }
+            }
         }
 
         manifest.preloadMethods.forEachIndexed { index, method ->
@@ -519,6 +541,15 @@ public object KWebElectronManifestValidator {
                     KWebElectronMigrationErrorCode.MAPPING_UNRESOLVED,
                     "method" to method.name,
                     message = "A files preload method must use a named request type and Promise response.",
+                )
+            }
+            if (method.adapter == KWebElectronAdapterKind.CLIPBOARD_OPERATION &&
+                (!IDENTIFIER.matches(method.parameterType) || !method.returnType.startsWith("Promise<"))
+            ) {
+                invalid(
+                    KWebElectronMigrationErrorCode.MAPPING_UNRESOLVED,
+                    "method" to method.name,
+                    message = "A clipboard preload method must use a named request type and Promise response.",
                 )
             }
         }

@@ -8,4 +8,9 @@ contextBridge.exposeInMainWorld("desktop", {
   readFile: (request: unknown) => ipcRenderer.invoke("fs.readFile", request),
   listDirectory: (request: unknown) => ipcRenderer.invoke("fs.listDirectory", request),
   closeHandle: (request: unknown) => ipcRenderer.invoke("fs.closeHandle", request),
+  readClipboard: (request: unknown) => ipcRenderer.invoke("clipboard.read", request),
+  writeClipboard: (request: unknown) => ipcRenderer.invoke("clipboard.write", request),
+  clearClipboard: (request: unknown) => ipcRenderer.invoke("clipboard.clear", request),
+  readClipboardPayload: (request: unknown) => ipcRenderer.invoke("clipboard.readPayload", request),
+  closeClipboardPayload: (request: unknown) => ipcRenderer.invoke("clipboard.closePayload", request),
 });

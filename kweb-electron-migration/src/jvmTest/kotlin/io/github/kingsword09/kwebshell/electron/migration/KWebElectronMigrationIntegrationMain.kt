@@ -22,6 +22,9 @@ import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPathKind
 import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPaths
 import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPathsConfiguration
 import io.github.kingsword09.kwebshell.service.apppaths.bridgeDispatcher
+import io.github.kingsword09.kwebshell.service.clipboard.JvmKWebClipboard
+import io.github.kingsword09.kwebshell.service.clipboard.KWebClipboard
+import io.github.kingsword09.kwebshell.service.clipboard.bridgeDispatcher as clipboardBridgeDispatcher
 import io.github.kingsword09.kwebshell.service.files.JvmKWebFiles
 import io.github.kingsword09.kwebshell.service.files.JvmKWebFilesConfiguration
 import io.github.kingsword09.kwebshell.service.files.JvmKWebWorkspace
@@ -76,6 +79,8 @@ private const val LOCALES_PROPERTY = "kweb.engine.locales.path"
 private const val ROOT_PROPERTY = "kweb.migration.integration.root"
 private const val APP_PATHS_BRIDGE_PROPERTY = "kweb.migration.app-paths.bridge.javascript"
 private const val FILES_BRIDGE_PROPERTY = "kweb.migration.files.bridge.javascript"
+private const val CLIPBOARD_LIBRARY_PROPERTY = "kweb.clipboard.native.library.path"
+private const val CLIPBOARD_BRIDGE_PROPERTY = "kweb.migration.clipboard.bridge.javascript"
 private const val PRELOAD_PROPERTY = "kweb.migration.preload.javascript"
 private const val REPORT_PROPERTY = "kweb.migration.report"
 
@@ -99,6 +104,7 @@ public fun main() {
     val server = MigrationFixtureServer(
         appPathsBridge = Files.readString(requiredPath(APP_PATHS_BRIDGE_PROPERTY)),
         filesBridge = Files.readString(requiredPath(FILES_BRIDGE_PROPERTY)),
+        clipboardBridge = Files.readString(requiredPath(CLIPBOARD_BRIDGE_PROPERTY)),
         preload = Files.readString(requiredPath(PRELOAD_PROPERTY)),
     )
     val window = onAwtThread {
@@ -132,7 +138,9 @@ public fun main() {
             sessionDataRoot = sessionRoot.toString(),
         ),
     )
+    val clipboard = JvmKWebClipboard.open(requiredPath(CLIPBOARD_LIBRARY_PROPERTY))
     engine.nativeServices.install(KWebAppPaths.Key, appPaths)
+    engine.nativeServices.install(KWebClipboard.Key, clipboard)
     val profile = runBlocking { engine.openProfile("electron-migration-fixture") }
     val cdp = KWebExampleCdpClient(port, 30_000)
     val allowPolicy = KWebServicePermissionPolicy.exact(
@@ -162,6 +170,25 @@ public fun main() {
         rendererGrants = filesPolicy,
         gestures = gestures,
         consentStore = KWebInMemoryConsentStore("migration-files"),
+        osConsent = null,
+        audit = KWebPolicyAudit(),
+    )
+    val clipboardPolicy = KWebServicePermissionPolicy.exact(
+        setOf("read", "read-payload", "write", "clear", "close-payload").map { operation ->
+            KWebServiceGrant(KWebClipboard.DESCRIPTOR.id, operation)
+        }.toSet(),
+    )
+    val clipboardPolicyEngine = KWebServicePolicyEngine(
+        rendererGrants = clipboardPolicy,
+        gestures = gestures,
+        consentStore = KWebInMemoryConsentStore("migration-clipboard"),
+        osConsent = null,
+        audit = KWebPolicyAudit(),
+    )
+    val deniedClipboardPolicyEngine = KWebServicePolicyEngine(
+        rendererGrants = KWebServicePermissionPolicy.exact(emptySet()),
+        gestures = gestures,
+        consentStore = KWebInMemoryConsentStore("migration-clipboard-denied"),
         osConsent = null,
         audit = KWebPolicyAudit(),
     )
@@ -235,6 +262,19 @@ public fun main() {
                                     ),
                                 ),
                             ),
+                            KWebBridgeRoute(
+                                methods = setOf("read", "readPayload", "write", "clear", "closePayload"),
+                                dispatcher = clipboard.clipboardBridgeDispatcher(
+                                    clipboardPolicyEngine,
+                                    KWebPolicySubject(
+                                        engineId = "migration-fixture",
+                                        profileId = "electron-migration-fixture",
+                                        pageId = pageId,
+                                        origin = server.origin,
+                                        scope = KWebServiceScope.APPLICATION,
+                                    ),
+                                ),
+                            ),
                         )
                     },
                     KWebPageStreamDispatcherFactory { pageId ->
@@ -275,6 +315,12 @@ public fun main() {
             require(gestureDenied == "service.user-gesture-required") {
                 "The migration files adapter did not enforce its native gesture policy: $gestureDenied"
             }
+            val clipboardGestureDenied = session.evaluateString(
+                "(async()=>{try{await window.desktop.writeClipboard({selection:'system',items:[{format:'text/plain',encoding:'utf8',bytes:[103,101,115,116,117,114,101]}]});return 'unexpected'}catch(e){return e.code}})()",
+            )
+            require(clipboardGestureDenied == "service.user-gesture-required") {
+                "The migration clipboard adapter did not enforce its native gesture policy: $clipboardGestureDenied"
+            }
             onAwtThread {
                 window.toFront()
                 window.requestFocus()
@@ -300,6 +346,70 @@ public fun main() {
                     origin = server.origin,
                 ),
             )
+            fun mintClipboardGesture() {
+                session.command("Page.bringToFront")
+                session.command(
+                    "Input.dispatchKeyEvent",
+                    buildJsonObject {
+                        put("type", "rawKeyDown")
+                        put("windowsVirtualKeyCode", 66)
+                        put("nativeVirtualKeyCode", 66)
+                        put("key", "b")
+                        put("code", "KeyB")
+                    },
+                )
+                awaitGestureMint(
+                    gestures,
+                    KWebGestureBinding(
+                        engineId = "migration-fixture",
+                        profileId = "electron-migration-fixture",
+                        pageId = page.id,
+                        origin = server.origin,
+                    ),
+                )
+            }
+            mintClipboardGesture()
+            val clipboard = session.evaluateString(
+                """
+                (async()=>{
+                  const written=await window.desktop.writeClipboard({selection:"system",items:[{format:"text/plain",encoding:"utf8",bytes:[109,105,103,114,97,116,105,111,110,45,99,108,105,112,98,111,97,114,100]}]});
+                  return JSON.stringify({written});
+                })()
+                """.trimIndent(),
+            )
+            val clipboardJson = Json.parseToJsonElement(clipboard).jsonObject
+            require(clipboardJson["written"]?.jsonObject?.get("sequence")?.jsonPrimitive?.content?.toLongOrNull() != null)
+            mintClipboardGesture()
+            val clipboardRead = session.evaluateString(
+                """
+                (async()=>{
+                  const read=await window.desktop.readClipboard({selection:"system",formats:["text/plain"]});
+                  const payload=read.available.find(item=>item.format==="text/plain");
+                  if(!payload) return JSON.stringify({read});
+                  try {
+                    const chunk=await window.desktop.readClipboardPayload({handle:payload.handle,offset:"0",length:Number(payload.sizeBytes)});
+                    return JSON.stringify({read,chunk,text:new TextDecoder().decode(new Uint8Array(chunk.bytes))});
+                  } finally {
+                    await window.desktop.closeClipboardPayload({handle:payload.handle});
+                  }
+                })()
+                """.trimIndent(),
+            )
+            val clipboardReadJson = Json.parseToJsonElement(clipboardRead).jsonObject
+            require(clipboardReadJson["read"]?.jsonObject?.get("available")?.jsonArray?.any {
+                it.jsonObject["format"]?.jsonPrimitive?.content == "text/plain"
+            } == true) {
+                "The real CEF clipboard bridge did not expose the written text/plain payload: $clipboardRead"
+            }
+            require(clipboardReadJson["text"]?.jsonPrimitive?.content == "migration-clipboard") {
+                "The real CEF clipboard bridge did not round-trip text/plain bytes: $clipboardRead"
+            }
+            mintClipboardGesture()
+            val clipboardClear = session.evaluateString(
+                "(async()=>JSON.stringify({cleared:await window.desktop.clearClipboard({selection:'system'})}))()",
+            )
+            val clipboardClearJson = Json.parseToJsonElement(clipboardClear).jsonObject
+            require(clipboardClearJson["cleared"]?.jsonObject?.get("sequence")?.jsonPrimitive?.content?.toLongOrNull() != null)
             val files = session.evaluateString(
                 """
                 (async()=>{
@@ -412,14 +522,32 @@ public fun main() {
                 KWebDesktop.composeWindowHost(
                     window,
                     server.origin,
-                    appPaths.bridgeDispatcher(
-                        denyPolicyEngine,
-                        KWebPolicySubject(
-                            engineId = "migration-fixture",
-                            profileId = "electron-migration-fixture",
-                            pageId = "denied-page",
-                            origin = server.origin,
-                            scope = KWebServiceScope.APPLICATION,
+                    KWebBridgeDispatchers.exact(
+                        KWebBridgeRoute(
+                            methods = setOf("resolve"),
+                            dispatcher = appPaths.bridgeDispatcher(
+                                denyPolicyEngine,
+                                KWebPolicySubject(
+                                    engineId = "migration-fixture",
+                                    profileId = "electron-migration-fixture",
+                                    pageId = "denied-page",
+                                    origin = server.origin,
+                                    scope = KWebServiceScope.APPLICATION,
+                                ),
+                            ),
+                        ),
+                        KWebBridgeRoute(
+                            methods = setOf("read", "readPayload", "write", "clear", "closePayload"),
+                            dispatcher = clipboard.clipboardBridgeDispatcher(
+                                deniedClipboardPolicyEngine,
+                                KWebPolicySubject(
+                                    engineId = "migration-fixture",
+                                    profileId = "electron-migration-fixture",
+                                    pageId = "denied-page",
+                                    origin = server.origin,
+                                    scope = KWebServiceScope.APPLICATION,
+                                ),
+                            ),
                         ),
                     ),
                 ),
@@ -435,6 +563,10 @@ public fun main() {
                 "(async()=>{try{await window.desktop.getPath('home');return 'unexpected'}catch(e){return e.code}})()",
             )
             require(code == "service.permission-denied") { "Denied page returned '$code'." }
+            val clipboardCode = session.evaluateString(
+                "(async()=>{try{await window.desktop.readClipboard({selection:'system',formats:['text/plain']});return 'unexpected'}catch(e){return e.code}})()",
+            )
+            require(clipboardCode == "service.permission-denied") { "Denied clipboard page returned '$clipboardCode'." }
         }
         deniedPage.close()
         activePage = null
@@ -485,6 +617,11 @@ public fun main() {
             failure = failure.append(error)
         }
         try {
+            if (clipboard.lifecycle.value != KWebLifecycleState.CLOSED) clipboard.close()
+        } catch (error: Throwable) {
+            failure = failure.append(error)
+        }
+        try {
             onAwtThread { window.dispose() }
         } catch (error: Throwable) {
             failure = failure.append(error)
@@ -502,6 +639,27 @@ public fun main() {
         }
     }
     failure?.let { throw it }
+    Files.writeString(
+        root.resolve("migration-clipboard-evidence.json"),
+        """
+        {
+          "schemaVersion": 1,
+          "target": "${System.getProperty("kweb.migration.target") ?: "unknown"}",
+          "cefRuntime": "stock-cef-151",
+          "contractRevision": "2026-09-30.3",
+          "exactOriginMainFrame": true,
+          "childFrameTransportAbsent": true,
+          "crossOriginBridgeAbsent": true,
+          "gestureDeniedWithoutNativeInput": true,
+          "textPlainRoundTrip": true,
+          "lazyPayloadReadAndClose": true,
+          "clearCompleted": true,
+          "permissionDenied": true,
+          "unconfiguredBridgeAbsent": true,
+          "ownerClosed": true
+        }
+        """.trimIndent() + "\n",
+    )
     println("KWebShell typed Electron migration fixture passed against real CEF.")
 }
 
@@ -545,6 +703,7 @@ private class SlowAppPathsDispatcher(
 private class MigrationFixtureServer(
     appPathsBridge: String,
     filesBridge: String,
+    clipboardBridge: String,
     preload: String,
 ) : AutoCloseable {
     private val executor = Executors.newCachedThreadPool { task ->
@@ -557,6 +716,7 @@ private class MigrationFixtureServer(
             "<iframe id=\"fixture-frame\" src=\"/frame\"></iframe>" +
             "<script>$appPathsBridge</script>" +
             "<script>$filesBridge</script>" +
+            "<script>$clipboardBridge</script>" +
             "<script>globalThis.KWebApplicationStreamsBridge={createClient(){return {openDownloadProgress:async function* (request){yield {downloadId:request.downloadId,done:false};yield {downloadId:request.downloadId,done:true}}}}}</script>" +
             "<script>$preload</script>"
         ).toByteArray(StandardCharsets.UTF_8)

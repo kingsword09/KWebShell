@@ -12,7 +12,7 @@ handler="$fixture_root/kwebshell-shell-handler"
 handler_log="$fixture_root/handler.log"
 desktop_file="$data_home/applications/kwebshell-hosted-shell-fixture.desktop"
 
-mkdir -p "$data_home/applications" "$config_home"
+mkdir -p "$fixture_root" "$data_home/applications" "$config_home"
 
 cat > "$handler" <<'EOF'
 #!/usr/bin/env bash

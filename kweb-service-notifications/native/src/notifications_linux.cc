@@ -13,6 +13,7 @@ namespace {
 struct LinuxState {
   GDBusConnection *connection = nullptr;
   GMainContext *context = nullptr;
+  std::string owner;
   guint action_subscription = 0;
   guint closed_subscription = 0;
 };
@@ -25,9 +26,11 @@ std::string NativeId(kwebshell::notifications::State &state, uint32_t id) {
 }
 
 void OnAction(
-    GDBusConnection *, const gchar *, const gchar *, const gchar *, const gchar *,
+    GDBusConnection *, const gchar *sender, const gchar *, const gchar *, const gchar *,
     GVariant *parameters, gpointer user_data) {
   auto *state = static_cast<kwebshell::notifications::State *>(user_data);
+  auto *linux_state = static_cast<LinuxState *>(state->platform);
+  if (linux_state == nullptr || sender == nullptr || linux_state->owner != sender) return;
   guint32 native_id = 0;
   const gchar *action = nullptr;
   g_variant_get(parameters, "(us)", &native_id, &action);
@@ -42,9 +45,11 @@ void OnAction(
 }
 
 void OnClosed(
-    GDBusConnection *, const gchar *, const gchar *, const gchar *, const gchar *,
+    GDBusConnection *, const gchar *sender, const gchar *, const gchar *, const gchar *,
     GVariant *parameters, gpointer user_data) {
   auto *state = static_cast<kwebshell::notifications::State *>(user_data);
+  auto *linux_state = static_cast<LinuxState *>(state->platform);
+  if (linux_state == nullptr || sender == nullptr || linux_state->owner != sender) return;
   guint32 native_id = 0;
   guint32 reason = 0;
   g_variant_get(parameters, "(uu)", &native_id, &reason);
@@ -123,9 +128,41 @@ kweb_notifications_status NativeOpen(State &state) {
     return status;
   }
   g_object_unref(proxy);
+  GVariant *owner_reply = g_dbus_connection_call_sync(
+      linux_state->connection,
+      "org.freedesktop.DBus",
+      "/org/freedesktop/DBus",
+      "org.freedesktop.DBus",
+      "GetNameOwner",
+      g_variant_new("(s)", "org.freedesktop.Notifications"),
+      G_VARIANT_TYPE("(s)"),
+      G_DBUS_CALL_FLAGS_NONE,
+      5000,
+      nullptr,
+      &error);
+  if (owner_reply == nullptr) {
+    const auto status = ErrorStatus(error);
+    g_clear_error(&error);
+    g_object_unref(linux_state->connection);
+    g_main_context_pop_thread_default(linux_state->context);
+    g_main_context_unref(linux_state->context);
+    delete linux_state;
+    return status;
+  }
+  const gchar *owner = nullptr;
+  g_variant_get(owner_reply, "(&s)", &owner);
+  linux_state->owner = owner == nullptr ? "" : owner;
+  g_variant_unref(owner_reply);
+  if (linux_state->owner.empty()) {
+    g_object_unref(linux_state->connection);
+    g_main_context_pop_thread_default(linux_state->context);
+    g_main_context_unref(linux_state->context);
+    delete linux_state;
+    return KWEB_NOTIFICATIONS_STATUS_NATIVE_FAILED;
+  }
   linux_state->action_subscription = g_dbus_connection_signal_subscribe(
       linux_state->connection,
-      "org.freedesktop.Notifications",
+      nullptr,
       "org.freedesktop.Notifications",
       "ActionInvoked",
       "/org/freedesktop/Notifications",
@@ -136,7 +173,7 @@ kweb_notifications_status NativeOpen(State &state) {
       nullptr);
   linux_state->closed_subscription = g_dbus_connection_signal_subscribe(
       linux_state->connection,
-      "org.freedesktop.Notifications",
+      nullptr,
       "org.freedesktop.Notifications",
       "NotificationClosed",
       "/org/freedesktop/Notifications",

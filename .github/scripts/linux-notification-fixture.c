@@ -43,11 +43,20 @@ static const gchar k_introspection_xml[] =
 static gboolean emit_action(gpointer user_data) {
   PendingAction *action = user_data;
   if (g_connection != NULL) {
-    g_dbus_connection_emit_signal(
+    GError *error = NULL;
+    const gboolean emitted = g_dbus_connection_emit_signal(
         g_connection, action->destination, k_object_path, k_interface, "ActionInvoked",
         g_variant_new("(us)", action->notification_id, action->action_id),
-        NULL);
-    g_dbus_connection_flush_sync(g_connection, NULL, NULL);
+        &error);
+    if (!emitted) {
+      g_printerr("ActionInvoked emit failed: %s\n", error == NULL ? "unknown" : error->message);
+      g_clear_error(&error);
+    } else if (!g_dbus_connection_flush_sync(g_connection, NULL, &error)) {
+      g_printerr("ActionInvoked flush failed: %s\n", error == NULL ? "unknown" : error->message);
+      g_clear_error(&error);
+    } else {
+      g_printerr("ActionInvoked emitted.\n");
+    }
   }
   g_free(action->destination);
   g_free(action->action_id);
@@ -88,6 +97,7 @@ static void method_call(
       pending->notification_id = notification_id;
       pending->destination = sender == NULL ? NULL : g_strdup(sender);
       pending->action_id = g_strdup(action_count >= 2 ? action_values[0] : "open");
+      g_printerr("ActionInvoked scheduled.\n");
       g_timeout_add(1000, emit_action, pending);
     }
     g_free(action_values);

@@ -39,8 +39,16 @@ fi
 
 for _ in {1..300}; do
   if [[ "$(xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null)" == *"window id"* ]]; then
-    "$@"
-    exit
+    if "$@"; then
+      exit 0
+    else
+      verification_status=$?
+    fi
+    if [[ -n "${notification_fixture_log:-}" && -f "$notification_fixture_log" ]]; then
+      echo "Notification fixture log after verification failure:" >&2
+      cat "$notification_fixture_log" >&2
+    fi
+    exit "$verification_status"
   fi
   if ! kill -0 "$openbox_pid" 2>/dev/null; then
     echo "Openbox exited before publishing its root window:" >&2

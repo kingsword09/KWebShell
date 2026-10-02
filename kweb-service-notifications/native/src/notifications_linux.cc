@@ -92,7 +92,9 @@ const char *ProviderId() { return "linux.freedesktop.Notifications"; }
 void NativePump(State &state) {
   auto *linux_state = static_cast<LinuxState *>(state.platform);
   if (linux_state == nullptr || linux_state->context == nullptr) return;
+  g_main_context_push_thread_default(linux_state->context);
   while (g_main_context_iteration(linux_state->context, false)) {}
+  g_main_context_pop_thread_default(linux_state->context);
 }
 
 kweb_notifications_status NativeOpen(State &state) {

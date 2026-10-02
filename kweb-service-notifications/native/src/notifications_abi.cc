@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <cstdio>
 #include <cstring>
 
 namespace {
@@ -125,10 +124,6 @@ void PushAction(State &state, const std::string &id, const std::string &action_i
   CopyBounded(event.action_id, sizeof(event.action_id), action_id);
   CopyBounded(event.reply, sizeof(event.reply), reply);
   state.events.push_back(event);
-  std::fprintf(
-      stderr,
-      "notification PushAction queued id=%s action=%s events=%zu\\n",
-      id.c_str(), action_id.c_str(), state.events.size());
 }
 
 void PushClosed(State &state, const std::string &id, kweb_notifications_close_reason reason) {
@@ -278,10 +273,6 @@ kweb_notifications_status kweb_notifications_poll_event(
   if (g_state.events.empty()) return KWEB_NOTIFICATIONS_STATUS_NO_EVENT;
   *event = g_state.events.front();
   g_state.events.pop_front();
-  std::fprintf(
-      stderr,
-      "notification poll_event kind=%u id=%s action=%s remaining=%zu\\n",
-      event->kind, event->id, event->action_id, g_state.events.size());
   return KWEB_NOTIFICATIONS_STATUS_OK;
 }
 

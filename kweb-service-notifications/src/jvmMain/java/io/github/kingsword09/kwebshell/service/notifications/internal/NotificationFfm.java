@@ -115,7 +115,8 @@ public final class NotificationFfm implements NotificationNativeExecutor {
         MemoryLayout.sequenceLayout(129, ValueLayout.JAVA_BYTE).withName("id"),
         MemoryLayout.sequenceLayout(65, ValueLayout.JAVA_BYTE).withName("action_id"),
         MemoryLayout.sequenceLayout(1025, ValueLayout.JAVA_BYTE).withName("reply"),
-        MemoryLayout.sequenceLayout(96, ValueLayout.JAVA_BYTE).withName("code")
+        MemoryLayout.sequenceLayout(96, ValueLayout.JAVA_BYTE).withName("code"),
+        MemoryLayout.paddingLayout(5)
     );
 
     private final Path libraryPath;

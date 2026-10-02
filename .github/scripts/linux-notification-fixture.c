@@ -54,8 +54,6 @@ static gboolean emit_action(gpointer user_data) {
     } else if (!g_dbus_connection_flush_sync(g_connection, NULL, &error)) {
       g_printerr("ActionInvoked flush failed: %s\n", error == NULL ? "unknown" : error->message);
       g_clear_error(&error);
-    } else {
-      g_printerr("ActionInvoked emitted.\n");
     }
   }
   g_free(action->destination);
@@ -97,7 +95,6 @@ static void method_call(
       pending->notification_id = notification_id;
       pending->destination = sender == NULL ? NULL : g_strdup(sender);
       pending->action_id = g_strdup(action_count >= 2 ? action_values[0] : "open");
-      g_printerr("ActionInvoked scheduled.\n");
       g_timeout_add(1000, emit_action, pending);
     }
     g_free(action_values);

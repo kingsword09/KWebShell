@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <cstdio>
 #include <cstring>
 
 namespace {
@@ -242,16 +241,7 @@ kweb_notifications_status kweb_notifications_show(
   if (request == nullptr || !ValidHeader(request->struct_size, request->abi_version, sizeof(*request))) {
     return KWEB_NOTIFICATIONS_STATUS_ABI_MISMATCH;
   }
-  if (!ValidRequest(*request)) {
-    std::fprintf(
-        stderr,
-        "notification invalid request icon=%u urgency=%u timeout=%u actions=%u\\n",
-        request->icon,
-        request->urgency,
-        request->timeout,
-        request->action_count);
-    return KWEB_NOTIFICATIONS_STATUS_INVALID_ARGUMENT;
-  }
+  if (!ValidRequest(*request)) return KWEB_NOTIFICATIONS_STATUS_INVALID_ARGUMENT;
   std::lock_guard<std::mutex> registry_lock(g_registry_mutex);
   if (handle != 1 || !g_state.open) return KWEB_NOTIFICATIONS_STATUS_NATIVE_UNAVAILABLE;
   std::lock_guard<std::mutex> lock(g_state.mutex);

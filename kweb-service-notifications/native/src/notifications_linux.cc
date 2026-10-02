@@ -313,7 +313,7 @@ kweb_notifications_status NativeShow(State &state, const kweb_notifications_requ
 kweb_notifications_status NativeCloseNotification(State &state, const std::string &id) {
   auto *linux_state = static_cast<LinuxState *>(state.platform);
   const auto iterator = state.native_ids.find(id);
-  if (iterator == state.native_ids.end()) return KWEB_NOTIFICATIONS_STATUS_NOT_FOUND;
+  if (iterator == state.native_ids.end()) return KWEB_NOTIFICATIONS_STATUS_OK;
   GError *error = nullptr;
   GVariant *reply = g_dbus_connection_call_sync(
       linux_state->connection,

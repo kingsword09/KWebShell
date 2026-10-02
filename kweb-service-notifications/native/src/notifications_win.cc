@@ -100,6 +100,8 @@ kweb_notifications_status NativePermission(
     }
     CopyProvider(result->provider, sizeof(result->provider), ProviderId());
     return KWEB_NOTIFICATIONS_STATUS_OK;
+  } catch (const winrt::hresult_error &) {
+    return KWEB_NOTIFICATIONS_STATUS_NATIVE_UNAVAILABLE;
   } catch (...) {
     return KWEB_NOTIFICATIONS_STATUS_NATIVE_FAILED;
   }

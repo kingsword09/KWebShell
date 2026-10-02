@@ -37,7 +37,11 @@ void WaitForPermission(
   dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
   if (request) {
     [center requestAuthorizationWithOptions:(UNAuthorizationOptionAlert | UNAuthorizationOptionSound)
-                          completionHandler:^(BOOL granted, NSError *) {
+                          completionHandler:^(BOOL granted, NSError *error) {
+      if (error != nil) {
+        NSLog(@"KWebNotifications requestAuthorization failed (domain=%@ code=%ld)",
+              error.domain, (long)error.code);
+      }
       *status = granted ? KWEB_NOTIFICATIONS_PERMISSION_GRANTED : KWEB_NOTIFICATIONS_PERMISSION_DENIED;
       *completed = true;
       dispatch_semaphore_signal(semaphore);

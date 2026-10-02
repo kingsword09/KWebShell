@@ -298,7 +298,7 @@ public final class NotificationFfm implements NotificationNativeExecutor {
             if (kind == EVENT_ACTION) {
                 return new NativeNotificationEvent(
                     readArrayString(event, EVENT, "id", 129), NativeNotificationEventKind.ACTION,
-                    readArrayString(event, EVENT, "action_id", 65), readArrayString(event, EVENT, "reply", 1025), null, null
+                    readArrayString(event, EVENT, "action_id", 65), readOptionalArrayString(event, EVENT, "reply", 1025), null, null
                 );
             }
             if (kind == EVENT_CLOSED) {
@@ -359,6 +359,11 @@ public final class NotificationFfm implements NotificationNativeExecutor {
         int length = 0;
         while (length < bytes.length && bytes[length] != 0) length++;
         return decode(bytes, length);
+    }
+
+    private static String readOptionalArrayString(MemorySegment segment, GroupLayout layout, String field, int maximum) {
+        final String value = readArrayString(segment, layout, field, maximum);
+        return value.isEmpty() ? null : value;
     }
 
     private static String readCString(MemorySegment pointer, long maximum) {

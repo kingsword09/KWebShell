@@ -3,6 +3,9 @@ package io.github.kingsword09.kwebshell.service.notifications
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeDispatcher
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeException
 import io.github.kingsword09.kwebshell.core.KWebException
+import io.github.kingsword09.kwebshell.services.KWebPolicySubject
+import io.github.kingsword09.kwebshell.services.policy.KWebPolicyDecision
+import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
 import io.github.kingsword09.kwebshell.service.notifications.generated.ActionRequest
 import io.github.kingsword09.kwebshell.service.notifications.generated.CapabilitiesResponse
 import io.github.kingsword09.kwebshell.service.notifications.generated.CloseRequest
@@ -15,26 +18,29 @@ import io.github.kingsword09.kwebshell.service.notifications.generated.ShowReque
 import io.github.kingsword09.kwebshell.service.notifications.generated.ShowResponse
 import kotlinx.coroutines.CancellationException
 
-public fun KWebNotifications.bridgeDispatcher(): KWebBridgeDispatcher = NotificationsBridgeDispatcher(
+public fun KWebNotifications.bridgeDispatcher(
+    policyEngine: KWebServicePolicyEngine,
+    subject: KWebPolicySubject,
+): KWebBridgeDispatcher = NotificationsBridgeDispatcher(
     object : NotificationsBridgeHandler {
         override suspend fun permission(request: ScopeRequest): PermissionResponse {
             requireApplicationScope(request)
-            return permission().toBridge()
+            return dispatch("permission", policyEngine, subject) { permission().toBridge() }
         }
 
         override suspend fun requestPermission(request: ScopeRequest): PermissionResponse {
             requireApplicationScope(request)
-            return requestOperation { requestPermission().toBridge() }
+            return dispatch("request-permission", policyEngine, subject) { requestPermission().toBridge() }
         }
 
         override suspend fun capabilities(request: ScopeRequest): CapabilitiesResponse {
             requireApplicationScope(request)
-            return capabilities().let {
+            return dispatch("capabilities", policyEngine, subject) { capabilities() }.let {
                 CapabilitiesResponse(it.actions, it.replies, it.replacement, it.timeout, it.activation)
             }
         }
 
-        override suspend fun show(request: ShowRequest): ShowResponse = requestOperation {
+        override suspend fun show(request: ShowRequest): ShowResponse = dispatch("show", policyEngine, subject) {
             show(
                 KWebNotificationRequest(
                     id = KWebNotificationId(request.id),
@@ -58,11 +64,18 @@ public fun KWebNotifications.bridgeDispatcher(): KWebBridgeDispatcher = Notifica
             }
         }
 
-        override suspend fun close(request: CloseRequest): CloseResponse = requestOperation {
+        override suspend fun close(request: CloseRequest): CloseResponse = dispatch("close", policyEngine, subject) {
             close(KWebNotificationId(request.id)).let { CloseResponse(it.id.value, it.sequence.toString()) }
         }
 
-        private suspend fun <T> requestOperation(block: suspend () -> T): T = try {
+        private suspend fun <T> dispatch(
+            operationId: String,
+            policyEngine: KWebServicePolicyEngine,
+            subject: KWebPolicySubject,
+            block: suspend () -> T,
+        ): T {
+            authorize(policyEngine, subject, operationId)
+            return try {
             block()
         } catch (error: CancellationException) {
             throw error
@@ -71,8 +84,29 @@ public fun KWebNotifications.bridgeDispatcher(): KWebBridgeDispatcher = Notifica
         } catch (error: Throwable) {
             throw KWebBridgeException("service.native-failed", error.message ?: "The notification operation failed.", error)
         }
+        }
     },
 )
+
+private suspend fun authorize(
+    policyEngine: KWebServicePolicyEngine,
+    subject: KWebPolicySubject,
+    operationId: String,
+) {
+    val operation = KWebNotifications.DESCRIPTOR.operations.first { it.id == operationId }
+    val verdict = policyEngine.authorize(subject, KWebNotifications.DESCRIPTOR.id, operation)
+    when (verdict.decision) {
+        KWebPolicyDecision.ALLOW -> Unit
+        KWebPolicyDecision.DENY -> throw KWebBridgeException(
+            verdict.reasonCode,
+            "The KWebNotifications operation was denied.",
+        )
+        KWebPolicyDecision.PROMPT_REQUIRED -> throw KWebBridgeException(
+            KWebServicePolicyEngine.REASON_PROMPT,
+            "The KWebNotifications operation requires consent.",
+        )
+    }
+}
 
 private fun requireApplicationScope(request: ScopeRequest) {
     if (request.scope != "application") {

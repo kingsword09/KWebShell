@@ -95,6 +95,21 @@ globalThis.ShellBridge = Object.freeze({
     };
   },
 });
+globalThis.NotificationsBridge = Object.freeze({
+  createClient() {
+    return {
+      capabilities(request, options) {
+        return Promise.resolve({ actions: true, replies: false, replacement: true, timeout: true, activation: true });
+      },
+      show(request, options) {
+        return Promise.resolve({ id: request.id, outcome: "SHOWN", replacedId: null, sequence: "1" });
+      },
+      close(request, options) {
+        return Promise.resolve({ id: request.id, sequence: "2" });
+      },
+    };
+  },
+});
 
 eval(source);
 const home = await globalThis.desktop.getPath("home", { timeoutMs: 123 });
@@ -128,6 +143,12 @@ const shellExternal = await globalThis.desktop.openExternal({ uri: "https://exam
 if (shellExternal.outcome !== "handler-accepted") throw new Error("The generated shell external adapter did not preserve typed outcomes.");
 const shellTrash = await globalThis.desktop.trashResource({ handle: file.handle });
 if (shellTrash.outcome !== "moved-to-trash") throw new Error("The generated shell trash adapter did not preserve typed outcomes.");
+const notificationCapabilities = await globalThis.desktop.getNotificationCapabilities({ scope: "application" });
+if (!notificationCapabilities.actions || !notificationCapabilities.activation) throw new Error("The generated notification capabilities adapter did not preserve typed flags.");
+const notification = await globalThis.desktop.showNotification({ id: "fixture", title: "title", body: "body", icon: "APPLICATION", urgency: "NORMAL", timeout: "SYSTEM", actions: [] });
+if (notification.id !== "fixture" || notification.outcome !== "SHOWN") throw new Error("The generated notification show adapter did not preserve typed results.");
+const notificationClosed = await globalThis.desktop.closeNotification({ id: "fixture" });
+if (notificationClosed.id !== "fixture") throw new Error("The generated notification close adapter did not preserve typed results.");
 const watch = globalThis.desktop.watchDirectory({ handle: workspace.handle });
 const watchValues = [];
 for await (const event of watch) watchValues.push(event);

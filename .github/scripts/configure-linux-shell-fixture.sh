@@ -15,6 +15,8 @@ file_manager_source="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/linux-f
 file_manager_binary="$fixture_root/kwebshell-file-manager-fixture"
 file_manager_service_dir="$data_home/dbus-1/services"
 file_manager_service="$file_manager_service_dir/org.freedesktop.FileManager1.service"
+notification_source="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/linux-notification-fixture.c"
+notification_binary="$fixture_root/kwebshell-notification-fixture"
 
 mkdir -p "$fixture_root" "$data_home/applications" "$file_manager_service_dir" "$config_home"
 
@@ -29,6 +31,8 @@ chmod 755 "$handler"
 gio_flags=( $(pkg-config --cflags --libs gio-2.0) )
 cc -std=c11 -Wall -Wextra -Werror "$file_manager_source" "${gio_flags[@]}" -o "$file_manager_binary"
 chmod 755 "$file_manager_binary"
+cc -std=c11 -Wall -Wextra -Werror "$notification_source" "${gio_flags[@]}" -o "$notification_binary"
+chmod 755 "$notification_binary"
 
 cat > "$file_manager_service" <<EOF
 [D-BUS Service]
@@ -78,6 +82,7 @@ export KWEB_SHELL_FIXTURE_LOG="$handler_log"
 
 {
   echo "KWEB_SHELL_FIXTURE_LOG=$handler_log"
+  echo "KWEB_NOTIFICATIONS_FIXTURE_BINARY=$notification_binary"
 } >> "${GITHUB_ENV:?}"
 
 for mime_type in x-scheme-handler/http x-scheme-handler/https text/plain; do

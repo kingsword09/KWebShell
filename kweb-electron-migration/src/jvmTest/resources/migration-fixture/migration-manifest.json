@@ -4,7 +4,7 @@
   "rendererGlobal": "desktop",
   "rendererRoot": "renderer",
   "rendererEntry": "renderer.ts",
-  "rendererSha256": "b7fabcd614c511b5afdccace8d80d7684b12da3eecff0ea3beab3af05da36e90",
+  "rendererSha256": "bf440946753d1168cd6acdf1284fa5ee6c07a31e1c931ac7c0fb843388896451",
   "electronFixtureMajor": 44,
   "electronImports": [
     {
@@ -276,6 +276,54 @@
         "requiresUserGesture": true,
         "requiresOsConsent": false
       }
+    },
+    {
+      "name": "notification.capabilities",
+      "schemaVersion": 2,
+      "requestType": "NotificationScopeRequest",
+      "responseType": "NotificationCapabilitiesResponse",
+      "serviceId": "notifications",
+      "serviceVersion": "1.0.0",
+      "operationId": "capabilities",
+      "status": "ADAPTER",
+      "adapter": "NOTIFICATIONS_OPERATION",
+      "policy": {
+        "rendererGrant": "native.notifications.capabilities",
+        "requiresUserGesture": false,
+        "requiresOsConsent": false
+      }
+    },
+    {
+      "name": "notification.show",
+      "schemaVersion": 2,
+      "requestType": "NotificationShowRequest",
+      "responseType": "NotificationShowResponse",
+      "serviceId": "notifications",
+      "serviceVersion": "1.0.0",
+      "operationId": "show",
+      "status": "ADAPTER",
+      "adapter": "NOTIFICATIONS_OPERATION",
+      "policy": {
+        "rendererGrant": "native.notifications.show",
+        "requiresUserGesture": false,
+        "requiresOsConsent": true
+      }
+    },
+    {
+      "name": "notification.close",
+      "schemaVersion": 2,
+      "requestType": "NotificationCloseRequest",
+      "responseType": "NotificationCloseResponse",
+      "serviceId": "notifications",
+      "serviceVersion": "1.0.0",
+      "operationId": "close",
+      "status": "ADAPTER",
+      "adapter": "NOTIFICATIONS_OPERATION",
+      "policy": {
+        "rendererGrant": "native.notifications.close",
+        "requiresUserGesture": false,
+        "requiresOsConsent": true
+      }
     }
   ],
   "preloadMethods": [
@@ -422,6 +470,33 @@
       "returnType": "Promise<ShellActionResponse>",
       "status": "ADAPTER",
       "adapter": "SHELL_OPERATION"
+    },
+    {
+      "name": "getNotificationCapabilities",
+      "channel": "notification.capabilities",
+      "parameterName": "request",
+      "parameterType": "NotificationScopeRequest",
+      "returnType": "Promise<NotificationCapabilitiesResponse>",
+      "status": "ADAPTER",
+      "adapter": "NOTIFICATIONS_OPERATION"
+    },
+    {
+      "name": "showNotification",
+      "channel": "notification.show",
+      "parameterName": "request",
+      "parameterType": "NotificationShowRequest",
+      "returnType": "Promise<NotificationShowResponse>",
+      "status": "ADAPTER",
+      "adapter": "NOTIFICATIONS_OPERATION"
+    },
+    {
+      "name": "closeNotification",
+      "channel": "notification.close",
+      "parameterName": "request",
+      "parameterType": "NotificationCloseRequest",
+      "returnType": "Promise<NotificationCloseResponse>",
+      "status": "ADAPTER",
+      "adapter": "NOTIFICATIONS_OPERATION"
     }
   ],
   "streams": [
@@ -469,6 +544,10 @@
     },
     {
       "id": "shell",
+      "version": "1.0.0"
+    },
+    {
+      "id": "notifications",
       "version": "1.0.0"
     }
   ],

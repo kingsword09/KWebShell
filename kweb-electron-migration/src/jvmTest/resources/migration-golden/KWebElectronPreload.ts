@@ -78,6 +78,14 @@ export interface ClipboardClosePayloadResponse { closed: boolean; }
 export interface ShellExternalUriRequest { uri: string; }
 export interface ShellResourceRequest { handle: string; }
 export interface ShellActionResponse { action: string; outcome: string; resourceKind: string | null; }
+export interface NotificationScopeRequest { scope: "application"; }
+export interface NotificationPermissionResponse { status: string; provider: string; }
+export interface NotificationCapabilitiesResponse { actions: boolean; replies: boolean; replacement: boolean; timeout: boolean; activation: boolean; }
+export interface NotificationAction { id: string; title: string; kind: string; replyPlaceholder?: string | null; }
+export interface NotificationShowRequest { id: string; tag?: string | null; title: string; body: string; icon: string; urgency: string; timeout: string; actions: readonly NotificationAction[]; }
+export interface NotificationShowResponse { id: string; outcome: string; replacedId: string | null; sequence: string; }
+export interface NotificationCloseRequest { id: string; }
+export interface NotificationCloseResponse { id: string; sequence: string; }
 
 export interface KWebBridgeCallOptions {
   readonly signal?: AbortSignal;
@@ -88,6 +96,8 @@ export interface DesktopApi {
   clearClipboard(request: ClipboardClearRequest, options?: KWebBridgeCallOptions): Promise<ClipboardClearResponse>;
   closeClipboardPayload(request: ClipboardClosePayloadRequest, options?: KWebBridgeCallOptions): Promise<ClipboardClosePayloadResponse>;
   closeHandle(request: FilesCloseHandleRequest, options?: KWebBridgeCallOptions): Promise<FilesCloseHandleResponse>;
+  closeNotification(request: NotificationCloseRequest, options?: KWebBridgeCallOptions): Promise<NotificationCloseResponse>;
+  getNotificationCapabilities(request: NotificationScopeRequest, options?: KWebBridgeCallOptions): Promise<NotificationCapabilitiesResponse>;
   getPath(name: ElectronPathName, options?: KWebBridgeCallOptions): Promise<string>;
   listDirectory(request: FilesListDirectoryRequest, options?: KWebBridgeCallOptions): Promise<FilesListDirectoryResponse>;
   openExternal(request: ShellExternalUriRequest, options?: KWebBridgeCallOptions): Promise<ShellActionResponse>;
@@ -98,6 +108,7 @@ export interface DesktopApi {
   readClipboardPayload(request: ClipboardReadPayloadRequest, options?: KWebBridgeCallOptions): Promise<ClipboardReadPayloadResponse>;
   readFile(request: FilesReadFileRequest, options?: KWebBridgeCallOptions): Promise<FilesReadFileResponse>;
   revealResource(request: ShellResourceRequest, options?: KWebBridgeCallOptions): Promise<ShellActionResponse>;
+  showNotification(request: NotificationShowRequest, options?: KWebBridgeCallOptions): Promise<NotificationShowResponse>;
   trashResource(request: ShellResourceRequest, options?: KWebBridgeCallOptions): Promise<ShellActionResponse>;
   writeClipboard(request: ClipboardWriteRequest, options?: KWebBridgeCallOptions): Promise<ClipboardWriteResponse>;
   writeFile(request: FilesWriteFileRequest, options?: KWebBridgeCallOptions): Promise<FilesWriteFileResponse>;
@@ -156,6 +167,11 @@ export function installDesktopPreload(): void {
     throw new KWebElectronMigrationError("migration.shell-bridge.missing", "ShellBridge is required by this migration facade.");
   }
   const shellClient = shellBridge.createClient();
+  const notificationsBridge = window.NotificationsBridge;
+  if (!notificationsBridge || typeof notificationsBridge.createClient !== "function") {
+    throw new KWebElectronMigrationError("migration.notifications-bridge.missing", "NotificationsBridge is required by this migration facade.");
+  }
+  const notificationsClient = notificationsBridge.createClient();
   const streamBridge = window.KWebApplicationStreamsBridge;
   if (!streamBridge || typeof streamBridge.createClient !== "function") throw new KWebElectronMigrationError("migration.stream-bridge.missing", "KWebApplicationStreamsBridge is required by this migration facade.");
   const bridgeStreams = streamBridge.createClient();
@@ -163,6 +179,8 @@ export function installDesktopPreload(): void {
     clearClipboard: (request: ClipboardClearRequest, options?: KWebBridgeCallOptions) => clipboardClient.clear(request, options) as Promise<ClipboardClearResponse>,
     closeClipboardPayload: (request: ClipboardClosePayloadRequest, options?: KWebBridgeCallOptions) => clipboardClient.closePayload(request, options) as Promise<ClipboardClosePayloadResponse>,
     closeHandle: (request: FilesCloseHandleRequest, options?: KWebBridgeCallOptions) => filesClient.closeHandle(request, options) as Promise<FilesCloseHandleResponse>,
+    closeNotification: (request: NotificationCloseRequest, options?: KWebBridgeCallOptions) => notificationsClient.close(request, options) as Promise<NotificationCloseResponse>,
+    getNotificationCapabilities: (request: NotificationScopeRequest, options?: KWebBridgeCallOptions) => notificationsClient.capabilities(request, options) as Promise<NotificationCapabilitiesResponse>,
     getPath: (name: ElectronPathName, options?: KWebBridgeCallOptions) => {
       const kind = pathKinds[name];
       if (typeof kind !== "string") {
@@ -179,6 +197,7 @@ export function installDesktopPreload(): void {
     readClipboardPayload: (request: ClipboardReadPayloadRequest, options?: KWebBridgeCallOptions) => clipboardClient.readPayload(request, options) as Promise<ClipboardReadPayloadResponse>,
     readFile: (request: FilesReadFileRequest, options?: KWebBridgeCallOptions) => filesClient.readFile(request, options) as Promise<FilesReadFileResponse>,
     revealResource: (request: ShellResourceRequest, options?: KWebBridgeCallOptions) => shellClient.revealResource(request, options) as Promise<ShellActionResponse>,
+    showNotification: (request: NotificationShowRequest, options?: KWebBridgeCallOptions) => notificationsClient.show(request, options) as Promise<NotificationShowResponse>,
     trashResource: (request: ShellResourceRequest, options?: KWebBridgeCallOptions) => shellClient.trashResource(request, options) as Promise<ShellActionResponse>,
     writeClipboard: (request: ClipboardWriteRequest, options?: KWebBridgeCallOptions) => clipboardClient.write(request, options) as Promise<ClipboardWriteResponse>,
     writeFile: (request: FilesWriteFileRequest, options?: KWebBridgeCallOptions) => filesClient.writeFile(request, options) as Promise<FilesWriteFileResponse>,
@@ -207,6 +226,9 @@ declare global {
     };
     ShellBridge: {
       createClient(): { openExternal(request: ShellExternalUriRequest, options?: KWebBridgeCallOptions): Promise<ShellActionResponse>; openResource(request: ShellResourceRequest, options?: KWebBridgeCallOptions): Promise<ShellActionResponse>; revealResource(request: ShellResourceRequest, options?: KWebBridgeCallOptions): Promise<ShellActionResponse>; trashResource(request: ShellResourceRequest, options?: KWebBridgeCallOptions): Promise<ShellActionResponse> };
+    };
+    NotificationsBridge: {
+      createClient(): { close(request: NotificationCloseRequest, options?: KWebBridgeCallOptions): Promise<NotificationCloseResponse>; capabilities(request: NotificationScopeRequest, options?: KWebBridgeCallOptions): Promise<NotificationCapabilitiesResponse>; show(request: NotificationShowRequest, options?: KWebBridgeCallOptions): Promise<NotificationShowResponse> };
     };
     KWebApplicationStreamsBridge: {
       createClient(): { openDownloadProgress(request: DownloadRequest, options?: KWebElectronStreamOptions): KWebElectronStream<ProgressChunk> };

@@ -25,7 +25,7 @@ std::string NativeId(kwebshell::notifications::State &state, uint32_t id) {
 
 void OnAction(
     GDBusConnection *, const gchar *, const gchar *, const gchar *, const gchar *,
-    GVariant *parameters, GDBusSignalFlags, gpointer user_data) {
+    GVariant *parameters, gpointer user_data) {
   auto *state = static_cast<kwebshell::notifications::State *>(user_data);
   guint32 native_id = 0;
   const gchar *action = nullptr;
@@ -42,7 +42,7 @@ void OnAction(
 
 void OnClosed(
     GDBusConnection *, const gchar *, const gchar *, const gchar *, const gchar *,
-    GVariant *parameters, GDBusSignalFlags, gpointer user_data) {
+    GVariant *parameters, gpointer user_data) {
   auto *state = static_cast<kwebshell::notifications::State *>(user_data);
   guint32 native_id = 0;
   guint32 reason = 0;
@@ -72,7 +72,7 @@ int32_t ExpireTimeout(kweb_notifications_timeout timeout) {
 }
 
 kweb_notifications_status ErrorStatus(GError *error) {
-  if (error != nullptr && error->domain == G_IO_ERROR && error->code == G_IO_ERROR_SERVICE_UNKNOWN) {
+  if (error != nullptr && error->domain == G_DBUS_ERROR && error->code == G_DBUS_ERROR_SERVICE_UNKNOWN) {
     return KWEB_NOTIFICATIONS_STATUS_NATIVE_UNAVAILABLE;
   }
   return KWEB_NOTIFICATIONS_STATUS_NATIVE_FAILED;
@@ -203,7 +203,7 @@ kweb_notifications_status NativeShow(State &state, const kweb_notifications_requ
       parameters,
       G_VARIANT_TYPE("(u)"),
       G_DBUS_CALL_FLAGS_NONE,
-      10_000,
+      10000,
       nullptr,
       &error);
   if (reply == nullptr) {
@@ -232,7 +232,7 @@ kweb_notifications_status NativeCloseNotification(State &state, const std::strin
       g_variant_new("(u)", iterator->second),
       nullptr,
       G_DBUS_CALL_FLAGS_NONE,
-      10_000,
+      10000,
       nullptr,
       &error);
   if (reply != nullptr) g_variant_unref(reply);

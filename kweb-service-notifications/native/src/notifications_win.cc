@@ -6,9 +6,11 @@
 
 #include <windows.h>
 #include <winrt/Windows.Data.Xml.Dom.h>
+#include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.UI.Notifications.h>
 #include <winrt/base.h>
 
+#include <algorithm>
 #include <cstring>
 #include <string>
 #include <unordered_map>
@@ -37,6 +39,13 @@ std::string Argument(const std::string &arguments, const std::string &name) {
 }
 
 std::string HString(hstring value) { return winrt::to_string(value); }
+
+void CopyProvider(char *target, size_t capacity, const char *value) {
+  if (capacity == 0) return;
+  const size_t count = (value == nullptr) ? 0 : std::min(capacity - 1u, std::strlen(value));
+  if (count != 0) std::memcpy(target, value, count);
+  target[count] = '\0';
+}
 
 std::string ActivationArguments(const std::string &application, const std::string &id) {
   return "kweb://notification?app=" + application + "&id=" + id;
@@ -76,20 +85,20 @@ kweb_notifications_status NativePermission(
   auto *windows_state = static_cast<WinState *>(state.platform);
   if (windows_state == nullptr) return KWEB_NOTIFICATIONS_STATUS_NATIVE_UNAVAILABLE;
   try {
-    switch (windows_state->notifier.Setting()) {
-      case NotificationSetting::Enabled:
+    switch (static_cast<int>(windows_state->notifier.Setting())) {
+      case 0:
         result->status = KWEB_NOTIFICATIONS_PERMISSION_GRANTED;
         break;
-      case NotificationSetting::Disabled:
+      case 1:
         result->status = KWEB_NOTIFICATIONS_PERMISSION_DENIED;
         break;
-      case NotificationSetting::Unknown:
-      case NotificationSetting::NotSupported:
+      case 2:
+      case 3:
       default:
         result->status = KWEB_NOTIFICATIONS_PERMISSION_UNAVAILABLE;
         break;
     }
-    std::strncpy(result->provider, ProviderId(), KWEB_NOTIFICATIONS_MAX_PROVIDER - 1u);
+    CopyProvider(result->provider, sizeof(result->provider), ProviderId());
     return KWEB_NOTIFICATIONS_STATUS_OK;
   } catch (...) {
     return KWEB_NOTIFICATIONS_STATUS_NATIVE_FAILED;
@@ -125,7 +134,7 @@ kweb_notifications_status NativeShow(State &state, const kweb_notifications_requ
     auto toast = ToastNotification(document);
     auto toastElement = document.DocumentElement();
     toastElement.SetAttribute(L"launch", winrt::to_hstring(ActivationArguments(state.application_id, id)));
-    auto binding = document.GetElementsByTagName(L"binding").GetAt(0).as<XmlElement>();
+    auto binding = document.GetElementsByTagName(L"binding").Item(0).as<XmlElement>();
     AddText(document, binding, title);
     AddText(document, binding, body);
     if (request.action_count != 0) {

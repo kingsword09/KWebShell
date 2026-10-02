@@ -37,6 +37,7 @@ kotlin {
             implementation(project(":kweb-service-files"))
             implementation(project(":kweb-service-clipboard"))
             implementation(project(":kweb-service-shell"))
+            implementation(project(":kweb-service-notifications"))
             implementation(project(":kweb-example-support"))
             implementation(libs.compose.ui.desktop)
             implementation(libs.kotlinx.coroutines.core)
@@ -232,6 +233,18 @@ val clipboardNativeLibrary = operatingSystem.map { name ->
 val clipboardBridgeJavascript = rootProject.layout.projectDirectory.file(
     "kweb-service-clipboard/build/generated/kwebBridge/clipboard/ClipboardBridgeBridge.js",
 )
+val notificationsNativeLibrary = operatingSystem.map { name ->
+    val fileName = when {
+        name.lowercase(Locale.ROOT).startsWith("windows") -> "kwebshell_notifications.dll"
+        name.lowercase(Locale.ROOT).startsWith("mac") -> "libkwebshell_notifications.dylib"
+        name.lowercase(Locale.ROOT).startsWith("linux") -> "libkwebshell_notifications.so"
+        else -> throw GradleException("Unsupported desktop operating system '$name'.")
+    }
+    rootProject.layout.projectDirectory.file("kweb-service-notifications/build/native/contract/$fileName").asFile
+}
+val notificationsBridgeJavascript = rootProject.layout.projectDirectory.file(
+    "kweb-service-notifications/build/generated/kwebBridge/notifications/NotificationsBridgeBridge.js",
+)
 val migrationIntegrationRoot = layout.buildDirectory.dir("migration-integration")
 val migrationIntegrationReport = compatibilityOutput
 val migrationIntegrationCommand = providers.provider {
@@ -252,6 +265,8 @@ val migrationIntegrationCommand = providers.provider {
         add("-Dkweb.migration.files.bridge.javascript=${filesBridgeJavascript.asFile.absolutePath}")
         add("-Dkweb.migration.shell.bridge.javascript=${shellBridgeJavascript.asFile.absolutePath}")
         add("-Dkweb.migration.clipboard.bridge.javascript=${clipboardBridgeJavascript.asFile.absolutePath}")
+        add("-Dkweb.notifications.native.library.path=${notificationsNativeLibrary.get().absolutePath}")
+        add("-Dkweb.migration.notifications.bridge.javascript=${notificationsBridgeJavascript.asFile.absolutePath}")
         add("-Dkweb.migration.preload.javascript=${generatedDirectory.get().file("KWebElectronPreload.js").asFile.absolutePath}")
         add("-Dkweb.migration.manifest=${fixtureManifest.asFile.absolutePath}")
         add("-Dkweb.migration.inventory=${inventoryOutput.get().asFile.absolutePath}")
@@ -282,6 +297,8 @@ val electronMigrationIntegrationTest = tasks.register<Exec>("electronMigrationIn
         ":kweb-service-shell:generateShellBridge",
         ":kweb-service-clipboard:buildNative",
         ":kweb-service-clipboard:generateClipboardBridge",
+        ":kweb-service-notifications:buildNative",
+        ":kweb-service-notifications:generateNotificationsBridge",
     )
     inputs.file(nativeEngineLibrary)
     inputs.file(nativeCefRuntime)
@@ -300,6 +317,8 @@ val electronMigrationIntegrationTest = tasks.register<Exec>("electronMigrationIn
     inputs.file(shellNativeLibrary)
     inputs.file(clipboardBridgeJavascript)
     inputs.file(clipboardNativeLibrary)
+    inputs.file(notificationsBridgeJavascript)
+    inputs.file(notificationsNativeLibrary)
     inputs.file(servicesNativeLibrary)
     inputs.file(generatedDirectory.get().file("KWebElectronPreload.js"))
     inputs.file(migrationIntegrationReport)

@@ -1,5 +1,6 @@
 #include "notifications_internal.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstring>
 
@@ -64,6 +65,13 @@ bool ValidHeader(uint32_t struct_size, uint32_t abi_version, uint32_t expected) 
 
 namespace kwebshell::notifications {
 
+void CopyBounded(char *target, size_t capacity, const std::string &value) {
+  if (capacity == 0) return;
+  const size_t count = std::min(capacity - 1u, value.size());
+  std::memcpy(target, value.data(), count);
+  target[count] = '\0';
+}
+
 bool IsUtf8(const uint8_t *data, size_t size) {
   if (data == nullptr && size != 0) return false;
   size_t index = 0;
@@ -112,9 +120,9 @@ void PushAction(State &state, const std::string &id, const std::string &action_i
   event.abi_version = KWEB_NOTIFICATIONS_ABI_VERSION;
   event.kind = KWEB_NOTIFICATIONS_EVENT_ACTION;
   event.sequence = ++state.sequence;
-  std::strncpy(event.id, id.c_str(), KWEB_NOTIFICATIONS_MAX_ID);
-  std::strncpy(event.action_id, action_id.c_str(), KWEB_NOTIFICATIONS_MAX_ACTION_ID);
-  std::strncpy(event.reply, reply.c_str(), KWEB_NOTIFICATIONS_MAX_REPLY);
+  CopyBounded(event.id, sizeof(event.id), id);
+  CopyBounded(event.action_id, sizeof(event.action_id), action_id);
+  CopyBounded(event.reply, sizeof(event.reply), reply);
   state.events.push_back(event);
 }
 
@@ -127,7 +135,7 @@ void PushClosed(State &state, const std::string &id, kweb_notifications_close_re
   event.kind = KWEB_NOTIFICATIONS_EVENT_CLOSED;
   event.close_reason = reason;
   event.sequence = ++state.sequence;
-  std::strncpy(event.id, id.c_str(), KWEB_NOTIFICATIONS_MAX_ID);
+  CopyBounded(event.id, sizeof(event.id), id);
   state.events.push_back(event);
 }
 
@@ -139,8 +147,8 @@ void PushFailed(State &state, const std::string &id, const std::string &code) {
   event.abi_version = KWEB_NOTIFICATIONS_ABI_VERSION;
   event.kind = KWEB_NOTIFICATIONS_EVENT_FAILED;
   event.sequence = ++state.sequence;
-  std::strncpy(event.id, id.c_str(), KWEB_NOTIFICATIONS_MAX_ID);
-  std::strncpy(event.code, code.c_str(), KWEB_NOTIFICATIONS_MAX_ERROR - 1u);
+  CopyBounded(event.id, sizeof(event.id), id);
+  CopyBounded(event.code, sizeof(event.code), code);
   state.events.push_back(event);
 }
 

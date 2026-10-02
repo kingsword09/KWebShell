@@ -185,7 +185,7 @@ kweb_notifications_status NativeShow(State &state, const kweb_notifications_requ
     toast.Failed([&state, id](auto const &, auto const &) {
       PushFailed(state, id, "notifications.native-failed");
     });
-    windows_state->notifications[id] = toast;
+    windows_state->notifications.insert_or_assign(id, toast);
     windows_state->notifier.Show(toast);
     return KWEB_NOTIFICATIONS_STATUS_OK;
   } catch (const winrt::hresult_error &) {

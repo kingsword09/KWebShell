@@ -228,10 +228,14 @@ internal class NativeKWebNotifications(
     private suspend fun monitorNativeEvents() {
         while (scope.coroutineContext.isActive) {
             val event = runCatching { native.pollEvent() }.getOrElse { error ->
+                System.err.println("notifications monitor poll failed: ${error::class.simpleName}")
                 if (error is NotificationNativeFailure) publishFailure(error)
                 null
             }
-            if (event != null) processNativeEvent(event)
+            if (event != null) {
+                System.err.println("notifications monitor event: ${event.kind} ${event.id}")
+                processNativeEvent(event)
+            }
             delay(50)
         }
     }

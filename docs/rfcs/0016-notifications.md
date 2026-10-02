@@ -4,8 +4,6 @@
 - Priority: P0
 - Owners: new `kweb-service-notifications` KMP service and desktop host
 - Depends on: RFC 0003, RFC 0004, RFC 0006, RFC 0030
-- Deferred dependency: RFC 0027 owns custom image/icon values; RFC 0016 v1
-  publishes only the immutable packaged application icon reference.
 - Electron migration surface: `Notification`; `dialog.showMessageBox` remains
   outside this objective and is assigned to the menu/dialog work.
 - Target mapping: `REWRITE`

@@ -71,6 +71,12 @@ verified OS trash/recycle. Renderer calls use gesture-checked `ShellBridge`
 operations over RFC 0013 handles; raw paths, commands, permanent deletion, and
 silent backend fallbacks remain outside the contract.
 
+RFC 0016 adds `kweb-service-notifications` for packaged-identity native
+notifications. The v1 service uses WinRT toast, macOS UserNotifications, and
+the Linux freedesktop notification daemon; it reports target capabilities for
+actions/replies, routes activation through RFC 0006, and rejects custom image
+bytes, generic IPC, and in-page fallback behavior.
+
 All further Electron-class capabilities are split into reviewable KMP-first
 contracts in the [RFC catalog](docs/rfcs/README.md). An RFC is not a support
 claim: each capability enters the public matrix only after its common contract,

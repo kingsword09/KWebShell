@@ -6,6 +6,7 @@
 
 #import <Foundation/Foundation.h>
 #import <UserNotifications/UserNotifications.h>
+#import <UserNotifications/UNError.h>
 
 #include <dispatch/dispatch.h>
 
@@ -202,7 +203,17 @@ kweb_notifications_status NativeShow(State &state, const kweb_notifications_requ
   }];
   const auto deadline = dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC);
   if (dispatch_semaphore_wait(semaphore, deadline) != 0) return KWEB_NOTIFICATIONS_STATUS_NATIVE_FAILED;
-  if (requestError != nil) return KWEB_NOTIFICATIONS_STATUS_NATIVE_FAILED;
+  if (requestError != nil) {
+    // NSError domain/code are actionable provider diagnostics and do not expose
+    // notification content or other user data.
+    NSLog(@"KWebNotifications addNotificationRequest failed (domain=%@ code=%ld)",
+          requestError.domain, (long)requestError.code);
+    if ([requestError.domain isEqualToString:UNErrorDomain] &&
+        requestError.code == UNErrorCodeNotificationsNotAllowed) {
+      return KWEB_NOTIFICATIONS_STATUS_PERMISSION_DENIED;
+    }
+    return KWEB_NOTIFICATIONS_STATUS_NATIVE_FAILED;
+  }
   return KWEB_NOTIFICATIONS_STATUS_OK;
 }
 

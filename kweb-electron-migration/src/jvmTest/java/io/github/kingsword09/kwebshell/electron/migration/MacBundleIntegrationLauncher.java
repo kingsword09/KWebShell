@@ -12,6 +12,13 @@ public final class MacBundleIntegrationLauncher {
     private static final String CLASS_PATH_PROPERTY = "kweb.migration.launch.classpath";
     private static final String FIXTURE_MAIN =
             "io.github.kingsword09.kwebshell.electron.migration.KWebElectronMigrationIntegrationMainKt";
+    /**
+     * The fixture creates AWT/CEF callbacks whose context loader outlives the
+     * reflective main call. Keep the child loader alive until the app exits;
+     * closing it here makes late coroutine error handling fail with a secondary
+     * ClassNotFoundException.
+     */
+    private static volatile URLClassLoader fixtureLoader;
 
     private MacBundleIntegrationLauncher() {}
 
@@ -33,7 +40,9 @@ public final class MacBundleIntegrationLauncher {
                 .toArray(URL[]::new);
 
         final ClassLoader previous = Thread.currentThread().getContextClassLoader();
-        try (URLClassLoader loader = new URLClassLoader(entries, ClassLoader.getPlatformClassLoader())) {
+        final URLClassLoader loader = new URLClassLoader(entries, ClassLoader.getPlatformClassLoader());
+        fixtureLoader = loader;
+        try {
             Thread.currentThread().setContextClassLoader(loader);
             final Class<?> fixture = Class.forName(FIXTURE_MAIN, true, loader);
             final Method main = fixture.getMethod("main", String[].class);

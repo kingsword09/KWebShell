@@ -7,6 +7,7 @@
 #include <gio/gio.h>
 
 #include <cstring>
+#include <future>
 #include <string>
 #include <thread>
 
@@ -164,34 +165,47 @@ kweb_notifications_status NativeOpen(State &state) {
     delete linux_state;
     return KWEB_NOTIFICATIONS_STATUS_NATIVE_FAILED;
   }
-  linux_state->action_subscription = g_dbus_connection_signal_subscribe(
-      linux_state->connection,
-      nullptr,
-      "org.freedesktop.Notifications",
-      "ActionInvoked",
-      "/org/freedesktop/Notifications",
-      nullptr,
-      G_DBUS_SIGNAL_FLAGS_NONE,
-      OnAction,
-      &state,
-      nullptr);
-  linux_state->closed_subscription = g_dbus_connection_signal_subscribe(
-      linux_state->connection,
-      nullptr,
-      "org.freedesktop.Notifications",
-      "NotificationClosed",
-      "/org/freedesktop/Notifications",
-      nullptr,
-      G_DBUS_SIGNAL_FLAGS_NONE,
-      OnClosed,
-      &state,
-      nullptr);
   g_main_context_pop_thread_default(linux_state->context);
   state.platform = linux_state;
+  std::promise<bool> subscription_ready;
+  auto subscription_result = subscription_ready.get_future();
   try {
-    linux_state->pump_thread = std::thread([linux_state] {
+    linux_state->pump_thread = std::thread([linux_state, &state, ready = std::move(subscription_ready)]() mutable {
       g_main_context_push_thread_default(linux_state->context);
+      linux_state->action_subscription = g_dbus_connection_signal_subscribe(
+          linux_state->connection,
+          nullptr,
+          "org.freedesktop.Notifications",
+          "ActionInvoked",
+          "/org/freedesktop/Notifications",
+          nullptr,
+          G_DBUS_SIGNAL_FLAGS_NONE,
+          OnAction,
+          &state,
+          nullptr);
+      linux_state->closed_subscription = g_dbus_connection_signal_subscribe(
+          linux_state->connection,
+          nullptr,
+          "org.freedesktop.Notifications",
+          "NotificationClosed",
+          "/org/freedesktop/Notifications",
+          nullptr,
+          G_DBUS_SIGNAL_FLAGS_NONE,
+          OnClosed,
+          &state,
+          nullptr);
+      ready.set_value(linux_state->action_subscription != 0 && linux_state->closed_subscription != 0);
+      if (linux_state->action_subscription == 0 || linux_state->closed_subscription == 0) {
+        g_main_context_pop_thread_default(linux_state->context);
+        return;
+      }
       g_main_loop_run(linux_state->loop);
+      if (linux_state->action_subscription != 0) {
+        g_dbus_connection_signal_unsubscribe(linux_state->connection, linux_state->action_subscription);
+      }
+      if (linux_state->closed_subscription != 0) {
+        g_dbus_connection_signal_unsubscribe(linux_state->connection, linux_state->closed_subscription);
+      }
       g_main_context_pop_thread_default(linux_state->context);
     });
   } catch (...) {
@@ -200,6 +214,17 @@ kweb_notifications_status NativeOpen(State &state) {
     g_dbus_connection_signal_unsubscribe(linux_state->connection, linux_state->closed_subscription);
     g_main_loop_unref(linux_state->loop);
     g_object_unref(linux_state->connection);
+    g_main_context_unref(linux_state->context);
+    delete linux_state;
+    return KWEB_NOTIFICATIONS_STATUS_NATIVE_FAILED;
+  }
+  if (!subscription_result.get()) {
+    g_main_loop_quit(linux_state->loop);
+    g_main_context_wakeup(linux_state->context);
+    linux_state->pump_thread.join();
+    state.platform = nullptr;
+    g_object_unref(linux_state->connection);
+    g_main_loop_unref(linux_state->loop);
     g_main_context_unref(linux_state->context);
     delete linux_state;
     return KWEB_NOTIFICATIONS_STATUS_NATIVE_FAILED;
@@ -315,12 +340,6 @@ kweb_notifications_status NativeCloseNotification(State &state, const std::strin
 kweb_notifications_status NativeClose(State &state) {
   auto *linux_state = static_cast<LinuxState *>(state.platform);
   if (linux_state == nullptr) return KWEB_NOTIFICATIONS_STATUS_OK;
-  if (linux_state->action_subscription != 0) {
-    g_dbus_connection_signal_unsubscribe(linux_state->connection, linux_state->action_subscription);
-  }
-  if (linux_state->closed_subscription != 0) {
-    g_dbus_connection_signal_unsubscribe(linux_state->connection, linux_state->closed_subscription);
-  }
   g_main_loop_quit(linux_state->loop);
   g_main_context_wakeup(linux_state->context);
   if (linux_state->pump_thread.joinable()) linux_state->pump_thread.join();

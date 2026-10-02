@@ -184,7 +184,7 @@ public final class NotificationFfm implements NotificationNativeExecutor {
                     bind(lookup, "kweb_notifications_request_permission", FunctionDescriptor.of(I32, I64, PTR)),
                     bind(lookup, "kweb_notifications_capabilities", FunctionDescriptor.of(I32, I64, PTR)),
                     bind(lookup, "kweb_notifications_show", FunctionDescriptor.of(I32, I64, PTR)),
-                    bind(lookup, "kweb_notifications_close_notification", FunctionDescriptor.of(I32, I64, PTR)),
+                    bind(lookup, "kweb_notifications_close_notification", FunctionDescriptor.of(I32, I64, STRING)),
                     bind(lookup, "kweb_notifications_poll_event", FunctionDescriptor.of(I32, I64, PTR)),
                     bind(lookup, "kweb_notifications_close", FunctionDescriptor.of(I32, I64)),
                     bind(lookup, "kweb_notifications_provider_id", FunctionDescriptor.of(PTR))

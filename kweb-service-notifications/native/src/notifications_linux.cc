@@ -259,7 +259,6 @@ kweb_notifications_status NativeShow(State &state, const kweb_notifications_requ
       !ReadString(request.tag, KWEB_NOTIFICATIONS_MAX_TAG, &tag) ||
       !ReadString(request.title, KWEB_NOTIFICATIONS_MAX_TITLE, &title) ||
       !ReadString(request.body, KWEB_NOTIFICATIONS_MAX_BODY, &body)) {
-    g_printerr("notification Linux show string validation failed.\n");
     return KWEB_NOTIFICATIONS_STATUS_INVALID_ARGUMENT;
   }
   GVariantBuilder actions;

@@ -268,6 +268,7 @@ kweb_notifications_status kweb_notifications_poll_event(
   ResetEvent(event);
   std::lock_guard<std::mutex> registry_lock(g_registry_mutex);
   if (handle != 1 || !g_state.open) return KWEB_NOTIFICATIONS_STATUS_NATIVE_UNAVAILABLE;
+  kwebshell::notifications::NativePump(g_state);
   std::lock_guard<std::mutex> lock(g_state.mutex);
   if (g_state.events.empty()) return KWEB_NOTIFICATIONS_STATUS_NO_EVENT;
   *event = g_state.events.front();

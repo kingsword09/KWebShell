@@ -46,6 +46,7 @@ static gboolean emit_action(gpointer user_data) {
         g_connection, NULL, k_object_path, k_interface, "ActionInvoked",
         g_variant_new("(us)", action->notification_id, action->action_id),
         NULL);
+    g_dbus_connection_flush_sync(g_connection, NULL, NULL);
   }
   g_free(action->action_id);
   g_free(action);
@@ -85,7 +86,7 @@ static void method_call(
       PendingAction *pending = g_new0(PendingAction, 1);
       pending->notification_id = notification_id;
       pending->action_id = g_strdup(action_values[0]);
-      g_timeout_add(300, emit_action, pending);
+      g_timeout_add(1000, emit_action, pending);
     }
     g_free(action_values);
     g_variant_unref(actions);

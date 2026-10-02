@@ -46,6 +46,11 @@ void OnAction(
   {
     std::lock_guard<std::mutex> lock(state->mutex);
     notification_id = NativeId(*state, native_id);
+    g_printerr(
+        "notification ActionInvoked native_id=%u mapped=%s active_native_ids=%zu\n",
+        native_id,
+        notification_id.empty() ? "<none>" : notification_id.c_str(),
+        state->native_ids.size());
   }
   if (!notification_id.empty()) {
     kwebshell::notifications::PushAction(*state, notification_id, action ? action : "default", "");

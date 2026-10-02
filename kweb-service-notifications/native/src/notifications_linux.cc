@@ -8,14 +8,17 @@
 
 #include <cstring>
 #include <string>
+#include <thread>
 
 namespace {
 struct LinuxState {
   GDBusConnection *connection = nullptr;
   GMainContext *context = nullptr;
+  GMainLoop *loop = nullptr;
   std::string owner;
   guint action_subscription = 0;
   guint closed_subscription = 0;
+  std::thread pump_thread;
 };
 
 std::string NativeId(kwebshell::notifications::State &state, uint32_t id) {
@@ -89,24 +92,20 @@ namespace kwebshell::notifications {
 
 const char *ProviderId() { return "linux.freedesktop.Notifications"; }
 
-void NativePump(State &state) {
-  auto *linux_state = static_cast<LinuxState *>(state.platform);
-  if (linux_state == nullptr || linux_state->context == nullptr) return;
-  g_main_context_push_thread_default(linux_state->context);
-  while (g_main_context_iteration(linux_state->context, false)) {}
-  g_main_context_pop_thread_default(linux_state->context);
-}
+void NativePump(State &) {}
 
 kweb_notifications_status NativeOpen(State &state) {
   GError *error = nullptr;
   auto *linux_state = new LinuxState();
   linux_state->context = g_main_context_new();
+  linux_state->loop = g_main_loop_new(linux_state->context, FALSE);
   g_main_context_push_thread_default(linux_state->context);
   linux_state->connection = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
   if (linux_state->connection == nullptr) {
     const auto status = ErrorStatus(error);
     g_clear_error(&error);
     g_main_context_pop_thread_default(linux_state->context);
+    g_main_loop_unref(linux_state->loop);
     g_main_context_unref(linux_state->context);
     delete linux_state;
     return status;
@@ -125,6 +124,7 @@ kweb_notifications_status NativeOpen(State &state) {
     g_clear_error(&error);
     g_object_unref(linux_state->connection);
     g_main_context_pop_thread_default(linux_state->context);
+    g_main_loop_unref(linux_state->loop);
     g_main_context_unref(linux_state->context);
     delete linux_state;
     return status;
@@ -147,6 +147,7 @@ kweb_notifications_status NativeOpen(State &state) {
     g_clear_error(&error);
     g_object_unref(linux_state->connection);
     g_main_context_pop_thread_default(linux_state->context);
+    g_main_loop_unref(linux_state->loop);
     g_main_context_unref(linux_state->context);
     delete linux_state;
     return status;
@@ -158,6 +159,7 @@ kweb_notifications_status NativeOpen(State &state) {
   if (linux_state->owner.empty()) {
     g_object_unref(linux_state->connection);
     g_main_context_pop_thread_default(linux_state->context);
+    g_main_loop_unref(linux_state->loop);
     g_main_context_unref(linux_state->context);
     delete linux_state;
     return KWEB_NOTIFICATIONS_STATUS_NATIVE_FAILED;
@@ -186,6 +188,22 @@ kweb_notifications_status NativeOpen(State &state) {
       nullptr);
   g_main_context_pop_thread_default(linux_state->context);
   state.platform = linux_state;
+  try {
+    linux_state->pump_thread = std::thread([linux_state] {
+      g_main_context_push_thread_default(linux_state->context);
+      g_main_loop_run(linux_state->loop);
+      g_main_context_pop_thread_default(linux_state->context);
+    });
+  } catch (...) {
+    state.platform = nullptr;
+    g_dbus_connection_signal_unsubscribe(linux_state->connection, linux_state->action_subscription);
+    g_dbus_connection_signal_unsubscribe(linux_state->connection, linux_state->closed_subscription);
+    g_main_loop_unref(linux_state->loop);
+    g_object_unref(linux_state->connection);
+    g_main_context_unref(linux_state->context);
+    delete linux_state;
+    return KWEB_NOTIFICATIONS_STATUS_NATIVE_FAILED;
+  }
   return KWEB_NOTIFICATIONS_STATUS_OK;
 }
 
@@ -303,7 +321,11 @@ kweb_notifications_status NativeClose(State &state) {
   if (linux_state->closed_subscription != 0) {
     g_dbus_connection_signal_unsubscribe(linux_state->connection, linux_state->closed_subscription);
   }
+  g_main_loop_quit(linux_state->loop);
+  g_main_context_wakeup(linux_state->context);
+  if (linux_state->pump_thread.joinable()) linux_state->pump_thread.join();
   g_object_unref(linux_state->connection);
+  g_main_loop_unref(linux_state->loop);
   g_main_context_unref(linux_state->context);
   delete linux_state;
   state.platform = nullptr;

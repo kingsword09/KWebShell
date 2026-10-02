@@ -279,9 +279,9 @@ kweb_notifications_status kweb_notifications_poll_event(
 kweb_notifications_status kweb_notifications_close(uint64_t handle) {
   std::lock_guard<std::mutex> registry_lock(g_registry_mutex);
   if (handle != 1 || !g_state.open) return KWEB_NOTIFICATIONS_STATUS_NATIVE_UNAVAILABLE;
-  std::lock_guard<std::mutex> lock(g_state.mutex);
   const auto status = kwebshell::notifications::NativeClose(g_state);
   if (status == KWEB_NOTIFICATIONS_STATUS_OK) {
+    std::lock_guard<std::mutex> lock(g_state.mutex);
     g_state.open = false;
     g_state.events.clear();
     g_live_count.store(0);

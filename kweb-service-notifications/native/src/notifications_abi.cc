@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
 #include <cstring>
 
 namespace {
@@ -252,6 +253,7 @@ kweb_notifications_status kweb_notifications_close_notification(
     uint64_t handle, kweb_notifications_string id) {
   std::string value;
   if (!kwebshell::notifications::ReadString(id, KWEB_NOTIFICATIONS_MAX_ID, &value) || value.empty()) {
+    std::fprintf(stderr, "notification close id validation failed.\n");
     return KWEB_NOTIFICATIONS_STATUS_INVALID_ARGUMENT;
   }
   std::lock_guard<std::mutex> registry_lock(g_registry_mutex);

@@ -12,6 +12,7 @@
 namespace {
 struct LinuxState {
   GDBusConnection *connection = nullptr;
+  GMainContext *context = nullptr;
   guint action_subscription = 0;
   guint closed_subscription = 0;
 };
@@ -83,17 +84,23 @@ namespace kwebshell::notifications {
 
 const char *ProviderId() { return "linux.freedesktop.Notifications"; }
 
-void NativePump(State &) {
-  while (g_main_context_pending(nullptr)) g_main_context_iteration(nullptr, false);
+void NativePump(State &state) {
+  auto *linux_state = static_cast<LinuxState *>(state.platform);
+  if (linux_state == nullptr || linux_state->context == nullptr) return;
+  while (g_main_context_iteration(linux_state->context, false)) {}
 }
 
 kweb_notifications_status NativeOpen(State &state) {
   GError *error = nullptr;
   auto *linux_state = new LinuxState();
+  linux_state->context = g_main_context_new();
+  g_main_context_push_thread_default(linux_state->context);
   linux_state->connection = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
   if (linux_state->connection == nullptr) {
     const auto status = ErrorStatus(error);
     g_clear_error(&error);
+    g_main_context_pop_thread_default(linux_state->context);
+    g_main_context_unref(linux_state->context);
     delete linux_state;
     return status;
   }
@@ -110,6 +117,8 @@ kweb_notifications_status NativeOpen(State &state) {
     const auto status = ErrorStatus(error);
     g_clear_error(&error);
     g_object_unref(linux_state->connection);
+    g_main_context_pop_thread_default(linux_state->context);
+    g_main_context_unref(linux_state->context);
     delete linux_state;
     return status;
   }
@@ -136,6 +145,7 @@ kweb_notifications_status NativeOpen(State &state) {
       OnClosed,
       &state,
       nullptr);
+  g_main_context_pop_thread_default(linux_state->context);
   state.platform = linux_state;
   return KWEB_NOTIFICATIONS_STATUS_OK;
 }
@@ -255,6 +265,7 @@ kweb_notifications_status NativeClose(State &state) {
     g_dbus_connection_signal_unsubscribe(linux_state->connection, linux_state->closed_subscription);
   }
   g_object_unref(linux_state->connection);
+  g_main_context_unref(linux_state->context);
   delete linux_state;
   state.platform = nullptr;
   state.native_ids.clear();

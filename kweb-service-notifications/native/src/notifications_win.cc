@@ -42,7 +42,7 @@ std::string HString(hstring value) { return winrt::to_string(value); }
 
 void CopyProvider(char *target, size_t capacity, const char *value) {
   if (capacity == 0) return;
-  const size_t count = (value == nullptr) ? 0 : std::min(capacity - 1u, std::strlen(value));
+  const size_t count = (value == nullptr) ? 0 : (std::min)(capacity - 1u, std::strlen(value));
   if (count != 0) std::memcpy(target, value, count);
   target[count] = '\0';
 }

@@ -2,7 +2,9 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.gradle.api.tasks.Delete
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.JavaExec
+import org.gradle.api.tasks.bundling.Jar
 import org.gradle.jvm.toolchain.JavaLanguageVersion
+import java.io.File
 import java.util.Locale
 
 plugins {
@@ -247,40 +249,92 @@ val notificationsBridgeJavascript = rootProject.layout.projectDirectory.file(
 )
 val migrationIntegrationRoot = layout.buildDirectory.dir("migration-integration")
 val migrationIntegrationReport = compatibilityOutput
+val migrationIntegrationJavaOptions = providers.provider {
+    listOf(
+        "--enable-native-access=ALL-UNNAMED",
+        "-Djava.awt.headless=false",
+        "-Dkweb.native.library.path=${nativeEngineLibrary.get().absolutePath}",
+        "-Dkweb.services.native.library.path=${servicesNativeLibrary.get().absolutePath}",
+        "-Dkweb.shell.native.library.path=${shellNativeLibrary.get().absolutePath}",
+        "-Dkweb.clipboard.native.library.path=${clipboardNativeLibrary.get().absolutePath}",
+        "-Dkweb.engine.cef.runtime.path=${nativeCefRuntime.get().absolutePath}",
+        "-Dkweb.engine.subprocess.path=${nativeBrowserSubprocess.get().absolutePath}",
+        "-Dkweb.engine.resources.path=${nativeResources.get().absolutePath}",
+        "-Dkweb.engine.locales.path=${nativeLocales.get().absolutePath}",
+        "-Dkweb.migration.integration.root=${migrationIntegrationRoot.get().asFile.absolutePath}",
+        "-Dkweb.migration.app-paths.bridge.javascript=${appPathsBridgeJavascript.asFile.absolutePath}",
+        "-Dkweb.migration.files.bridge.javascript=${filesBridgeJavascript.asFile.absolutePath}",
+        "-Dkweb.migration.shell.bridge.javascript=${shellBridgeJavascript.asFile.absolutePath}",
+        "-Dkweb.migration.clipboard.bridge.javascript=${clipboardBridgeJavascript.asFile.absolutePath}",
+        "-Dkweb.notifications.native.library.path=${notificationsNativeLibrary.get().absolutePath}",
+        "-Dkweb.migration.notifications.bridge.javascript=${notificationsBridgeJavascript.asFile.absolutePath}",
+        "-Dkweb.migration.preload.javascript=${generatedDirectory.get().file("KWebElectronPreload.js").asFile.absolutePath}",
+        "-Dkweb.migration.manifest=${fixtureManifest.asFile.absolutePath}",
+        "-Dkweb.migration.inventory=${inventoryOutput.get().asFile.absolutePath}",
+        "-Dkweb.migration.report=${migrationIntegrationReport.get().asFile.absolutePath}",
+        "-Dkweb.migration.cef.version=${providers.gradleProperty("kwebMigrationCefVersion").orElse("151.3.16").get()}",
+        "-Dkweb.migration.chromium.version=${providers.gradleProperty("kwebMigrationChromiumVersion").orElse("151.0.7922.109").get()}",
+        "-Dkweb.migration.target=${providers.gradleProperty("kwebMigrationTarget").orElse(currentTarget()).get()}",
+    )
+}
+fun quoteMacJavaOption(option: String): String {
+    if (!option.startsWith("-D")) return option
+    val separator = option.indexOf('=')
+    if (separator < 0) return option
+    val value = option.substring(separator + 1).replace("\\", "\\\\").replace("\"", "\\\"")
+    return option.substring(0, separator + 1) + "\"" + value + "\""
+}
+val migrationIntegrationMainClass = "io.github.kingsword09.kwebshell.electron.migration.KWebElectronMigrationIntegrationMainKt"
 val migrationIntegrationCommand = providers.provider {
     buildList {
         add(migrationCliJava.get().executablePath.asFile.absolutePath)
-        add("--enable-native-access=ALL-UNNAMED")
-        add("-Djava.awt.headless=false")
-        add("-Dkweb.native.library.path=${nativeEngineLibrary.get().absolutePath}")
-        add("-Dkweb.services.native.library.path=${servicesNativeLibrary.get().absolutePath}")
-        add("-Dkweb.shell.native.library.path=${shellNativeLibrary.get().absolutePath}")
-        add("-Dkweb.clipboard.native.library.path=${clipboardNativeLibrary.get().absolutePath}")
-        add("-Dkweb.engine.cef.runtime.path=${nativeCefRuntime.get().absolutePath}")
-        add("-Dkweb.engine.subprocess.path=${nativeBrowserSubprocess.get().absolutePath}")
-        add("-Dkweb.engine.resources.path=${nativeResources.get().absolutePath}")
-        add("-Dkweb.engine.locales.path=${nativeLocales.get().absolutePath}")
-        add("-Dkweb.migration.integration.root=${migrationIntegrationRoot.get().asFile.absolutePath}")
-        add("-Dkweb.migration.app-paths.bridge.javascript=${appPathsBridgeJavascript.asFile.absolutePath}")
-        add("-Dkweb.migration.files.bridge.javascript=${filesBridgeJavascript.asFile.absolutePath}")
-        add("-Dkweb.migration.shell.bridge.javascript=${shellBridgeJavascript.asFile.absolutePath}")
-        add("-Dkweb.migration.clipboard.bridge.javascript=${clipboardBridgeJavascript.asFile.absolutePath}")
-        add("-Dkweb.notifications.native.library.path=${notificationsNativeLibrary.get().absolutePath}")
-        add("-Dkweb.migration.notifications.bridge.javascript=${notificationsBridgeJavascript.asFile.absolutePath}")
-        add("-Dkweb.migration.preload.javascript=${generatedDirectory.get().file("KWebElectronPreload.js").asFile.absolutePath}")
-        add("-Dkweb.migration.manifest=${fixtureManifest.asFile.absolutePath}")
-        add("-Dkweb.migration.inventory=${inventoryOutput.get().asFile.absolutePath}")
-        add("-Dkweb.migration.report=${migrationIntegrationReport.get().asFile.absolutePath}")
-        add("-Dkweb.migration.cef.version=${providers.gradleProperty("kwebMigrationCefVersion").orElse("151.3.16").get()}")
-        add("-Dkweb.migration.chromium.version=${providers.gradleProperty("kwebMigrationChromiumVersion").orElse("151.0.7922.109").get()}")
-        add("-Dkweb.migration.target=${providers.gradleProperty("kwebMigrationTarget").orElse(currentTarget()).get()}")
+        addAll(migrationIntegrationJavaOptions.get())
         add("-cp")
         add(migrationCliClasspath.asPath)
-        add("io.github.kingsword09.kwebshell.electron.migration.KWebElectronMigrationIntegrationMainKt")
+        add(migrationIntegrationMainClass)
     }
 }
 val cleanMigrationIntegration = tasks.register<Delete>("cleanElectronMigrationIntegration") {
     delete(migrationIntegrationRoot)
+}
+val migrationMacAppImageDirectory = layout.buildDirectory.dir("macos-migration-app-image")
+val migrationMacAppInputDirectory = layout.buildDirectory.dir("macos-migration-app-input")
+val migrationMacLauncherClass = "io/github/kingsword09/kwebshell/electron/migration/MacBundleIntegrationLauncher.class"
+val migrationMacLauncherMain = "io.github.kingsword09.kwebshell.electron.migration.MacBundleIntegrationLauncher"
+val cleanMigrationMacAppImage = tasks.register<Delete>("cleanMigrationMacAppImage") {
+    delete(migrationMacAppImageDirectory, migrationMacAppInputDirectory)
+}
+val migrationMacLauncherJar = tasks.register<Jar>("migrationMacLauncherJar") {
+    dependsOn(tasks.named("jvmTestClasses"))
+    archiveBaseName.set("kweb-electron-migration-launcher")
+    from(layout.buildDirectory.dir("classes/java/jvmTest")) { include(migrationMacLauncherClass) }
+    manifest.attributes["Main-Class"] = migrationMacLauncherMain
+}
+val prepareMigrationMacAppImageInput = tasks.register<Sync>("prepareMigrationMacAppImageInput") {
+    dependsOn(cleanMigrationMacAppImage, migrationMacLauncherJar)
+    from(migrationMacLauncherJar)
+    into(migrationMacAppInputDirectory)
+}
+val packageMigrationMacAppImage = tasks.register<Exec>("packageMigrationMacAppImage") {
+    group = "verification"
+    description = "Creates a real macOS app bundle for notification provider integration with the RFC 0030 bundle identity."
+    dependsOn(prepareMigrationMacAppImageInput)
+    val launcherJar = migrationMacLauncherJar.flatMap { it.archiveFile }
+    inputs.dir(migrationMacAppInputDirectory)
+    outputs.dir(migrationMacAppImageDirectory)
+    commandLine(
+        listOf(
+            migrationCliJava.get().metadata.installationPath.file("bin/jpackage").asFile.absolutePath,
+            "--type", "app-image",
+            "--name", "KWebShellMigrationFixture",
+            "--dest", migrationMacAppImageDirectory.get().asFile.absolutePath,
+            "--input", migrationMacAppInputDirectory.get().asFile.absolutePath,
+            "--main-jar", launcherJar.get().asFile.name,
+            "--main-class", migrationMacLauncherMain,
+            "--mac-package-identifier", "io.github.kingsword09.kwebshell",
+        ) + (listOf("--java-options", "-Dkweb.migration.launch.classpath=${migrationCliClasspath.asPath}") +
+            migrationIntegrationJavaOptions.get().flatMap { option -> listOf("--java-options", quoteMacJavaOption(option)) }),
+    )
 }
 val electronMigrationIntegrationTest = tasks.register<Exec>("electronMigrationIntegrationTest") {
     group = "verification"
@@ -300,6 +354,9 @@ val electronMigrationIntegrationTest = tasks.register<Exec>("electronMigrationIn
         ":kweb-service-notifications:buildNative",
         ":kweb-service-notifications:generateNotificationsBridge",
     )
+    if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("mac")) {
+        dependsOn(packageMigrationMacAppImage)
+    }
     inputs.file(nativeEngineLibrary)
     inputs.file(nativeCefRuntime)
     inputs.file(nativeBrowserSubprocess)
@@ -322,7 +379,12 @@ val electronMigrationIntegrationTest = tasks.register<Exec>("electronMigrationIn
     inputs.file(servicesNativeLibrary)
     inputs.file(generatedDirectory.get().file("KWebElectronPreload.js"))
     inputs.file(migrationIntegrationReport)
-    if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("linux")) {
+    if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("mac")) {
+        commandLine(
+            migrationMacAppImageDirectory.get().dir("KWebShellMigrationFixture.app")
+                .file("Contents/MacOS/KWebShellMigrationFixture").asFile.absolutePath,
+        )
+    } else if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("linux")) {
         commandLine(listOf("xvfb-run", "--auto-servernum", "--server-args=-screen 0 1280x1024x24") + migrationIntegrationCommand.get())
     } else {
         commandLine(migrationIntegrationCommand.get())

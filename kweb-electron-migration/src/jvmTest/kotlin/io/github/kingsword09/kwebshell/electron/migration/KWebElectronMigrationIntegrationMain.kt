@@ -109,6 +109,12 @@ public fun main() {
     )
     KWebElectronCompatibilityReportValidator.validate(report)
     require(report.migrationReady) { "The migration fixture cannot run with a blocked compatibility report." }
+    val notificationActivations = CopyOnWriteArrayList<KWebNotificationActivation>()
+    val notifications = JvmKWebNotifications.open(
+        requiredPath(NOTIFICATIONS_LIBRARY_PROPERTY),
+        "io.github.kwebshell.migration.fixture",
+        "io.github.kwebshell.migration.fixture",
+    ) { activation -> notificationActivations += activation }
     val appRoot = root.resolve("app-data")
     val sessionRoot = root.resolve("session-data")
     val profileRoot = root.resolve("profiles")
@@ -158,12 +164,6 @@ public fun main() {
         ),
     )
     val clipboard = JvmKWebClipboard.open(requiredPath(CLIPBOARD_LIBRARY_PROPERTY))
-    val notificationActivations = CopyOnWriteArrayList<KWebNotificationActivation>()
-    val notifications = JvmKWebNotifications.open(
-        requiredPath(NOTIFICATIONS_LIBRARY_PROPERTY),
-        "io.github.kwebshell.migration.fixture",
-        "io.github.kwebshell.migration.fixture",
-    ) { activation -> notificationActivations += activation }
     engine.nativeServices.install(KWebAppPaths.Key, appPaths)
     engine.nativeServices.install(KWebClipboard.Key, clipboard)
     engine.nativeServices.install(KWebNotifications.Key, notifications)

@@ -34,6 +34,10 @@ void OnAction(
     GVariant *parameters, gpointer user_data) {
   auto *state = static_cast<kwebshell::notifications::State *>(user_data);
   auto *linux_state = static_cast<LinuxState *>(state->platform);
+  g_printerr(
+      "notification ActionInvoked callback sender=%s owner=%s\n",
+      sender == nullptr ? "<null>" : sender,
+      linux_state == nullptr ? "<null>" : linux_state->owner.c_str());
   if (linux_state == nullptr || sender == nullptr || linux_state->owner != sender) return;
   guint32 native_id = 0;
   const gchar *action = nullptr;
@@ -194,6 +198,11 @@ kweb_notifications_status NativeOpen(State &state) {
           OnClosed,
           &state,
           nullptr);
+      g_printerr(
+          "notification subscriptions action=%u closed=%u owner=%s\n",
+          linux_state->action_subscription,
+          linux_state->closed_subscription,
+          linux_state->owner.c_str());
       ready.set_value(linux_state->action_subscription != 0 && linux_state->closed_subscription != 0);
       if (linux_state->action_subscription == 0 || linux_state->closed_subscription == 0) {
         g_main_context_pop_thread_default(linux_state->context);

@@ -12,6 +12,7 @@ static guint g_next_notification_id = 1;
 
 typedef struct {
   guint notification_id;
+  gchar *destination;
   gchar *action_id;
 } PendingAction;
 
@@ -43,11 +44,12 @@ static gboolean emit_action(gpointer user_data) {
   PendingAction *action = user_data;
   if (g_connection != NULL) {
     g_dbus_connection_emit_signal(
-        g_connection, NULL, k_object_path, k_interface, "ActionInvoked",
+        g_connection, action->destination, k_object_path, k_interface, "ActionInvoked",
         g_variant_new("(us)", action->notification_id, action->action_id),
         NULL);
     g_dbus_connection_flush_sync(g_connection, NULL, NULL);
   }
+  g_free(action->destination);
   g_free(action->action_id);
   g_free(action);
   return G_SOURCE_REMOVE;
@@ -57,7 +59,6 @@ static void method_call(
     GDBusConnection *connection, const gchar *sender, const gchar *object_path,
     const gchar *interface_name, const gchar *method_name, GVariant *parameters,
     GDBusMethodInvocation *invocation, gpointer user_data) {
-  (void)sender;
   (void)object_path;
   (void)interface_name;
   (void)user_data;
@@ -85,6 +86,7 @@ static void method_call(
     if (action_count >= 2 || replaces_id == 0) {
       PendingAction *pending = g_new0(PendingAction, 1);
       pending->notification_id = notification_id;
+      pending->destination = sender == NULL ? NULL : g_strdup(sender);
       pending->action_id = g_strdup(action_count >= 2 ? action_values[0] : "open");
       g_timeout_add(1000, emit_action, pending);
     }

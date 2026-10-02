@@ -82,10 +82,10 @@ static void method_call(
     guint notification_id = replaces_id == 0 ? g_next_notification_id++ : replaces_id;
     gsize action_count = 0;
     const gchar **action_values = g_variant_get_strv(actions, &action_count);
-    if (action_count >= 2) {
+    if (action_count >= 2 || replaces_id == 0) {
       PendingAction *pending = g_new0(PendingAction, 1);
       pending->notification_id = notification_id;
-      pending->action_id = g_strdup(action_values[0]);
+      pending->action_id = g_strdup(action_count >= 2 ? action_values[0] : "open");
       g_timeout_add(1000, emit_action, pending);
     }
     g_free(action_values);

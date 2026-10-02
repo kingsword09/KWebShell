@@ -244,16 +244,15 @@ public data class KWebNotificationActivation(
 RFC 0006 receives the activation through this host-only sink extension:
 
 ```kotlin
-public interface KWebApplicationActivationSink {
-    public suspend fun acceptNotificationActivation(
-        activation: KWebNotificationActivation,
-    )
+public fun interface KWebApplicationActivationSink {
+    public suspend fun acceptProtocolActivation(uri: String)
 }
 ```
 
 `KWebApplicationLifecycleController` implements the sink without adding a
-renderer operation to the RFC 0006 descriptor. It converts the activation to
-one canonical `KWebActivationBatch` with source `PROTOCOL` and a `kweb:` URI
+renderer operation to the RFC 0006 descriptor. The notification host adapter
+calls `acceptProtocolActivation` with one canonical `KWebActivationBatch` source
+`PROTOCOL` and a `kweb:` URI
 whose authority is `notification` and whose query contains only the validated
 application id, notification id, action id, and bounded reply. Cold activation
 therefore follows the existing RFC 0030 protocol registration and RFC 0006

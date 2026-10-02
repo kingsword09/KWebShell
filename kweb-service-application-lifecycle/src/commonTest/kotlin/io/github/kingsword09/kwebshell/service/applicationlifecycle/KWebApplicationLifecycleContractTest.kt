@@ -32,6 +32,22 @@ class KWebApplicationLifecycleContractTest {
     }
 
     @Test
+    fun hostNotificationActivationUsesTheExistingProtocolIngress() = runBlocking {
+        val backend = FakeBackend()
+        val lifecycle = KWebApplicationLifecycleController(configuration(), backend)
+        lifecycle.start(activation(KWebActivationSource.TEST, "kweb://example/start"))
+
+        lifecycle.acceptProtocolActivation("kweb://notification?app=io.github.kwebshell&id=notification-1&action=open")
+
+        val activation = lifecycle.events.replayCache.filterIsInstance<KWebApplicationEvent.Activation>().last()
+        assertEquals(KWebActivationSource.PROTOCOL, activation.batch.source)
+        assertEquals(
+            "kweb://notification?app=io.github.kwebshell&id=notification-1&action=open",
+            activation.batch.uris.single(),
+        )
+    }
+
+    @Test
     fun rejectsUnregisteredSchemeMalformedUriAndUnnormalizedFile() = runBlocking {
         val backend = FakeBackend()
         val lifecycle = KWebApplicationLifecycleController(configuration(), backend)

@@ -25,6 +25,7 @@ tasks.register("runtimeCheck") {
     dependsOn(":kweb-service-files:check")
     dependsOn(":kweb-service-clipboard:check")
     dependsOn(":kweb-service-shell:check")
+    dependsOn(":kweb-service-notifications:check")
     dependsOn(":kweb-electron-migration:check")
     dependsOn(":kweb-rfc-governance:contractTest")
     dependsOn(":kweb-bridge:check")

@@ -57,6 +57,11 @@ public interface KWebApplicationShutdownParticipant {
     public suspend fun requestClose(reason: KWebQuitReason): KWebShutdownVote
     public suspend fun close(reason: KWebQuitReason)
 }
+
+/** Host-only ingress for a declared service that activates the application. */
+public fun interface KWebApplicationActivationSink {
+    public suspend fun acceptProtocolActivation(uri: String)
+}
 ```
 
 `KWebApplicationLifecycleConfiguration` contains the RFC 0030 application ID,

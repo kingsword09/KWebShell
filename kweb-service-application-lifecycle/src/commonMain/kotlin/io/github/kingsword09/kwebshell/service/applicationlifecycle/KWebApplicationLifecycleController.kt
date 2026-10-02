@@ -41,10 +41,15 @@ public interface KWebApplicationLifecycleBackend {
     public suspend fun removeAssociations(): KWebApplicationRegistrationReport
 }
 
+/** Host-only ingress used by native services that activate the packaged app. */
+public fun interface KWebApplicationActivationSink {
+    public suspend fun acceptProtocolActivation(uri: String)
+}
+
 public class KWebApplicationLifecycleController(
     private val configuration: KWebApplicationLifecycleConfiguration,
     private val backend: KWebApplicationLifecycleBackend,
-) : KWebApplicationLifecycle {
+) : KWebApplicationLifecycle, KWebApplicationActivationSink {
     private val lock = Mutex()
     private val eventLock = Mutex()
     private val mutableState = MutableStateFlow(KWebApplicationLifecycleState.NEW)
@@ -122,6 +127,15 @@ public class KWebApplicationLifecycleController(
                 KWebApplicationStartResult.SECONDARY_FORWARDED
             }
         }
+    }
+
+    override suspend fun acceptProtocolActivation(uri: String) {
+        acceptActivation(
+            KWebActivationBatch(
+                source = KWebActivationSource.PROTOCOL,
+                uris = listOf(uri),
+            ),
+        )
     }
 
     override suspend fun requestQuit(reason: KWebQuitReason): KWebQuitResult {

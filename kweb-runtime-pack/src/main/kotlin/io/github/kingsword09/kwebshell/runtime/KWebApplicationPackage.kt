@@ -26,10 +26,12 @@ import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.BasicFileAttributes
 import java.security.Signature
 import java.time.LocalDateTime
 import java.util.zip.CRC32
 import java.util.Locale
+import javax.imageio.ImageIO
 
 internal class KWebApplicationPackageException(
     code: String,
@@ -137,6 +139,7 @@ internal data class KWebApplicationPackageSignatureStatement(
 
 internal data class KWebApplicationPackageBuildRequest(
     val applicationManifest: Path,
+    val applicationAssetRoot: Path,
     val runtimeRelease: Path,
     val catalog: CefRuntimeCatalog,
     val target: KWebTarget,
@@ -158,6 +161,7 @@ internal data class KWebApplicationPackageBuildResult(
 internal data class KWebApplicationPackageVerificationRequest(
     val applicationPackage: Path,
     val applicationManifest: Path,
+    val applicationAssetRoot: Path,
     val catalog: CefRuntimeCatalog,
     val target: KWebTarget,
     val productVersion: String,
@@ -232,6 +236,12 @@ internal object KWebApplicationPackageAssembler {
                 details = mapOf("target" to request.target.id),
                 message = "The application manifest does not declare the requested target.",
             )
+        applicationPackageRequire(
+            request.target.operatingSystem.id != "windows" || request.target.id == "windows-x64",
+            code = "application.package.windows-target-unsupported",
+            details = mapOf("target" to request.target.id),
+            message = "Windows MSIX packaging currently supports the pinned x64 JRE only; no Windows ARM64 fallback is provided.",
+        )
         validateOutputPath(request.outputPackage, targetSpec.format)
         validatePlatformSignature(manifest, request.target, targetSpec, request.platformSignature)
 
@@ -248,7 +258,15 @@ internal object KWebApplicationPackageAssembler {
         val manifestSha256 = sha256(manifestBytes)
         val runtimeReleaseDigest = KWebRuntimeReleaseFileIO.digest(request.runtimeRelease)
         val signatureBytes = KWebApplicationPlatformSignatureCodec.encode(request.platformSignature)
-        val platformEntries = platformMetadataEntries(manifest, request.target, targetSpec)
+        validateApplicationAssetRoot(request.applicationAssetRoot)
+        val assetSnapshot = applicationAssetSnapshot(manifest, request.target, request.applicationAssetRoot)
+        val platformEntries = platformMetadataEntries(
+            manifest,
+            request.target,
+            targetSpec,
+            request.applicationAssetRoot,
+        )
+        requireApplicationAssetSnapshot(assetSnapshot)
         val platformMetadataSha256 = platformEntries.mapValues { (_, bytes) -> sha256(bytes) }
         val entries = linkedMapOf(
             APPLICATION_MANIFEST_PATH to manifestBytes,
@@ -337,16 +355,23 @@ internal object KWebApplicationPackageAssembler {
                 target = request.target,
                 format = targetSpec.format,
             )
-            KWebApplicationPackageVerifier.verify(
-                KWebApplicationPackageVerificationRequest(
+            val verificationRequest = KWebApplicationPackageVerificationRequest(
                     applicationPackage = temporary,
                     applicationManifest = request.applicationManifest,
+                    applicationAssetRoot = request.applicationAssetRoot,
                     catalog = request.catalog,
                     target = request.target,
                     productVersion = request.productVersion,
                     trustedPublicKey = request.trustedPublicKey,
-                ),
             )
+            if (request.target.operatingSystem.id == "windows") {
+                KWebApplicationPackageVerifier.verifyWindowsMetadataArchive(
+                    verificationRequest,
+                    atomicBuildTemporary = true,
+                )
+            } else {
+                KWebApplicationPackageVerifier.verify(verificationRequest)
+            }
             publishAtomically(temporary, request.outputPackage)
         } catch (error: Throwable) {
             primaryFailure = error
@@ -375,17 +400,61 @@ internal object KWebApplicationPackageAssembler {
         manifest: KWebApplicationManifest,
         target: KWebTarget,
         targetSpec: KWebApplicationTarget,
-    ): KWebApplicationRegistration = KWebApplicationRegistration(
-        schemaVersion = APPLICATION_PACKAGE_SCHEMA_VERSION,
-        target = target.id,
-        identity = platformIdentity(manifest, targetSpec),
-        protocols = manifest.protocols,
-        fileTypes = manifest.fileTypes,
+    ): KWebApplicationRegistration = applicationRegistrationRecord(manifest, target, targetSpec)
+}
+
+internal fun applicationRegistrationRecord(
+    manifest: KWebApplicationManifest,
+    target: KWebTarget,
+    targetSpec: KWebApplicationTarget,
+): KWebApplicationRegistration = KWebApplicationRegistration(
+    schemaVersion = APPLICATION_PACKAGE_SCHEMA_VERSION,
+    target = target.id,
+    identity = platformIdentity(manifest, targetSpec),
+    protocols = manifest.protocols,
+    fileTypes = manifest.fileTypes,
+)
+
+internal fun applicationRegistrationDigest(
+    manifest: KWebApplicationManifest,
+    target: KWebTarget,
+): String {
+    val targetSpec = manifest.targets[target.id]
+        ?: applicationPackageFailure(
+            code = "application.package.target-missing",
+            details = mapOf("target" to target.id),
+            message = "The application manifest does not declare the requested target.",
+        )
+    return sha256(
+        canonicalBytes(
+            applicationRegistrationRecord(manifest, target, targetSpec),
+            KWebApplicationRegistration.serializer(),
+        ),
     )
 }
 
 internal object KWebApplicationPackageVerifier {
-    fun verify(request: KWebApplicationPackageVerificationRequest): KWebApplicationPackageVerificationResult {
+    fun verify(request: KWebApplicationPackageVerificationRequest): KWebApplicationPackageVerificationResult =
+        verify(request, allowWindowsMetadataArchive = false)
+
+    internal fun verifyWindowsMetadataArchive(
+        request: KWebApplicationPackageVerificationRequest,
+        atomicBuildTemporary: Boolean = false,
+    ): KWebApplicationPackageVerificationResult {
+        applicationPackageRequire(
+            request.target.id == "windows-x64" &&
+                (atomicBuildTemporary || request.applicationPackage.fileName.toString().endsWith(".zip", ignoreCase = true)),
+            code = "application.package.windows-metadata-archive-invalid",
+            details = mapOf("target" to request.target.id, "path" to request.applicationPackage.toString()),
+            message = "Only the internal ZIP metadata archive for the Windows x64 provider can use this verifier.",
+        )
+        return verify(request, allowWindowsMetadataArchive = true)
+    }
+
+    private fun verify(
+        request: KWebApplicationPackageVerificationRequest,
+        allowWindowsMetadataArchive: Boolean,
+    ): KWebApplicationPackageVerificationResult {
         validatePackagePath(request.applicationPackage)
         val manifest = KWebApplicationManifestLoader.load(request.applicationManifest)
         KWebApplicationManifestContract.validate(manifest)
@@ -400,8 +469,22 @@ internal object KWebApplicationPackageVerifier {
                 details = mapOf("target" to request.target.id),
                 message = "The application manifest does not declare the requested target.",
             )
+        applicationPackageRequire(
+            targetSpec.format != KWebApplicationPackageFormat.WINDOWS_MSIX || allowWindowsMetadataArchive,
+            code = "application.package.windows-msix-sdk-verification-required",
+            details = mapOf("target" to request.target.id),
+            message = "Windows MSIX packages must be verified with the Windows SDK and installed-package checks; the internal metadata archive is not a distributable package.",
+        )
         val entries = readEntries(request.applicationPackage, targetSpec.format)
-        val platformEntries = platformMetadataEntries(manifest, request.target, targetSpec)
+        validateApplicationAssetRoot(request.applicationAssetRoot)
+        val assetSnapshot = applicationAssetSnapshot(manifest, request.target, request.applicationAssetRoot)
+        val platformEntries = platformMetadataEntries(
+            manifest,
+            request.target,
+            targetSpec,
+            request.applicationAssetRoot,
+        )
+        requireApplicationAssetSnapshot(assetSnapshot)
         val expectedNames = listOf(
             APPLICATION_MANIFEST_PATH,
             PACKAGED_STATE_PATH,
@@ -777,7 +860,7 @@ private fun validatePlatformSignature(
             signature.identity == platformIdentity(manifest, targetSpec) &&
             signature.signer.isNotBlank() &&
             signature.signatureStatus == "VERIFIED" &&
-            signature.registrationDigest.matches(PLATFORM_DIGEST),
+            signature.registrationDigest == applicationRegistrationDigest(manifest, target),
         code = "application.package.platform-signature-invalid",
         details = mapOf("target" to target.id),
         message = "The platform signature facts are missing, stale, or do not match the application identity.",
@@ -796,7 +879,7 @@ private fun validatePlatformSignature(
 }
 
 private fun platformIdentity(manifest: KWebApplicationManifest, targetSpec: KWebApplicationTarget): String =
-    targetSpec.bundleId ?: targetSpec.aumid ?: targetSpec.desktopId
+    targetSpec.bundleId ?: targetSpec.packageIdentityName ?: targetSpec.desktopId
         ?: applicationPackageFailure(
             code = "application.package.identity-missing",
             message = "The target package identity is missing.",
@@ -806,14 +889,13 @@ private fun platformMetadataEntries(
     manifest: KWebApplicationManifest,
     target: KWebTarget,
     targetSpec: KWebApplicationTarget,
+    applicationAssetRoot: Path,
 ): Map<String, ByteArray> = when (target.operatingSystem.id) {
     "macos" -> mapOf(
         MACOS_INFO_PLIST_PATH to macosInfoPlist(manifest, targetSpec).toByteArray(StandardCharsets.UTF_8),
     )
 
-    "windows" -> mapOf(
-        WINDOWS_APPX_MANIFEST_PATH to windowsAppxManifest(manifest, targetSpec).toByteArray(StandardCharsets.UTF_8),
-    )
+    "windows" -> windowsMsixMetadataEntries(manifest, target, applicationAssetRoot)
 
     "linux" -> mapOf(
         LINUX_DESKTOP_PATH to linuxDesktopEntry(manifest, targetSpec).toByteArray(StandardCharsets.UTF_8),
@@ -826,6 +908,141 @@ private fun platformMetadataEntries(
         details = mapOf("target" to target.id),
         message = "The application package has no provider for the requested target.",
     )
+}
+
+internal fun windowsMsixMetadataEntries(
+    manifest: KWebApplicationManifest,
+    target: KWebTarget,
+    applicationAssetRoot: Path,
+): Map<String, ByteArray> {
+    applicationPackageRequire(
+        target.id == "windows-x64",
+        code = "application.package.windows-target-unsupported",
+        details = mapOf("target" to target.id),
+        message = "The pinned Temurin launcher currently supports Windows x64 MSIX only; Windows ARM64 has no matching JRE.",
+    )
+    val targetSpec = manifest.targets[target.id]
+        ?: applicationPackageFailure(
+            code = "application.package.target-missing",
+            details = mapOf("target" to target.id),
+            message = "The application manifest does not declare the requested target.",
+        )
+    return buildMap {
+        put(
+            WINDOWS_APPX_MANIFEST_PATH,
+            windowsAppxManifest(manifest, targetSpec).toByteArray(StandardCharsets.UTF_8),
+        )
+        putAll(windowsIconEntries(manifest, applicationAssetRoot))
+    }
+}
+
+private fun validateApplicationAssetRoot(root: Path) {
+    applicationPackageRequire(
+        root.isAbsolute && root == root.normalize() &&
+            Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(root),
+        code = "application.package.asset-root-invalid",
+        details = mapOf("path" to root.toString()),
+        message = "The application asset root must be an absolute, normalized, non-symbolic-link directory.",
+    )
+}
+
+private fun applicationAssetSnapshot(
+    manifest: KWebApplicationManifest,
+    target: KWebTarget,
+    root: Path,
+): Map<Path, ApplicationAssetSnapshot> = if (target.operatingSystem.id != "windows") {
+    emptyMap()
+} else {
+    manifest.icons.associate { icon ->
+        val path = safeApplicationAssetPath(root, icon.path)
+        try {
+            val attributes = Files.readAttributes(path, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+            applicationPackageRequire(
+                attributes.size() in 24L..MAX_WINDOWS_ASSET_BYTES,
+                code = "application.package.windows-icon-invalid",
+                details = mapOf("path" to icon.path, "size" to attributes.size().toString()),
+                message = "A Windows package PNG must be between 24 bytes and the configured asset-size limit.",
+            )
+            path to ApplicationAssetSnapshot(attributes = attributes, sha256 = sha256(path))
+        } catch (error: KWebApplicationPackageException) {
+            throw error
+        } catch (error: Exception) {
+            applicationPackageFailure(
+                code = "application.package.asset-file-invalid",
+                details = mapOf("path" to path.toString()),
+                message = "A declared application asset is missing or cannot be inspected.",
+                cause = error,
+            )
+        }
+    }
+}
+
+private fun requireApplicationAssetSnapshot(snapshot: Map<Path, ApplicationAssetSnapshot>) {
+    snapshot.forEach { (path, before) ->
+        val after = try {
+            val attributes = Files.readAttributes(path, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+            if (!attributes.isRegularFile || attributes.size() !in 24L..MAX_WINDOWS_ASSET_BYTES) {
+                applicationPackageFailure(
+                    code = "application.package.asset-changed-during-build",
+                    details = mapOf("path" to path.toString()),
+                    message = "A declared Windows icon changed to an invalid file while its package was being verified.",
+                )
+            }
+            ApplicationAssetSnapshot(attributes = attributes, sha256 = sha256(path))
+        } catch (error: KWebApplicationPackageException) {
+            throw error
+        } catch (error: Exception) {
+            applicationPackageFailure(
+                code = "application.package.asset-changed-during-build",
+                details = mapOf("path" to path.toString()),
+                message = "A declared application asset disappeared while its package was being verified.",
+                cause = error,
+            )
+        }
+        applicationPackageRequire(
+            before.attributes.isRegularFile && after.attributes.isRegularFile &&
+                (before.attributes.fileKey() == null || after.attributes.fileKey() == before.attributes.fileKey()) &&
+                before.attributes.size() == after.attributes.size() &&
+                before.attributes.lastModifiedTime() == after.attributes.lastModifiedTime() &&
+                before.sha256 == after.sha256,
+            code = "application.package.asset-changed-during-build",
+            details = mapOf("path" to path.toString()),
+            message = "A declared application asset changed during package construction or verification.",
+        )
+    }
+}
+
+private data class ApplicationAssetSnapshot(
+    val attributes: BasicFileAttributes,
+    val sha256: String,
+)
+
+private fun safeApplicationAssetPath(root: Path, relativePath: String): Path {
+    val relative = Path.of(relativePath)
+    val source = root.resolve(relative).normalize()
+    applicationPackageRequire(
+        !relative.isAbsolute && source.startsWith(root) && source != root,
+        code = "application.package.asset-path-invalid",
+        details = mapOf("path" to relativePath),
+        message = "An application asset path escapes its declared root.",
+    )
+    val components = root.relativize(source)
+    var cursor = root
+    components.forEachIndexed { index, component ->
+        cursor = cursor.resolve(component)
+        applicationPackageRequire(
+            !Files.isSymbolicLink(cursor) &&
+                if (index == components.nameCount - 1) {
+                    Files.isRegularFile(cursor, LinkOption.NOFOLLOW_LINKS)
+                } else {
+                    Files.isDirectory(cursor, LinkOption.NOFOLLOW_LINKS)
+                },
+            code = "application.package.asset-file-invalid",
+            details = mapOf("path" to relativePath),
+            message = "A declared application asset is missing, non-regular, or traverses a symbolic link.",
+        )
+    }
+    return source
 }
 
 private fun macosInfoPlist(
@@ -867,23 +1084,119 @@ private fun windowsAppxManifest(
     targetSpec: KWebApplicationTarget,
 ): String = buildString {
     appendLine("<?xml version=\"1.0\" encoding=\"utf-8\"?>")
-    appendLine("<Package xmlns=\"http://schemas.microsoft.com/appx/manifest/foundation/windows10\" xmlns:uap=\"http://schemas.microsoft.com/appx/manifest/uap/windows10\">")
-    appendLine("  <Identity Name=\"${xml(checkNotNull(targetSpec.aumid))}\" Publisher=\"CN=${xml(manifest.publisher)}\" Version=\"${xml(appxVersion(manifest.productVersion))}\" />")
-    appendLine("  <Properties><DisplayName>${xml(manifest.displayName)}</DisplayName><PublisherDisplayName>${xml(manifest.publisher)}</PublisherDisplayName><Description>${xml(manifest.displayName)}</Description></Properties>")
+    appendLine("<Package xmlns=\"http://schemas.microsoft.com/appx/manifest/foundation/windows10\" xmlns:uap=\"http://schemas.microsoft.com/appx/manifest/uap/windows10\" xmlns:rescap=\"http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities\" IgnorableNamespaces=\"uap rescap\">")
+    appendLine("  <Identity Name=\"${xml(checkNotNull(targetSpec.packageIdentityName))}\" Publisher=\"CN=${xml(manifest.publisher)}\" Version=\"${xml(appxVersion(manifest.productVersion))}\" ProcessorArchitecture=\"x64\" />")
+    appendLine("  <Properties><DisplayName>${xml(manifest.displayName)}</DisplayName><PublisherDisplayName>${xml(manifest.publisher)}</PublisherDisplayName><Description>${xml(manifest.displayName)}</Description><Logo>Assets/StoreLogo.png</Logo></Properties>")
+    appendLine("  <Dependencies><TargetDeviceFamily Name=\"Windows.Desktop\" MinVersion=\"${xml(targetSpec.minimumOs)}\" MaxVersionTested=\"10.0.26100.0\" /></Dependencies>")
     appendLine("  <Resources><Resource Language=\"en-us\" /></Resources>")
     appendLine("  <Applications><Application Id=\"${xml(manifest.mainExecutable)}\" Executable=\"${xml(manifest.mainExecutable)}.exe\" EntryPoint=\"Windows.FullTrustApplication\">")
-    appendLine("    <uap:VisualElements AppListEntry=\"none\" DisplayName=\"${xml(manifest.displayName)}\" Description=\"${xml(manifest.displayName)}\" />")
+    appendLine("    <uap:VisualElements DisplayName=\"${xml(manifest.displayName)}\" Description=\"${xml(manifest.displayName)}\" BackgroundColor=\"#071A3B\" ForegroundText=\"light\" Square44x44Logo=\"Assets/Square44x44Logo.png\" Square150x150Logo=\"Assets/Square150x150Logo.png\">")
+    appendLine("      <uap:DefaultTile Square310x310Logo=\"Assets/Square310x310Logo.png\" />")
+    appendLine("    </uap:VisualElements>")
     appendLine("    <Extensions>")
     manifest.protocols.forEach { protocol ->
         appendLine("      <uap:Extension Category=\"windows.protocol\"><uap:Protocol Name=\"${xml(protocol.scheme)}\"><uap:DisplayName>${xml(manifest.displayName)}</uap:DisplayName></uap:Protocol></uap:Extension>")
     }
     manifest.fileTypes.forEach { fileType ->
-        appendLine("      <uap:Extension Category=\"windows.fileTypeAssociation\"><uap:FileTypeAssociation Name=\"${xml(fileType.extension.removePrefix("."))}\" Description=\"${xml(fileType.description)}\"><uap:SupportedFileTypes><uap:FileType>${xml(fileType.extension)}</uap:FileType></uap:SupportedFileTypes></uap:FileTypeAssociation></uap:Extension>")
+        val associationName = xml(fileType.extension.removePrefix("."))
+        appendLine("      <uap:Extension Category=\"windows.fileTypeAssociation\"><uap:FileTypeAssociation Name=\"$associationName\"><uap:DisplayName>${xml(fileType.description)}</uap:DisplayName><uap:SupportedFileTypes><uap:FileType>${xml(fileType.extension)}</uap:FileType></uap:SupportedFileTypes></uap:FileTypeAssociation></uap:Extension>")
     }
     appendLine("    </Extensions>")
     appendLine("  </Application></Applications>")
+    appendLine("  <Capabilities><rescap:Capability Name=\"runFullTrust\" /></Capabilities>")
     appendLine("</Package>")
 }
+
+private fun windowsIconEntries(
+    manifest: KWebApplicationManifest,
+    applicationAssetRoot: Path,
+): Map<String, ByteArray> {
+    validateApplicationAssetRoot(applicationAssetRoot)
+    val expected = listOf(
+        WindowsIconAsset("windows-msix-square44", "Assets/Square44x44Logo.png", 44),
+        WindowsIconAsset("windows-msix-square150", "Assets/Square150x150Logo.png", 150),
+        WindowsIconAsset("windows-msix-square310", "Assets/Square310x310Logo.png", 310),
+        WindowsIconAsset("windows-msix-store", "Assets/StoreLogo.png", 50),
+    )
+    return expected.associate { asset ->
+        val icon = manifest.icons.singleOrNull { it.kind == asset.kind }
+            ?: applicationPackageFailure(
+                code = "application.package.windows-icon-missing",
+                details = mapOf("kind" to asset.kind),
+                message = "The Windows package requires exactly one declared asset for each required icon kind.",
+            )
+        val source = safeApplicationAssetPath(applicationAssetRoot, icon.path)
+        val sourceSize = try {
+            Files.size(source)
+        } catch (error: Exception) {
+            applicationPackageFailure(
+                code = "application.package.asset-read-failed",
+                details = mapOf("path" to icon.path),
+                message = "Unable to inspect a declared Windows package icon.",
+                cause = error,
+            )
+        }
+        applicationPackageRequire(
+            sourceSize in 24L..MAX_WINDOWS_ASSET_BYTES,
+            code = "application.package.windows-icon-invalid",
+            details = mapOf("kind" to asset.kind, "path" to icon.path),
+            message = "A Windows package icon exceeds the configured asset-size limit.",
+        )
+        val bytes = try {
+            Files.readAllBytes(source)
+        } catch (error: Exception) {
+            applicationPackageFailure(
+                code = "application.package.asset-read-failed",
+                details = mapOf("path" to icon.path),
+                message = "Unable to read a declared application asset.",
+                cause = error,
+            )
+        }
+        val pngSize = if (bytes.size >= 24) {
+            bytes.pngDimensions()
+        } else {
+            null
+        }
+        applicationPackageRequire(
+            bytes.copyOfRange(0, minOf(bytes.size, PNG_SIGNATURE.size)).contentEquals(PNG_SIGNATURE) &&
+                pngSize == (asset.dimension to asset.dimension),
+            code = "application.package.windows-icon-invalid",
+            details = mapOf("kind" to asset.kind, "path" to icon.path),
+            message = "A Windows package icon must have the PNG signature and its declared fixed dimensions.",
+        )
+        val image = try {
+            ImageIO.read(ByteArrayInputStream(bytes))
+        } catch (error: Exception) {
+            applicationPackageFailure(
+                code = "application.package.windows-icon-invalid",
+                details = mapOf("kind" to asset.kind, "path" to icon.path),
+                message = "A Windows package icon is not a decodable PNG image.",
+                cause = error,
+            )
+        }
+        applicationPackageRequire(
+            image != null && image.width == asset.dimension && image.height == asset.dimension,
+            code = "application.package.windows-icon-invalid",
+            details = mapOf("kind" to asset.kind, "path" to icon.path),
+            message = "A Windows package icon must be a PNG with the dimensions required by its manifest kind.",
+        )
+        asset.packagePath to bytes
+    }
+}
+
+private fun ByteArray.pngDimensions(): Pair<Int, Int> = readPngDimension(16) to readPngDimension(20)
+
+private fun ByteArray.readPngDimension(offset: Int): Int =
+    (((this[offset].toLong() and 0xffL) shl 24) or
+        ((this[offset + 1].toLong() and 0xffL) shl 16) or
+        ((this[offset + 2].toLong() and 0xffL) shl 8) or
+        (this[offset + 3].toLong() and 0xffL)).toInt()
+
+private data class WindowsIconAsset(
+    val kind: String,
+    val packagePath: String,
+    val dimension: Int,
+)
 
 private fun linuxDesktopEntry(
     manifest: KWebApplicationManifest,
@@ -957,14 +1270,18 @@ private fun validateOutputPath(path: Path, format: KWebApplicationPackageFormat)
     val extension = path.fileName.toString().substringAfterLast('.', "").lowercase()
     val expected = when (format) {
         KWebApplicationPackageFormat.MACOS_APP_ZIP -> "zip"
-        KWebApplicationPackageFormat.WINDOWS_MSIX -> "msix"
+        KWebApplicationPackageFormat.WINDOWS_MSIX -> "zip"
         KWebApplicationPackageFormat.LINUX_DEB -> "deb"
     }
     applicationPackageRequire(
         extension == expected,
         code = "application.package.extension-invalid",
         details = mapOf("expected" to expected, "actual" to extension),
-        message = "The application package extension does not match its declared format.",
+        message = if (format == KWebApplicationPackageFormat.WINDOWS_MSIX) {
+            "The Windows Kotlin assembler emits only signed metadata ZIPs; a real .msix must be created and verified by the Windows SDK provider."
+        } else {
+            "The application package extension does not match its declared format."
+        },
     )
 }
 
@@ -1289,14 +1606,15 @@ private const val PLATFORM_SIGNATURE_PATH: String = "signatures/platform.json"
 private const val PACKAGE_SIGNATURE_STATEMENT_PATH: String = "signatures/package.json"
 private const val PACKAGE_SIGNATURE_PATH: String = "signatures/package.ed25519"
 private const val MACOS_INFO_PLIST_PATH: String = "platform/macos/Info.plist"
-private const val WINDOWS_APPX_MANIFEST_PATH: String = "platform/windows/AppxManifest.xml"
+private const val WINDOWS_APPX_MANIFEST_PATH: String = "AppxManifest.xml"
+private const val MAX_WINDOWS_ASSET_BYTES: Long = 16L * 1024L * 1024L
 private const val LINUX_DESKTOP_PATH: String = "platform/linux/io.github.kwebshell.desktop"
 private const val LINUX_MIME_PATH: String = "platform/linux/io.github.kwebshell.mime.xml"
 private const val LINUX_METAINFO_PATH: String = "platform/linux/io.github.kwebshell.metainfo.xml"
 private const val DEB_DATA_ROOT: String = "opt/kwebshell/"
 private val AR_MAGIC: ByteArray = "!<arch>\n".toByteArray(StandardCharsets.US_ASCII)
-private val PLATFORM_DIGEST = Regex("[0-9a-f]{64}")
 private const val KWEB_APPLICATION_PACKAGE_SIGNATURE_ALGORITHM: String = "Ed25519"
 private val KWEB_APPLICATION_PACKAGE_SIGNATURE_DOMAIN: ByteArray =
     "KWebShell application package v1\u0000".toByteArray(StandardCharsets.US_ASCII)
+private val PNG_SIGNATURE: ByteArray = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)
 private val FIXED_TIMESTAMP: LocalDateTime = LocalDateTime.of(2000, 1, 1, 0, 0, 0)

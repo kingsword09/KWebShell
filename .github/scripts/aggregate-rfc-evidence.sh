@@ -126,7 +126,16 @@ for target in macos-arm64 windows-x64 linux-x64; do
     else
       output="build/rfc-evidence/chain-${target}-${count}.json"
     fi
-    record "$target" "$rfc" "$provider" "$artifact" "$file" "$chain" "$output" "${extra_name:-}" "${extra_file:-}"
+    if [ "$rfc" = "0030" ] && [ "$target" = "windows-x64" ]; then
+      windows_msix=$(find "$downloaded" -type f -name '*.msix' -path "*application-package-${target}-*" | head -1)
+      if [ -z "$windows_msix" ] || [ ! -f "$windows_msix" ]; then
+        echo "Missing signed Windows MSIX evidence for $target" >&2
+        exit 1
+      fi
+      record "$target" "$rfc" "$provider" "$artifact" "$file" "$chain" "$output" "windows-msix" "$windows_msix"
+    else
+      record "$target" "$rfc" "$provider" "$artifact" "$file" "$chain" "$output" "${extra_name:-}" "${extra_file:-}"
+    fi
     chain="$output"
   done
 done

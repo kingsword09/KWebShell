@@ -72,7 +72,7 @@ struct Fixture final {
     resources = root / "runtime";
     runtime = resources / "libcef.dll";
     locales = resources / "locales";
-    subprocess = resources / "KWebShell.exe";
+    subprocess = resources / "KWebShellCef.exe";
     WriteFile(locales / "en-US.pak");
 #else
     resources = root / "runtime";

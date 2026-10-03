@@ -2015,17 +2015,29 @@ package boundary over the signed RFC 0001 runtime release:
    and unsafe paths fail before packaging.
 2. `kweb-runtime-pack` verifies the signed runtime release, creates immutable
    packaged-state and capability/SBOM records, emits target-specific macOS
-   Launch Services, Windows AppX, or Linux Debian registration metadata, and
-   publishes atomically.
-3. macOS and Windows packages use deterministic ZIP-compatible containers; the
-   Linux provider emits a real Debian `ar` package with deterministic control
-   and data tarballs. All package-level statements are Ed25519-signed with an
+   Launch Services, Windows MSIX (with a JVM/Compose `KWebShell.exe` launcher,
+   bundled SHA-256-pinned Temurin JRE 25.0.4.1+1, separate `KWebShellCef.exe`
+   subprocess, protocol/file declarations, and signed visual assets), or Linux
+   Debian registration metadata, and publishes atomically. The Windows x64
+   provider uses the GitHub-hosted Windows SDK MakeAppx/SignTool toolchain for
+   a real installable MSIX; the Kotlin assembler emits only an internal signed
+   metadata ZIP and rejects `.msix` output.
+   RFC 0016 owns App SDK notification dependencies/activation; RFC 0006 owns
+   lifecycle routing. Windows ARM64 package creation fails until a matching
+   pinned JRE is available, with no x64 fallback.
+3. macOS packages use a deterministic ZIP-compatible container; Windows must
+   emit an installable MSIX; the Linux provider emits a real Debian `ar` package
+   with deterministic control and data tarballs. All package-level statements are Ed25519-signed with an
    explicitly supplied key pair and verified before publication.
 4. Electron builder/forge metadata is mapped by a closed migration contract;
    unsupported hooks are blocking and are never executed.
 5. Unit tests cover manifest schema, identity, six-target metadata generation,
    deterministic rebuilds, nested runtime verification, package signatures,
-   tampering, and migration blockers. Hosted package evidence is required for
+   tampering, Windows JVM launcher/JRE, and migration blockers. GitHub-hosted
+   Windows CI must build the app-image, create/verify/install the MSIX, observe
+   normal launcher/CEF start and shutdown, uninstall, and retain package
+   identity/signature/digest evidence. App SDK toast registration is RFC 0016.
+   Hosted package evidence is required for
    `macos-arm64`, `windows-x64`, and `linux-x64`; the manifest and local tests
    still cover all six `KWebTarget` values.
 

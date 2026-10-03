@@ -92,7 +92,7 @@ class NativeEngineConfigurationTest {
                     resources = root.resolve("runtime").createDirectories()
                     runtime = writeFile(resources.resolve("libcef.dll"))
                     locales = resources.resolve("locales").createDirectories()
-                    subprocess = writeFile(resources.resolve("KWebShell.exe"))
+                    subprocess = writeFile(resources.resolve("KWebShellCef.exe"))
                     writeFile(locales.resolve("en-US.pak"))
                 }
                 else -> {

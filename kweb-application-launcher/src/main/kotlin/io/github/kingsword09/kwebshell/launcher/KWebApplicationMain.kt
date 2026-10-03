@@ -122,6 +122,10 @@ internal class KWebApplicationMain {
 
             closed.await()
             activationJob.cancel()
+            page.close()
+            page = null
+            profile.close()
+            profile = null
             lifecycle.requestQuit(KWebQuitReason.USER_REQUEST)
         } catch (error: Throwable) {
             runCatching { lifecycle.requestQuit(KWebQuitReason.SHUTDOWN) }

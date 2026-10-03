@@ -171,6 +171,7 @@ internal class KWebApplicationMain {
     private fun createWindow(closed: CountDownLatch): ComposeWindow = onEventThread {
         ComposeWindow().apply {
             title = "KWebShell"
+            defaultCloseOperation = javax.swing.WindowConstants.DO_NOTHING_ON_CLOSE
             setSize(900, 650)
             isVisible = true
             addWindowListener(object : WindowAdapter() {

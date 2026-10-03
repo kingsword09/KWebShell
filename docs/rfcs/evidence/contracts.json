@@ -397,7 +397,6 @@
         "docs/kmp-native-services-and-electron-migration.md",
         "docs/rfcs/0016-notifications.md",
         "docs/rfcs/evidence/contracts.json",
-        "docs/rfcs/evidence/manifest.json",
         "kweb-electron-migration/README.md",
         "kweb-electron-migration/build.gradle.kts",
         "kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronCapabilityMatrix.kt",

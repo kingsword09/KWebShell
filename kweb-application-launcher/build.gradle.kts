@@ -354,16 +354,35 @@ tasks.register("runWindowsApplicationImageSmokeTest") {
             .apply { environment()["LOCALAPPDATA"] = File(smokeLogs, "local-app-data").absolutePath }
             .start()
         var cefProcess: ProcessHandle? = null
+        var windowProcess: ProcessHandle? = null
+        var failure: Throwable? = null
+        fun findVisibleWindowProcessId(): Long? {
+            val command =
+                "\$root=[IO.Path]::GetFullPath(\$env:KWEB_SMOKE_ROOT).TrimEnd('\\\\') + '\\\\'; " +
+                    "\$p=Get-Process | ForEach-Object { try { " +
+                    "\$path=\$_.Path; " +
+                    "if (\$_.MainWindowHandle -ne 0 -and \$path -and " +
+                    "\$path.StartsWith(\$root,[StringComparison]::OrdinalIgnoreCase)) { \$_.Id } " +
+                    "} catch {} } | Select-Object -First 1; " +
+                    "if (\$p) { Write-Output \$p; exit 0 } else { exit 1 }"
+            val probe = ProcessBuilder(
+                "powershell.exe", "-NoLogo", "-NoProfile", "-Command", command,
+            ).apply {
+                environment()["KWEB_SMOKE_ROOT"] = root.toString()
+                redirectErrorStream(true)
+            }.start()
+            val output = probe.inputStream.bufferedReader().use { it.readText().trim() }
+            if (!probe.waitFor(15, TimeUnit.SECONDS) || probe.exitValue() != 0) return null
+            return output.toLongOrNull()
+        }
         try {
             val deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos()
             var windowObserved = false
             var cefObserved = false
-            while (System.nanoTime() < deadline && main.isAlive) {
-                val result = ProcessBuilder(
-                    "powershell.exe", "-NoLogo", "-NoProfile", "-Command",
-                    "\$p=Get-Process -Id ${main.pid()} -ErrorAction SilentlyContinue; if (\$p -and \$p.MainWindowHandle -ne 0) { exit 0 } else { exit 1 }",
-                ).start().waitFor()
-                windowObserved = result == 0
+            while (System.nanoTime() < deadline) {
+                val visiblePid = findVisibleWindowProcessId()
+                windowProcess = visiblePid?.let { ProcessHandle.of(it).orElse(null) }
+                windowObserved = windowProcess?.isAlive == true
                 cefProcess = ProcessHandle.allProcesses().filter { process ->
                     process.pid() !in previousCefProcesses &&
                         process.info().command().orElse("").replace('\\', '/').endsWith("/KWebShellCef.exe", ignoreCase = true)
@@ -372,11 +391,18 @@ tasks.register("runWindowsApplicationImageSmokeTest") {
                 if (windowObserved && cefObserved) break
                 Thread.sleep(500)
             }
-            if (!windowObserved) throw GradleException("The Windows launcher app-image did not create a visible Compose window.")
+            if (!windowObserved) {
+                val exit = if (main.isAlive) "alive" else "exit=${main.exitValue()}"
+                throw GradleException(
+                    "The Windows launcher app-image did not create a visible Compose window " +
+                        "(launcherPid=${main.pid()}, $exit, stdout=${smokeLogs.resolve("stdout.log")}, " +
+                        "stderr=${smokeLogs.resolve("stderr.log")}).",
+                )
+            }
             if (!cefObserved) throw GradleException("The Windows launcher app-image did not start cef/KWebShellCef.exe.")
             val close = ProcessBuilder(
                 "powershell.exe", "-NoLogo", "-NoProfile", "-Command",
-                "\$p=Get-Process -Id ${main.pid()} -ErrorAction SilentlyContinue; if (\$p) { \$p.CloseMainWindow() | Out-Null }",
+                "\$p=Get-Process -Id ${windowProcess!!.pid()} -ErrorAction SilentlyContinue; if (\$p) { \$p.CloseMainWindow() | Out-Null }",
             ).start()
             if (!close.waitFor(15, TimeUnit.SECONDS)) close.destroyForcibly()
             if (!main.waitFor(30, TimeUnit.SECONDS)) {
@@ -387,9 +413,14 @@ tasks.register("runWindowsApplicationImageSmokeTest") {
             val cefDeadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
             while (System.nanoTime() < cefDeadline && cefProcess?.isAlive == true) Thread.sleep(250)
             if (cefProcess?.isAlive == true) throw GradleException("The CEF subprocess remained alive after normal launcher shutdown.")
+        } catch (error: Throwable) {
+            failure = error
+            throw error
         } finally {
             if (main.isAlive) main.destroyForcibly()
+            if (windowProcess?.isAlive == true) windowProcess!!.destroyForcibly()
             if (cefProcess?.isAlive == true) cefProcess!!.destroyForcibly()
+            windowProcess?.onExit()?.get(10, TimeUnit.SECONDS)
             cefProcess?.onExit()?.get(10, TimeUnit.SECONDS)
             val smokeState = File(smokeLogs, "local-app-data").toPath()
             if (Files.exists(smokeState)) {
@@ -397,6 +428,19 @@ tasks.register("runWindowsApplicationImageSmokeTest") {
                     paths.sorted(Comparator.reverseOrder()).forEach(Files::delete)
                 }
             }
+            Files.writeString(
+                smokeLogs.toPath().resolve("smoke-summary.txt"),
+                buildString {
+                    appendLine("launcherPid=${main.pid()}")
+                    appendLine("launcherAlive=${main.isAlive}")
+                    if (!main.isAlive) appendLine("launcherExit=${runCatching { main.exitValue() }.getOrNull()}")
+                    appendLine("windowPid=${windowProcess?.pid()}")
+                    appendLine("windowAlive=${windowProcess?.isAlive}")
+                    appendLine("cefPid=${cefProcess?.pid()}")
+                    appendLine("cefAlive=${cefProcess?.isAlive}")
+                    appendLine("failure=${failure?.message}")
+                },
+            )
         }
     }
 }

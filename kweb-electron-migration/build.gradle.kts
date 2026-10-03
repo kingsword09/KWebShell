@@ -249,6 +249,22 @@ val notificationsBridgeJavascript = rootProject.layout.projectDirectory.file(
 )
 val migrationIntegrationRoot = layout.buildDirectory.dir("migration-integration")
 val migrationIntegrationReport = compatibilityOutput
+val macNotificationActionFixtureSource = rootProject.layout.projectDirectory.file(
+    ".github/scripts/macos-notification-action-fixture.swift",
+)
+val macNotificationActionFixture = layout.buildDirectory.file("macos-notification-action-fixture")
+val windowsNotificationActionFixture = rootProject.layout.projectDirectory.file(
+    ".github/scripts/windows-notification-action-fixture.ps1",
+)
+val compileMacNotificationActionFixture = tasks.register<Exec>("compileMacNotificationActionFixture") {
+    group = "verification"
+    description = "Builds the macOS Accessibility driver for a real Notification Center action response."
+    val executable = macNotificationActionFixture.get().asFile
+    inputs.file(macNotificationActionFixtureSource)
+    outputs.file(executable)
+    doFirst { executable.parentFile.mkdirs() }
+    commandLine("swiftc", macNotificationActionFixtureSource.asFile.absolutePath, "-o", executable.absolutePath)
+}
 val migrationIntegrationJavaOptions = providers.provider {
     listOf(
         "--enable-native-access=ALL-UNNAMED",
@@ -267,6 +283,8 @@ val migrationIntegrationJavaOptions = providers.provider {
         "-Dkweb.migration.shell.bridge.javascript=${shellBridgeJavascript.asFile.absolutePath}",
         "-Dkweb.migration.clipboard.bridge.javascript=${clipboardBridgeJavascript.asFile.absolutePath}",
         "-Dkweb.notifications.native.library.path=${notificationsNativeLibrary.get().absolutePath}",
+        "-Dkweb.migration.notification.action.helper=${macNotificationActionFixture.get().asFile.absolutePath}",
+        "-Dkweb.migration.notification.action.helper.windows=${windowsNotificationActionFixture.asFile.absolutePath}",
         "-Dkweb.migration.notifications.bridge.javascript=${notificationsBridgeJavascript.asFile.absolutePath}",
         "-Dkweb.migration.preload.javascript=${generatedDirectory.get().file("KWebElectronPreload.js").asFile.absolutePath}",
         "-Dkweb.migration.manifest=${fixtureManifest.asFile.absolutePath}",
@@ -355,7 +373,7 @@ val electronMigrationIntegrationTest = tasks.register<Exec>("electronMigrationIn
         ":kweb-service-notifications:generateNotificationsBridge",
     )
     if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("mac")) {
-        dependsOn(packageMigrationMacAppImage)
+        dependsOn(packageMigrationMacAppImage, compileMacNotificationActionFixture)
     }
     inputs.file(nativeEngineLibrary)
     inputs.file(nativeCefRuntime)
@@ -379,6 +397,7 @@ val electronMigrationIntegrationTest = tasks.register<Exec>("electronMigrationIn
     inputs.file(servicesNativeLibrary)
     inputs.file(generatedDirectory.get().file("KWebElectronPreload.js"))
     inputs.file(migrationIntegrationReport)
+    inputs.file(windowsNotificationActionFixture)
     if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("mac")) {
         commandLine(
             migrationMacAppImageDirectory.get().dir("KWebShellMigrationFixture.app")

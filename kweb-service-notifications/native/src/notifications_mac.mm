@@ -22,7 +22,7 @@ struct MacState;
 
 struct MacState {
   UNUserNotificationCenter *center = nil;
-  KWebNotificationDelegate *delegate = nil;
+  __strong KWebNotificationDelegate *delegate = nil;
 };
 
 std::string ToUtf8(NSString *value) {
@@ -87,6 +87,10 @@ void WaitForPermission(
           withCompletionHandler:(void (^)(void))completionHandler {
   (void)center;
   auto *state = self.state;
+  if (state == nullptr) {
+    completionHandler();
+    return;
+  }
   const std::string id = ToUtf8(response.notification.request.identifier);
   const std::string action = ToUtf8(response.actionIdentifier);
   if (action == ToUtf8(UNNotificationDismissActionIdentifier)) {
@@ -120,10 +124,21 @@ kweb_notifications_status NativeOpen(State &state) {
     return KWEB_NOTIFICATIONS_STATUS_NATIVE_UNAVAILABLE;
   }
   auto *mac_state = new MacState();
-  mac_state->center = [UNUserNotificationCenter currentNotificationCenter];
-  mac_state->delegate = [KWebNotificationDelegate new];
-  mac_state->delegate.state = &state;
-  mac_state->center.delegate = mac_state->delegate;
+  void (^installDelegate)(void) = ^{
+    mac_state->center = [UNUserNotificationCenter currentNotificationCenter];
+    mac_state->delegate = [KWebNotificationDelegate new];
+    mac_state->delegate.state = &state;
+    mac_state->center.delegate = mac_state->delegate;
+  };
+  if (NSThread.isMainThread) {
+    installDelegate();
+  } else {
+    dispatch_sync(dispatch_get_main_queue(), installDelegate);
+  }
+  if (mac_state->center == nil || mac_state->center.delegate != mac_state->delegate) {
+    delete mac_state;
+    return KWEB_NOTIFICATIONS_STATUS_NATIVE_UNAVAILABLE;
+  }
   state.platform = mac_state;
   return KWEB_NOTIFICATIONS_STATUS_OK;
 }
@@ -233,9 +248,19 @@ kweb_notifications_status NativeCloseNotification(State &state, const std::strin
 kweb_notifications_status NativeClose(State &state) {
   auto *mac_state = static_cast<MacState *>(state.platform);
   if (mac_state == nullptr) return KWEB_NOTIFICATIONS_STATUS_OK;
-  mac_state->center.delegate = nil;
-  mac_state->delegate.state = nullptr;
+  void (^clearDelegate)(void) = ^{
+    if (mac_state->center.delegate == mac_state->delegate) {
+      mac_state->center.delegate = nil;
+    }
+    mac_state->delegate.state = nullptr;
+  };
+  if (NSThread.isMainThread) {
+    clearDelegate();
+  } else {
+    dispatch_sync(dispatch_get_main_queue(), clearDelegate);
+  }
   state.platform = nullptr;
+  delete mac_state;
   return KWEB_NOTIFICATIONS_STATUS_OK;
 }
 

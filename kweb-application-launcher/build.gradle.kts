@@ -65,6 +65,46 @@ val windowsCefPayloadArchive = rootProject.layout.projectDirectory.file(
 )
 val windowsIcon = rootProject.layout.projectDirectory.file("runtime/assets/windows/KWebShell.ico")
 
+private fun windowsProcessesForSmoke(
+    packageRoot: java.nio.file.Path,
+    smokeDataRoot: java.nio.file.Path,
+): List<ProcessHandle> {
+    val packagePrefix = packageRoot.toAbsolutePath().normalize().toString().replace('\\', '/').trimEnd('/') + "/"
+    val smokeDataMarker = smokeDataRoot.toAbsolutePath().normalize().toString().replace('\\', '/').trimEnd('/')
+    return ProcessHandle.allProcesses().filter { process ->
+        val command = process.info().command().orElse("").replace('\\', '/')
+        val commandLine = process.info().commandLine().orElse("").replace('\\', '/')
+        command.startsWith(packagePrefix, ignoreCase = true) ||
+            commandLine.contains(smokeDataMarker, ignoreCase = true)
+    }.toList()
+}
+
+private fun deleteWindowsSmokeState(root: java.nio.file.Path) {
+    if (!Files.exists(root)) return
+    val normalized = root.toAbsolutePath().normalize()
+    require(normalized.fileName.toString().equals("KWebShell", ignoreCase = true)) {
+        "Refusing to remove a Windows smoke data root with an unexpected leaf name: $normalized"
+    }
+    var lastFailure: Exception? = null
+    repeat(5) { attempt ->
+        try {
+            Files.walk(normalized).use { paths ->
+                paths.sorted(Comparator.reverseOrder()).forEach { path ->
+                    if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
+                        runCatching { Files.setAttribute(path, "dos:readonly", false, LinkOption.NOFOLLOW_LINKS) }
+                    }
+                    Files.deleteIfExists(path)
+                }
+            }
+            return
+        } catch (error: Exception) {
+            lastFailure = error
+            if (attempt < 4) Thread.sleep(500L * (attempt + 1))
+        }
+    }
+    throw GradleException("Unable to remove test-owned Windows launcher smoke state '$normalized'.", lastFailure)
+}
+
 tasks.register("downloadPinnedWindowsJre") {
     group = "distribution"
     description = "Downloads the SHA-256-pinned Temurin 25 Windows x64 JRE archive."
@@ -343,6 +383,7 @@ tasks.register("runWindowsApplicationImageSmokeTest") {
         val launcher = root.resolve("KWebShell.exe")
         val smokeLogs = layout.buildDirectory.dir("reports/windows-launcher-smoke").get().asFile
         smokeLogs.mkdirs()
+        val smokeDataRoot = File(smokeLogs, "local-app-data/KWebShell").toPath()
         val previousCefProcesses = ProcessHandle.allProcesses()
             .filter { process -> process.info().command().orElse("").replace('\\', '/').endsWith("/KWebShellCef.exe", ignoreCase = true) }
             .map { it.pid() }
@@ -356,9 +397,38 @@ tasks.register("runWindowsApplicationImageSmokeTest") {
         var cefProcess: ProcessHandle? = null
         var windowProcess: ProcessHandle? = null
         var failure: Throwable? = null
+        var windowObserved = false
+        var cefObserved = false
+        var processSnapshot: List<String> = emptyList()
+        fun updateProcessSnapshot() {
+            processSnapshot = windowsProcessesForSmoke(root, smokeDataRoot).map { process ->
+                "${process.pid()}:${process.info().command().orElse("")}"
+            }.sorted()
+        }
+        fun writeSmokeSummary() {
+            updateProcessSnapshot()
+            Files.writeString(
+                smokeLogs.toPath().resolve("smoke-summary.txt"),
+                buildString {
+                    appendLine("launcherPid=${main.pid()}")
+                    appendLine("launcherAlive=${main.isAlive}")
+                    if (!main.isAlive) appendLine("launcherExit=${runCatching { main.exitValue() }.getOrNull()}")
+                    appendLine("windowObserved=$windowObserved")
+                    appendLine("windowPid=${windowProcess?.pid()}")
+                    appendLine("windowAlive=${windowProcess?.isAlive}")
+                    appendLine("cefObserved=$cefObserved")
+                    appendLine("cefPid=${cefProcess?.pid()}")
+                    appendLine("cefAlive=${cefProcess?.isAlive}")
+                    appendLine("packageProcesses=${processSnapshot.joinToString(" | ")}")
+                    appendLine("failure=${failure?.message}")
+                },
+            )
+        }
         fun findVisibleWindowProcessId(): Long? {
             val command =
-                "\$root=[IO.Path]::GetFullPath(\$env:KWEB_SMOKE_ROOT).TrimEnd('\\\\') + '\\\\'; " +
+                "\$root=[IO.Path]::GetFullPath(\$env:KWEB_SMOKE_ROOT).TrimEnd(" +
+                    "[IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar) + " +
+                    "[IO.Path]::DirectorySeparatorChar; " +
                     "\$p=Get-Process | ForEach-Object { try { " +
                     "\$path=\$_.Path; " +
                     "if (\$_.MainWindowHandle -ne 0 -and \$path -and " +
@@ -377,8 +447,6 @@ tasks.register("runWindowsApplicationImageSmokeTest") {
         }
         try {
             val deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos()
-            var windowObserved = false
-            var cefObserved = false
             while (System.nanoTime() < deadline) {
                 val visiblePid = findVisibleWindowProcessId()
                 windowProcess = visiblePid?.let { ProcessHandle.of(it).orElse(null) }
@@ -413,34 +481,25 @@ tasks.register("runWindowsApplicationImageSmokeTest") {
             val cefDeadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
             while (System.nanoTime() < cefDeadline && cefProcess?.isAlive == true) Thread.sleep(250)
             if (cefProcess?.isAlive == true) throw GradleException("The CEF subprocess remained alive after normal launcher shutdown.")
+            val processDeadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
+            while (System.nanoTime() < processDeadline && windowsProcessesForSmoke(root, smokeDataRoot).isNotEmpty()) Thread.sleep(250)
+            updateProcessSnapshot()
+            if (processSnapshot.isNotEmpty()) {
+                throw GradleException("Windows app-image processes remained after normal launcher shutdown: ${processSnapshot.joinToString(" | ")}")
+            }
         } catch (error: Throwable) {
             failure = error
             throw error
         } finally {
             if (main.isAlive) main.destroyForcibly()
-            if (windowProcess?.isAlive == true) windowProcess!!.destroyForcibly()
-            if (cefProcess?.isAlive == true) cefProcess!!.destroyForcibly()
+            windowsProcessesForSmoke(root, smokeDataRoot).forEach { process -> if (process.isAlive) process.destroyForcibly() }
             windowProcess?.onExit()?.get(10, TimeUnit.SECONDS)
             cefProcess?.onExit()?.get(10, TimeUnit.SECONDS)
-            val smokeState = File(smokeLogs, "local-app-data").toPath()
-            if (Files.exists(smokeState)) {
-                Files.walk(smokeState).use { paths ->
-                    paths.sorted(Comparator.reverseOrder()).forEach(Files::delete)
-                }
+            windowsProcessesForSmoke(root, smokeDataRoot).forEach { process ->
+                runCatching { process.onExit().get(10, TimeUnit.SECONDS) }
             }
-            Files.writeString(
-                smokeLogs.toPath().resolve("smoke-summary.txt"),
-                buildString {
-                    appendLine("launcherPid=${main.pid()}")
-                    appendLine("launcherAlive=${main.isAlive}")
-                    if (!main.isAlive) appendLine("launcherExit=${runCatching { main.exitValue() }.getOrNull()}")
-                    appendLine("windowPid=${windowProcess?.pid()}")
-                    appendLine("windowAlive=${windowProcess?.isAlive}")
-                    appendLine("cefPid=${cefProcess?.pid()}")
-                    appendLine("cefAlive=${cefProcess?.isAlive}")
-                    appendLine("failure=${failure?.message}")
-                },
-            )
+            writeSmokeSummary()
+            deleteWindowsSmokeState(smokeDataRoot)
         }
     }
 }

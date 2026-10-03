@@ -282,6 +282,15 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Upload Windows launcher smoke evidence
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-launcher-smoke-${{ matrix.target }}-${{ github.sha }}
+          path: kweb-application-launcher/build/reports/windows-launcher-smoke/
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Upload application lifecycle evidence
         if: always()
         uses: actions/upload-artifact@v6

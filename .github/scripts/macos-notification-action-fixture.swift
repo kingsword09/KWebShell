@@ -13,16 +13,37 @@ private func value(_ element: AXUIElement, _ attribute: String) -> String {
     return rawValue as? String ?? String(describing: rawValue)
 }
 
+private func subtreeText(_ element: AXUIElement, depth: Int = 0) -> String {
+    guard depth <= 16 else { return "" }
+    var text = [
+        value(element, kAXTitleAttribute as String),
+        value(element, kAXDescriptionAttribute as String),
+        value(element, kAXValueAttribute as String),
+    ].joined(separator: " ")
+    var rawChildren: CFTypeRef?
+    if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &rawChildren) == .success,
+       let children = rawChildren as? [AXUIElement] {
+        for child in children {
+            text += " " + subtreeText(child, depth: depth + 1)
+        }
+    }
+    return text
+}
+
 private func notificationCard(in element: AXUIElement, depth: Int = 0) -> AXUIElement? {
     guard depth <= 16 else { return nil }
-    let description = value(element, kAXDescriptionAttribute as String)
-    if description.contains(applicationName) && description.contains(notificationTitle) {
+    let text = subtreeText(element)
+    var rawActions: CFArray?
+    if text.contains(notificationTitle),
+       AXUIElementCopyActionNames(element, &rawActions) == .success,
+       let actions = rawActions as? [String],
+       actions.contains(where: { $0.lowercased().contains("open") || $0.contains("打开") }) {
         return element
     }
     var rawChildren: CFTypeRef?
     guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &rawChildren) == .success,
-          let rawChildren else { return nil }
-    for child in rawChildren as! [AXUIElement] {
+          let children = rawChildren as? [AXUIElement] else { return nil }
+    for child in children {
         if let card = notificationCard(in: child, depth: depth + 1) { return card }
     }
     return nil
@@ -30,14 +51,22 @@ private func notificationCard(in element: AXUIElement, depth: Int = 0) -> AXUIEl
 
 private func openNotificationCenter() throws {
     let display = CGDisplayBounds(CGMainDisplayID())
-    let clockCenter = CGPoint(x: display.maxX - 48, y: display.minY + 12)
-    guard let source = CGEventSource(stateID: .combinedSessionState),
-          let down = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: clockCenter, mouseButton: .left),
-          let up = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: clockCenter, mouseButton: .left) else {
+    guard let source = CGEventSource(stateID: .combinedSessionState) else {
         throw NSError(domain: "KWebNotificationActionFixture", code: 1)
     }
-    down.post(tap: .cghidEventTap)
-    up.post(tap: .cghidEventTap)
+    // macOS places the notification center behind the date/clock item. The
+    // exact right edge varies between menu-bar layouts, so try the clock and
+    // the adjacent control-center slot before polling the accessibility tree.
+    for x in [display.maxX - 180, display.maxX - 48] {
+        let point = CGPoint(x: x, y: display.minY + 12)
+        guard let down = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
+              let up = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) else {
+            continue
+        }
+        down.post(tap: .cghidEventTap)
+        up.post(tap: .cghidEventTap)
+        Thread.sleep(forTimeInterval: 0.5)
+    }
 }
 
 do {

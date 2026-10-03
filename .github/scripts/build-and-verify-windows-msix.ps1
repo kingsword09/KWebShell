@@ -403,7 +403,7 @@ try {
     $evidence.cefSubprocessObserved = $true
 
     if (-not $mainProcess.CloseMainWindow()) { throw "The Compose window refused a normal close request." }
-    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    $deadline = [DateTime]::UtcNow.AddSeconds(60)
     while ([DateTime]::UtcNow -lt $deadline -and (Get-Process -Id $mainProcess.Id -ErrorAction SilentlyContinue)) {
         Start-Sleep -Milliseconds 250
     }

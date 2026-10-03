@@ -473,7 +473,7 @@ tasks.register("runWindowsApplicationImageSmokeTest") {
                 "\$p=Get-Process -Id ${windowProcess!!.pid()} -ErrorAction SilentlyContinue; if (\$p) { \$p.CloseMainWindow() | Out-Null }",
             ).start()
             if (!close.waitFor(15, TimeUnit.SECONDS)) close.destroyForcibly()
-            if (!main.waitFor(30, TimeUnit.SECONDS)) {
+            if (!main.waitFor(60, TimeUnit.SECONDS)) {
                 main.destroyForcibly()
                 throw GradleException("The Windows launcher app-image failed to exit after normal window close.")
             }

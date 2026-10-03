@@ -98,7 +98,7 @@ internal class KWebApplicationMain {
             val liveWindow = createWindow(closed)
             window = liveWindow
             val host: KWebComposeWindowHost = KWebDesktop.composeWindowHost(liveWindow)
-            val liveProfile = liveEngine.openProfile("default")
+            val liveProfile = liveEngine.openProfile("primary")
             profile = liveProfile
             val livePage = liveProfile.openPage(host, "about:blank", KWebRect(0, 0, 900, 650))
             page = livePage

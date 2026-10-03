@@ -103,6 +103,13 @@ class KWebApplicationPackageTest {
                                 val xml = parser.parse(ByteArrayInputStream(manifestBytes))
                                 val sourceManifest = KWebApplicationManifestLoader.load(manifestPath)
                                 assertEquals("Package", xml.documentElement.localName)
+                                assertEquals(
+                                    "10.0.17763.0",
+                                    xml.getElementsByTagNameNS(
+                                        "http://schemas.microsoft.com/appx/manifest/foundation/windows10",
+                                        "TargetDeviceFamily",
+                                    ).item(0).attributes.getNamedItem("MinVersion").nodeValue,
+                                )
                                 assertEquals(1, xml.getElementsByTagNameNS(
                                     "http://schemas.microsoft.com/appx/manifest/foundation/windows10",
                                     "Identity",

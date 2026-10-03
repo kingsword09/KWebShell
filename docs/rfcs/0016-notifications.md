@@ -1,6 +1,6 @@
 # RFC 0016: Native notifications and activation
 
-- Status: Implemented
+- Status: Accepted
 - Priority: P0
 - Owners: new `kweb-service-notifications` KMP service and desktop host
 - Depends on: RFC 0003, RFC 0004, RFC 0006, RFC 0030

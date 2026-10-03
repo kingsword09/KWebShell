@@ -101,7 +101,7 @@ internal object KWebRuntimePayloadContract {
     fun runtimeRequiredPaths(target: KWebTarget): List<KWebRuntimePayloadRequiredPath> =
         when (target.operatingSystem) {
             KWebOperatingSystem.WINDOWS -> listOf(
-                requiredExecutable("runtime/KWebShell.exe"),
+                requiredExecutable("runtime/KWebShellCef.exe"),
                 requiredExecutable("runtime/libcef.dll"),
             )
 

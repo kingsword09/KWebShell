@@ -286,6 +286,9 @@ val hostRuntimePayloadArchive = hostRuntimePayloadDirectory.map {
 }
 val applicationPackageReportDirectory = layout.buildDirectory.dir("reports/application-package")
 val applicationPackageJava = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) }
+val windowsApplicationImage = rootProject.layout.projectDirectory.file(
+    "kweb-application-launcher/build/windows-app-image/KWebShell",
+)
 val nativeProjectDirectory = rootProject.layout.projectDirectory.dir("kweb-cef-native")
 val nativeReleaseDirectory = nativeProjectDirectory.dir("build/native/Release")
 val nativeContractDirectory = nativeProjectDirectory.dir("build/native/contract")
@@ -374,14 +377,23 @@ val applicationPackageIntegrationTest = tasks.register<JavaExec>("applicationPac
     javaLauncher.set(applicationPackageJava)
     systemProperty("kweb.application.package.catalog", runtimeCatalogPath.asFile.absolutePath)
     systemProperty("kweb.application.package.manifest", applicationManifestPath.asFile.absolutePath)
+    systemProperty("kweb.application.package.asset-root", rootProject.layout.projectDirectory.dir("runtime").asFile.absolutePath)
     systemProperty("kweb.application.package.payload", hostRuntimePayloadArchive.get().asFile.absolutePath)
     systemProperty("kweb.application.package.target", hostRuntimeTarget)
     systemProperty("kweb.application.package.version", project.version.toString())
     systemProperty("kweb.application.package.output-directory", applicationPackageReportDirectory.get().asFile.absolutePath)
+    systemProperty("kweb.application.package.app-image", windowsApplicationImage.asFile.absolutePath)
     inputs.file(runtimeCatalogPath)
     inputs.file(applicationManifestPath)
     inputs.file(hostRuntimePayloadArchive)
     outputs.dir(applicationPackageReportDirectory)
+}
+
+if (hostRuntimeTarget == "windows-x64") {
+    applicationPackageIntegrationTest.configure {
+        dependsOn(":kweb-application-launcher:runWindowsApplicationImageSmokeTest")
+        inputs.dir(windowsApplicationImage)
+    }
 }
 
 tasks.register<JavaExec>("verifyHostRuntimePayload") {

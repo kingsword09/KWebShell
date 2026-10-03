@@ -172,7 +172,7 @@ val nativeCefRuntime = operatingSystem.map { name ->
 }
 val nativeBrowserSubprocess = operatingSystem.map { name ->
     when {
-        name.lowercase(Locale.ROOT).startsWith("windows") -> nativeReleaseDirectory.file("KWebShell.exe").asFile
+        name.lowercase(Locale.ROOT).startsWith("windows") -> nativeReleaseDirectory.file("KWebShellCef.exe").asFile
         name.lowercase(Locale.ROOT).startsWith("mac") -> nativeReleaseDirectory.file(
             "KWebShell.app/Contents/Frameworks/KWebShell Helper.app/Contents/MacOS/KWebShell Helper",
         ).asFile

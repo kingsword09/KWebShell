@@ -457,7 +457,7 @@ finally {
             $certificatePath = "Cert:\CurrentUser\$store\$($publisherCertificate.Thumbprint)"
             if (Test-Path -LiteralPath $certificatePath) {
                 try { Remove-Item -LiteralPath $certificatePath -Force -ErrorAction Stop }
-                catch { $cleanupErrors.Add("Unable to remove test certificate from $store: $($_.Exception.Message)") }
+                catch { $cleanupErrors.Add("Unable to remove test certificate from ${store}: $($_.Exception.Message)") }
             }
             if (Test-Path -LiteralPath $certificatePath) { $cleanupErrors.Add("Test certificate remains in $store.") }
         }

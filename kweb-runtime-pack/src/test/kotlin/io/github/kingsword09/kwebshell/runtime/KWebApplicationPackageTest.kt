@@ -2,12 +2,15 @@ package io.github.kingsword09.kwebshell.runtime
 
 import io.github.kingsword09.kwebshell.core.KWebTarget
 import org.apache.commons.compress.archivers.zip.ZipFile
+import java.io.ByteArrayInputStream
 import java.nio.file.Files
 import java.nio.file.Path
+import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class KWebApplicationPackageTest {
     @Test
@@ -30,6 +33,7 @@ class KWebApplicationPackageTest {
                 KWebApplicationPackageVerificationRequest(
                     applicationPackage = first,
                     applicationManifest = manifestPath,
+                    applicationAssetRoot = repositoryRoot().resolve("runtime"),
                     catalog = fixture.catalog,
                     target = fixture.target,
                     productVersion = KWebRuntimeReleaseTestFixture.PRODUCT_VERSION,
@@ -67,12 +71,18 @@ class KWebApplicationPackageTest {
                 val release = fixture.sign()
                 val extension = when (fixture.target.operatingSystem.id) {
                     "macos" -> "zip"
-                    "windows" -> "msix"
+                    "windows" -> "zip"
                     else -> "deb"
                 }
                 val packagePath = fixture.outputDirectory.resolve("KWebShell-$targetId.$extension")
                 KWebApplicationPackageAssembler.build(
-                    request(fixture, manifestPath, release.pack, testSignature(fixture.target), packagePath),
+                    request(
+                        fixture,
+                        manifestPath,
+                        release.pack,
+                        testSignature(fixture.target),
+                        packagePath,
+                    ),
                 )
                 if (fixture.target.operatingSystem.id == "linux") {
                     kotlin.test.assertTrue(Files.size(packagePath) > 0L)
@@ -81,11 +91,157 @@ class KWebApplicationPackageTest {
                         val names = zip.entries.asSequence().map { it.name }.toSet()
                         when (fixture.target.operatingSystem.id) {
                             "macos" -> assertEquals(true, "platform/macos/Info.plist" in names)
-                            "windows" -> assertEquals(true, "platform/windows/AppxManifest.xml" in names)
+                            "windows" -> {
+                                assertEquals(true, "AppxManifest.xml" in names)
+                                assertEquals(true, "Assets/Square44x44Logo.png" in names)
+                                assertEquals(true, "Assets/Square150x150Logo.png" in names)
+                                assertEquals(true, "Assets/Square310x310Logo.png" in names)
+                                assertEquals(true, "Assets/StoreLogo.png" in names)
+                                val manifestBytes = zip.getInputStream(zip.getEntry("AppxManifest.xml")).use { it.readBytes() }
+                                val parser = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+                                    .newDocumentBuilder()
+                                val xml = parser.parse(ByteArrayInputStream(manifestBytes))
+                                val sourceManifest = KWebApplicationManifestLoader.load(manifestPath)
+                                assertEquals("Package", xml.documentElement.localName)
+                                assertEquals(
+                                    "10.0.17763.0",
+                                    xml.getElementsByTagNameNS(
+                                        "http://schemas.microsoft.com/appx/manifest/foundation/windows10",
+                                        "TargetDeviceFamily",
+                                    ).item(0).attributes.getNamedItem("MinVersion").nodeValue,
+                                )
+                                assertEquals(1, xml.getElementsByTagNameNS(
+                                    "http://schemas.microsoft.com/appx/manifest/foundation/windows10",
+                                    "Identity",
+                                ).length)
+                                assertEquals(1, xml.getElementsByTagNameNS(
+                                    "http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities",
+                                    "Capability",
+                                ).length)
+                                assertEquals(
+                                    sourceManifest.protocols.size + sourceManifest.fileTypes.size,
+                                    xml.getElementsByTagNameNS(
+                                        "http://schemas.microsoft.com/appx/manifest/uap/windows10",
+                                        "Extension",
+                                    ).length,
+                                )
+                                val manifestText = manifestBytes.toString(Charsets.UTF_8)
+                                assertTrue(!manifestText.contains("WindowsAppRuntime"))
+                                assertTrue(!manifestText.contains("AppNotification"))
+                                assertTrue(manifestText.contains("<uap:Protocol Name=\"kweb\">"))
+                                assertTrue(manifestText.contains("<uap:FileType>.kweb</uap:FileType>"))
+                                sourceManifest.icons.forEach { icon ->
+                                    val packagePath = when (icon.kind) {
+                                        "windows-msix-square44" -> "Assets/Square44x44Logo.png"
+                                        "windows-msix-square150" -> "Assets/Square150x150Logo.png"
+                                        "windows-msix-square310" -> "Assets/Square310x310Logo.png"
+                                        "windows-msix-store" -> "Assets/StoreLogo.png"
+                                        else -> error("Unexpected Windows icon kind: ${icon.kind}")
+                                    }
+                                    val packaged = zip.getInputStream(zip.getEntry(packagePath)).use { it.readBytes() }
+                                    assertContentEquals(Files.readAllBytes(repositoryRoot().resolve("runtime").resolve(icon.path)), packaged)
+                                }
+                                val rejected = assertFailsWith<KWebApplicationPackageException> {
+                                    KWebApplicationPackageVerifier.verify(
+                                        KWebApplicationPackageVerificationRequest(
+                                            applicationPackage = packagePath,
+                                            applicationManifest = manifestPath,
+                                            applicationAssetRoot = repositoryRoot().resolve("runtime"),
+                                            catalog = fixture.catalog,
+                                            target = fixture.target,
+                                            productVersion = KWebRuntimeReleaseTestFixture.PRODUCT_VERSION,
+                                            trustedPublicKey = fixture.publicKey,
+                                        ),
+                                    )
+                                }
+                                assertEquals("application.package.windows-msix-sdk-verification-required", rejected.code)
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+
+    @Test
+    fun windowsMsixMetadataRejectsArm64AndMalformedAssets() {
+        val root = repositoryRoot()
+        val manifest = KWebApplicationManifestLoader.load(root.resolve("runtime/application-manifest.json"))
+        val arm64 = assertFailsWith<KWebApplicationPackageException> {
+            windowsMsixMetadataEntries(manifest, KWebTarget.parse("windows-arm64"), root.resolve("runtime"))
+        }
+        assertEquals("application.package.windows-target-unsupported", arm64.code)
+
+        val temporaryAssets = Files.createTempDirectory("kweb-windows-msix-assets-")
+        try {
+            manifest.icons.forEach { icon ->
+                val source = root.resolve("runtime").resolve(icon.path)
+                val destination = temporaryAssets.resolve(icon.path)
+                Files.createDirectories(destination.parent)
+                Files.copy(source, destination)
+            }
+            val wrongDimension = temporaryAssets.resolve("assets/windows/Square44x44Logo.png")
+            Files.copy(
+                temporaryAssets.resolve("assets/windows/Square150x150Logo.png"),
+                wrongDimension,
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+            )
+            val invalid = assertFailsWith<KWebApplicationPackageException> {
+                windowsMsixMetadataEntries(manifest, KWebTarget.parse("windows-x64"), temporaryAssets)
+            }
+            assertEquals("application.package.windows-icon-invalid", invalid.code)
+
+            Files.copy(
+                root.resolve("runtime/assets/windows/Square44x44Logo.png"),
+                wrongDimension,
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+            )
+            val malformedPng = temporaryAssets.resolve("assets/windows/StoreLogo.png")
+            Files.write(malformedPng, byteArrayOf(1, 2, 3, 4))
+            val malformed = assertFailsWith<KWebApplicationPackageException> {
+                windowsMsixMetadataEntries(manifest, KWebTarget.parse("windows-x64"), temporaryAssets)
+            }
+            assertEquals("application.package.windows-icon-invalid", malformed.code)
+        } finally {
+            deleteTree(temporaryAssets)
+        }
+    }
+
+    @Test
+    fun windowsMetadataArchiveCannotBePublishedWithMsixSuffix() {
+        KWebRuntimeReleaseTestFixture.create(KWebTarget.parse("windows-x64")).use { fixture ->
+            val manifestPath = writeManifest(fixture.root, KWebRuntimeReleaseTestFixture.PRODUCT_VERSION)
+            val release = fixture.sign()
+            val output = fixture.outputDirectory.resolve("KWebShell-not-a-package.msix")
+            val error = assertFailsWith<KWebApplicationPackageException> {
+                KWebApplicationPackageAssembler.build(
+                    request(fixture, manifestPath, release.pack, testSignature(fixture.target), output),
+                )
+            }
+            assertEquals("application.package.extension-invalid", error.code)
+            assertTrue(error.message.orEmpty().contains("Windows SDK"))
+            assertEquals(false, Files.exists(output))
+        }
+    }
+
+    @Test
+    fun windowsArm64PackageRequestFailsBeforeRuntimeInspection() {
+        KWebRuntimeReleaseTestFixture.create(KWebTarget.parse("windows-arm64")).use { fixture ->
+            val manifestPath = writeManifest(fixture.root, KWebRuntimeReleaseTestFixture.PRODUCT_VERSION)
+            val output = fixture.outputDirectory.resolve("KWebShell-windows-arm64.zip")
+            val error = assertFailsWith<KWebApplicationPackageException> {
+                KWebApplicationPackageAssembler.build(
+                    request(
+                        fixture,
+                        manifestPath,
+                        fixture.root.resolve("must-not-be-opened.zip"),
+                        testSignature(fixture.target),
+                        output,
+                    ),
+                )
+            }
+            assertEquals("application.package.windows-target-unsupported", error.code)
+            assertEquals(false, Files.exists(output))
         }
     }
 
@@ -111,11 +267,12 @@ class KWebApplicationPackageTest {
                     KWebApplicationPackageVerificationRequest(
                         applicationPackage = packagePath,
                         applicationManifest = manifestPath,
+                        applicationAssetRoot = repositoryRoot().resolve("runtime"),
                         catalog = fixture.catalog,
                         target = fixture.target,
                         productVersion = KWebRuntimeReleaseTestFixture.PRODUCT_VERSION,
                         trustedPublicKey = fixture.publicKey,
-                    ),
+            ),
                 )
             }
         }
@@ -129,6 +286,7 @@ class KWebApplicationPackageTest {
         output: Path,
     ): KWebApplicationPackageBuildRequest = KWebApplicationPackageBuildRequest(
         applicationManifest = manifestPath,
+        applicationAssetRoot = repositoryRoot().resolve("runtime"),
         runtimeRelease = release,
         catalog = fixture.catalog,
         target = fixture.target,
@@ -147,7 +305,8 @@ class KWebApplicationPackageTest {
     }
 
     private fun testSignature(target: KWebTarget): KWebApplicationPlatformSignature =
-        KWebApplicationPlatformSignature(
+        KWebApplicationManifestLoader.load(repositoryRoot().resolve("runtime/application-manifest.json")).let { manifest ->
+            KWebApplicationPlatformSignature(
             schemaVersion = 1,
             target = target.id,
             format = when (target.operatingSystem.id) {
@@ -161,11 +320,12 @@ class KWebApplicationPackageTest {
             } else {
                 "io.github.kingsword09.kwebshell"
             },
-            signer = "test-ed25519",
+            signer = if (target.operatingSystem.id == "windows") "CN=${manifest.publisher}" else "test-ed25519",
             signatureStatus = "VERIFIED",
             notarizationStatus = "NOT_APPLICABLE",
-            registrationDigest = "0".repeat(64),
-        )
+            registrationDigest = applicationRegistrationDigest(manifest, target),
+            )
+        }
 
     private fun repositoryRoot(): Path {
         var current: Path? = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize()
@@ -174,5 +334,23 @@ class KWebApplicationPackageTest {
             current = current.parent
         }
         error("Unable to locate runtime/application-manifest.json.")
+    }
+
+    private fun deleteTree(root: Path) {
+        Files.walkFileTree(root, object : java.nio.file.SimpleFileVisitor<Path>() {
+            override fun visitFile(file: Path, attributes: java.nio.file.attribute.BasicFileAttributes): java.nio.file.FileVisitResult {
+                Files.delete(file)
+                return java.nio.file.FileVisitResult.CONTINUE
+            }
+
+            override fun postVisitDirectory(
+                directory: Path,
+                error: java.io.IOException?,
+            ): java.nio.file.FileVisitResult {
+                if (error != null) throw error
+                Files.delete(directory)
+                return java.nio.file.FileVisitResult.CONTINUE
+            }
+        })
     }
 }

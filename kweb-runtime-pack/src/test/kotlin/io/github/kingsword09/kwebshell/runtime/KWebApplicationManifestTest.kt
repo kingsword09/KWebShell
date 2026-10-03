@@ -18,7 +18,31 @@ class KWebApplicationManifestTest {
         assertEquals(KWebApplicationManifestContract.SCHEMA_VERSION, manifest.schemaVersion)
         assertEquals("io.github.kingsword09.kwebshell", manifest.applicationId)
         assertEquals(KWebTarget.supported.map { it.id }.toSet(), manifest.targets.keys)
+        KWebTarget.supported
+            .filter { it.operatingSystem.id == "windows" }
+            .forEach { target ->
+                assertEquals("KWebShellCef", manifest.targets.getValue(target.id).browserSubprocessExecutable)
+            }
         assertTrue(Files.readAllBytes(path).contentEquals(KWebApplicationManifestCodec.encode(manifest)))
+    }
+
+    @Test
+    fun windowsTargetWithoutMsixIconIsRejected() {
+        val source = KWebApplicationManifestLoader.load(repositoryRoot().resolve("runtime/application-manifest.json"))
+        val invalid = source.copy(icons = source.icons.filterNot { it.kind == "windows-msix-square44" })
+        assertFailsWith<KWebApplicationPackageException> {
+            KWebApplicationManifestContract.validate(invalid)
+        }
+    }
+
+    @Test
+    fun duplicateIconKindIsRejected() {
+        val source = KWebApplicationManifestLoader.load(repositoryRoot().resolve("runtime/application-manifest.json"))
+        val duplicate = source.icons + source.icons.first()
+        val error = assertFailsWith<KWebApplicationPackageException> {
+            KWebApplicationManifestContract.validate(source.copy(icons = duplicate))
+        }
+        assertEquals("application.manifest.icon-kind-duplicate", error.code)
     }
 
     @Test

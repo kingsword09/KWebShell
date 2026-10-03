@@ -557,7 +557,7 @@ class KWebRuntimePayloadTest {
             }
 
             KWebOperatingSystem.WINDOWS -> {
-                writeBytes(release.resolve("KWebShell.exe"), "windows-host".toByteArray())
+                writeBytes(release.resolve("KWebShellCef.exe"), "windows-host".toByteArray())
                 writeBytes(release.resolve("libcef.dll"), "cef-dll".toByteArray())
                 writeBytes(release.resolve("icudtl.dat"), "icu".toByteArray())
             }

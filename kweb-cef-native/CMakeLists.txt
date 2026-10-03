@@ -492,7 +492,7 @@ elseif(WIN32)
     ${CEF_STANDARD_LIBS}
   )
   set_target_properties(${KWEB_HOST_TARGET} PROPERTIES
-    OUTPUT_NAME "KWebShell"
+    OUTPUT_NAME "KWebShellCef"
     RUNTIME_OUTPUT_DIRECTORY "${KWEB_TARGET_OUT_DIR}"
   )
 

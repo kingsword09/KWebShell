@@ -44,7 +44,9 @@ complete flat `Release` tree below `runtime/`.
 
 The macOS native build recreates and verifies the canonical versioned framework
 links before the payload builder reads them. The ZIP preserves those link
-targets and modes exactly. This schema makes no platform code-signing claim;
+targets and modes exactly. On Windows the CEF browser subprocess is
+`runtime/KWebShellCef.exe`; the application launcher is owned by the separate
+JVM/Compose application image. This schema makes no platform code-signing claim;
 release authenticity comes exclusively from the signed release envelope
 described above.
 

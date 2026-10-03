@@ -128,43 +128,50 @@ private fun verifyApplicationManifest(arguments: Array<String>) {
 }
 
 private fun buildApplicationPackage(arguments: Array<String>) {
-    requireArgumentCount(arguments, 10)
-    val catalog = CefRuntimeCatalogLoader.load(Path.of(arguments[2]))
-    val target = KWebTarget.parse(arguments[3])
+    requireArgumentCount(arguments, 11)
+    val catalog = CefRuntimeCatalogLoader.load(Path.of(arguments[3]))
+    val target = KWebTarget.parse(arguments[4])
     val signature = KWebApplicationPlatformSignatureCodec.decode(
-        Files.readAllBytes(Path.of(arguments[8])),
+        Files.readAllBytes(Path.of(arguments[9])),
     )
     val result = KWebApplicationPackageAssembler.build(
         KWebApplicationPackageBuildRequest(
             applicationManifest = Path.of(arguments[1]),
-            runtimeRelease = Path.of(arguments[5]),
+            applicationAssetRoot = Path.of(arguments[2]),
+            runtimeRelease = Path.of(arguments[6]),
             catalog = catalog,
             target = target,
-            productVersion = arguments[4],
-            trustedPublicKey = Path.of(arguments[6]),
-            packageSigningPrivateKey = Path.of(arguments[7]),
+            productVersion = arguments[5],
+            trustedPublicKey = Path.of(arguments[7]),
+            packageSigningPrivateKey = Path.of(arguments[8]),
             platformSignature = signature,
-            outputPackage = Path.of(arguments[9]),
+            outputPackage = Path.of(arguments[10]),
         ),
     )
+    val artifactLabel = if (target.operatingSystem.id == "windows") {
+        "internal signed Windows metadata archive (not a distributable MSIX)"
+    } else {
+        "application package"
+    }
     println(
-        "Built application package ${result.packagePath.toAbsolutePath()} for ${target.id}; " +
-            "package SHA-256 ${result.packageSha256}.",
+        "Built $artifactLabel ${result.packagePath.toAbsolutePath()} for ${target.id}; " +
+            "SHA-256 ${result.packageSha256}.",
     )
 }
 
 private fun verifyApplicationPackage(arguments: Array<String>) {
-    requireArgumentCount(arguments, 7)
-    val catalog = CefRuntimeCatalogLoader.load(Path.of(arguments[2]))
-    val target = KWebTarget.parse(arguments[3])
+    requireArgumentCount(arguments, 8)
+    val catalog = CefRuntimeCatalogLoader.load(Path.of(arguments[3]))
+    val target = KWebTarget.parse(arguments[4])
     val result = KWebApplicationPackageVerifier.verify(
         KWebApplicationPackageVerificationRequest(
-            applicationPackage = Path.of(arguments[5]),
+            applicationPackage = Path.of(arguments[6]),
             applicationManifest = Path.of(arguments[1]),
+            applicationAssetRoot = Path.of(arguments[2]),
             catalog = catalog,
             target = target,
-            productVersion = arguments[4],
-            trustedPublicKey = Path.of(arguments[6]),
+            productVersion = arguments[5],
+            trustedPublicKey = Path.of(arguments[7]),
         ),
     )
     println(
@@ -194,10 +201,10 @@ private fun invalidArguments(arguments: Array<String>): Nothing {
                 "release-verify <manifest-path> <target> <product-version> <pack> " +
                 "<trusted-public-key-x509-der> or " +
                 "application-manifest <application-manifest-path> or " +
-                "application-package-build <application-manifest> <runtime-catalog> <target> " +
+                "application-package-build <application-manifest> <application-asset-root> <runtime-catalog> <target> " +
                 "<product-version> <runtime-release> <trusted-public-key> <package-private-key> <platform-signature> " +
                 "<output-package> or " +
-                "application-package-verify <application-manifest> <runtime-catalog> <target> " +
+                "application-package-verify <application-manifest> <application-asset-root> <runtime-catalog> <target> " +
                 "<product-version> <package> <trusted-public-key>.",
     )
 }

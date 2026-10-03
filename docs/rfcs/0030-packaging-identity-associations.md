@@ -7,6 +7,11 @@
 - Electron migration surface: `app.setAppUserModelId`, default protocol client, file associations, packaged state
 - Target mapping: `REWRITE`
 
+The `Implemented` catalog status records the earlier metadata-package objective.
+The Windows x64 MSIX amendment below is still incomplete until its new required
+hosted rows are `PASS` and its evidence is recorded; do not treat the historical
+status or ZIP metadata tests as proof of an installable MSIX.
+
 ## Objective and scope
 
 Publish one closed application manifest and one deterministic packaging pipeline
@@ -15,9 +20,15 @@ payload, helper ownership, platform registration metadata, declared capabilities
 and the selected installer format. A package is publishable only after its
 payload, manifest, signatures, and association metadata have all been verified.
 
-This RFC owns the packaging boundary required by RFC 0006. It does not own
-runtime activation routing, single-instance leases, or the application lifecycle
-service itself.
+This RFC owns the platform package boundary and the normal installed
+application entry point required by RFC 0006. The Windows x64 amendment in this
+change is limited to an installable MSIX containing the JVM/Compose launcher,
+the pinned Temurin JRE, and the independently verified CEF/native payload.
+Notification activation, Windows App SDK restore/runtime deployment, lifecycle
+lease routing, and warm/cold notification dispatch are not part of this
+amendment. Notification behavior is owned by RFC 0016 and application lifecycle
+routing by RFC 0006. This MSIX must not declare an unbundled Windows App SDK
+prerequisite.
 
 ## Implementation contract
 
@@ -25,7 +36,8 @@ service itself.
 
 The source manifest is `runtime/application-manifest.json`. It is strict UTF-8
 JSON, schema version `1`, with unknown fields rejected and one trailing LF. The
-canonical field order is:
+following abbreviated sample shows field shape; the checked-in canonical
+manifest declares all six `KWebTarget` IDs:
 
 ```json
 {
@@ -41,7 +53,7 @@ canonical field order is:
   "fileTypes": [{"extension": ".kweb", "mimeType": "application/x-kwebshell", "description": "KWebShell document"}],
   "targets": {
     "macos-arm64": {"minimumOs": "13.0", "format": "macos-app-zip", "bundleId": "io.github.kingsword09.kwebshell"},
-    "windows-x64": {"minimumOs": "10.0.17763", "format": "windows-msix", "aumid": "io.github.kwebshell"},
+    "windows-x64": {"minimumOs": "10.0.17763", "format": "windows-msix", "packageIdentityName": "io.github.kingsword09.kwebshell", "browserSubprocessExecutable": "KWebShellCef"},
     "linux-x64": {"minimumOs": "glibc-2.35", "format": "linux-deb", "desktopId": "io.github.kwebshell.desktop"}
   },
   "capabilities": [],
@@ -50,7 +62,7 @@ canonical field order is:
 }
 ```
 
-`applicationId`, executable names, bundle/AUMID/desktop identifiers, protocol
+`applicationId`, executable names, bundle/package/desktop identifiers, protocol
 schemes, extensions, MIME types, and paths have bounded portable grammars.
 Every hosted target must have exactly one target entry. The builder rejects a
 target omission, duplicate declaration, unknown capability/provider resource,
@@ -77,11 +89,16 @@ canonical records:
 | `runtime/release.pack.zip` | byte-for-byte signed RFC 0001 runtime release |
 | `signatures/platform.json` | external platform signature/notarization facts |
 
-The package archive uses fixed timestamps, UTF-8 lexical entry ordering, fixed
-permissions, no absolute paths, no symlinks crossing roots, and atomic
-publication. The package digest covers the exact archive bytes. Rebuilding from
-the same manifest, runtime release, target, and signing facts is byte-for-byte
-stable.
+The metadata archive uses fixed timestamps, UTF-8 lexical entry ordering, fixed
+permissions, no absolute paths, and atomic publication. For Windows it is an
+internal `.zip` with signed package records and is never a distributable MSIX;
+the ordinary verifier rejects it as a Windows package. The Windows x64 hosted
+provider checks this signed record archive, stages it with the verified
+jpackage app-image, and delegates actual block-map generation and package
+signing to Windows SDK tools. The staging-tree digest binds the launcher, JRE,
+CEF/native payload and assets; the final MSIX digest is retained per run. Its
+signature bytes are intentionally run-specific because CI creates a temporary
+test certificate.
 
 ### C. Platform package providers
 
@@ -91,25 +108,33 @@ fallback:
 | Target | Format | Required platform facts |
 | --- | --- | --- |
 | macOS arm64 | `.app` inside a signed ZIP | bundle identifier, URL/file document declarations, `codesign --verify`, and notarization ticket/staple result when distribution mode is selected |
-| Windows x64 | MSIX | AUMID, protocol/file associations, Authenticode/AppX signature identity, and package identity |
+| Windows x64 | MSIX | Package identity bound to a temporary signing certificate whose subject exactly matches Publisher; jpackage JVM/Compose `KWebShell.exe`; pinned Temurin JRE; separate `KWebShellCef.exe`; verified CEF/native payload; protocol/file declarations; square/store assets; SDK-generated block map and verified package signature; clean hosted install, start/close, and uninstall |
 | Linux x64 | Debian package | desktop entry, MIME XML, AppStream metainfo, package architecture, and detached release signature |
 
 The provider fails before publication when the declared signer/tool output is
 missing, the observed identity differs from the manifest, the registration
-metadata is incomplete, or the package contains an undeclared capability. Test
-mode may use ephemeral keys/certificates, but it still verifies the same
-structure and signature boundary; test artifacts cannot be marked as release
-artifacts.
+metadata is incomplete, the app-image is missing required files, or the package
+contains an undeclared capability. Test mode may use ephemeral
+package-signing keys/certificates, but it still verifies the same structure and
+signature boundary; test artifacts cannot be marked as release artifacts.
+Windows ARM64 MSIX creation fails with a typed target error; no x64 launcher or
+JRE is substituted.
 
 ### D. Association metadata boundary
 
-The package contains canonical target-specific association declarations. This
-RFC does not install those declarations into a user OS or claim that a package
-has received an activation. RFC 0006 owns the application lifecycle service and
-the real install/activation/uninstall path over these declarations:
+The package contains canonical target-specific association declarations. The
+Windows x64 amendment verifies MSIX installation, observed package identity,
+ordinary launcher start/close, and uninstall on a clean hosted Windows account.
+RFC 0006 owns lifecycle semantics and activation payload routing over these
+declarations:
 
 - macOS Launch Services for the `kweb:` scheme and `.kweb` document type;
 - Windows per-user package registration for the protocol and file extension;
+- Windows notification activation registration and Windows App SDK runtime
+  deployment are outside this package amendment. RFC 0016 must add and verify
+  the App SDK manifest/runtime contract together with notification event
+  decoding; RFC 0006 owns the application lifecycle lease and dispatch to the
+  JVM/Compose owner. This amendment emits no toast/COM activator CLSID;
 - Linux desktop-entry/MIME registration in an isolated user data directory.
 
 The package verifier checks that each declaration is present, identity-bound, and
@@ -121,17 +146,23 @@ the OS registration mechanism.
 
 | ID / source clause | Observable requirement | Normal, negative and boundary scenarios | Planned verification / required targets | Implementation and test references | Retained evidence / tested revision | Result / review rationale |
 | --- | --- | --- | --- | --- | --- | --- |
-| A1 / closed manifest | The strict manifest validates and unknown/omitted/duplicate fields fail before packaging. | Valid canonical manifest; unknown key; missing target; duplicate protocol; absolute/traversal path. The validator also rejects invalid identity, version, association and provider-resource fields. | [`KWebApplicationManifestTest`](../../kweb-runtime-pack/src/test/kotlin/io/github/kingsword09/kwebshell/runtime/KWebApplicationManifestTest.kt); `:kweb-runtime-pack:verifyApplicationManifest`; the same JVM test suite on all three hosted targets. | `repositoryManifestIsCanonicalAndTargetComplete`, `unknownFieldsAreRejected`, `missingTargetIsRejectedBeforePackaging`, `absoluteProviderResourcePathIsRejected`; [`KWebApplicationManifestContract`](../../kweb-runtime-pack/src/main/kotlin/io/github/kingsword09/kwebshell/runtime/KWebApplicationManifest.kt) performs the complete closed-schema validation. | The RFC 0030 record in [`evidence/manifest.json`](evidence/manifest.json) binds the final contract digest and each hosted application-package report. | `PASS`: canonical source, unknown-field rejection, target completeness and unsafe-path rejection passed; hosted verification used the same checked-in manifest. |
-| A2 / identity | All generated package identities derive from the one application ID and target entry. | macOS bundle identity, Windows AUMID and Linux desktop identity match; a conflicting platform identity fails before output. | [`KWebApplicationPackageTest`](../../kweb-runtime-pack/src/test/kotlin/io/github/kingsword09/kwebshell/runtime/KWebApplicationPackageTest.kt); independent package verification on macOS arm64, Windows x64 and Linux x64. | `packageRoundTripIsDeterministicAndVerifiesNestedRelease`, `wrongPlatformIdentityFailsBeforeWritingOutput`, `targetProvidersIncludeTheirRegistrationArtifacts`; [`platformIdentity`](../../kweb-runtime-pack/src/main/kotlin/io/github/kingsword09/kwebshell/runtime/KWebApplicationPackage.kt) and target metadata providers. | Three hosted `application-package-report.json` records under `docs/rfcs/evidence/artifacts/0030/<sourceRevision>/<target>/`, with package and manifest digests. | `PASS`: all three hosted providers were built from the one manifest identity; the conflicting macOS identity was rejected without creating output. |
-| A3 / deterministic package | Same inputs and signature facts produce identical package bytes and manifest digest. | Rebuild with the same inputs; fixed archive timestamps/order/modes; nested release verification; output is published atomically. | [`KWebApplicationPackageTest`](../../kweb-runtime-pack/src/test/kotlin/io/github/kingsword09/kwebshell/runtime/KWebApplicationPackageTest.kt); real host-payload package integration on all three hosted targets. | `packageRoundTripIsDeterministicAndVerifiesNestedRelease`; [`KWebApplicationPackageAssembler`](../../kweb-runtime-pack/src/main/kotlin/io/github/kingsword09/kwebshell/runtime/KWebApplicationPackage.kt) canonical archive writer and atomic publisher; `KWebApplicationPackageIntegrationMainKt` builds and independently reopens the package. | Each hosted report retains `packageSha256`, `manifestSha256` and `runtimeReleaseSha256`; the final evidence manifest records their SHA-256 values and tested source revision. | `PASS`: repeated fixture builds were byte-identical and all hosted real-payload package builds reopened with matching digests. |
-| A4 / platform providers | The selected macOS/Windows/Linux provider emits the declared package format and rejects missing/incorrect signing facts. | macOS ZIP-compatible app container, Windows MSIX container and Linux Debian `ar` package; wrong identity/signature facts fail before publication; no format fallback. | [`KWebApplicationPackageTest`](../../kweb-runtime-pack/src/test/kotlin/io/github/kingsword09/kwebshell/runtime/KWebApplicationPackageTest.kt); `:kweb-runtime-pack:applicationPackageIntegrationTest` on macOS arm64, Windows x64 and Linux x64. | `targetProvidersIncludeTheirRegistrationArtifacts`, `wrongPlatformIdentityFailsBeforeWritingOutput`, independent `KWebApplicationPackageVerifier.verify` in [`KWebApplicationPackageIntegrationMain.kt`](../../kweb-runtime-pack/src/test/kotlin/io/github/kingsword09/kwebshell/runtime/KWebApplicationPackageIntegrationMain.kt); platform metadata providers in [`KWebApplicationPackage.kt`](../../kweb-runtime-pack/src/main/kotlin/io/github/kingsword09/kwebshell/runtime/KWebApplicationPackage.kt). | Hosted application-package artifacts for `macos-arm64`, `windows-x64` and `linux-x64`; each report records the declared format, package digest and `status: PASS`. | `PASS`: each explicit provider emitted its declared format and the independent verifier accepted only matching signing/identity facts. |
-| A5 / associations | The package contains identity-bound protocol/file association declarations for the next lifecycle objective. | `kweb:` URI; Unicode `.kweb`; multiple file types; missing declaration; wrong identity. | Package metadata/signature verification on all three hosted targets; OS registration is RFC 0006. | `KWebApplicationRegistration`, target metadata providers, package signature verifier | application-package report | `NOT_APPLICABLE` to RFC 0030 OS installation; reviewed scope boundary above |
-| A6 / uninstall | Package output is atomically publishable and contains no implicit OS registration side effect. | Atomic publication; interrupted package write; package removal leaves no package-owned registration mutation. | Package assembler/verifier tests; OS uninstall is RFC 0006. | `KWebApplicationPackageAssembler`, atomic publication tests | application-package report | `NOT_APPLICABLE` to RFC 0030 OS uninstall; reviewed scope boundary above |
-| A7 / tamper boundary | Any payload/resource/helper/schema/runtime/signature mutation fails before launch. | Mutated package bytes, package signature statement, nested runtime release or canonical record cannot pass independent verification. | `tamperedPackageCannotPassVerification`; independent verifier in the hosted package integration task on all three targets. | [`KWebApplicationPackageVerifier`](../../kweb-runtime-pack/src/main/kotlin/io/github/kingsword09/kwebshell/runtime/KWebApplicationPackage.kt) checks exact entry set, canonical metadata, package Ed25519 statement, and nested RFC 0001 release signature before returning success. | Three hosted package reports and package digests retained under the final evidence source revision. | `PASS`: the tampered package fixture failed verification, and hosted packages were independently reopened after construction. |
-| A8 / capability audit | Package capabilities equal the closed manifest and provider resources. | Capability/provider records are canonical and cannot drift from the source manifest; SBOM runtime/license facts match the nested release. | Package round-trip verifier and real-payload integration on all three hosted targets. | Capability equality and SBOM equality checks in [`KWebApplicationPackageVerifier.verify`](../../kweb-runtime-pack/src/main/kotlin/io/github/kingsword09/kwebshell/runtime/KWebApplicationPackage.kt); `packageRoundTripIsDeterministicAndVerifiesNestedRelease`; package records are emitted by `KWebApplicationPackageAssembler`. | Hosted package reports retain package and nested-runtime digests; checked-in source manifest and final evidence manifest retain the contract and artifact hashes. | `PASS`: verifier equality checks passed for every hosted package; undeclared capability/resource data has no accepted package path. |
-| A9 / packaged state | `isPackaged` is immutable package data and cannot be changed by runtime input. | Package state is generated as `true`, bound to manifest digest/target/version, and mismatched or malformed state fails verification; no environment input is read. | Package round-trip verifier and real-payload integration on all three hosted targets. | `KWebApplicationPackagedState` emission and equality check in [`KWebApplicationPackage.kt`](../../kweb-runtime-pack/src/main/kotlin/io/github/kingsword09/kwebshell/runtime/KWebApplicationPackage.kt); `packageRoundTripIsDeterministicAndVerifiesNestedRelease`; package format documentation. | All hosted application-package reports are bound to the final manifest digest and package digest. | `PASS`: the state record is package-generated and verifier-bound to the manifest, target and version; runtime environment is not an input. |
-| A10 / migration | Electron builder/forge metadata maps only to declared fields and unsupported hooks block generation. | Valid closed mapping; unsupported hook; invalid target; non-canonical metadata. | [`KWebElectronPackagingContractTest`](../../kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronPackagingContractTest.kt) in `:kweb-electron-migration:jvmTest`. | `mapsClosedBuilderMetadataToTheApplicationPackagingReport`, `unsupportedHooksBecomeBlockingFindings`, `invalidTargetAndNonCanonicalMetadataAreRejected`; [`KWebElectronPackagingMapper`](../../kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronPackagingContract.kt). | Hosted verification runs execute the migration module check; the migration contract is included in the RFC 0030 contract binding. | `PASS`: supported declarations map to the closed report and unsupported hooks/targets/non-canonical input block generation. |
-| A11 / universal completion | Tests, packaging, documentation, capability matrix, evidence and reviewed revision are complete. | Missing artifact, stale contract digest, skipped hosted target or changed contract after review blocks acceptance. | `:kweb-rfc-governance:check`, `git diff --check`, full PR diff review, and the hosted RFC evidence aggregation job. | [`DESIGN_PLAN.md`](../../DESIGN_PLAN.md), [`docs/application-package-format.md`](../application-package-format.md), RFC 0030 matrix, [`contracts.json`](evidence/contracts.json), and [`evidence/manifest.json`](evidence/manifest.json); final acceptance review is the Codex review pass by the same contributor as implementation. | The final RFC 0030 records in `evidence/manifest.json` must show three READY records with one contract digest and retained application-package report SHA-256 values; the exact tested source revision is recorded in each record's `run.sourceRevision`. | `PASS` after the final hosted aggregation and strict governance check: all applicable rows are PASS, the two lifecycle exclusions remain explicitly assigned to RFC 0006, and the complete PR diff is reviewed. |
+| A1 / closed manifest | The strict manifest validates and unknown/omitted/duplicate fields fail before packaging. | Valid canonical manifest; unknown key; missing target; duplicate protocol; absolute/traversal path; invalid identity/version/association/resource. | [`KWebApplicationManifestTest`](../../kweb-runtime-pack/src/test/kotlin/io/github/kingsword09/kwebshell/runtime/KWebApplicationManifestTest.kt); `:kweb-runtime-pack:verifyApplicationManifest`; same JVM tests on all three hosted targets. | Canonical manifest loader and closed-schema validator. | New RFC 0030 hosted records bind the amended contract and package reports. | `NOT_RUN` for amended hosted revision; local package/manifest tests and manifest CLI passed. |
+| A2 / identity | The Windows package identity name, application Id, architecture, publisher and signing certificate agree; installed family/AUMID are observed from Windows. | Matching/mismatching certificate subject; changed identity/application Id/architecture; install and query family/full name/Start Apps AUMID; macOS/Linux identities remain unchanged. | `KWebApplicationPackageTest`; GitHub-hosted `windows-2022` `build-and-verify-windows-msix.ps1`; existing macOS/Linux package integration. | Root Appx identity emitter; generated certificate subject check; hosted install queries actual AppX and Start Apps registration. | RFC evidence retains the signed `.msix` as `windows-msix` plus package report with family, full name, observed AUMID, publisher subject and digest. | `NOT_RUN` on Windows hosted runtime; local metadata/package unit tests pass. |
+| A3 / reproducible package inputs | Repeated metadata builds from identical manifest, signed runtime, assets and target are byte-stable; app-image and combined staging digests bind actual launcher/JRE/CEF/native/assets; final signed MSIX digest is retained. | Repeat metadata build; mutate one asset/runtime byte; compare same and changed digests. Temporary test certificate and resulting package signature are run-specific. | `packageRoundTripIsDeterministicAndVerifiesNestedRelease`; GitHub-hosted Windows app-image/MSIX job; package integration on all three CI targets. | Canonical records and PNG validation; PowerShell computes `applicationImageTreeSha256` and `stagedPayloadTreeSha256`; SDK package verifier. | Windows evidence retains the signed `.msix` and report with metadata, image, staged-payload, runtime, icon, Temurin license, and final-package SHA-256 values. | `NOT_RUN` for hosted staging; unit determinism passes. |
+| A4 / platform providers | macOS/Linux providers remain unchanged; Windows x64 emits a real installable MSIX with root AppxManifest, SDK-generated block map and verified package signature. | Missing launcher/JAR/JRE/CEF/native/CEF license/assets; malformed identity/XML; altered package; MakeAppx validate/unpack; SignTool verify; clean install, launcher/CEF start, normal close and uninstall. | Three-target `runtimeCheck`; Windows-only `.github/scripts/build-and-verify-windows-msix.ps1` on GitHub-hosted `windows-2022`. | Internal signed metadata ZIP + verified jpackage app-image staged into SDK `MakeAppx pack`; no hand-built block map; temporary publisher-bound test cert. | RFC evidence retains both report and actual signed `.msix` under Windows row artifacts. | `NOT_RUN` on Windows hosted runner; local Kotlin tests pass and the ordinary verifier refuses a ZIP with `.msix` suffix. |
+| A5 / associations | The signed package records bind the declared URI protocol/file type to the target identity; Windows manifest includes the corresponding OS declarations. | `kweb:` URI; `.kweb` file type; absent or wrong identity; generated XML contains matching entries and has one root/package identity. | `targetProvidersIncludeTheirRegistrationArtifacts`; Windows SDK manifest validation in hosted script; OS lifecycle dispatch remains RFC 0006. | Canonical `KWebApplicationRegistration`, Appx protocol/file-type extensions, signature statement, integration test. | Metadata archive digest and installed MSIX digest. | `NOT_RUN` hosted; XML and record assertions pass locally. |
+| A6 / atomic publication and uninstall | Record archives publish atomically; MSIX install/uninstall is explicit and leaves neither AppX registration nor test-created KWebShell user data/policy behind. | Failed metadata publication; require clean ephemeral runner state; install/query; remove package; delete only the absent-before-test `%LOCALAPPDATA%\KWebShell` tree; restore exact AppModelUnlock value/key; verify cleanup. | Package assembler tests and Windows-hosted install/uninstall script, which refuses non-GitHub runners and pre-existing app data. | `KWebApplicationPackageAssembler`, `build-and-verify-windows-msix.ps1`. | Report retains install/uninstall, app-data cleanup, policy restoration and installed identity. | `NOT_RUN` on Windows hosted runner; not excluded from scope. |
+| A7 / tamper boundary | Any payload/resource/helper/schema/runtime/signature mutation fails before launch. | Mutated metadata bytes/statement/runtime/canonical record fail independent verification; altered final MSIX fails SignTool verification. | `tamperedPackageCannotPassVerification`; actual final-package tamper check in the GitHub-hosted Windows package script. | [`KWebApplicationPackageVerifier`](../../kweb-runtime-pack/src/main/kotlin/io/github/kingsword09/kwebshell/runtime/KWebApplicationPackage.kt), MakeAppx and SignTool. | Retain metadata package report and tampered-MSIX rejection in the Windows application-package report. | `NOT_RUN` for final Windows MSIX; the existing metadata tamper test passes locally. |
+| A8 / capability audit | Package capabilities equal the closed manifest and provider resources. | Capability/provider records are canonical; SBOM runtime/license facts match the nested signed release. | Package round-trip verifier and real-payload integration on all three hosted targets. | Capability/SBOM equality checks in `KWebApplicationPackageVerifier.verify`. | Amended hosted application-package reports and package digests. | `NOT_RUN` for amended hosted revision; local package round-trip tests pass. |
+| A9 / packaged state | `isPackaged` is immutable package data and cannot be changed by runtime input. | Generated true fact binds manifest digest/target/version; mismatch or malformed state fails; no environment input is read. | Package round-trip verifier and real-payload integration on all three hosted targets. | `KWebApplicationPackagedState` emission and verifier equality check. | Amended hosted application-package reports bind manifest and package digest. | `NOT_RUN` for amended hosted revision; local package round-trip tests pass. |
+| A10 / migration | Electron builder/forge metadata maps only to declared fields and unsupported hooks block generation. | Valid mapping; unsupported hook; invalid target; non-canonical metadata. | [`KWebElectronPackagingContractTest`](../../kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronPackagingContractTest.kt) in `:kweb-electron-migration:jvmTest`, all hosted targets. | Closed `KWebElectronPackagingMapper` contract. | New hosted records bind the amended contract digest. | `NOT_RUN` for amended hosted revision; historical tests passed and current hosted rerun is required. |
+| A11 / universal completion | Tests, packaging, docs, matrix, hosted evidence and reviewed revision are complete. | Missing artifact, stale contract digest, skipped target or changed contract blocks acceptance. | `:kweb-rfc-governance:check`, `git diff --check`, full PR diff review, hosted evidence aggregation. | [`DESIGN_PLAN.md`](../../DESIGN_PLAN.md), [`docs/application-package-format.md`](../application-package-format.md), matrix, [`contracts.json`](evidence/contracts.json), [`evidence/manifest.json`](evidence/manifest.json). | Final three-target RFC 0030 READY records and Windows package report bind the reviewed source revision. | `NOT_RUN`; a hosted run and final acceptance review remain required. |
+| A12 / notification activation | Windows App SDK notification activator registration and payload decoding are not required by this package slice. | Generated manifest has no toast activator CLSID, COM ExeServer or App SDK dependency; RFC 0016 must verify those when adding the provider. | Generated manifest contract test; downstream RFC 0016 hosted Windows evidence. | Root AppX manifest emitter. | Follow-up assigned to RFC 0016/0006. | `NOT_APPLICABLE`: notification activation is a separate runtime objective and is intentionally excluded from this package amendment. |
+| A13 / Windows identity and visual assets | Package identity, application Id, publisher subject and actual square/store bytes agree in the installed MSIX. | Missing/wrong-dimension or malformed PNG; publisher mismatch; changed identity; observed family/AUMID after install. | `windowsMsixMetadataRejectsArm64AndMalformedAssets`; hosted MakeAppx validation/install. | Appx manifest, checked-in PNGs, `ImageIO` PNG decode/dimension checks and hosted identity verifier. | Retain asset SHA-256 values, certificate subject, installed IDs and MSIX SHA-256. | `NOT_RUN` hosted; asset-negative and manifest tests pass locally. |
+| A14 / Windows App SDK dependency | This package amendment declares no Windows App SDK framework dependency and adds no App SDK restore prerequisite. | Inspect generated AppX dependency graph; clean hosted install succeeds without separately installed App SDK packages. | AppX generated-manifest assertions and clean Windows install on GitHub-hosted `windows-2022`. | AppX dependency emitter; package test rejects SDK/notification dependency tokens; Windows hosted install script checks dependency inventory. | Dependency inventory retained in the package report. | `PASS` locally for no SDK/notification dependency; hosted install confirmation remains `NOT_RUN`. |
+| A15 / normal Windows entry point | A clean MSIX install starts jpackage JVM/Compose `KWebShell.exe` with `app/` classpath and `runtime/` Temurin JRE, plus `cef/KWebShellCef.exe` and native CEF payload; normal close ends both processes. | Visible application window and CEF child; missing runtime files fail before packaging; close and verify both process exits. | `runWindowsApplicationImageSmokeTest` plus actual installed MSIX launch/close on GitHub-hosted Windows x64. | Launcher layout, app-image verifier/smoke task and Windows SDK package script. | Retain launcher PID/window, CEF observation, exit and runtime paths in report. | `NOT_RUN` on Windows host. |
+| A16 / Windows ARM64 package | Windows ARM64 package requests fail explicitly; no x64 payload is substituted. | Request `windows-arm64`; assert target-specific error before emitting metadata. | `windowsMsixMetadataRejectsArm64AndMalformedAssets`; Windows target guard. | `windowsMsixMetadataEntries` target check; manifest continues to enumerate KMP targets without advertising ARM64 package delivery. | Test result and target error code. | `PASS` locally: `application.package.windows-target-unsupported`; hosted Windows runtime not required for this negative path. |
+| A17 / bundled JRE license material | The pinned Temurin JRE's module license and assembly exception remain present in both the app-image and installed MSIX, and the retained report binds their bytes. | Verify the pinned Windows archive contains both files; missing app-image file fails before MakeAppx; installed file missing or byte-changed fails after install; report includes both SHA-256 values and the staged tree digest. | `verifyWindowsApplicationImage`; Windows-hosted `.github/scripts/build-and-verify-windows-msix.ps1` install test. | Launcher app-image required-file check; PowerShell staging and installed-file checks. | `application-package-report.json` records `temurinLicenseSha256`, `temurinAssemblyExceptionSha256`, resolved installed paths, and `stagedPayloadTreeSha256`; `.msix` retained alongside it. | `NOT_RUN` for app-image/MSIX hosted execution. The pinned Temurin JRE archive hash was verified locally and its archive listing contains both required legal files; package propagation remains unverified until Windows CI. |
 
 ## Readiness review
 
@@ -148,16 +179,136 @@ the OS registration mechanism.
   signer failure behavior, target-specific package identity, or falsifiable
   registration evidence. This revision settles those decisions and adds the
   acceptance matrix.
-- Decision: `READY`.
+- Historical decision: `READY` for the original package metadata contract only;
+  it does not cover the Windows installability defects recorded below.
 - Boundary review: after implementation audit, the OS install/activation/
   uninstall rows were split from this packaging objective and assigned to RFC
   0006. The package still emits and signs the exact declarations required by
   that next objective; no unsupported runtime registration claim is made here.
 - Boundary review revision: `2fcf76d`.
 
+## Contract amendment readiness review
+
+- Reviewed revision: `d227aef` plus the RFC 0030 contract amendment in this
+  change, before implementation.
+- Review pass: Codex contract review pass, same contributor as implementation;
+  this is not an independent-person approval.
+- Date: 2026-10-03.
+- Decision: `NOT_READY` for the superseded contract below; implementation did
+  not rely on this preliminary hypothesis.
+- Historical scope decision: the superseded review assigned an App SDK runtime
+  dependency to RFC 0030. The revised contract below removes that dependency;
+  RFC 0016 owns App SDK notification registration and event decoding, and RFC
+  0006 owns cold process startup, lifecycle lease acquisition, validation, and
+  routing to the JVM/Compose application owner.
+- User-selected activation path: Windows App SDK `AppNotificationManager`, not
+  a custom classic `INotificationActivationCallback` implementation. Microsoft
+  documents paired toast/COM manifest registration and the
+  `----AppNotificationActivated:` argument, followed by manager registration,
+  `NotificationInvoked`, and early `AppInstance.GetActivatedEventArgs` reading.
+- Candidate stable SDK pin: `Microsoft.WindowsAppSDK` 1.8.260921001, listed by
+  NuGet on 2026-10-03. The exact framework/runtime dependency and deployment
+  mode still require a Windows restore/install probe before acceptance.
+- User-selected launcher decision: the Windows MSIX primary executable is a
+  JVM/Compose launcher named `KWebShell.exe`; the native CEF browser subprocess
+  is separately named `KWebShellCef.exe`. The MSIX carries the x64 Temurin JRE
+  archive `OpenJDK25U-jre_x64_windows_hotspot_25.0.4.1_1.zip`, SHA-256
+  `4c95451cea98556def2c54f7782933f52a26d4a36bd85e1d59f0364464828b07`, from
+  Temurin release `25.0.4.1+1`. The bundled JRE is application payload, not a
+  machine-wide or interactive installer prerequisite.
+- Architecture boundary: Adoptium's current Temurin 25 Windows release exposes
+  x64 but no Windows ARM64 binary. Windows ARM64 MSIX remains unavailable and
+  must not be built with an x64 JRE or emulated package; the target will need a
+  separate supported-state decision when a matching JDK/JRE release exists.
+- Feasibility references: [App notifications quickstart](https://learn.microsoft.com/en-us/windows/apps/develop/notifications/app-notifications/app-notifications-quickstart), [packaged Windows App SDK deployment](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/deploy-packaged-apps), and [Windows App SDK 1.8 release notes](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/release-notes/windows-app-sdk-1-8).
+
+## Contract amendment feasibility audit
+
+- Reviewed revision: this worktree after the Windows package-format and App SDK
+  documentation probes, 2026-10-03.
+- Review pass: Codex audit pass by the implementation contributor; not an
+  independent-person approval.
+- Findings: `writePackage` uses `ZipArchiveOutputStream` for Windows, stores the
+  generated manifest under `platform/windows/`, and stores the actual runtime
+  as a nested `runtime/release.pack.zip`. It does not place the executable at
+  the package root, generate AppX block-map/signature files, run Windows SDK
+  validation, or install a package. The current A4 PASS record therefore does
+  not prove its declared Windows format and is corrected to FAIL above.
+- Additional unresolved contract inputs: the manifest has no Windows image
+  assets and records the reverse-DNS application ID where package-derived
+  identity is required. The build has no pinned Windows App SDK restore,
+  framework/runtime dependency, or install test. The proposed activation
+  executable is `KWebShell.exe`, but that binary is the native CEF host; the
+  project lifecycle owner and notification provider are JVM/Compose code. No
+  bridge or startup integration currently registers `AppNotificationManager`,
+  consumes the one-shot activated args, or routes `NotificationInvoked` to that
+  owner. In addition, the packaged CEF host's `HostConfiguration::Parse`
+  requires explicit absolute profile/cache arguments and a URL outside test
+  mode; an MSIX activation cannot directly launch it as a configured Compose
+  application. The repository currently defines no JVM application launcher or
+  package-entry-point handoff. A package-only XML check cannot prove this
+  cold-start path.
+- GitHub-hosted `windows-2022` is already the project's CI target; nothing found
+  requires a self-hosted runner. The job has not restored Windows App SDK or
+  installed/tested an MSIX, so its current evidence cannot establish the new
+  requirements.
+- Historical decision: `NOT_READY`. Before implementation, the superseded
+  contract would have needed to settle
+  the true MSIX payload/entry point and owning process, App SDK deployment and
+  version pin, publisher-bound visual assets, package-derived identity, and the
+  JVM/Compose cold-launch handoff. Then a real hosted Windows install plus
+  cold/warm OS notification activation must pass. The current Windows target
+  must not be described as an installable MSIX until A2/A4/A12-A15 are proven;
+  the prior XML-generation test proves none of these. This was the review for
+  the superseded scope that included App SDK runtime and notification startup;
+  its findings are historical and the revised review below narrows ownership.
+
+## Revised contract readiness review
+
+- Reviewed revision: RFC 0030 contract and matrix in this worktree, against
+  `origin/main` at `d227aef`, 2026-10-03. This review occurred after local
+  implementation work had already begun in an earlier turn; it is not a
+  retrospective approval of that work. It governs the remaining implementation
+  and acceptance work after the user selected the JVM/Compose launcher/bundled
+  JRE path and assigned notification integration to RFC 0016/0006.
+- Review pass: Codex readiness pass by the implementation contributor; not an
+  independent-person approval.
+- Decisions: RFC 0030 owns a real Windows x64 MSIX, the JVM/Compose
+  `KWebShell.exe` entry point, bundled SHA-256-pinned Temurin JRE 25.0.4.1+1,
+  distinct `KWebShellCef.exe`, package identity/publisher/assets, explicit
+  protocol/file declarations, SDK block map/signature, install/start/close/
+  uninstall verification and retained evidence. Windows ARM64 package
+  generation fails explicitly until a matching pinned JRE exists. RFC 0016
+  owns Windows App SDK notification dependencies and activator registration;
+  RFC 0006 owns application lifecycle routing. No Windows App SDK prerequisite
+  is introduced by this RFC 0030 amendment.
+- Feasibility basis: the project already uses GitHub-hosted `windows-2022`
+  runners; Temurin JRE x64 archive/version/hash are pinned; the launcher module
+  uses JDK 25 `jpackage --type app-image`; Windows SDK MakeAppx and SignTool
+  perform package/block-map/signature creation and verification. The macOS
+  app-image probe established the launcher's `app/` and `runtime/` layout. The
+  current Windows end-to-end workflow is the required acceptance probe and is
+  still `NOT_RUN` on this non-Windows host; no Windows runtime result is claimed
+  by this readiness review.
+- Contract details settled: Windows metadata ZIP is an internal signed record
+  archive only and cannot be output with `.msix` extension or accepted by the
+  public Windows package verifier. Windows x64 CI combines its verified entries
+  with the app-image, checks the signed-entry digests, calls MakeAppx/SignTool,
+  installs and queries AppX identity, observes launcher plus CEF subprocess,
+  verifies normal shutdown, uninstalls, and writes a report into the existing
+  application-package evidence artifact.
+- Findings: the old Windows ZIP output and stale A4 evidence were not real MSIX
+  evidence; the implementation now makes that ZIP non-publishable and leaves
+  all Windows hosted rows `NOT_RUN` until actual hosted execution. The old
+  App-SDK-specific `NOT_READY` finding is outside the revised RFC 0030 scope.
+- Decision: `READY` for the remaining implementation and Windows hosted
+  acceptance under this revised contract. Windows hosted acceptance and
+  evidence remain blocking before promoting the amended capability, marking
+  RFC 0030 complete for this amendment, or merging.
+
 ## Acceptance review
 
-- Reviewed revision: the final PR #56 merge candidate, recorded as
+- Historical reviewed revision: the final PR #56 merge candidate, recorded as
   `run.sourceRevision` by the RFC 0030 records in
   [`evidence/manifest.json`](evidence/manifest.json).
 - Review pass: Codex acceptance review pass, same contributor as implementation;
@@ -167,10 +318,8 @@ the OS registration mechanism.
   package assembler/verifier, three hosted package reports, Electron migration
   mapper, documentation, evidence bindings and this matrix. The package task
   now independently reopens every hosted package before writing its report.
-- Decision: `PASS` after the final hosted aggregation and strict governance
-  check. A5/A6 lifecycle installation and uninstall behavior remains outside
-  this RFC and is explicitly assigned to RFC 0006; the signed package
-  association metadata and atomic package boundary remain covered here.
+- Decision: `PASS` for that earlier package-metadata revision only. It is not
+  acceptance of the 2026 Windows MSIX amendment or the revised matrix above.
 
 ## Evidence
 
@@ -182,5 +331,5 @@ association metadata, and the final package digest under the hosted revision.
 
 No unsigned release success, dynamic entitlement mutation, auto-detection among
 installer formats, execution of Electron Forge/Builder plugins, runtime package
-updates, OS registration/activation/uninstall, or RFC 0006 application
-activation routing.
+updates, independent registration mutation outside MSIX package-manager
+ownership, notification activation, or RFC 0006 application lifecycle routing.

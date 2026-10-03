@@ -195,7 +195,7 @@ val cefRuntime = when (hostPlatform) {
 }
 val browserSubprocess = when (hostPlatform) {
     "macos" -> nativeRelease.file("KWebShell.app/Contents/Frameworks/KWebShell Helper.app/Contents/MacOS/KWebShell Helper")
-    "windows" -> nativeRelease.file("KWebShell.exe")
+    "windows" -> nativeRelease.file("KWebShellCef.exe")
     else -> nativeRelease.file("KWebShell")
 }
 val cefResources = if (hostPlatform == "macos") {

@@ -1087,7 +1087,7 @@ private fun windowsAppxManifest(
     appendLine("<Package xmlns=\"http://schemas.microsoft.com/appx/manifest/foundation/windows10\" xmlns:uap=\"http://schemas.microsoft.com/appx/manifest/uap/windows10\" xmlns:rescap=\"http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities\" IgnorableNamespaces=\"uap rescap\">")
     appendLine("  <Identity Name=\"${xml(checkNotNull(targetSpec.packageIdentityName))}\" Publisher=\"CN=${xml(manifest.publisher)}\" Version=\"${xml(appxVersion(manifest.productVersion))}\" ProcessorArchitecture=\"x64\" />")
     appendLine("  <Properties><DisplayName>${xml(manifest.displayName)}</DisplayName><PublisherDisplayName>${xml(manifest.publisher)}</PublisherDisplayName><Description>${xml(manifest.displayName)}</Description><Logo>Assets/StoreLogo.png</Logo></Properties>")
-    appendLine("  <Dependencies><TargetDeviceFamily Name=\"Windows.Desktop\" MinVersion=\"${xml(targetSpec.minimumOs)}\" MaxVersionTested=\"10.0.26100.0\" /></Dependencies>")
+    appendLine("  <Dependencies><TargetDeviceFamily Name=\"Windows.Desktop\" MinVersion=\"${xml(appxMinimumOsVersion(targetSpec.minimumOs))}\" MaxVersionTested=\"10.0.26100.0\" /></Dependencies>")
     appendLine("  <Resources><Resource Language=\"en-us\" /></Resources>")
     appendLine("  <Applications><Application Id=\"${xml(manifest.mainExecutable)}\" Executable=\"${xml(manifest.mainExecutable)}.exe\" EntryPoint=\"Windows.FullTrustApplication\">")
     appendLine("    <uap:VisualElements DisplayName=\"${xml(manifest.displayName)}\" Description=\"${xml(manifest.displayName)}\" BackgroundColor=\"#071A3B\" ForegroundText=\"light\" Square44x44Logo=\"Assets/Square44x44Logo.png\" Square150x150Logo=\"Assets/Square150x150Logo.png\">")
@@ -1240,6 +1240,20 @@ private fun linuxMetainfo(
 private fun appxVersion(version: String): String {
     val digits = Regex("\\d+").findAll(version).map { it.value.toInt() }.toList()
     return listOf(digits.getOrElse(0) { 0 }, digits.getOrElse(1) { 0 }, digits.getOrElse(2) { 0 }, 0).joinToString(".")
+}
+
+private fun appxMinimumOsVersion(version: String): String {
+    val components = version.split('.')
+    applicationPackageRequire(
+        components.size in 3..4 && components.all { component ->
+            component.matches(Regex("(?:0|[1-9][0-9]{0,4})")) &&
+                component.toIntOrNull()?.let { it <= 65_535 } == true
+        },
+        code = "application.package.windows-minimum-os-invalid",
+        details = mapOf("minimumOs" to version),
+        message = "The Windows MSIX minimum OS must contain three or four valid numeric version components.",
+    )
+    return if (components.size == 3) "$version.0" else version
 }
 
 private fun xml(value: String): String = value

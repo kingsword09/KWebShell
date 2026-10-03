@@ -211,7 +211,7 @@ try {
         if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { throw "MSIX staging input is missing: $relative" }
     }
     $runtime = Get-Content -LiteralPath (Join-Path $stageRoot "runtime/release") -Raw
-    if ($runtime -notmatch 'JAVA_VERSION="25\.0\.4"' -or $runtime -notmatch 'OS_ARCH="x86_64"') {
+    if ($runtime -notmatch 'JAVA_VERSION="25\.0\.4\.1"' -or $runtime -notmatch 'OS_ARCH="x86_64"') {
         throw "The app-image does not contain the pinned Temurin 25.0.4 Windows x64 runtime."
     }
     $temurinLicensePath = Join-Path $stageRoot "runtime/legal/java.base/LICENSE"

@@ -164,7 +164,7 @@ tasks.register<Sync>("stageBundledWindowsJre") {
             throw GradleException("The extracted bundled JRE is incomplete: $jre")
         }
         val metadata = Files.readString(release)
-        if (!metadata.contains("JAVA_VERSION=\"25.0.4\"") || !metadata.contains("OS_ARCH=\"x86_64\"")) {
+        if (!metadata.contains("JAVA_VERSION=\"25.0.4.1\"") || !metadata.contains("OS_ARCH=\"x86_64\"")) {
             throw GradleException("The extracted runtime is not the pinned Windows x64 Temurin 25.0.4 JRE: $jre")
         }
     }
@@ -186,7 +186,7 @@ tasks.register("verifyBundledJre") {
             throw GradleException("The pinned bundled JRE is missing its launcher: $executable")
         }
         val release = root.resolve("release")
-        if (!release.toFile().isFile || !Files.readString(release).contains("JAVA_VERSION=\"25.0.4\"")) {
+        if (!release.toFile().isFile || !Files.readString(release).contains("JAVA_VERSION=\"25.0.4.1\"")) {
             throw GradleException("The bundled runtime is not Temurin $launcherRuntimeVersion: $root")
         }
     }
@@ -310,7 +310,7 @@ tasks.register("verifyWindowsApplicationImage") {
         val missing = required.filterNot { Files.isRegularFile(root.resolve(it)) }
         if (missing.isNotEmpty()) throw GradleException("The Windows app-image is incomplete: ${missing.joinToString()}")
         val runtime = Files.readString(root.resolve("runtime/release"))
-        if (!runtime.contains("JAVA_VERSION=\"25.0.4\"") || !runtime.contains("OS_ARCH=\"x86_64\"")) {
+        if (!runtime.contains("JAVA_VERSION=\"25.0.4.1\"") || !runtime.contains("OS_ARCH=\"x86_64\"")) {
             throw GradleException("The generated Windows app-image does not carry the pinned Temurin x64 runtime.")
         }
     }

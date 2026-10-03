@@ -76,3 +76,24 @@ export async function revealResource(handle: string): Promise<unknown> {
 export async function trashResource(handle: string): Promise<unknown> {
   return window.desktop.trashResource({ handle });
 }
+
+export async function notificationCapabilities(): Promise<unknown> {
+  return window.desktop.getNotificationCapabilities({ scope: "application" });
+}
+
+export async function showNotification(id: string): Promise<unknown> {
+  return window.desktop.showNotification({
+    id,
+    tag: "migration-fixture",
+    title: "KWebShell notification fixture",
+    body: "notification fixture body",
+    icon: "APPLICATION",
+    urgency: "NORMAL",
+    timeout: "PERSISTENT",
+    actions: [{ id: "open", title: "Open", kind: "BUTTON", replyPlaceholder: null }],
+  });
+}
+
+export async function closeNotification(id: string): Promise<unknown> {
+  return window.desktop.closeNotification({ id });
+}

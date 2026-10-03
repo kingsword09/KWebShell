@@ -12,6 +12,9 @@
   const shellBridge = globalThis.ShellBridge;
   if (!shellBridge || typeof shellBridge.createClient !== "function") throw new Error("ShellBridge is required by this migration facade.");
   const shellClient = shellBridge.createClient();
+  const notificationsBridge = globalThis.NotificationsBridge;
+  if (!notificationsBridge || typeof notificationsBridge.createClient !== "function") throw new Error("NotificationsBridge is required by this migration facade.");
+  const notificationsClient = notificationsBridge.createClient();
   class KWebElectronMigrationError extends Error {
     constructor(code, message) {
       super(message);
@@ -44,6 +47,8 @@
     clearClipboard: (request, options) => clipboardClient.clear(request, options),
     closeClipboardPayload: (request, options) => clipboardClient.closePayload(request, options),
     closeHandle: (request, options) => filesClient.closeHandle(request, options),
+    closeNotification: (request, options) => notificationsClient.close(request, options),
+    getNotificationCapabilities: (request, options) => notificationsClient.capabilities(request, options),
     getPath: (name, options) => {
       const kind = pathKinds[name];
       if (typeof kind !== "string") {
@@ -60,6 +65,7 @@
     readClipboardPayload: (request, options) => clipboardClient.readPayload(request, options),
     readFile: (request, options) => filesClient.readFile(request, options),
     revealResource: (request, options) => shellClient.revealResource(request, options),
+    showNotification: (request, options) => notificationsClient.show(request, options),
     trashResource: (request, options) => shellClient.trashResource(request, options),
     writeClipboard: (request, options) => clipboardClient.write(request, options),
     writeFile: (request, options) => filesClient.writeFile(request, options),

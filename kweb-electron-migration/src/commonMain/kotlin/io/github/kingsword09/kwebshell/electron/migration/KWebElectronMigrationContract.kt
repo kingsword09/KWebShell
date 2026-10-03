@@ -19,6 +19,7 @@ public enum class KWebElectronAdapterKind {
     FILES_OPERATION,
     CLIPBOARD_OPERATION,
     SHELL_OPERATION,
+    NOTIFICATIONS_OPERATION,
     FILES_WATCH_DIRECTORY,
     NAMED_APPLICATION_STREAM,
 }
@@ -323,6 +324,11 @@ public object KWebElectronManifestValidator {
     private val SHELL_OPERATIONS: Set<String> = setOf(
         "open-external", "open-resource", "reveal-resource", "trash-resource",
     )
+    private const val NOTIFICATIONS_SERVICE: String = "notifications"
+    private const val NOTIFICATIONS_VERSION: String = "1.0.0"
+    private val NOTIFICATIONS_OPERATIONS: Set<String> = setOf(
+        "permission", "request-permission", "capabilities", "show", "close",
+    )
     private val FILES_OPERATIONS: Set<String> = setOf(
         "open-workspace", "open-file", "open-directory", "read-file", "write-file",
         "truncate-file", "list-directory", "metadata", "copy-file", "move-file",
@@ -528,6 +534,23 @@ public object KWebElectronManifestValidator {
                     )
                 }
             }
+            if (channel.adapter == KWebElectronAdapterKind.NOTIFICATIONS_OPERATION) {
+                val operation = channel.operationId
+                val policy = channel.policy
+                if (channel.name.substringBefore('.').lowercase() != "notification" ||
+                    channel.serviceId != NOTIFICATIONS_SERVICE || channel.serviceVersion != NOTIFICATIONS_VERSION ||
+                    operation == null || operation !in NOTIFICATIONS_OPERATIONS || policy == null ||
+                    policy.rendererGrant != "native.notifications.$operation" ||
+                    policy.requiresUserGesture != (operation == "request-permission") ||
+                    policy.requiresOsConsent != (operation in setOf("request-permission", "show", "close"))
+                ) {
+                    invalid(
+                        KWebElectronMigrationErrorCode.MAPPING_UNRESOLVED,
+                        "channel" to channel.name,
+                        message = "The notifications adapter must bind one published notifications operation and its exact policy.",
+                    )
+                }
+            }
         }
 
         manifest.preloadMethods.forEachIndexed { index, method ->
@@ -581,6 +604,15 @@ public object KWebElectronManifestValidator {
                     KWebElectronMigrationErrorCode.MAPPING_UNRESOLVED,
                     "method" to method.name,
                     message = "A shell preload method must use a named request type and Promise response.",
+                )
+            }
+            if (method.adapter == KWebElectronAdapterKind.NOTIFICATIONS_OPERATION &&
+                (!IDENTIFIER.matches(method.parameterType) || !method.returnType.startsWith("Promise<"))
+            ) {
+                invalid(
+                    KWebElectronMigrationErrorCode.MAPPING_UNRESOLVED,
+                    "method" to method.name,
+                    message = "A notifications preload method must use a named request type and Promise response.",
                 )
             }
         }

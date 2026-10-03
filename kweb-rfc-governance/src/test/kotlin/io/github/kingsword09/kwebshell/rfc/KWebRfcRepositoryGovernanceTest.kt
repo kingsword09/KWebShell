@@ -78,6 +78,19 @@ class KWebRfcRepositoryGovernanceTest {
     }
 
     @Test
+    fun checkedInContractBindingsExcludeGeneratedEvidenceManifest() {
+        val contractBindings = KWebRfcContractBindings.load(
+            repositoryRoot.resolve("docs/rfcs/evidence/contracts.json"),
+        )
+        assertTrue(
+            contractBindings.bindings.none { binding ->
+                "docs/rfcs/evidence/manifest.json" in binding.paths
+            },
+            "The generated evidence manifest must not be part of a contract digest; recording evidence changes it.",
+        )
+    }
+
+    @Test
     fun packagedSchemaMatchesTheValidatorModel() {
         val schemaText = KWebRfcRepositoryGovernanceTest::class.java.classLoader
             .getResourceAsStream("io/github/kingsword09/kwebshell/rfc/rfc-evidence-manifest.schema.json")!!

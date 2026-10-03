@@ -1,0 +1,81 @@
+{
+  "namespace": "NotificationsBridge",
+  "kotlinPackage": "io.github.kingsword09.kwebshell.service.notifications.generated",
+  "version": 1,
+  "types": [
+    {
+      "name": "ScopeRequest",
+      "fields": [
+        { "name": "scope", "type": "string" }
+      ]
+    },
+    {
+      "name": "PermissionResponse",
+      "fields": [
+        { "name": "status", "type": "string" },
+        { "name": "provider", "type": "string" }
+      ]
+    },
+    {
+      "name": "CapabilitiesResponse",
+      "fields": [
+        { "name": "actions", "type": "boolean" },
+        { "name": "replies", "type": "boolean" },
+        { "name": "replacement", "type": "boolean" },
+        { "name": "timeout", "type": "boolean" },
+        { "name": "activation", "type": "boolean" }
+      ]
+    },
+    {
+      "name": "ActionRequest",
+      "fields": [
+        { "name": "id", "type": "string" },
+        { "name": "title", "type": "string" },
+        { "name": "kind", "type": "string" },
+        { "name": "replyPlaceholder", "type": "string", "nullable": true }
+      ]
+    },
+    {
+      "name": "ShowRequest",
+      "fields": [
+        { "name": "id", "type": "string" },
+        { "name": "tag", "type": "string", "nullable": true },
+        { "name": "title", "type": "string" },
+        { "name": "body", "type": "string" },
+        { "name": "icon", "type": "string" },
+        { "name": "urgency", "type": "string" },
+        { "name": "timeout", "type": "string" },
+        { "name": "actions", "type": "ActionRequest", "list": true }
+      ]
+    },
+    {
+      "name": "ShowResponse",
+      "fields": [
+        { "name": "id", "type": "string" },
+        { "name": "outcome", "type": "string" },
+        { "name": "replacedId", "type": "string", "nullable": true },
+        { "name": "sequence", "type": "string" }
+      ]
+    },
+    {
+      "name": "CloseRequest",
+      "fields": [
+        { "name": "id", "type": "string" }
+      ]
+    },
+    {
+      "name": "CloseResponse",
+      "fields": [
+        { "name": "id", "type": "string" },
+        { "name": "sequence", "type": "string" }
+      ]
+    }
+  ],
+  "methods": [
+    { "name": "permission", "request": "ScopeRequest", "response": "PermissionResponse" },
+    { "name": "requestPermission", "request": "ScopeRequest", "response": "PermissionResponse" },
+    { "name": "capabilities", "request": "ScopeRequest", "response": "CapabilitiesResponse" },
+    { "name": "show", "request": "ShowRequest", "response": "ShowResponse" },
+    { "name": "close", "request": "CloseRequest", "response": "CloseResponse" }
+  ]
+}

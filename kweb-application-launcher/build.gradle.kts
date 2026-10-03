@@ -2,6 +2,7 @@ import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.gradle.api.file.RelativePath
 import java.io.File
+import java.nio.file.LinkOption
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 import java.net.URI
@@ -69,6 +70,7 @@ tasks.register("downloadPinnedWindowsJre") {
     description = "Downloads the SHA-256-pinned Temurin 25 Windows x64 JRE archive."
     onlyIf { System.getProperty("os.name").lowercase(Locale.ROOT).startsWith("windows") }
     outputs.file(bundledJreArchive)
+    notCompatibleWithConfigurationCache("Downloads and verifies a hosted Windows runtime archive in a task action.")
     doLast {
         val output = bundledJreArchive.get().asFile.toPath()
         Files.createDirectories(output.parent)
@@ -129,6 +131,7 @@ tasks.register("verifyBundledJreArchive") {
     dependsOn("downloadPinnedWindowsJre")
     onlyIf { System.getProperty("os.name").lowercase(Locale.ROOT).startsWith("windows") }
     inputs.file(bundledJreArchive)
+    notCompatibleWithConfigurationCache("Reads the extracted Windows runtime archive during verification.")
     doLast {
         val archive = bundledJreArchive.get().asFile.toPath()
         if (!Files.isRegularFile(archive)) throw GradleException("Missing pinned bundled JRE archive: $archive")
@@ -156,6 +159,7 @@ tasks.register<Sync>("stageBundledWindowsJre") {
         includeEmptyDirs = false
     }
     into(windowsJreDirectory)
+    notCompatibleWithConfigurationCache("Stages the hosted Windows JRE with platform-specific archive rules.")
     doLast {
         val jre = windowsJreDirectory.get().asFile.toPath()
         val java = jre.resolve("bin/java.exe")
@@ -240,6 +244,7 @@ tasks.register<Exec>("buildWindowsApplicationImage") {
     description = "Builds the Windows JVM launcher app-image with the pinned JRE and verified CEF subprocess payload."
     dependsOn(tasks.named("installDist"), "stageBundledWindowsJre", "stageWindowsCefPayload")
     onlyIf { System.getProperty("os.name").lowercase(Locale.ROOT).startsWith("windows") }
+    notCompatibleWithConfigurationCache("Invokes the Windows jpackage tool and mutates an app-image tree.")
     val jpackage = providers.provider {
         val executable = if (System.getProperty("os.name").lowercase(Locale.ROOT).startsWith("windows")) "jpackage.exe" else "jpackage"
         File(System.getProperty("java.home"), "bin/$executable").absolutePath
@@ -247,7 +252,17 @@ tasks.register<Exec>("buildWindowsApplicationImage") {
     doFirst {
         val destination = windowsAppImageDirectory.get().asFile
         if (destination.exists()) {
-            throw GradleException("The Windows app-image destination already exists; use a clean task output: $destination")
+            val containsPayload = Files.walk(destination.toPath()).use { paths ->
+                paths.anyMatch { path ->
+                    !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)
+                }
+            }
+            if (containsPayload) {
+                throw GradleException("The Windows app-image destination contains stale payload; use a clean task output: $destination")
+            }
+            Files.walk(destination.toPath()).use { paths ->
+                paths.sorted(Comparator.reverseOrder()).forEach(Files::delete)
+            }
         }
     }
     commandLine(
@@ -291,6 +306,7 @@ tasks.register("verifyWindowsApplicationImage") {
     description = "Rejects a Windows app-image with missing launcher, bundled JRE, CEF host, or native libraries."
     dependsOn("buildWindowsApplicationImage")
     onlyIf { System.getProperty("os.name").lowercase(Locale.ROOT).startsWith("windows") }
+    notCompatibleWithConfigurationCache("Inspects the real Windows jpackage app-image tree.")
     doLast {
         val root = windowsAppImage.get().asFile.toPath()
         val required = listOf(
@@ -321,6 +337,7 @@ tasks.register("runWindowsApplicationImageSmokeTest") {
     description = "Starts the real Windows launcher app-image, observes the Compose window and CEF child, then verifies normal shutdown."
     dependsOn("verifyWindowsApplicationImage")
     onlyIf { System.getProperty("os.name").lowercase(Locale.ROOT).startsWith("windows") }
+    notCompatibleWithConfigurationCache("Starts and observes the real Windows launcher and CEF subprocess.")
     doLast {
         val root = windowsAppImage.get().asFile.toPath()
         val launcher = root.resolve("KWebShell.exe")

@@ -54,19 +54,15 @@ private func openNotificationCenter() throws {
     guard let source = CGEventSource(stateID: .combinedSessionState) else {
         throw NSError(domain: "KWebNotificationActionFixture", code: 1)
     }
-    // macOS places the notification center behind the date/clock item. The
-    // exact right edge varies between menu-bar layouts, so try the clock and
-    // the adjacent control-center slot before polling the accessibility tree.
-    for x in [display.maxX - 180, display.maxX - 48] {
-        let point = CGPoint(x: x, y: display.minY + 12)
-        guard let down = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
-              let up = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) else {
-            continue
-        }
-        down.post(tap: .cghidEventTap)
-        up.post(tap: .cghidEventTap)
-        Thread.sleep(forTimeInterval: 0.5)
+    // macOS places Notification Center behind the date/clock item. Send one
+    // click only: clicking a second menu-bar item can close the panel again.
+    let point = CGPoint(x: display.maxX - 180, y: display.minY + 12)
+    guard let down = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
+          let up = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) else {
+        throw NSError(domain: "KWebNotificationActionFixture", code: 1)
     }
+    down.post(tap: .cghidEventTap)
+    up.post(tap: .cghidEventTap)
 }
 
 do {

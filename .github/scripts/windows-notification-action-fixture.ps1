@@ -11,7 +11,6 @@ public static class KWebShellInput {
     private static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
     private const uint KEYEVENTF_KEYUP = 0x0002;
     private const byte VK_LWIN = 0x5B;
-    private const byte VK_A = 0x41;
     private const byte VK_N = 0x4E;
     private static void Press(byte key) {
         keybd_event(VK_LWIN, 0, 0, UIntPtr.Zero);
@@ -20,10 +19,9 @@ public static class KWebShellInput {
         keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
     }
     public static void OpenActionCenter() {
-        // Win+N opens Notification Center on current Windows runners; Win+A
-        // keeps the fixture usable on older hosted images.
+        // Win+N opens Notification Center on current Windows runners. A
+        // second shortcut would toggle the panel and hide the toast again.
         Press(VK_N);
-        Press(VK_A);
     }
 }
 '@

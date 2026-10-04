@@ -354,6 +354,15 @@ val packageMigrationMacAppImage = tasks.register<Exec>("packageMigrationMacAppIm
             migrationIntegrationJavaOptions.get().flatMap { option -> listOf("--java-options", quoteMacJavaOption(option)) }),
     )
 }
+val registerMigrationMacAppImage = tasks.register<Exec>("registerMigrationMacAppImage") {
+    group = "verification"
+    description = "Registers the packaged fixture identity with Launch Services before notification authorization."
+    dependsOn(packageMigrationMacAppImage)
+    commandLine(
+        "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+        "-f", migrationMacAppImageDirectory.get().dir("KWebShellMigrationFixture.app").asFile.absolutePath,
+    )
+}
 val electronMigrationIntegrationTest = tasks.register<Exec>("electronMigrationIntegrationTest") {
     group = "verification"
     description = "Runs the typed Electron migration fixture against real CEF."
@@ -373,7 +382,7 @@ val electronMigrationIntegrationTest = tasks.register<Exec>("electronMigrationIn
         ":kweb-service-notifications:generateNotificationsBridge",
     )
     if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("mac")) {
-        dependsOn(packageMigrationMacAppImage, compileMacNotificationActionFixture)
+        dependsOn(registerMigrationMacAppImage, compileMacNotificationActionFixture)
     }
     inputs.file(nativeEngineLibrary)
     inputs.file(nativeCefRuntime)

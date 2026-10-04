@@ -366,6 +366,43 @@ menu/dialog contract exists.
 
 ## Evidence and invalidation
 
+### PR 68 notification-action repair review (2026-10-04)
+
+Codex performed a separate review pass as the same contributor, against PR
+head `8ebe7df` and the N68.1-N68.4 repair in `DESIGN_PLAN.md`. The public
+contract is unchanged. The previously failing run is
+[37169156002](https://github.com/kingsword09/KWebShell/actions/runs/37169156002).
+
+- A2/A9: the migration fixture now observes real OS permission before `show`,
+  handles the fixture's macOS authorization prompt through Accessibility, and
+  requires `GRANTED` on macOS/Windows or `NOT_APPLICABLE` on Linux.
+  The macOS fixture bundle id matches the configured package identity; the
+  native provider rejects a different bundle instead of inheriting its consent.
+- A4/A5: the Windows provider constructs `ToastNotification` after its complete
+  XML payload. `VerifyWinRtToastPayload` inspects the real WinRT object's text,
+  action arguments and launch URI, including literal XML metacharacters and
+  the no-action boundary. Native assertions remain enabled in Release builds.
+- A5/A7: the UI drivers scope action lookup to the fixture title and declared
+  `Open fixture` button. Windows selects Win+A for the Server 2022 shell and
+  Win+N for Windows 11; macOS locates the clock through Accessibility and
+  includes foreground notifications in Notification Center's list.
+- A2/A8: macOS permission callbacks retain their result storage beyond the
+  native deadline, avoiding writes to expired caller stack storage.
+- A12: fixture failure diagnostics contain stage/status and UI counts, without
+  dumping desktop text or notification content.
+
+Local `macos-arm64` results: notification `check` (JVM, native ABI, FFM absence
+contract, generated TypeScript), migration JVM/TypeScript tests, and the real
+CEF `electronMigrationIntegrationTest` passed. The latter observed one `open`
+action and one RFC 0006 activation, replacement, close and renderer denial;
+its output is `build/migration-integration/migration-notifications-evidence.json`
+under `kweb-electron-migration`. These results do not establish cold activation,
+reply, or the other unexecuted scenarios in A1-A14.
+
+Decision: `BLOCKED` for merge pending fresh hosted results, retained evidence,
+and completion of the requirement-by-requirement acceptance matrix. Local
+success does not promote the RFC or substitute for Windows/Linux evidence.
+
 Retained evidence contains only contract/provider digests, permission state,
 capability booleans, notification ids/tags, action ids, event sequences,
 activation source/status, error codes, timeout/close reasons, provider identity,

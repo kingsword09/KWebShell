@@ -27,6 +27,7 @@ import io.github.kingsword09.kwebshell.service.clipboard.KWebClipboard
 import io.github.kingsword09.kwebshell.service.clipboard.bridgeDispatcher as clipboardBridgeDispatcher
 import io.github.kingsword09.kwebshell.service.notifications.JvmKWebNotifications
 import io.github.kingsword09.kwebshell.service.notifications.KWebNotificationActivation
+import io.github.kingsword09.kwebshell.service.notifications.KWebNotificationPermissionStatus
 import io.github.kingsword09.kwebshell.service.notifications.KWebNotifications
 import io.github.kingsword09.kwebshell.service.notifications.bridgeDispatcher as notificationsBridgeDispatcher
 import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebActivationBatch
@@ -205,10 +206,23 @@ public fun main() {
         }
     }
     val notificationActivations = CopyOnWriteArrayList<KWebNotificationActivation>()
+    if (applicationTarget.id.startsWith("macos-")) {
+        val mismatch = runCatching {
+            JvmKWebNotifications.open(
+                requiredPath(NOTIFICATIONS_LIBRARY_PROPERTY),
+                "io.github.kwebshell.migration.fixture",
+                "io.github.kwebshell.migration.wrong-bundle",
+            ) { error("A mismatched notification identity cannot route activation.") }
+        }
+        mismatch.getOrNull()?.close()
+        require((mismatch.exceptionOrNull() as? io.github.kingsword09.kwebshell.core.KWebNativeException)?.code ==
+            "notifications.platform-unavailable") { "The native provider accepted a mismatched macOS bundle identity." }
+    }
     val notifications = JvmKWebNotifications.open(
         requiredPath(NOTIFICATIONS_LIBRARY_PROPERTY),
         "io.github.kwebshell.migration.fixture",
-        "io.github.kwebshell.migration.fixture",
+        if (applicationTarget.id.startsWith("macos-")) "io.github.kingsword09.kwebshell"
+        else "io.github.kwebshell.migration.fixture",
     ) { activation ->
         notificationActivations += activation
         applicationLifecycle.acceptProtocolActivation(activation.toProtocolUri())
@@ -607,13 +621,34 @@ public fun main() {
             require(notificationCapabilities["actions"]?.jsonPrimitive?.content == "true") {
                 "The hosted notification provider did not advertise actions: $notificationCapabilities"
             }
+            val initialPermission = runBlocking { notifications.permission() }
+            val permission = if (initialPermission.status == KWebNotificationPermissionStatus.NOT_DETERMINED) {
+                val authorization = if (applicationTarget.id.startsWith("macos-")) {
+                    ProcessBuilder(requiredPath(NOTIFICATION_ACTION_HELPER_PROPERTY).toString(), "--authorize")
+                        .inheritIO().start()
+                } else null
+                try {
+                    runBlocking { notifications.requestPermission() }
+                } finally {
+                    if (authorization != null && !authorization.waitFor(2, TimeUnit.SECONDS)) {
+                        authorization.destroyForcibly().waitFor()
+                    }
+                }
+            } else initialPermission
+            val expectedPermission = if (applicationTarget.id.startsWith("linux-")) {
+                KWebNotificationPermissionStatus.NOT_APPLICABLE
+            } else KWebNotificationPermissionStatus.GRANTED
+            require(permission.status == expectedPermission) {
+                "Notification fixture: provider=${permission.provider} permission=${permission.status}; expected=$expectedPermission"
+            }
+            println("Notification fixture: provider=${permission.provider} permission=${permission.status}")
             val notificationShown = Json.parseToJsonElement(
                 session.evaluateString(
                     """
                     (async()=>JSON.stringify(await window.desktop.showNotification({
                       id:"migration-notification-1",tag:"migration-fixture",title:"KWebShell notification fixture",
                       body:"notification fixture body",icon:"APPLICATION",urgency:"NORMAL",timeout:"SYSTEM",
-                      actions:[{id:"open",title:"Open",kind:"BUTTON",replyPlaceholder:null}]
+                      actions:[{id:"open",title:"Open fixture",kind:"BUTTON",replyPlaceholder:null}]
                     })))()
                     """.trimIndent(),
                 ),

@@ -4,113 +4,141 @@ import Foundation
 
 private let applicationName = "KWebShellMigrationFixture"
 private let notificationTitle = "KWebShell notification fixture"
-private let notificationCenterBundleIds = Set([
-    "com.apple.notificationcenterui",
-    "com.apple.controlcenter",
-])
+private let actionTitle = "Open fixture"
+private let authorize = CommandLine.arguments.contains("--authorize")
+private let notificationCenterBundleIds: Set<String> = [
+    "com.apple.notificationcenterui", "com.apple.controlcenter",
+    "com.apple.UserNotificationCenter",
+]
 
 private func value(_ element: AXUIElement, _ attribute: String) -> String {
-    var rawValue: CFTypeRef?
-    guard AXUIElementCopyAttributeValue(element, attribute as CFString, &rawValue) == .success,
-          let rawValue else { return "" }
-    return rawValue as? String ?? String(describing: rawValue)
+    var raw: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, attribute as CFString, &raw) == .success else { return "" }
+    return raw as? String ?? ""
 }
 
-private func subtreeText(_ element: AXUIElement, depth: Int = 0) -> String {
-    guard depth <= 16 else { return "" }
-    var text = [
-        value(element, kAXTitleAttribute as String),
-        value(element, kAXDescriptionAttribute as String),
-        value(element, kAXValueAttribute as String),
-    ].joined(separator: " ")
-    var rawChildren: CFTypeRef?
-    if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &rawChildren) == .success,
-       let children = rawChildren as? [AXUIElement] {
-        for child in children {
-            text += " " + subtreeText(child, depth: depth + 1)
-        }
-    }
-    return text
+private func elements(_ element: AXUIElement, _ attribute: String) -> [AXUIElement] {
+    var raw: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, attribute as CFString, &raw) == .success else { return [] }
+    return raw as? [AXUIElement] ?? []
 }
 
-private func notificationCard(in element: AXUIElement, depth: Int = 0) -> AXUIElement? {
-    guard depth <= 16 else { return nil }
-    let text = subtreeText(element)
-    var rawActions: CFArray?
-    if text.contains(notificationTitle),
-       AXUIElementCopyActionNames(element, &rawActions) == .success,
-       let actions = rawActions as? [String],
-       actions.contains(where: { $0.lowercased().contains("open") || $0.contains("打开") }) {
-        return element
-    }
-    var rawChildren: CFTypeRef?
-    guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &rawChildren) == .success,
-          let children = rawChildren as? [AXUIElement] else { return nil }
-    for child in children {
-        if let card = notificationCard(in: child, depth: depth + 1) { return card }
+private func actions(_ element: AXUIElement) -> [String] {
+    var raw: CFArray?
+    guard AXUIElementCopyActionNames(element, &raw) == .success else { return [] }
+    return raw as? [String] ?? []
+}
+
+private func labels(_ element: AXUIElement) -> [String] {
+    [kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute].map { value(element, $0 as String) }
+}
+
+private func contains(_ element: AXUIElement, _ text: String, depth: Int = 0) -> Bool {
+    guard depth < 16 else { return false }
+    return labels(element).contains(where: { $0.contains(text) }) ||
+        elements(element, kAXChildrenAttribute as String).contains { contains($0, text, depth: depth + 1) }
+}
+
+private func find(_ element: AXUIElement, depth: Int = 0,
+                  matching predicate: (AXUIElement) -> Bool) -> AXUIElement? {
+    guard depth < 16 else { return nil }
+    if predicate(element) { return element }
+    for child in elements(element, kAXChildrenAttribute as String) {
+        if let result = find(child, depth: depth + 1, matching: predicate) { return result }
     }
     return nil
 }
 
-private func openNotificationCenter() throws {
-    let display = CGDisplayBounds(CGMainDisplayID())
-    guard let source = CGEventSource(stateID: .combinedSessionState) else {
-        throw NSError(domain: "KWebNotificationActionFixture", code: 1)
-    }
-    // macOS places Notification Center behind the date/clock item. Send one
-    // click only: clicking a second menu-bar item can close the panel again.
-    let point = CGPoint(x: display.maxX - 180, y: display.minY + 12)
-    guard let down = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
-          let up = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) else {
-        throw NSError(domain: "KWebNotificationActionFixture", code: 1)
-    }
-    down.post(tap: .cghidEventTap)
-    up.post(tap: .cghidEventTap)
+private func press(_ element: AXUIElement, action: String = kAXPressAction as String) -> Bool {
+    AXUIElementPerformAction(element, action as CFString) == .success
 }
 
-do {
-    guard AXIsProcessTrusted() else {
-        fputs("macOS notification action fixture requires Accessibility permission for the test process.\n", stderr)
-        exit(2)
+private func openNotificationCenter() -> Bool {
+    // The clock's AX identifier is independent of display size, locale and
+    // menu-bar item spacing. Never guess a screen coordinate.
+    for app in NSWorkspace.shared.runningApplications where app.bundleIdentifier == "com.apple.controlcenter" {
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        if let clock = find(root, matching: {
+            value($0, kAXIdentifierAttribute as String) == "com.apple.menuextra.clock"
+        }) { return press(clock) }
     }
-    try openNotificationCenter()
+    return false
+}
 
-    let deadline = Date().addingTimeInterval(25)
-    while Date() < deadline {
-        let apps = NSWorkspace.shared.runningApplications.filter { application in
-            guard let bundleIdentifier = application.bundleIdentifier else { return false }
-            return notificationCenterBundleIds.contains(bundleIdentifier)
-        }
-        for app in apps {
-            let application = AXUIElementCreateApplication(app.processIdentifier)
-            var rawWindows: CFTypeRef?
-            if AXUIElementCopyAttributeValue(application, kAXWindowsAttribute as CFString, &rawWindows) == .success,
-               let rawWindows {
-                for window in rawWindows as! [AXUIElement] {
-                    guard let card = notificationCard(in: window) else { continue }
-                    var rawActions: CFArray?
-                    guard AXUIElementCopyActionNames(card, &rawActions) == .success,
-                          let rawActions else { continue }
-                    let action = (rawActions as! [String]).first(where: { name in
-                        let normalized = name.lowercased()
-                        return normalized.contains("name:open") || normalized.contains("打开")
-                    })
-                    guard let action else { continue }
-                    let result = AXUIElementPerformAction(card, action as CFString)
-                    guard result == .success else {
-                        fputs("macOS notification action activation failed (AXError \(result.rawValue)).\n", stderr)
-                        exit(3)
-                    }
-                    print("macOS notification OS action activated")
+private func invokeDeclaredAction(_ root: AXUIElement) -> Bool {
+    if let button = find(root, matching: {
+        labels($0).contains(actionTitle) && actions($0).contains(kAXPressAction as String)
+    }), press(button) { return true }
+    if let card = find(root, matching: { element in
+        actions(element).contains { $0.contains("Name:" + actionTitle) }
+    }), let action = actions(card).first(where: { $0.contains("Name:" + actionTitle) }) {
+        return press(card, action: action)
+    }
+    return false
+}
+
+private func activateCard(_ root: AXUIElement, depth: Int = 0) -> Bool {
+    guard depth < 16, contains(root, notificationTitle) else { return false }
+    // Prefer the smallest matching subtree so buttons in another card cannot
+    // satisfy the test when the title and action are sibling AX elements.
+    for child in elements(root, kAXChildrenAttribute as String) {
+        if activateCard(child, depth: depth + 1) { return true }
+    }
+    return invokeDeclaredAction(root)
+}
+
+private func authorizeFixture(_ root: AXUIElement) -> Bool {
+    guard contains(root, applicationName) else { return false }
+    let allowLabels = ["Allow", "允许"]
+    guard let button = find(root, matching: {
+        labels($0).contains(where: { allowLabels.contains($0) }) &&
+            actions($0).contains(kAXPressAction as String)
+    }) else { return false }
+    return press(button)
+}
+
+guard AXIsProcessTrusted() else {
+    fputs("Notification fixture: Accessibility permission unavailable.\n", stderr)
+    exit(2)
+}
+let deadline = Date().addingTimeInterval(authorize ? 9 : 25)
+var panelOpened = false
+var processCount = 0
+var windowCount = 0
+var matchedWindows = 0
+while Date() < deadline {
+    let apps = NSWorkspace.shared.runningApplications.filter {
+        notificationCenterBundleIds.contains($0.bundleIdentifier ?? "") ||
+            (authorize && $0.localizedName == applicationName)
+    }
+    processCount = apps.count
+    windowCount = 0
+    matchedWindows = 0
+    for app in apps {
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        let windows = elements(root, kAXWindowsAttribute as String)
+        windowCount += windows.count
+        for window in windows {
+            if authorize {
+                if authorizeFixture(window) {
+                    print("Notification fixture: system authorization accepted")
+                    exit(0)
+                }
+            } else if contains(window, notificationTitle) {
+                matchedWindows += 1
+                if activateCard(window) {
+                    print("Notification fixture: declared OS action invoked")
                     exit(0)
                 }
             }
         }
-        Thread.sleep(forTimeInterval: 0.25)
     }
-    fputs("The real macOS notification action was not exposed by Notification Center within 25 seconds.\n", stderr)
-    exit(4)
-} catch {
-    fputs("Could not open macOS Notification Center for the action fixture (\(error)).\n", stderr)
-    exit(5)
+    if !authorize && !panelOpened { panelOpened = openNotificationCenter() }
+    Thread.sleep(forTimeInterval: 0.2)
 }
+if authorize {
+    fputs("Notification fixture: system authorization prompt unavailable.\n", stderr)
+    exit(3)
+}
+fputs("Notification fixture: action unavailable; panelOpened=\(panelOpened) processes=\(processCount) windows=\(windowCount) matchingWindows=\(matchedWindows).\n", stderr)
+exit(4)

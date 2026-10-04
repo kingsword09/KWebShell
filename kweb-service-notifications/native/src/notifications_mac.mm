@@ -35,6 +35,9 @@ void WaitForPermission(
     kweb_notifications_permission_status *status,
     bool *completed) {
   dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+  // Blocks retain this storage if the native prompt outlives our deadline.
+  // Never let an asynchronous completion write through caller stack pointers.
+  __block kweb_notifications_permission_status observed = KWEB_NOTIFICATIONS_PERMISSION_UNAVAILABLE;
   if (request) {
     [center requestAuthorizationWithOptions:(UNAuthorizationOptionAlert | UNAuthorizationOptionSound)
                           completionHandler:^(BOOL granted, NSError *error) {
@@ -42,8 +45,7 @@ void WaitForPermission(
         NSLog(@"KWebNotifications requestAuthorization failed (domain=%@ code=%ld)",
               error.domain, (long)error.code);
       }
-      *status = granted ? KWEB_NOTIFICATIONS_PERMISSION_GRANTED : KWEB_NOTIFICATIONS_PERMISSION_DENIED;
-      *completed = true;
+      observed = granted ? KWEB_NOTIFICATIONS_PERMISSION_GRANTED : KWEB_NOTIFICATIONS_PERMISSION_DENIED;
       dispatch_semaphore_signal(semaphore);
     }];
   } else {
@@ -51,23 +53,21 @@ void WaitForPermission(
       switch (settings.authorizationStatus) {
         case UNAuthorizationStatusAuthorized:
         case UNAuthorizationStatusProvisional:
-          *status = KWEB_NOTIFICATIONS_PERMISSION_GRANTED;
+          observed = KWEB_NOTIFICATIONS_PERMISSION_GRANTED;
           break;
         case UNAuthorizationStatusDenied:
-          *status = KWEB_NOTIFICATIONS_PERMISSION_DENIED;
+          observed = KWEB_NOTIFICATIONS_PERMISSION_DENIED;
           break;
         case UNAuthorizationStatusNotDetermined:
-          *status = KWEB_NOTIFICATIONS_PERMISSION_NOT_DETERMINED;
+          observed = KWEB_NOTIFICATIONS_PERMISSION_NOT_DETERMINED;
           break;
       }
-      *completed = true;
       dispatch_semaphore_signal(semaphore);
     }];
   }
   const auto deadline = dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC);
-  if (dispatch_semaphore_wait(semaphore, deadline) != 0) {
-    *completed = false;
-  }
+  *completed = dispatch_semaphore_wait(semaphore, deadline) == 0;
+  if (*completed) *status = observed;
 }
 
 }  // namespace
@@ -79,7 +79,8 @@ void WaitForPermission(
          withCompletionHandler:(void (^)(UNNotificationPresentationOptions options))completionHandler {
   (void)center;
   (void)notification;
-  completionHandler(UNNotificationPresentationOptionBanner | UNNotificationPresentationOptionSound);
+  completionHandler(UNNotificationPresentationOptionBanner | UNNotificationPresentationOptionList |
+                    UNNotificationPresentationOptionSound);
 }
 
 - (void)userNotificationCenter:(UNUserNotificationCenter *)center
@@ -118,7 +119,7 @@ kweb_notifications_status NativeOpen(State &state) {
   if (state.package_identity.empty()) return KWEB_NOTIFICATIONS_STATUS_NATIVE_UNAVAILABLE;
   NSString *bundleIdentifier = [NSBundle mainBundle].bundleIdentifier;
   NSString *bundlePath = [NSBundle mainBundle].bundlePath;
-  if (bundleIdentifier == nil || bundleIdentifier.length == 0 ||
+  if (bundleIdentifier == nil || ToUtf8(bundleIdentifier) != state.package_identity ||
       bundlePath == nil || (![bundlePath.pathExtension isEqualToString:@"app"] &&
                             [bundlePath rangeOfString:@".app/"].location == NSNotFound)) {
     return KWEB_NOTIFICATIONS_STATUS_NATIVE_UNAVAILABLE;

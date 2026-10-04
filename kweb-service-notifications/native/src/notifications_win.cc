@@ -1,4 +1,5 @@
 #include "notifications_platform.h"
+#include "notifications_win_toast.h"
 
 #if !defined(_WIN32)
 #error "The Windows notification provider must only be compiled on Windows."
@@ -47,15 +48,6 @@ void CopyProvider(char *target, size_t capacity, const char *value) {
   target[count] = '\0';
 }
 
-std::string ActivationArguments(const std::string &application, const std::string &id) {
-  return "kweb://notification?app=" + application + "&id=" + id;
-}
-
-void AddText(XmlDocument const &document, XmlElement const &binding, const std::string &value) {
-  auto element = document.CreateElement(L"text");
-  element.InnerText(winrt::to_hstring(value));
-  binding.AppendChild(element);
-}
 }  // namespace
 
 namespace kwebshell::notifications {
@@ -131,40 +123,7 @@ kweb_notifications_status NativeShow(State &state, const kweb_notifications_requ
     return KWEB_NOTIFICATIONS_STATUS_INVALID_ARGUMENT;
   }
   try {
-    XmlDocument document;
-    document.LoadXml(L"<toast><visual><binding template='ToastGeneric'/></visual></toast>");
-    auto toast = ToastNotification(document);
-    auto toastElement = document.DocumentElement();
-    toastElement.SetAttribute(L"launch", winrt::to_hstring(ActivationArguments(state.application_id, id)));
-    auto binding = document.GetElementsByTagName(L"binding").Item(0).as<XmlElement>();
-    AddText(document, binding, title);
-    AddText(document, binding, body);
-    if (request.action_count != 0) {
-      auto actions = document.CreateElement(L"actions");
-      for (uint32_t index = 0; index < request.action_count; ++index) {
-        std::string action_id;
-        std::string action_title;
-        std::string placeholder;
-        if (!ReadString(request.actions[index].id, KWEB_NOTIFICATIONS_MAX_ACTION_ID, &action_id) ||
-            !ReadString(request.actions[index].title, KWEB_NOTIFICATIONS_MAX_ACTION_TITLE, &action_title) ||
-            !ReadString(request.actions[index].reply_placeholder, KWEB_NOTIFICATIONS_MAX_REPLY, &placeholder)) {
-          return KWEB_NOTIFICATIONS_STATUS_INVALID_ARGUMENT;
-        }
-        auto action = document.CreateElement(L"action");
-        action.SetAttribute(L"content", winrt::to_hstring(action_title));
-        action.SetAttribute(L"arguments", winrt::to_hstring("action=" + action_id));
-        action.SetAttribute(L"activationType", L"foreground");
-        actions.AppendChild(action);
-        if (request.actions[index].kind == KWEB_NOTIFICATIONS_ACTION_REPLY) {
-          auto input = document.CreateElement(L"input");
-          input.SetAttribute(L"id", L"reply");
-          input.SetAttribute(L"type", L"text");
-          input.SetAttribute(L"placeHolderContent", winrt::to_hstring(placeholder));
-          actions.AppendChild(input);
-        }
-      }
-      toastElement.AppendChild(actions);
-    }
+    auto toast = BuildToast(state.application_id, request);
     toast.Activated([&state, id](auto const &, auto const &inspectable) {
       try {
         auto args = inspectable.as<ToastActivatedEventArgs>();

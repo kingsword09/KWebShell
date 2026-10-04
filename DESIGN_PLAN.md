@@ -2112,6 +2112,33 @@ runtime APIs, the evidence schema, or historical support claims. Acceptance:
 These checks include a recorded review pass. Automated metadata/evidence checks
 remain necessary but do not certify the semantic completeness of a contract.
 
+### PR 68 repair objective: verify real notification actions
+
+Repair the failing RFC 0016 notification submission and desktop action fixtures
+without changing its public contract or bypassing OS permission. Acceptance:
+
+- N68.1 (RFC 0016 A2/A9): observe provider permission before showing a hosted
+  notification; macOS authorization is answered through the real, fixture-owned
+  system prompt. Denial or unavailable permission remains a failing test.
+- N68.2 (A4/A5): Windows constructs its WinRT toast only after the complete XML
+  payload has been populated. Native assertions inspect the resulting toast's
+  content and action arguments, including escaped text.
+- N68.3 (A5/A7): each OS driver locates the fixture notification in its actual
+  desktop UI, invokes the declared action, and the integration test observes
+  exactly one matching native callback and RFC 0006 activation. Windows selects
+  the notification-center shortcut for the runner's OS build; macOS uses the
+  clock's Accessibility element and scoped action/button matching.
+- N68.4 (A12/A14): failures retain only stage, provider/status, UI counts and
+  error codes. Real Windows/macOS/Linux verification must pass before claiming
+  support; missing hosted evidence and unrelated unverified RFC rows remain
+  explicitly blocking. Run notification JVM/native/FFM tests, migration tests,
+  generated TypeScript checks, and documentation/governance validation.
+
+Review pass: Codex, same contributor, 2026-10-04, PR head `8ebe7df`. These are
+repairs to the existing A2/A4/A5/A7/A9/A12 guarantees, not a revised API. The
+existing hosted run `37169156002` passes Linux and fails the macOS/Windows
+action lookup. Acceptance remains blocked until fresh real target results.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.

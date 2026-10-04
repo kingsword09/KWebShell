@@ -15,3 +15,9 @@ Notification action responses are routed through the host-only RFC 0006
 protocol activation sink. Renderer calls use the generated
 `NotificationsBridge` and the normal exact-origin, grant, consent, and
 lifecycle policy checks.
+
+Hosts must observe `permission()` and request undetermined OS authorization
+before showing notifications. The migration integration test checks the real
+provider status before driving the system notification UI; its action fixture
+requires macOS Accessibility access or the Windows interactive desktop. Missing
+permission or an unavailable action fails the test with redacted diagnostics.

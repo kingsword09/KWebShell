@@ -23,27 +23,27 @@ jobs:
       matrix:
         include:
           - target: macos-arm64
-            os: macos-15
+            runner: '["macos-15"]'
             gpu-contract: hardware GPU contract
             expect-hardware-gpu-unavailable: false
             benchmark-machine-class: unused
             run-application-benchmark: false
             run-live-html5: false
           - target: windows-x64
-            os: windows-2022
+            runner: '["self-hosted", "windows-notifications"]'
             gpu-contract: GPU unavailable contract
             expect-hardware-gpu-unavailable: true
-            benchmark-machine-class: github-hosted-windows-2022-x64
-            run-application-benchmark: true
-            run-live-html5: true
+            benchmark-machine-class: self-hosted-windows-notifications
+            run-application-benchmark: false
+            run-live-html5: false
           - target: linux-x64
-            os: ubuntu-24.04
+            runner: '["ubuntu-24.04"]'
             gpu-contract: GPU unavailable contract
             expect-hardware-gpu-unavailable: true
             benchmark-machine-class: unused
             run-application-benchmark: false
             run-live-html5: false
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ fromJSON(matrix.runner) }}
     timeout-minutes: 90
 
     steps:

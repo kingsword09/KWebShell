@@ -12,7 +12,7 @@ Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 
-internal static class KWebShellShortcut {
+public static class KWebShellShortcut {
     [ComImport, Guid("00021401-0000-0000-C000-000000000046")] private class ShellLink {}
     [ComImport, Guid("000214F9-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IShellLinkW {

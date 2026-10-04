@@ -20,21 +20,21 @@ public static class KWebShellInput {
 $build = [int](Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuildNumber
 [KWebShellInput]::OpenActionCenter($build)
 $root = [System.Windows.Automation.AutomationElement]::RootElement
-$buttonCondition = New-Object System.Windows.Automation.AndCondition(
-    (New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-        [System.Windows.Automation.ControlType]::Button)),
-    (New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::NameProperty, 'Open fixture'))
+$actionCondition = New-Object System.Windows.Automation.PropertyCondition(
+    [System.Windows.Automation.AutomationElement]::NameProperty, 'Open fixture'
 )
 $deadline = (Get-Date).AddSeconds(30)
-$buttonCount = 0
+$actionCount = 0
 while ((Get-Date) -lt $deadline) {
-    $buttons = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $buttonCondition)
-    $buttonCount = $buttons.Count
-    foreach ($button in $buttons) {
+    $actions = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $actionCondition)
+    $actionCount = $actions.Count
+    foreach ($action in $actions) {
         try {
-            $pattern = $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+            $pattern = $null
+            if (-not $action.TryGetCurrentPattern(
+                [System.Windows.Automation.InvokePattern]::Pattern,
+                [ref]$pattern
+            )) { continue }
             $pattern.Invoke()
             Write-Output 'Notification fixture: declared OS action invoked'
             exit 0
@@ -44,4 +44,4 @@ while ((Get-Date) -lt $deadline) {
     }
     Start-Sleep -Milliseconds 200
 }
-throw "Notification fixture: action unavailable; build=$build matchingButtons=$buttonCount."
+throw "Notification fixture: action unavailable; build=$build matchingActions=$actionCount."

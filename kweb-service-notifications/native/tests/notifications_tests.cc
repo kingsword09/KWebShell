@@ -1,6 +1,7 @@
 #include "kweb_notifications.h"
 
 #include <cassert>
+#include <cstdio>
 #include <cstring>
 
 #if defined(_WIN32)
@@ -40,9 +41,48 @@ static void VerifyWinRtToastPayload() {
   }
   winrt::uninit_apartment();
 }
+
+static int VerifyRegisteredFixturePermission() {
+  const char identity[] = "io.github.kwebshell.migration.fixture";
+  kweb_notifications_configuration configuration{};
+  configuration.struct_size = sizeof(configuration);
+  configuration.abi_version = KWEB_NOTIFICATIONS_ABI_VERSION;
+  configuration.application_id = {reinterpret_cast<const uint8_t *>(identity), std::strlen(identity)};
+  configuration.package_identity = configuration.application_id;
+  uint64_t handle = 0;
+  const auto opened = kweb_notifications_open(&configuration, &handle);
+  if (opened != KWEB_NOTIFICATIONS_STATUS_OK) {
+    std::fprintf(stderr, "Notification fixture: native open status=%s\n", kweb_notifications_status_name(opened));
+    return 1;
+  }
+  kweb_notifications_permission_result permission{};
+  permission.struct_size = sizeof(permission);
+  permission.abi_version = KWEB_NOTIFICATIONS_ABI_VERSION;
+  const auto queried = kweb_notifications_permission(handle, &permission);
+  const auto closed = kweb_notifications_close(handle);
+  if (queried != KWEB_NOTIFICATIONS_STATUS_OK ||
+      permission.status != KWEB_NOTIFICATIONS_PERMISSION_GRANTED ||
+      closed != KWEB_NOTIFICATIONS_STATUS_OK || kweb_notifications_live_count() != 0) {
+    std::fprintf(stderr, "Notification fixture: query=%s permission=%u close=%s\n",
+                 kweb_notifications_status_name(queried), permission.status,
+                 kweb_notifications_status_name(closed));
+    return 1;
+  }
+  std::puts("Notification fixture: registered WinRT provider permission=GRANTED; live count=0.");
+  return 0;
+}
 #endif
 
-int main() {
+int main(int argc, [[maybe_unused]] char **argv) {
+  if (argc != 1) {
+#if defined(_WIN32)
+    if (argc == 2 && std::strcmp(argv[1], "--fixture-permission") == 0) {
+      return VerifyRegisteredFixturePermission();
+    }
+#endif
+    std::fputs("Unknown notification test invocation.\n", stderr);
+    return 2;
+  }
 #if defined(_WIN32)
   VerifyWinRtToastPayload();
 #endif

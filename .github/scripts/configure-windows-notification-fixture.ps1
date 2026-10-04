@@ -32,13 +32,11 @@ try {
     New-ItemProperty -LiteralPath $key -Name KWebFixtureOwner -Value $owner -PropertyType String -Force | Out-Null
     New-ItemProperty -LiteralPath $key -Name DisplayName -Value 'KWebShellMigrationFixture' -PropertyType String -Force | Out-Null
     New-ItemProperty -LiteralPath $key -Name ShowInSettings -Value 1 -PropertyType DWord -Force | Out-Null
-    [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
-    $notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($applicationId)
-    $setting = $notifier.Setting
-    if ($setting.ToString() -ne 'Enabled') {
-        throw "Notification fixture: registered WinRT provider is not enabled (setting=$setting)."
+    $registered = Get-ItemProperty -LiteralPath $key
+    if ($registered.DisplayName -ne 'KWebShellMigrationFixture' -or $registered.KWebFixtureOwner -ne $owner) {
+        throw 'Notification fixture: the installed AUMID registration did not match its owner.'
     }
-    Write-Output "Notification fixture: desktop AUMID registered; WinRT setting=$setting."
+    Write-Output 'Notification fixture: desktop AUMID registration verified.'
 } catch {
     Remove-FixtureIdentity
     throw

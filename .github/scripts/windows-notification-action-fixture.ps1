@@ -44,5 +44,5 @@ while ((Get-Date) -lt $deadline) {
     }
     Start-Sleep -Milliseconds 200
 }
-Write-Error "Notification fixture: action surface unavailable; build=$build matchingActions=$actionCount."
+[Console]::Error.WriteLine("Notification fixture: action surface unavailable; build=$build matchingActions=$actionCount.")
 exit 2

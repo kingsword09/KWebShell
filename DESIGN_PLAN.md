@@ -2187,6 +2187,30 @@ Notification Center agent. The Windows registration/preflight/cleanup steps
 are absent from that revision's workflow. These are declared runtime
 prerequisites, not changes to the service's public contract.
 
+### PR 68 Windows clipboard contention repair
+
+Preserve the RFC 0014 provider's independent-reader guarantee when another
+process briefly owns the Win32 clipboard lock. Acceptance:
+
+- C68.1 (RFC 0014 A3/A5/A8): retry only `OpenClipboard` acquisition for at most
+  250 ms with 5 ms intervals; do not repeat a read/write/clear transaction or
+  select another backend. Real concurrent readers and a deliberately held
+  clipboard must succeed after the lock is released within that bound.
+- C68.2 (A3/A7): a lock retained past the bound returns the existing typed
+  operation error and leaves previous content unchanged. Native tests exercise
+  open, snapshot, read, write and clear contention with real Win32 ownership;
+  assertions must execute in Release builds.
+- C68.3 (A7/A8): run clipboard JVM/native/FFM integration, including the four
+  independent readers, on the real hosted Windows target and regress macOS
+  and Linux. Record actual results and refresh affected evidence in this PR.
+
+Readiness review: Codex, separate pass by the same contributor, 2026-10-04,
+revision `52c7130`, decision `READY`. Run `37197414544` fails Windows
+`clipboardIntegrationTest` with native `read-unavailable`; the Win32 provider
+attempts `OpenClipboard` once while the test and service monitors use multiple
+processes. Bounded lock acquisition preserves the existing error taxonomy and
+serialized transaction contract. Required hosted verification remains pending.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.

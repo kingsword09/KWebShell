@@ -273,6 +273,27 @@ evidence import, and the final `Implemented` state.
 | A10 / packaging/docs | Catalog, capability matrix, docs, generated/native packages and exclusions agree. | Stale schema/version, test roots packaged, PRIMARY/custom/image accidentally promoted. | Governance, package scan, docs and full diff review. | `KWebRfcServiceCatalog`, service README, migration matrix, RFC, native/package metadata, checked-in evidence governance. | Documentation/governance and checked-in-evidence jobs passed; the imported manifest binds the final hosted contract/runtime records and retains the explicit exclusion set. | `PASS` — catalog, schema, package layout, documentation, and exclusions are aligned. |
 | A11 / universal completion | Complete implementation, tests, evidence, reviewed revision and clean worktree land in one squash PR. | Skipped target/test, stale evidence, dirty worktree, partial API. | Local gates, full PR diff, all required hosted jobs. | Focused PR #66, complete implementation/test/evidence diff, local validation, final row-by-row review. | PR #66 is CLEAN with successful macOS arm64, Windows x64, Linux x64, hosted evidence, documentation/governance, and checked-in-evidence checks; fresh artifacts are imported on the reviewed branch. | `PASS` — RFC 0014 is complete for the declared SYSTEM clipboard scope; squash merge is permitted after final diff review. |
 | A12 / exclusions | PRIMARY, arbitrary custom formats, and image/RFC 0027 behavior remain absent and unsupported. | Unsupported selection, custom/native request, image migration fixture. | Code/catalog/matrix review and negative migration tests. | Common enum, schema, capability matrix, migration blockers, and review. | Contract/code review and hosted compatibility records retain the exclusion set; no unsupported capability is advertised. | `PASS` — explicitly excluded from this objective. |
+| C68.1 / A3/A5/A8 regression | Brief Win32 clipboard contention preserves independent-reader behavior. | A real owner holds the clipboard for 100 ms; the waiting read succeeds with the original bytes; four independent JVM readers still pass. | Windows native test and `clipboardIntegrationTest`; macOS/Linux regression. | `OpenClipboardForTransfer`, `VerifyWin32Contention`, `ClipboardIntegrationMain`. | PR 68 repair; fresh hosted evidence required. | `NOT_RUN` — planned before the repair. |
+| C68.2 / A3/A7 regression | Acquisition stops after 250 ms and does not repeat a mutation. | A real owner retains the lock; open/snapshot/read/write/clear return their existing typed errors within a bounded duration; previous content survives. | Windows native tests with Release assertions enabled. | `VerifyWin32Contention` and the Win32 provider. | PR 68 repair; fresh hosted evidence required. | `NOT_RUN` — planned before the repair. |
+| C68.3 / A7/A8 regression | The same Win32 provider passes native/FFM and multi-process integration. | Required target missing, unavailable clipboard, concurrent readers, ownership transfer, Unicode and empty content. | Windows/macOS/Linux native and JVM integration in CI. | Native test, `ClipboardIntegrationMain`, hosted `clipboard-evidence.json`. | PR 68 repair; fresh hosted evidence required. | `NOT_RUN` — planned before the repair. |
+
+### PR 68 contention repair readiness
+
+Codex reviewed revision `52c7130` in a separate same-contributor pass on
+2026-10-04. Hosted run `37197414544` fails the Windows independent-process
+clipboard integration with `read-unavailable`. Each native transfer currently
+attempts `OpenClipboard` once even though other processes and metadata monitors
+share the OS lock. Decision: `READY` for the C68 repair in `DESIGN_PLAN.md`.
+Only lock acquisition is retried, every 5 ms for up to 250 ms; transactions and
+post-mutation failures are never retried. Existing signatures, status mapping,
+provider identity and historical acceptance remain unchanged. The affected
+regression rows require new real target evidence before acceptance.
+
+Local verification of the repair passes `:kweb-service-clipboard:check` and
+`:kweb-service-clipboard:clipboardIntegrationTest` on JDK 25/macOS arm64,
+including enabled native assertions and four independent JVM readers. The
+Windows contention cases require their actual hosted Win32 run; no local
+macOS result is used as proof of them.
 
 ## Contract review record
 

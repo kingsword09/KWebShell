@@ -3,11 +3,27 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
+
+bool OpenClipboardForTransfer() {
+  using Clock = std::chrono::steady_clock;
+  const auto deadline = Clock::now() + std::chrono::milliseconds(250);
+  for (;;) {
+    if (OpenClipboard(nullptr)) return true;
+    if (GetLastError() != ERROR_ACCESS_DENIED) return false;
+    const auto now = Clock::now();
+    if (now >= deadline) return false;
+    // Other applications and readers hold the same OS lock. Only acquisition
+    // is retried; the transfer itself still executes once after admission.
+    std::this_thread::sleep_until((std::min)(deadline, now + std::chrono::milliseconds(5)));
+  }
+}
 
 UINT HtmlFormat() {
   static const UINT value = RegisterClipboardFormatW(L"HTML Format");
@@ -100,7 +116,7 @@ const char *ProviderId() {
 }
 
 kweb_clipboard_status NativeOpen(State &state) {
-  if (!OpenClipboard(nullptr)) return KWEB_CLIPBOARD_STATUS_NATIVE_UNAVAILABLE;
+  if (!OpenClipboardForTransfer()) return KWEB_CLIPBOARD_STATUS_NATIVE_UNAVAILABLE;
   state.native_sequence = GetClipboardSequenceNumber();
   state.format_mask = CurrentMask();
   state.owned = false;
@@ -109,7 +125,7 @@ kweb_clipboard_status NativeOpen(State &state) {
 }
 
 kweb_clipboard_status NativeSnapshot(State &state, kweb_clipboard_snapshot_record &snapshot) {
-  if (!OpenClipboard(nullptr)) return KWEB_CLIPBOARD_STATUS_NATIVE_UNAVAILABLE;
+  if (!OpenClipboardForTransfer()) return KWEB_CLIPBOARD_STATUS_NATIVE_UNAVAILABLE;
   const uint64_t native_sequence = GetClipboardSequenceNumber();
   const uint32_t mask = CurrentMask();
   CloseClipboard();
@@ -132,7 +148,7 @@ kweb_clipboard_status NativeSnapshot(State &state, kweb_clipboard_snapshot_recor
 kweb_clipboard_status NativeRead(State &state, kweb_clipboard_format format,
                                  uint8_t *buffer, size_t capacity, size_t *size) {
   (void)state;
-  if (!OpenClipboard(nullptr)) return KWEB_CLIPBOARD_STATUS_READ_UNAVAILABLE;
+  if (!OpenClipboardForTransfer()) return KWEB_CLIPBOARD_STATUS_READ_UNAVAILABLE;
   HANDLE handle = GetClipboardData(NativeFormat(format));
   if (handle == nullptr) {
     CloseClipboard();
@@ -159,7 +175,7 @@ kweb_clipboard_status NativeRead(State &state, kweb_clipboard_format format,
 
 kweb_clipboard_status NativeWrite(State &state, const kweb_clipboard_item *items,
                                   size_t count) {
-  if (!OpenClipboard(nullptr)) return KWEB_CLIPBOARD_STATUS_WRITE_UNAVAILABLE;
+  if (!OpenClipboardForTransfer()) return KWEB_CLIPBOARD_STATUS_WRITE_UNAVAILABLE;
   if (!EmptyClipboard()) {
     CloseClipboard();
     return KWEB_CLIPBOARD_STATUS_WRITE_UNAVAILABLE;
@@ -204,7 +220,7 @@ kweb_clipboard_status NativeWrite(State &state, const kweb_clipboard_item *items
 }
 
 kweb_clipboard_status NativeClear(State &state) {
-  if (!OpenClipboard(nullptr)) return KWEB_CLIPBOARD_STATUS_WRITE_OUTCOME_UNKNOWN;
+  if (!OpenClipboardForTransfer()) return KWEB_CLIPBOARD_STATUS_WRITE_OUTCOME_UNKNOWN;
   if (!EmptyClipboard()) {
     CloseClipboard();
     return KWEB_CLIPBOARD_STATUS_WRITE_OUTCOME_UNKNOWN;

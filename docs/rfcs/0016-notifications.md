@@ -408,6 +408,20 @@ buttons. The scoped helper invoked that exact action and the OS returned
 in addition to the already-authorized migration run, without editing the OS
 permission database or matching another application's authorization controls.
 
+Run `37172110932` exposed a Windows permission failure before any toast UI
+lookup. The FFM adapter now retains one executor thread from native open to
+close, matching the WinRT apartment lifetime. `ThreadBoundNotificationNativeTest`
+checks concurrent dispatch, thread identity, one close, factory failure cleanup,
+typed error propagation, and interruption after native admission. Local JVM
+tests pass; native failures retain only operation/HRESULT diagnostics so hosted
+verification can distinguish remaining OS registration defects. The Windows
+toast payload test is a prerequisite of the migration fixture, rather than a
+later task that an earlier integration failure could prevent from running.
+
+The permission check now precedes Chromium initialization. The macOS helper
+also opens Notification Center while waiting for authorization and reports
+only process/window/match counts if it cannot locate the fixture prompt.
+
 Decision: `BLOCKED` for merge pending fresh hosted results, retained evidence,
 and completion of the requirement-by-requirement acceptance matrix. Local
 success does not promote the RFC or substitute for Windows/Linux evidence.

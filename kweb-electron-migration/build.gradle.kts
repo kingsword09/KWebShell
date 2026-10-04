@@ -378,7 +378,7 @@ val electronMigrationIntegrationTest = tasks.register<Exec>("electronMigrationIn
         ":kweb-service-shell:generateShellBridge",
         ":kweb-service-clipboard:buildNative",
         ":kweb-service-clipboard:generateClipboardBridge",
-        ":kweb-service-notifications:buildNative",
+        ":kweb-service-notifications:nativeTest",
         ":kweb-service-notifications:generateNotificationsBridge",
     )
     if (operatingSystem.get().lowercase(Locale.ROOT).startsWith("mac")) {

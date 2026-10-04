@@ -2133,11 +2133,24 @@ without changing its public contract or bypassing OS permission. Acceptance:
   support; missing hosted evidence and unrelated unverified RFC rows remain
   explicitly blocking. Run notification JVM/native/FFM tests, migration tests,
   generated TypeScript checks, and documentation/governance validation.
+- N68.5 (A8/A9): Windows FFM open, calls and close retain one dedicated owner
+  thread for the WinRT apartment lifetime. Concurrent callers serialize there;
+  a failed factory releases the executor, native errors preserve their type,
+  close runs once on the owning thread, and post-close calls fail explicitly.
+  JVM thread/lifecycle tests and real hosted permission/show/action gates are
+  required. Native diagnostics retain only operation and HRESULT.
 
 Review pass: Codex, same contributor, 2026-10-04, PR head `8ebe7df`. These are
 repairs to the existing A2/A4/A5/A7/A9/A12 guarantees, not a revised API. The
 existing hosted run `37169156002` passes Linux and fails the macOS/Windows
 action lookup. Acceptance remains blocked until fresh real target results.
+
+Follow-up review: run `37172110932` compiled the Windows provider but exposed a
+native permission failure after dispatch moved from the creating thread to a
+coroutine worker. The N68.5 repair preserves the existing serialized-call
+contract; no alternate provider or permission policy is introduced. Native
+apartment ownership is an implementation repair, while hosted results remain
+required to distinguish any further registration defect.
 
 ## 12. Test Strategy
 

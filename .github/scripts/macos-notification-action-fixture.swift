@@ -134,6 +134,7 @@ while Date() < deadline {
         windowCount += windows.count
         for window in windows {
             if authorize {
+                if contains(window, applicationName) { matchedWindows += 1 }
                 if authorizeFixture(window) {
                     print("Notification fixture: system authorization accepted")
                     exit(0)
@@ -147,11 +148,11 @@ while Date() < deadline {
             }
         }
     }
-    if !authorize && !panelOpened { panelOpened = openNotificationCenter() }
+    if !panelOpened { panelOpened = openNotificationCenter() }
     Thread.sleep(forTimeInterval: 0.2)
 }
 if authorize {
-    fputs("Notification fixture: system authorization prompt unavailable.\n", stderr)
+    fputs("Notification fixture: system authorization prompt unavailable; panelOpened=\(panelOpened) processes=\(processCount) windows=\(windowCount) matchingWindows=\(matchedWindows).\n", stderr)
     exit(3)
 }
 fputs("Notification fixture: action unavailable; panelOpened=\(panelOpened) processes=\(processCount) windows=\(windowCount) matchingWindows=\(matchedWindows).\n", stderr)

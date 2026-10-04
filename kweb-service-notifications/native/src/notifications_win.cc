@@ -13,6 +13,8 @@
 
 #include <algorithm>
 #include <cstring>
+#include <cstdio>
+#include <memory>
 #include <string>
 #include <unordered_map>
 
@@ -58,16 +60,22 @@ void NativePump(State &) {}
 
 kweb_notifications_status NativeOpen(State &state) {
   if (state.package_identity.empty()) return KWEB_NOTIFICATIONS_STATUS_NATIVE_UNAVAILABLE;
+  bool apartment_initialized = false;
   try {
     winrt::init_apartment(winrt::apartment_type::multi_threaded);
-    auto *windows_state = new WinState();
+    apartment_initialized = true;
+    auto windows_state = std::make_unique<WinState>();
     windows_state->notifier = ToastNotificationManager::CreateToastNotifier(
         winrt::to_hstring(state.package_identity));
-    state.platform = windows_state;
+    state.platform = windows_state.release();
     return KWEB_NOTIFICATIONS_STATUS_OK;
-  } catch (const winrt::hresult_error &) {
+  } catch (const winrt::hresult_error &error) {
+    std::fprintf(stderr, "KWebNotifications operation=open HRESULT=0x%08lx\n",
+                 static_cast<unsigned long>(error.code().value));
+    if (apartment_initialized) winrt::uninit_apartment();
     return KWEB_NOTIFICATIONS_STATUS_NATIVE_UNAVAILABLE;
   } catch (...) {
+    if (apartment_initialized) winrt::uninit_apartment();
     return KWEB_NOTIFICATIONS_STATUS_NATIVE_FAILED;
   }
 }
@@ -92,7 +100,9 @@ kweb_notifications_status NativePermission(
     }
     CopyProvider(result->provider, sizeof(result->provider), ProviderId());
     return KWEB_NOTIFICATIONS_STATUS_OK;
-  } catch (const winrt::hresult_error &) {
+  } catch (const winrt::hresult_error &error) {
+    std::fprintf(stderr, "KWebNotifications operation=permission HRESULT=0x%08lx\n",
+                 static_cast<unsigned long>(error.code().value));
     return KWEB_NOTIFICATIONS_STATUS_NATIVE_UNAVAILABLE;
   } catch (...) {
     return KWEB_NOTIFICATIONS_STATUS_NATIVE_FAILED;
@@ -143,7 +153,9 @@ kweb_notifications_status NativeShow(State &state, const kweb_notifications_requ
           : KWEB_NOTIFICATIONS_CLOSE_NATIVE;
       PushClosed(state, id, reason);
     });
-    toast.Failed([&state, id](auto const &, auto const &) {
+    toast.Failed([&state, id](auto const &, auto const &args) {
+      std::fprintf(stderr, "KWebNotifications operation=delivery HRESULT=0x%08lx\n",
+                   static_cast<unsigned long>(args.ErrorCode().value));
       PushFailed(state, id, "notifications.native-failed");
     });
     windows_state->notifications.insert_or_assign(id, toast);

@@ -227,6 +227,27 @@ public fun main() {
         notificationActivations += activation
         applicationLifecycle.acceptProtocolActivation(activation.toProtocolUri())
     }
+    val initialPermission = runBlocking { notifications.permission() }
+    val permission = if (initialPermission.status == KWebNotificationPermissionStatus.NOT_DETERMINED) {
+        val authorization = if (applicationTarget.id.startsWith("macos-")) {
+            ProcessBuilder(requiredPath(NOTIFICATION_ACTION_HELPER_PROPERTY).toString(), "--authorize")
+                .inheritIO().start()
+        } else null
+        try {
+            runBlocking { notifications.requestPermission() }
+        } finally {
+            if (authorization != null && !authorization.waitFor(2, TimeUnit.SECONDS)) {
+                authorization.destroyForcibly().waitFor()
+            }
+        }
+    } else initialPermission
+    val expectedPermission = if (applicationTarget.id.startsWith("linux-")) {
+        KWebNotificationPermissionStatus.NOT_APPLICABLE
+    } else KWebNotificationPermissionStatus.GRANTED
+    require(permission.status == expectedPermission) {
+        "Notification fixture: provider=${permission.provider} permission=${permission.status}; expected=$expectedPermission"
+    }
+    println("Notification fixture: provider=${permission.provider} permission=${permission.status}")
     val gestures = KWebUserGestureRegistry()
     val engine = KWebDesktop.openEngine(
         KWebDesktopEngineConfiguration(
@@ -621,27 +642,6 @@ public fun main() {
             require(notificationCapabilities["actions"]?.jsonPrimitive?.content == "true") {
                 "The hosted notification provider did not advertise actions: $notificationCapabilities"
             }
-            val initialPermission = runBlocking { notifications.permission() }
-            val permission = if (initialPermission.status == KWebNotificationPermissionStatus.NOT_DETERMINED) {
-                val authorization = if (applicationTarget.id.startsWith("macos-")) {
-                    ProcessBuilder(requiredPath(NOTIFICATION_ACTION_HELPER_PROPERTY).toString(), "--authorize")
-                        .inheritIO().start()
-                } else null
-                try {
-                    runBlocking { notifications.requestPermission() }
-                } finally {
-                    if (authorization != null && !authorization.waitFor(2, TimeUnit.SECONDS)) {
-                        authorization.destroyForcibly().waitFor()
-                    }
-                }
-            } else initialPermission
-            val expectedPermission = if (applicationTarget.id.startsWith("linux-")) {
-                KWebNotificationPermissionStatus.NOT_APPLICABLE
-            } else KWebNotificationPermissionStatus.GRANTED
-            require(permission.status == expectedPermission) {
-                "Notification fixture: provider=${permission.provider} permission=${permission.status}; expected=$expectedPermission"
-            }
-            println("Notification fixture: provider=${permission.provider} permission=${permission.status}")
             val notificationShown = Json.parseToJsonElement(
                 session.evaluateString(
                     """

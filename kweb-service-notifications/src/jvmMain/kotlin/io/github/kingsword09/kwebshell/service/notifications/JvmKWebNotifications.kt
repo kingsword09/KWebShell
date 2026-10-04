@@ -3,6 +3,7 @@ package io.github.kingsword09.kwebshell.service.notifications
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 import io.github.kingsword09.kwebshell.service.notifications.internal.NotificationFfm
 import java.nio.file.Path
+import java.util.Locale
 
 public object JvmKWebNotifications {
     public fun open(
@@ -11,12 +12,16 @@ public object JvmKWebNotifications {
         packageIdentity: String,
         activationRouter: KWebNotificationActivationRouter,
     ): KWebNotifications = try {
-        val ffm = NotificationFfm.open(libraryPath, applicationId, packageIdentity)
-        NativeKWebNotifications(
-            FfmNotificationNative(ffm),
-            applicationId,
-            activationRouter,
-        )
+        val factory = { FfmNotificationNative(NotificationFfm.open(libraryPath, applicationId, packageIdentity)) }
+        val native = if (System.getProperty("os.name").lowercase(Locale.ROOT).startsWith("windows")) {
+            ThreadBoundNotificationNative.open(factory)
+        } else factory()
+        try {
+            NativeKWebNotifications(native, applicationId, activationRouter)
+        } catch (error: Throwable) {
+            runCatching { native.close() }.exceptionOrNull()?.let(error::addSuppressed)
+            throw error
+        }
     } catch (error: NotificationFfm.NativeFailure) {
         throw KWebNativeException(
             code = KWebNotificationErrorCode.PLATFORM_UNAVAILABLE,

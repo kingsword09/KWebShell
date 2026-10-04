@@ -47,12 +47,12 @@ jobs:
     timeout-minutes: 90
 
     steps:
-      - name: Configure line endings for deterministic contract digests
-        shell: bash
-        run: git config --global core.eol lf
-
       - name: Check out repository
         uses: actions/checkout@v7
+
+      - name: Configure line endings for deterministic contract digests
+        shell: bash
+        run: git config --local core.eol lf
 
       - name: Set up JDK 25 runtime
         uses: actions/setup-java@v5

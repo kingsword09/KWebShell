@@ -4,7 +4,10 @@ import Foundation
 
 private let applicationName = "KWebShellMigrationFixture"
 private let notificationTitle = "KWebShell notification fixture"
-private let notificationCenterBundleId = "com.apple.notificationcenterui"
+private let notificationCenterBundleIds = Set([
+    "com.apple.notificationcenterui",
+    "com.apple.controlcenter",
+])
 
 private func value(_ element: AXUIElement, _ attribute: String) -> String {
     var rawValue: CFTypeRef?
@@ -74,9 +77,11 @@ do {
 
     let deadline = Date().addingTimeInterval(25)
     while Date() < deadline {
-        if let app = NSWorkspace.shared.runningApplications.first(where: {
-            $0.bundleIdentifier == notificationCenterBundleId
-        }) {
+        let apps = NSWorkspace.shared.runningApplications.filter { application in
+            guard let bundleIdentifier = application.bundleIdentifier else { return false }
+            return notificationCenterBundleIds.contains(bundleIdentifier)
+        }
+        for app in apps {
             let application = AXUIElementCreateApplication(app.processIdentifier)
             var rawWindows: CFTypeRef?
             if AXUIElementCopyAttributeValue(application, kAXWindowsAttribute as CFString, &rawWindows) == .success,

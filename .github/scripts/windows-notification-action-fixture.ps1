@@ -20,7 +20,6 @@ public static class KWebShellInput {
 $build = [int](Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuildNumber
 [KWebShellInput]::OpenActionCenter($build)
 $root = [System.Windows.Automation.AutomationElement]::RootElement
-$walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
 $buttonCondition = New-Object System.Windows.Automation.AndCondition(
     (New-Object System.Windows.Automation.PropertyCondition(
         [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
@@ -28,36 +27,21 @@ $buttonCondition = New-Object System.Windows.Automation.AndCondition(
     (New-Object System.Windows.Automation.PropertyCondition(
         [System.Windows.Automation.AutomationElement]::NameProperty, 'Open fixture'))
 )
-$titleCondition = New-Object System.Windows.Automation.PropertyCondition(
-    [System.Windows.Automation.AutomationElement]::NameProperty, 'KWebShell notification fixture'
-)
 $deadline = (Get-Date).AddSeconds(30)
-$titleCount = 0
 $buttonCount = 0
 while ((Get-Date) -lt $deadline) {
-    $titles = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $titleCondition)
-    $titleCount = $titles.Count
-    foreach ($title in $titles) {
+    $buttons = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $buttonCondition)
+    $buttonCount = $buttons.Count
+    foreach ($button in $buttons) {
         try {
-            $card = $title
-            for ($depth = 0; $depth -lt 6 -and $null -ne $card; $depth++) {
-                # The title is usually a text leaf; its action is a sibling.
-                # Stop before reaching a container holding unrelated cards.
-                if ($card.FindAll([System.Windows.Automation.TreeScope]::Subtree, $titleCondition).Count -ne 1) { break }
-                $buttons = $card.FindAll([System.Windows.Automation.TreeScope]::Subtree, $buttonCondition)
-                $buttonCount = $buttons.Count
-                if ($buttons.Count -eq 1) {
-                    $pattern = $buttons[0].GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
-                    $pattern.Invoke()
-                    Write-Output 'Notification fixture: declared OS action invoked'
-                    exit 0
-                }
-                $card = $walker.GetParent($card)
-            }
+            $pattern = $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+            $pattern.Invoke()
+            Write-Output 'Notification fixture: declared OS action invoked'
+            exit 0
         } catch [System.Windows.Automation.ElementNotAvailableException] {
             # Retry a card removed/replaced while walking the live shell tree.
         }
     }
     Start-Sleep -Milliseconds 200
 }
-throw "Notification fixture: action unavailable; build=$build matchingTitles=$titleCount matchingButtons=$buttonCount."
+throw "Notification fixture: action unavailable; build=$build matchingButtons=$buttonCount."

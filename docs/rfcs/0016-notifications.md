@@ -422,6 +422,30 @@ The permission check now precedes Chromium initialization. The macOS helper
 also opens Notification Center while waiting for authorization and reports
 only process/window/match counts if it cannot locate the fixture prompt.
 
+The macOS migration bundle now uses the fixed test-only identity
+`io.github.kwebshell.migration.notifications` in both the package and native
+configuration. It no longer shares the production package's notification
+settings or display-name registration. The first local run of that bundle
+observed `NOT_DETERMINED`, accepted the real OS authorization prompt, received
+`GRANTED`, and then passed the full CEF action/replacement/close integration
+with one native action and one application activation.
+
+The cancelled run `37174216836` retained a Windows permission HRESULT
+`0x80070490` (unregistered application identity) and a macOS authorization
+lookup with one listed application and no windows. The hosted warm Windows
+fixture now registers its own desktop AUMID and verifies `ToastNotifier.Setting`
+before runtime tests; cleanup checks the fixture ownership marker. This is
+evidence for the warm WinRT fixture only: MSIX identity validation and cold
+activation remain blocking requirements, not implied by this registration.
+macOS now locates the declared Notification Center agents by PID rather than
+depending on their inclusion in `NSWorkspace.runningApplications`.
+
+The moved preflight also now releases the window, HTTP server, notification
+provider and lifecycle owner on failure. A real packaged macOS run with a
+missing native-library path exited 1 in 4.07 seconds, retaining
+`notifications.platform-unavailable`, instead of leaving a live GUI/HTTP thread.
+The success path still passed the real CEF migration integration.
+
 Decision: `BLOCKED` for merge pending fresh hosted results, retained evidence,
 and completion of the requirement-by-requirement acceptance matrix. Local
 success does not promote the RFC or substitute for Windows/Linux evidence.

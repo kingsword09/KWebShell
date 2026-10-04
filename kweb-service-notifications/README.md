@@ -21,3 +21,10 @@ before showing notifications. The migration integration test checks the real
 provider status before driving the system notification UI; its action fixture
 requires macOS Accessibility access or the Windows interactive desktop. Missing
 permission or an unavailable action fails the test with redacted diagnostics.
+
+For the Windows hosted warm-action fixture, run
+`.github/scripts/configure-windows-notification-fixture.ps1` with Windows
+PowerShell 5.1 before the integration test, then run it with `-Cleanup` afterward.
+It registers only the test desktop AUMID and verifies the actual WinRT setting;
+it does not enable denied OS notifications or establish MSIX/cold-activation
+conformance.

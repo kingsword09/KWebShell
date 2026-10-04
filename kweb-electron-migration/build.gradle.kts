@@ -349,7 +349,7 @@ val packageMigrationMacAppImage = tasks.register<Exec>("packageMigrationMacAppIm
             "--input", migrationMacAppInputDirectory.get().asFile.absolutePath,
             "--main-jar", launcherJar.get().asFile.name,
             "--main-class", migrationMacLauncherMain,
-            "--mac-package-identifier", "io.github.kingsword09.kwebshell",
+            "--mac-package-identifier", "io.github.kwebshell.migration.notifications",
         ) + (listOf("--java-options", "-Dkweb.migration.launch.classpath=${migrationCliClasspath.asPath}") +
             migrationIntegrationJavaOptions.get().flatMap { option -> listOf("--java-options", quoteMacJavaOption(option)) }),
     )

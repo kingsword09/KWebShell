@@ -6,10 +6,44 @@ private let applicationName = "KWebShellMigrationFixture"
 private let notificationTitle = "KWebShell notification fixture"
 private let actionTitle = "Open fixture"
 private let authorize = CommandLine.arguments.contains("--authorize")
-private let notificationCenterBundleIds: Set<String> = [
-    "com.apple.notificationcenterui", "com.apple.controlcenter",
-    "com.apple.UserNotificationCenter",
-]
+
+private func notificationProcessIds() -> Set<pid_t> {
+    var result = Set<pid_t>()
+    // Notification Center is an agent on some macOS releases and is omitted
+    // from NSWorkspace.runningApplications. Query the declared UI processes.
+    for name in ["NotificationCenter", "ControlCenter", "UserNotificationCenter"] {
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        process.arguments = ["-u", String(getuid()), "-x", name]
+        process.standardOutput = output
+        process.standardError = Pipe()
+        do { try process.run() } catch {
+            fputs("Notification fixture: OS process lookup failed.\n", stderr)
+            exit(5)
+        }
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 || process.terminationStatus == 1 else {
+            fputs("Notification fixture: OS process lookup returned an error.\n", stderr)
+            exit(5)
+        }
+        let text = String(decoding: data, as: UTF8.self)
+        for line in text.split(whereSeparator: \.isNewline) {
+            guard let pid = pid_t(line), pid > 0 else {
+                fputs("Notification fixture: OS process lookup returned invalid data.\n", stderr)
+                exit(5)
+            }
+            result.insert(pid)
+        }
+    }
+    if authorize {
+        for app in NSWorkspace.shared.runningApplications where app.localizedName == applicationName {
+            result.insert(app.processIdentifier)
+        }
+    }
+    return result
+}
 
 private func value(_ element: AXUIElement, _ attribute: String) -> String {
     var raw: CFTypeRef?
@@ -121,15 +155,12 @@ var processCount = 0
 var windowCount = 0
 var matchedWindows = 0
 while Date() < deadline {
-    let apps = NSWorkspace.shared.runningApplications.filter {
-        notificationCenterBundleIds.contains($0.bundleIdentifier ?? "") ||
-            (authorize && $0.localizedName == applicationName)
-    }
-    processCount = apps.count
+    let processes = notificationProcessIds()
+    processCount = processes.count
     windowCount = 0
     matchedWindows = 0
-    for app in apps {
-        let root = AXUIElementCreateApplication(app.processIdentifier)
+    for pid in processes {
+        let root = AXUIElementCreateApplication(pid)
         let windows = elements(root, kAXWindowsAttribute as String)
         windowCount += windows.count
         for window in windows {

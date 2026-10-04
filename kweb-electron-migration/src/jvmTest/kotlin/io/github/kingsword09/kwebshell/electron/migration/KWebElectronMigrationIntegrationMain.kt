@@ -206,48 +206,67 @@ public fun main() {
         }
     }
     val notificationActivations = CopyOnWriteArrayList<KWebNotificationActivation>()
-    if (applicationTarget.id.startsWith("macos-")) {
-        val mismatch = runCatching {
-            JvmKWebNotifications.open(
+    val notifications = run {
+        var opened: KWebNotifications? = null
+        try {
+            if (applicationTarget.id.startsWith("macos-")) {
+                val mismatch = runCatching {
+                    JvmKWebNotifications.open(
+                        requiredPath(NOTIFICATIONS_LIBRARY_PROPERTY),
+                        "io.github.kwebshell.migration.fixture",
+                        "io.github.kwebshell.migration.wrong-bundle",
+                    ) { error("A mismatched notification identity cannot route activation.") }
+                }
+                mismatch.getOrNull()?.close()
+                require((mismatch.exceptionOrNull() as? io.github.kingsword09.kwebshell.core.KWebNativeException)?.code ==
+                    "notifications.platform-unavailable") { "The native provider accepted a mismatched macOS bundle identity." }
+            }
+            val notifications = JvmKWebNotifications.open(
                 requiredPath(NOTIFICATIONS_LIBRARY_PROPERTY),
                 "io.github.kwebshell.migration.fixture",
-                "io.github.kwebshell.migration.wrong-bundle",
-            ) { error("A mismatched notification identity cannot route activation.") }
-        }
-        mismatch.getOrNull()?.close()
-        require((mismatch.exceptionOrNull() as? io.github.kingsword09.kwebshell.core.KWebNativeException)?.code ==
-            "notifications.platform-unavailable") { "The native provider accepted a mismatched macOS bundle identity." }
-    }
-    val notifications = JvmKWebNotifications.open(
-        requiredPath(NOTIFICATIONS_LIBRARY_PROPERTY),
-        "io.github.kwebshell.migration.fixture",
-        if (applicationTarget.id.startsWith("macos-")) "io.github.kingsword09.kwebshell"
-        else "io.github.kwebshell.migration.fixture",
-    ) { activation ->
-        notificationActivations += activation
-        applicationLifecycle.acceptProtocolActivation(activation.toProtocolUri())
-    }
-    val initialPermission = runBlocking { notifications.permission() }
-    val permission = if (initialPermission.status == KWebNotificationPermissionStatus.NOT_DETERMINED) {
-        val authorization = if (applicationTarget.id.startsWith("macos-")) {
-            ProcessBuilder(requiredPath(NOTIFICATION_ACTION_HELPER_PROPERTY).toString(), "--authorize")
-                .inheritIO().start()
-        } else null
-        try {
-            runBlocking { notifications.requestPermission() }
-        } finally {
-            if (authorization != null && !authorization.waitFor(2, TimeUnit.SECONDS)) {
-                authorization.destroyForcibly().waitFor()
+                if (applicationTarget.id.startsWith("macos-")) "io.github.kwebshell.migration.notifications"
+                else "io.github.kwebshell.migration.fixture",
+            ) { activation ->
+                notificationActivations += activation
+                applicationLifecycle.acceptProtocolActivation(activation.toProtocolUri())
             }
+            opened = notifications
+            val initialPermission = runBlocking { notifications.permission() }
+            val permission = if (initialPermission.status == KWebNotificationPermissionStatus.NOT_DETERMINED) {
+                val authorization = if (applicationTarget.id.startsWith("macos-")) {
+                    ProcessBuilder(requiredPath(NOTIFICATION_ACTION_HELPER_PROPERTY).toString(), "--authorize")
+                        .inheritIO().start()
+                } else null
+                try {
+                    runBlocking { notifications.requestPermission() }
+                } finally {
+                    if (authorization != null && !authorization.waitFor(2, TimeUnit.SECONDS)) {
+                        authorization.destroyForcibly().waitFor()
+                    }
+                }
+            } else initialPermission
+            val expectedPermission = if (applicationTarget.id.startsWith("linux-")) {
+                KWebNotificationPermissionStatus.NOT_APPLICABLE
+            } else KWebNotificationPermissionStatus.GRANTED
+            require(permission.status == expectedPermission) {
+                "Notification fixture: provider=${permission.provider} permission=${permission.status}; expected=$expectedPermission"
+            }
+            println("Notification fixture: provider=${permission.provider} permission=${permission.status}")
+            notifications
+        } catch (error: Throwable) {
+            val cleanup = listOf<() -> Unit>(
+                { opened?.close() },
+                { applicationActivationCollector.cancel() },
+                { applicationLifecycle.close() },
+                { server.close() },
+                { onAwtThread { window.dispose() } },
+            )
+            cleanup.forEach { action ->
+                runCatching(action).exceptionOrNull()?.let(error::addSuppressed)
+            }
+            throw error
         }
-    } else initialPermission
-    val expectedPermission = if (applicationTarget.id.startsWith("linux-")) {
-        KWebNotificationPermissionStatus.NOT_APPLICABLE
-    } else KWebNotificationPermissionStatus.GRANTED
-    require(permission.status == expectedPermission) {
-        "Notification fixture: provider=${permission.provider} permission=${permission.status}; expected=$expectedPermission"
     }
-    println("Notification fixture: provider=${permission.provider} permission=${permission.status}")
     val gestures = KWebUserGestureRegistry()
     val engine = KWebDesktop.openEngine(
         KWebDesktopEngineConfiguration(

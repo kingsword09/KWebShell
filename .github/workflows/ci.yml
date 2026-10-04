@@ -77,6 +77,12 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: Register Windows notification fixture identity
+        id: windows-notification-identity
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .github/scripts/configure-windows-notification-fixture.ps1
+
       - name: Install Linux native dependencies
         if: runner.os == 'Linux'
         shell: bash
@@ -279,6 +285,11 @@ jobs:
           path: kweb-rfc-governance/build/test-results/contractTest/
           if-no-files-found: error
           retention-days: 14
+
+      - name: Remove Windows notification fixture identity
+        if: always() && runner.os == 'Windows' && steps.windows-notification-identity.outcome != 'skipped'
+        shell: pwsh
+        run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .github/scripts/configure-windows-notification-fixture.ps1 -Cleanup
 
 
   governance:

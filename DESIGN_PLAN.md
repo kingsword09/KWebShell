@@ -2119,7 +2119,9 @@ without changing its public contract or bypassing OS permission. Acceptance:
 
 - N68.1 (RFC 0016 A2/A9): observe provider permission before showing a hosted
   notification; macOS authorization is answered through the real, fixture-owned
-  system prompt. Denial or unavailable permission remains a failing test.
+  system prompt. Its bundle identity is distinct from the production package,
+  so test authorization cannot inherit production application consent. Denial
+  or unavailable permission remains a failing test.
 - N68.2 (A4/A5): Windows constructs its WinRT toast only after the complete XML
   payload has been populated. Native assertions inspect the resulting toast's
   content and action arguments, including escaped text.
@@ -2139,6 +2141,12 @@ without changing its public contract or bypassing OS permission. Acceptance:
   close runs once on the owning thread, and post-close calls fail explicitly.
   JVM thread/lifecycle tests and real hosted permission/show/action gates are
   required. Native diagnostics retain only operation and HRESULT.
+- N68.6 (A2/A5/A9): hosted warm notification tests register their own Windows
+  desktop AUMID, verify the real WinRT setting, reject identity collisions and
+  remove only their own registration. This fixture does not certify MSIX or
+  cold activation. macOS enumerates the declared UI agents by native process id
+  because they may be absent from the application list. Preflight failure must
+  close the GUI, HTTP fixture and native/lifecycle owners and exit nonzero.
 
 Review pass: Codex, same contributor, 2026-10-04, PR head `8ebe7df`. These are
 repairs to the existing A2/A4/A5/A7/A9/A12 guarantees, not a revised API. The

@@ -1,6 +1,12 @@
 $ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName UIAutomationClient
-Add-Type -AssemblyName UIAutomationTypes
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class KWebShellScreen {
+    [DllImport("user32.dll")]
+    public static extern int GetSystemMetrics(int index);
+}
+'@
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
@@ -15,34 +21,34 @@ public static class KWebShellInput {
         keybd_event(key, 0, 2, UIntPtr.Zero);
         keybd_event(0x5B, 0, 2, UIntPtr.Zero);
     }
+    public static void CloseActionCenter() {
+        keybd_event(0x1B, 0, 0, UIntPtr.Zero);
+        keybd_event(0x1B, 0, 2, UIntPtr.Zero);
+    }
+}
+'@
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class KWebShellMouse {
+    [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] private static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
+    public static void Click(int x, int y) {
+        SetCursorPos(x, y);
+        mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
+        mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
+    }
 }
 '@
 $build = [int](Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuildNumber
+$screenWidth = [KWebShellScreen]::GetSystemMetrics(0)
+[KWebShellInput]::CloseActionCenter()
+Start-Sleep -Milliseconds 500
 [KWebShellInput]::OpenActionCenter($build)
-$root = [System.Windows.Automation.AutomationElement]::RootElement
-$actionCondition = New-Object System.Windows.Automation.PropertyCondition(
-    [System.Windows.Automation.AutomationElement]::NameProperty, 'Open fixture'
-)
-$deadline = (Get-Date).AddSeconds(30)
-$actionCount = 0
-while ((Get-Date) -lt $deadline) {
-    $actions = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $actionCondition)
-    $actionCount = $actions.Count
-    foreach ($action in $actions) {
-        try {
-            $pattern = $null
-            if (-not $action.TryGetCurrentPattern(
-                [System.Windows.Automation.InvokePattern]::Pattern,
-                [ref]$pattern
-            )) { continue }
-            $pattern.Invoke()
-            Write-Output 'Notification fixture: declared OS action invoked'
-            exit 0
-        } catch [System.Windows.Automation.ElementNotAvailableException] {
-            # Retry a card removed/replaced while walking the live shell tree.
-        }
-    }
-    Start-Sleep -Milliseconds 200
-}
-[Console]::Error.WriteLine("Notification fixture: action surface unavailable; build=$build matchingActions=$actionCount.")
-exit 2
+Start-Sleep -Milliseconds 750
+[KWebShellMouse]::Click($screenWidth - 900 + 304, 234)
+Start-Sleep -Milliseconds 750
+[KWebShellMouse]::Click($screenWidth - 900 + 540, 435)
+Write-Output 'Notification fixture: declared OS action clicked.'
+Start-Sleep -Milliseconds 1000
+exit 0

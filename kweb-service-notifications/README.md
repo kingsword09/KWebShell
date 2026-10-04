@@ -28,10 +28,11 @@ start that exact agent and verify its process before the packaged fixture.
 The service label is read from Apple's plist; application permission remains
 subject to the real system prompt.
 
-For the Windows hosted warm-action fixture, run
+For the Windows interactive warm-action fixture, run
 `.github/scripts/configure-windows-notification-fixture.ps1` with Windows
 PowerShell 5.1 before the integration test, then run it with `-Cleanup` afterward.
 It registers only the test desktop AUMID. CI then runs the native test's
 `--fixture-permission` mode to verify the WinRT provider and requires the real
-desktop action. These steps do not enable denied OS notifications or establish
-MSIX/cold-activation conformance.
+desktop action on the self-hosted runner labeled `windows-notifications`.
+These steps do not enable denied OS notifications or establish MSIX/cold-
+activation conformance.

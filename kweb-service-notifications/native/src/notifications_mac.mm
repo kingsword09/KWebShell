@@ -39,31 +39,35 @@ void WaitForPermission(
   // Never let an asynchronous completion write through caller stack pointers.
   __block kweb_notifications_permission_status observed = KWEB_NOTIFICATIONS_PERMISSION_UNAVAILABLE;
   if (request) {
-    [center requestAuthorizationWithOptions:(UNAuthorizationOptionAlert | UNAuthorizationOptionSound)
-                          completionHandler:^(BOOL granted, NSError *error) {
-      if (error != nil) {
-        NSLog(@"KWebNotifications requestAuthorization failed (domain=%@ code=%ld)",
-              error.domain, (long)error.code);
-      }
-      observed = granted ? KWEB_NOTIFICATIONS_PERMISSION_GRANTED : KWEB_NOTIFICATIONS_PERMISSION_DENIED;
-      dispatch_semaphore_signal(semaphore);
-    }];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+      [center requestAuthorizationWithOptions:(UNAuthorizationOptionAlert | UNAuthorizationOptionSound)
+                            completionHandler:^(BOOL granted, NSError *error) {
+        if (error != nil) {
+          NSLog(@"KWebNotifications requestAuthorization failed (domain=%@ code=%ld)",
+                error.domain, (long)error.code);
+        }
+        observed = granted ? KWEB_NOTIFICATIONS_PERMISSION_GRANTED : KWEB_NOTIFICATIONS_PERMISSION_DENIED;
+        dispatch_semaphore_signal(semaphore);
+      }];
+    });
   } else {
-    [center getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
-      switch (settings.authorizationStatus) {
-        case UNAuthorizationStatusAuthorized:
-        case UNAuthorizationStatusProvisional:
-          observed = KWEB_NOTIFICATIONS_PERMISSION_GRANTED;
-          break;
-        case UNAuthorizationStatusDenied:
-          observed = KWEB_NOTIFICATIONS_PERMISSION_DENIED;
-          break;
-        case UNAuthorizationStatusNotDetermined:
-          observed = KWEB_NOTIFICATIONS_PERMISSION_NOT_DETERMINED;
-          break;
-      }
-      dispatch_semaphore_signal(semaphore);
-    }];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+      [center getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
+        switch (settings.authorizationStatus) {
+          case UNAuthorizationStatusAuthorized:
+          case UNAuthorizationStatusProvisional:
+            observed = KWEB_NOTIFICATIONS_PERMISSION_GRANTED;
+            break;
+          case UNAuthorizationStatusDenied:
+            observed = KWEB_NOTIFICATIONS_PERMISSION_DENIED;
+            break;
+          case UNAuthorizationStatusNotDetermined:
+            observed = KWEB_NOTIFICATIONS_PERMISSION_NOT_DETERMINED;
+            break;
+        }
+        dispatch_semaphore_signal(semaphore);
+      }];
+    });
   }
   const auto deadline = dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC);
   *completed = dispatch_semaphore_wait(semaphore, deadline) == 0;

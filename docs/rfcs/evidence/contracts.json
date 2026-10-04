@@ -389,6 +389,7 @@
       "paths": [
         ".github/scripts/aggregate-rfc-evidence.sh",
         ".github/scripts/configure-linux-shell-fixture.sh",
+        ".github/scripts/configure-macos-notification-fixture.sh",
         ".github/scripts/configure-windows-notification-fixture.ps1",
         ".github/scripts/linux-notification-fixture.c",
         ".github/scripts/macos-notification-action-fixture.swift",

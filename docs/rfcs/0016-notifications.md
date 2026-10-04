@@ -331,6 +331,9 @@ menu/dialog contract exists.
 | A13 / packaging/docs | Service catalog, RFC, migration matrix, packaged identity, generated/native packages and evidence bindings agree. | Stale schema, wrong AUMID/bundle/desktop id, undeclared icon/provider. | Governance, package scan, docs, generated output. | Service catalog, RFC 0030 identity integration, docs. | Final manifest/contracts and target artifacts. | `NOT_RUN` before implementation. |
 | A14 / universal completion | Complete implementation, tests, real target evidence, migration, docs, matrix, reviewed revision, clean worktree and one squash PR. | Skipped target, stale evidence, dirty worktree, partial API, changed contract. | Full PR diff review, hosted matrix, strict governance. | Final RFC 0016 PR and acceptance review. | Three READY records and retained artifacts. | `NOT_RUN` before implementation. |
 | A15 / deferred custom image | Custom icon bytes/URLs/path references remain absent until RFC 0027. | Renderer bytes, URL, path, unsupported image format. | Code/catalog/matrix review. | `APPLICATION` icon enum and explicit migration blocker. | No custom image provider/evidence. | `NOT_APPLICABLE` — explicitly deferred to RFC 0027 in this reviewed contract. |
+| N68.7 / A2/A9 repair | Hosted macOS has its declared Notification Center agent before permission and action verification. | Image-disabled agent, already-running agent, missing GUI/service, real authorization/action. | ShellCheck, real repeatable setup and packaged CEF fixture on macOS arm64. | `configure-macos-notification-fixture.sh`, CI setup and `electronMigrationIntegrationTest`. | Local JDK 25/macOS run after `52c7130`: setup twice and packaged CEF action passed; hosted run pending. | `BLOCKED` — local agent and action checks pass; hosted bootstrap must also pass. |
+| N68.8 / A2/A5/A7 repair | Windows registers the fixture AUMID and must observe its real native action and application activation. | Identity collision/cleanup, native permission failure, unavailable UI, exactly one declared action. | Hosted Windows native ABI permission preflight and real migration fixture. | CI identity/preflight/cleanup, `configure-windows-notification-fixture.ps1`, required action assertions. | Fresh hosted evidence required. | `BLOCKED` — registration steps restored; missing action no longer passes the test. |
+| N68.9 / A12/A14 repair | Fresh hosted results validate the repaired fixtures without promoting untested RFC guarantees. | Missing target or action, stale evidence, premature support claim. | Notification/migration/native/TypeScript checks, three-target CI and governance. | Required CI jobs and this review record. | Local notification/migration checks, real CEF action and RFC contract tests passed; hosted evidence pending. | `BLOCKED` — remaining RFC rows retain their existing acceptance requirements. |
 
 ## Readiness review
 
@@ -365,6 +368,25 @@ menu/dialog contract exists.
 - Decision: `READY`.
 
 ## Evidence and invalidation
+
+### Hosted prerequisite repair review (2026-10-04)
+
+Codex reviewed `52c7130` in a separate same-contributor readiness pass for
+N68.7-N68.9 in `DESIGN_PLAN.md`: `READY` for fixture repairs. GitHub's image
+explicitly unloads `/System/Library/LaunchAgents/com.apple.notificationcenterui.plist`;
+its actual macOS 15 service label is `com.apple.notificationcenterui.agent`.
+Run `37197414544` therefore cannot display the authorization prompt. Setup
+reads the plist label, enables/bootstraps/starts that agent and requires its
+real process. It does not alter application authorization records.
+
+The same PR revision removed Windows AUMID registration, native permission
+preflight and cleanup when switching runners. Those prerequisites are restored;
+UI exit 2 is again a failing required action, rather than a successful fixture
+with an absent action in its evidence. Local setup twice, ShellCheck,
+Actionlint, JDK 25 notification/migration checks, RFC contract tests and the
+real macOS packaged CEF migration fixture pass. The latter reports one `open`
+action and one application-owner activation. Hosted verification and the
+remaining RFC acceptance rows are still blocking.
 
 ### PR 68 notification-action repair review (2026-10-04)
 

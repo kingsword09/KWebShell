@@ -2160,6 +2160,33 @@ contract; no alternate provider or permission policy is introduced. Native
 apartment ownership is an implementation repair, while hosted results remain
 required to distinguish any further registration defect.
 
+### PR 68 hosted desktop prerequisites repair
+
+Restore the real desktop facilities required by the existing notification
+fixture, keeping its OS permission and action assertions mandatory. Acceptance:
+
+- N68.7 (RFC 0016 A2/A9): enable, bootstrap if necessary, and start the declared
+  macOS Notification Center LaunchAgent before integration. GitHub's image
+  disables this agent in `images/macos/scripts/build/configure-system.sh`.
+  Setup must verify the real process, be repeatable, and fail on an unavailable
+  GUI session or service. It must not edit application authorization data.
+- N68.8 (A2/A5/A7): restore the owned Windows AUMID registration and native
+  permission preflight removed in `6f9375b`. A missing desktop action is a
+  failing required test. Each successful target must observe exactly one
+  declared native action and one application-owner activation.
+- N68.9 (A12/A14): validate shell/PowerShell setup, run the real macOS packaged
+  CEF fixture and notification/migration tests, and require fresh hosted
+  macOS/Windows/Linux results. Preserve incomplete RFC acceptance as blocking;
+  a repaired CI run does not certify the remaining cold-activation/reply rows.
+
+Readiness review: Codex, separate pass by the same contributor, 2026-10-04,
+revision `52c7130`, decision `READY` for these fixture repairs. Run
+`37197414544` reports one macOS notification-related process and zero windows,
+then authorization timeout; the upstream image explicitly unloads the
+Notification Center agent. The Windows registration/preflight/cleanup steps
+are absent from that revision's workflow. These are declared runtime
+prerequisites, not changes to the service's public contract.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.

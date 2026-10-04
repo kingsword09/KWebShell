@@ -22,9 +22,16 @@ provider status before driving the system notification UI; its action fixture
 requires macOS Accessibility access or the Windows interactive desktop. Missing
 permission or an unavailable action fails the test with redacted diagnostics.
 
+GitHub's macOS image disables the Notification Center LaunchAgent. CI runs
+`bash .github/scripts/configure-macos-notification-fixture.sh` to enable and
+start that exact agent and verify its process before the packaged fixture.
+The service label is read from Apple's plist; application permission remains
+subject to the real system prompt.
+
 For the Windows hosted warm-action fixture, run
 `.github/scripts/configure-windows-notification-fixture.ps1` with Windows
 PowerShell 5.1 before the integration test, then run it with `-Cleanup` afterward.
-It registers only the test desktop AUMID and verifies the actual WinRT setting;
-it does not enable denied OS notifications or establish MSIX/cold-activation
-conformance.
+It registers only the test desktop AUMID. CI then runs the native test's
+`--fixture-permission` mode to verify the WinRT provider and requires the real
+desktop action. These steps do not enable denied OS notifications or establish
+MSIX/cold-activation conformance.

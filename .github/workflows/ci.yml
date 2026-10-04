@@ -60,10 +60,6 @@ jobs:
           distribution: temurin
           java-version: "25"
 
-      - name: Set up Gradle
-        if: matrix.target != 'windows-x64'
-        uses: gradle/actions/setup-gradle@v6
-
       - name: Set up Node.js 24 LTS
         uses: actions/setup-node@v6
         with:

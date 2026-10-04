@@ -103,6 +103,15 @@ kweb_notifications_status NativePermission(
   } catch (const winrt::hresult_error &error) {
     std::fprintf(stderr, "KWebNotifications operation=permission HRESULT=0x%08lx\n",
                  static_cast<unsigned long>(error.code().value));
+    // Unpackaged desktop AUMIDs can be registered and deliver toasts while
+    // WinRT has no per-package permission record to expose through Setting().
+    // E_ELEMENTNOTFOUND is that explicit state; all other failures remain
+    // unavailable and are surfaced to the caller.
+    if (error.code() == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)) {
+      result->status = KWEB_NOTIFICATIONS_PERMISSION_GRANTED;
+      CopyProvider(result->provider, sizeof(result->provider), ProviderId());
+      return KWEB_NOTIFICATIONS_STATUS_OK;
+    }
     return KWEB_NOTIFICATIONS_STATUS_NATIVE_UNAVAILABLE;
   } catch (...) {
     return KWEB_NOTIFICATIONS_STATUS_NATIVE_FAILED;

@@ -90,11 +90,25 @@ private func activateCard(_ root: AXUIElement, depth: Int = 0) -> Bool {
 private func authorizeFixture(_ root: AXUIElement) -> Bool {
     guard contains(root, applicationName) else { return false }
     let allowLabels = ["Allow", "允许"]
-    guard let button = find(root, matching: {
+    let isAllowButton: (AXUIElement) -> Bool = {
         labels($0).contains(where: { allowLabels.contains($0) }) &&
             actions($0).contains(kAXPressAction as String)
-    }) else { return false }
-    return press(button)
+    }
+    if let dialog = find(root, matching: {
+        contains($0, applicationName) &&
+            elements($0, kAXChildrenAttribute as String).contains(where: isAllowButton)
+    }), let button = elements(dialog, kAXChildrenAttribute as String).first(where: isAllowButton),
+       press(button) { return true }
+    // Notification Center represents the authorization alert as a card with
+    // named AX actions on recent macOS versions, not as child buttons.
+    let allowActions = allowLabels.map { "Name:" + $0 }
+    if let card = find(root, matching: { element in
+        contains(element, applicationName) &&
+            actions(element).contains { allowActions.contains($0.components(separatedBy: "\n")[0]) }
+    }), let action = actions(card).first(where: {
+        allowActions.contains($0.components(separatedBy: "\n")[0])
+    }) { return press(card, action: action) }
+    return false
 }
 
 guard AXIsProcessTrusted() else {

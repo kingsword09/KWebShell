@@ -399,6 +399,15 @@ its output is `build/migration-integration/migration-notifications-evidence.json
 under `kweb-electron-migration`. These results do not establish cold activation,
 reply, or the other unexecuted scenarios in A1-A14.
 
+The follow-up local authorization probe used a fresh registered app identity
+and the real `UNUserNotificationCenter.requestAuthorization` call. On macOS,
+the alert exposes `Name:Allow` / `Name:允许` as card actions instead of child
+buttons. The scoped helper invoked that exact action and the OS returned
+`granted=true`, error code 0; both processes exited 0. The local transcript is
+`build/pr68-permission-probe/authorization-result.txt`. This tests first consent
+in addition to the already-authorized migration run, without editing the OS
+permission database or matching another application's authorization controls.
+
 Decision: `BLOCKED` for merge pending fresh hosted results, retained evidence,
 and completion of the requirement-by-requirement acceptance matrix. Local
 success does not promote the RFC or substitute for Windows/Linux evidence.

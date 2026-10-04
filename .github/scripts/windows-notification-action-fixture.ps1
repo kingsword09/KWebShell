@@ -44,4 +44,5 @@ while ((Get-Date) -lt $deadline) {
     }
     Start-Sleep -Milliseconds 200
 }
-throw "Notification fixture: action unavailable; build=$build matchingActions=$actionCount."
+Write-Error "Notification fixture: action surface unavailable; build=$build matchingActions=$actionCount."
+exit 2

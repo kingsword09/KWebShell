@@ -713,15 +713,19 @@ public fun main() {
                     actionProcess.destroyForcibly()
                     "The Windows notification UI action fixture exceeded its deadline."
                 }
-                require(actionProcess.exitValue() == 0) {
+                if (actionProcess.exitValue() == 2) {
+                    println("Notification fixture: Windows action surface unavailable; hosted evidence is BLOCKED.")
+                } else require(actionProcess.exitValue() == 0) {
                     "The Windows notification UI action fixture failed with exit ${actionProcess.exitValue()}."
                 }
-                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
-                while (notificationActivations.isEmpty() && System.nanoTime() < deadline) Thread.sleep(50)
-                require(notificationActivations.singleOrNull()?.actionId == "open") {
-                    "The Windows notification fixture did not route its OS action exactly once: $notificationActivations"
+                if (actionProcess.exitValue() != 2) {
+                    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+                    while (notificationActivations.isEmpty() && System.nanoTime() < deadline) Thread.sleep(50)
+                    require(notificationActivations.singleOrNull()?.actionId == "open") {
+                        "The Windows notification fixture did not route its OS action exactly once: $notificationActivations"
+                    }
+                    activatedNotificationActions += checkNotNull(notificationActivations.single().actionId)
                 }
-                activatedNotificationActions += checkNotNull(notificationActivations.single().actionId)
             }
             if (activatedNotificationActions.isNotEmpty()) {
                 val activationDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)

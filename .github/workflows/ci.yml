@@ -30,12 +30,12 @@ jobs:
             run-application-benchmark: false
             run-live-html5: false
           - target: windows-x64
-            runner: '["self-hosted", "Windows", "X64", "windows-notifications"]'
+            runner: '["windows-2022"]'
             gpu-contract: GPU unavailable contract
             expect-hardware-gpu-unavailable: true
-            benchmark-machine-class: self-hosted-windows-notifications
-            run-application-benchmark: false
-            run-live-html5: false
+            benchmark-machine-class: github-hosted-windows-2022-x64
+            run-application-benchmark: true
+            run-live-html5: true
           - target: linux-x64
             runner: '["ubuntu-24.04"]'
             gpu-contract: GPU unavailable contract

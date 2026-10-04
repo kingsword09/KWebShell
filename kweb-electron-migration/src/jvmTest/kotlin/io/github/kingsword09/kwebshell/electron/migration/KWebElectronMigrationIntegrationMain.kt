@@ -27,7 +27,6 @@ import io.github.kingsword09.kwebshell.service.clipboard.KWebClipboard
 import io.github.kingsword09.kwebshell.service.clipboard.bridgeDispatcher as clipboardBridgeDispatcher
 import io.github.kingsword09.kwebshell.service.notifications.JvmKWebNotifications
 import io.github.kingsword09.kwebshell.service.notifications.KWebNotificationActivation
-import io.github.kingsword09.kwebshell.service.notifications.KWebNotificationPermissionStatus
 import io.github.kingsword09.kwebshell.service.notifications.KWebNotifications
 import io.github.kingsword09.kwebshell.service.notifications.bridgeDispatcher as notificationsBridgeDispatcher
 import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebActivationBatch
@@ -213,10 +212,6 @@ public fun main() {
     ) { activation ->
         notificationActivations += activation
         applicationLifecycle.acceptProtocolActivation(activation.toProtocolUri())
-    }
-    val notificationPermission = runBlocking { notifications.requestPermission() }
-    require(notificationPermission.status == KWebNotificationPermissionStatus.GRANTED) {
-        "The hosted notification provider did not grant permission: $notificationPermission"
     }
     val gestures = KWebUserGestureRegistry()
     val engine = KWebDesktop.openEngine(

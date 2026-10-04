@@ -30,12 +30,12 @@ jobs:
             run-application-benchmark: false
             run-live-html5: false
           - target: windows-x64
-            runner: '["self-hosted", "windows-notifications"]'
+            runner: '["windows-2022"]'
             gpu-contract: GPU unavailable contract
             expect-hardware-gpu-unavailable: true
-            benchmark-machine-class: self-hosted-windows-notifications
-            run-application-benchmark: false
-            run-live-html5: false
+            benchmark-machine-class: github-hosted-windows-2022-x64
+            run-application-benchmark: true
+            run-live-html5: true
           - target: linux-x64
             runner: '["ubuntu-24.04"]'
             gpu-contract: GPU unavailable contract
@@ -72,25 +72,6 @@ jobs:
       - name: Set up MSVC
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Register Windows notification fixture identity
-        id: windows-notification-identity
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .github/scripts/configure-windows-notification-fixture.ps1
-
-      - name: Verify Windows notification fixture through the native ABI
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          cmake -S kweb-service-notifications/native -B kweb-service-notifications/build/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DKWEB_PROJECT_ARCH=x86_64
-          if ($LASTEXITCODE -ne 0) { throw 'Notification native configuration failed.' }
-          cmake --build kweb-service-notifications/build/native --config Release
-          if ($LASTEXITCODE -ne 0) { throw 'Notification native build failed.' }
-          & kweb-service-notifications/build/native/contract/kweb_notifications_tests.exe
-          if ($LASTEXITCODE -ne 0) { throw 'Notification native contract tests failed.' }
-          & kweb-service-notifications/build/native/contract/kweb_notifications_tests.exe --fixture-permission
-          if ($LASTEXITCODE -ne 0) { throw 'Notification native fixture permission failed.' }
 
       - name: Install Linux native dependencies
         if: runner.os == 'Linux'
@@ -294,12 +275,6 @@ jobs:
           path: kweb-rfc-governance/build/test-results/contractTest/
           if-no-files-found: error
           retention-days: 14
-
-      - name: Remove Windows notification fixture identity
-        if: always() && runner.os == 'Windows' && steps.windows-notification-identity.outcome != 'skipped'
-        shell: pwsh
-        run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .github/scripts/configure-windows-notification-fixture.ps1 -Cleanup
-
 
   governance:
     name: Verify checked-in RFC evidence

@@ -2,9 +2,12 @@ package io.github.kingsword09.kwebshell.runtime
 
 import io.github.kingsword09.kwebshell.core.KWebTarget
 import org.apache.commons.compress.archivers.zip.ZipFile
+import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
+import javax.imageio.ImageIO
 import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -96,6 +99,7 @@ class KWebApplicationPackageTest {
                                 assertEquals(true, "Assets/Square44x44Logo.png" in names)
                                 assertEquals(true, "Assets/Square150x150Logo.png" in names)
                                 assertEquals(true, "Assets/Square310x310Logo.png" in names)
+                                assertEquals(true, "Assets/Wide310x150Logo.png" in names)
                                 assertEquals(true, "Assets/StoreLogo.png" in names)
                                 val manifestBytes = zip.getInputStream(zip.getEntry("AppxManifest.xml")).use { it.readBytes() }
                                 val parser = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
@@ -118,6 +122,14 @@ class KWebApplicationPackageTest {
                                     "http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities",
                                     "Capability",
                                 ).length)
+                                val tiles = xml.getElementsByTagNameNS(
+                                    "http://schemas.microsoft.com/appx/manifest/uap/windows10",
+                                    "DefaultTile",
+                                )
+                                assertEquals(1, tiles.length)
+                                val tile = tiles.item(0).attributes
+                                assertEquals("Assets/Square310x310Logo.png", tile.getNamedItem("Square310x310Logo").nodeValue)
+                                assertEquals("Assets/Wide310x150Logo.png", tile.getNamedItem("Wide310x150Logo").nodeValue)
                                 assertEquals(
                                     sourceManifest.protocols.size + sourceManifest.fileTypes.size,
                                     xml.getElementsByTagNameNS(
@@ -135,6 +147,7 @@ class KWebApplicationPackageTest {
                                         "windows-msix-square44" -> "Assets/Square44x44Logo.png"
                                         "windows-msix-square150" -> "Assets/Square150x150Logo.png"
                                         "windows-msix-square310" -> "Assets/Square310x310Logo.png"
+                                        "windows-msix-wide310" -> "Assets/Wide310x150Logo.png"
                                         "windows-msix-store" -> "Assets/StoreLogo.png"
                                         else -> error("Unexpected Windows icon kind: ${icon.kind}")
                                     }
@@ -202,6 +215,56 @@ class KWebApplicationPackageTest {
                 windowsMsixMetadataEntries(manifest, KWebTarget.parse("windows-x64"), temporaryAssets)
             }
             assertEquals("application.package.windows-icon-invalid", malformed.code)
+        } finally {
+            deleteTree(temporaryAssets)
+        }
+    }
+
+    @Test
+    fun windowsWideTileRejectsMissingMalformedAndWrongSizeAssets() {
+        val root = repositoryRoot().resolve("runtime")
+        val manifest = KWebApplicationManifestLoader.load(root.resolve("application-manifest.json"))
+        val target = KWebTarget.parse("windows-x64")
+        val icon = manifest.icons.single { it.kind == "windows-msix-wide310" }
+        val temporaryAssets = Files.createTempDirectory("kweb-windows-wide-tile-")
+        try {
+            manifest.icons.forEach { declared ->
+                val destination = temporaryAssets.resolve(declared.path)
+                Files.createDirectories(destination.parent)
+                Files.copy(root.resolve(declared.path), destination)
+            }
+            val original = Files.readAllBytes(root.resolve(icon.path))
+            assertContentEquals(
+                original,
+                windowsMsixMetadataEntries(manifest, target, temporaryAssets).getValue("Assets/Wide310x150Logo.png"),
+            )
+            val dimensions = listOf(310 to 310, 150 to 310, 309 to 150, 310 to 149)
+            val invalidPngs = dimensions.map { (width, height) ->
+                ByteArrayOutputStream().use { output ->
+                    assertTrue(ImageIO.write(BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB), "png", output))
+                    output.toByteArray()
+                }
+            } + listOf(original.copyOf(24), ByteArray(32))
+            invalidPngs.forEach { bytes ->
+                Files.write(temporaryAssets.resolve(icon.path), bytes)
+                val error = assertFailsWith<KWebApplicationPackageException> {
+                    windowsMsixMetadataEntries(manifest, target, temporaryAssets)
+                }
+                assertEquals("application.package.windows-icon-invalid", error.code)
+            }
+            val missingDeclaration = assertFailsWith<KWebApplicationPackageException> {
+                windowsMsixMetadataEntries(
+                    manifest.copy(icons = manifest.icons.filterNot { it.kind == icon.kind }),
+                    target,
+                    temporaryAssets,
+                )
+            }
+            assertEquals("application.package.windows-icon-missing", missingDeclaration.code)
+            Files.delete(temporaryAssets.resolve(icon.path))
+            val missingFile = assertFailsWith<KWebApplicationPackageException> {
+                windowsMsixMetadataEntries(manifest, target, temporaryAssets)
+            }
+            assertEquals("application.package.asset-file-invalid", missingFile.code)
         } finally {
             deleteTree(temporaryAssets)
         }

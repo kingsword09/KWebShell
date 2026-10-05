@@ -68,6 +68,22 @@ Every hosted target must have exactly one target entry. The builder rejects a
 target omission, duplicate declaration, unknown capability/provider resource,
 path traversal, mutable absolute path, or unsupported package format.
 
+Windows targets require one PNG for each icon kind below. Both dimensions are
+validated before staging, and the package records bind the exact asset bytes.
+
+| Icon kind | Package path | Width by height |
+| --- | --- | --- |
+| `windows-msix-square44` | `Assets/Square44x44Logo.png` | 44 by 44 |
+| `windows-msix-square150` | `Assets/Square150x150Logo.png` | 150 by 150 |
+| `windows-msix-square310` | `Assets/Square310x310Logo.png` | 310 by 310 |
+| `windows-msix-wide310` | `Assets/Wide310x150Logo.png` | 310 by 150 |
+| `windows-msix-store` | `Assets/StoreLogo.png` | 50 by 50 |
+
+AppX `DefaultTile` must declare `Wide310x150Logo` whenever it declares
+`Square310x310Logo`. A missing icon kind fails with
+`application.manifest.windows-icon-missing`; invalid PNG bytes or dimensions
+fail with `application.package.windows-icon-invalid`.
+
 `isPackaged` is a generated build fact. The package contains
 `application/packaged-state.json` with the manifest digest, target, product
 version, and `isPackaged: true`; no runtime environment variable can change it.
@@ -108,7 +124,7 @@ fallback:
 | Target | Format | Required platform facts |
 | --- | --- | --- |
 | macOS arm64 | `.app` inside a signed ZIP | bundle identifier, URL/file document declarations, `codesign --verify`, and notarization ticket/staple result when distribution mode is selected |
-| Windows x64 | MSIX | Package identity bound to a temporary signing certificate whose subject exactly matches Publisher; jpackage JVM/Compose `KWebShell.exe`; pinned Temurin JRE; separate `KWebShellCef.exe`; verified CEF/native payload; protocol/file declarations; square/store assets; SDK-generated block map and verified package signature; clean hosted install, start/close, and uninstall |
+| Windows x64 | MSIX | Package identity bound to a temporary signing certificate whose subject exactly matches Publisher; jpackage JVM/Compose `KWebShell.exe`; pinned Temurin JRE; separate `KWebShellCef.exe`; verified CEF/native payload; protocol/file declarations; square/wide/store assets; SDK-generated block map and verified package signature; clean hosted install, start/close, and uninstall |
 | Linux x64 | Debian package | desktop entry, MIME XML, AppStream metainfo, package architecture, and detached release signature |
 
 The provider fails before publication when the declared signer/tool output is
@@ -158,7 +174,7 @@ the OS registration mechanism.
 | A10 / migration | Electron builder/forge metadata maps only to declared fields and unsupported hooks block generation. | Valid mapping; unsupported hook; invalid target; non-canonical metadata. | [`KWebElectronPackagingContractTest`](../../kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronPackagingContractTest.kt) in `:kweb-electron-migration:jvmTest`, all hosted targets. | Closed `KWebElectronPackagingMapper` contract. | New hosted records bind the amended contract digest. | `NOT_RUN` for amended hosted revision; historical tests passed and current hosted rerun is required. |
 | A11 / universal completion | Tests, packaging, docs, matrix, hosted evidence and reviewed revision are complete. | Missing artifact, stale contract digest, skipped target or changed contract blocks acceptance. | `:kweb-rfc-governance:check`, `git diff --check`, full PR diff review, hosted evidence aggregation. | [`DESIGN_PLAN.md`](../../DESIGN_PLAN.md), [`docs/application-package-format.md`](../application-package-format.md), matrix, [`contracts.json`](evidence/contracts.json), [`evidence/manifest.json`](evidence/manifest.json). | Final three-target RFC 0030 READY records and Windows package report bind the reviewed source revision. | `NOT_RUN`; a hosted run and final acceptance review remain required. |
 | A12 / notification activation | Windows App SDK notification activator registration and payload decoding are not required by this package slice. | Generated manifest has no toast activator CLSID, COM ExeServer or App SDK dependency; RFC 0016 must verify those when adding the provider. | Generated manifest contract test; downstream RFC 0016 hosted Windows evidence. | Root AppX manifest emitter. | Follow-up assigned to RFC 0016/0006. | `NOT_APPLICABLE`: notification activation is a separate runtime objective and is intentionally excluded from this package amendment. |
-| A13 / Windows identity and visual assets | Package identity, application Id, publisher subject and actual square/store bytes agree in the installed MSIX. | Missing/wrong-dimension or malformed PNG; publisher mismatch; changed identity; observed family/AUMID after install. | `windowsMsixMetadataRejectsArm64AndMalformedAssets`; hosted MakeAppx validation/install. | Appx manifest, checked-in PNGs, `ImageIO` PNG decode/dimension checks and hosted identity verifier. | Retain asset SHA-256 values, certificate subject, installed IDs and MSIX SHA-256. | `NOT_RUN` hosted; asset-negative and manifest tests pass locally. |
+| A13 / Windows identity and visual assets | Package identity, application Id, publisher subject and actual square/wide/store bytes agree in the installed MSIX. | Missing/wrong-dimension, square/transposed wide tile, truncated or malformed PNG; publisher mismatch; changed identity; observed family/AUMID after install. | `windowsMsixMetadataRejectsArm64AndMalformedAssets`; `windowsWideTileRejectsMissingMalformedAndWrongSizeAssets`; `windowsTargetWithoutMsixIconIsRejected`; hosted MakeAppx validation/install. | Appx `DefaultTile` pairs large square/wide declarations; checked-in PNGs, `ImageIO` PNG decode/dimension checks and hosted identity verifier. | Retain all five asset SHA-256 values, certificate subject, installed IDs and MSIX SHA-256. | `NOT_RUN` for the repaired revision; Windows SDK and negative tests remain required. |
 | A14 / Windows App SDK dependency | This package amendment declares no Windows App SDK framework dependency and adds no App SDK restore prerequisite. | Inspect generated AppX dependency graph; clean hosted install succeeds without separately installed App SDK packages. | AppX generated-manifest assertions and clean Windows install on GitHub-hosted `windows-2022`. | AppX dependency emitter; package test rejects SDK/notification dependency tokens; Windows hosted install script checks dependency inventory. | Dependency inventory retained in the package report. | `PASS` locally for no SDK/notification dependency; hosted install confirmation remains `NOT_RUN`. |
 | A15 / normal Windows entry point | A clean MSIX install starts jpackage JVM/Compose `KWebShell.exe` with `app/` classpath and `runtime/` Temurin JRE, plus `cef/KWebShellCef.exe` and native CEF payload; normal close ends both processes. | Visible application window and CEF child; missing runtime files fail before packaging; close and verify both process exits. | `runWindowsApplicationImageSmokeTest` plus actual installed MSIX launch/close on GitHub-hosted Windows x64. | Launcher layout, app-image verifier/smoke task and Windows SDK package script. | Retain launcher PID/window, CEF observation, exit and runtime paths in report. | `NOT_RUN` on Windows host. |
 | A16 / Windows ARM64 package | Windows ARM64 package requests fail explicitly; no x64 payload is substituted. | Request `windows-arm64`; assert target-specific error before emitting metadata. | `windowsMsixMetadataRejectsArm64AndMalformedAssets`; Windows target guard. | `windowsMsixMetadataEntries` target check; manifest continues to enumerate KMP targets without advertising ARM64 package delivery. | Test result and target error code. | `PASS` locally: `application.package.windows-target-unsupported`; hosted Windows runtime not required for this negative path. |
@@ -305,6 +321,29 @@ the OS registration mechanism.
   acceptance under this revised contract. Windows hosted acceptance and
   evidence remain blocking before promoting the amended capability, marking
   RFC 0030 complete for this amendment, or merging.
+
+### Windows tile repair readiness review
+
+- Reviewed revision: rebased `37ae295` and the recovered asset changes,
+  2026-10-05, after PR 68 merged at `0f9af2b`.
+- Review pass: Codex, separate pass by the same implementation contributor.
+- Findings: hosted run `37133703051` rejects the missing wide tile with
+  MakeAppx `80080204`. The amended icon table and A13 require the real 310 by
+  150 PNG, canonical manifest ordering, paired AppX declarations, invalid-asset
+  tests and retained asset digest. Windows jpackage task configuration is
+  explicitly excluded from caching for the full Windows verification command.
+- Decision: `READY` for the P69.1-P69.3 repairs in `DESIGN_PLAN.md`; acceptance
+  remains `NOT_RUN` until the repaired source passes its required real targets.
+- Follow-up review: P69.4 in the same plan covers the remaining SDK command
+  and cleanup defects found in the complete script diff. The documented
+  [MakeAppx commands](https://learn.microsoft.com/en-us/windows/msix/package/create-app-package-with-makeappx-tool)
+  perform semantic validation during `pack` without `/nv`; there is no
+  `validate` subcommand. The documented
+  [Add-AppxPackage syntax](https://learn.microsoft.com/en-us/powershell/module/appx/add-appxpackage?view=windowsserver2022-ps)
+  has no `-PassThru` switch. Preflight failures must preserve existing data and
+  packages, and only attempted installation may authorize package cleanup.
+  Decision: `READY` for these A4/A6/A7 corrections, with actual PowerShell
+  rejection tests and Windows SDK execution required for acceptance.
 
 ## Acceptance review
 

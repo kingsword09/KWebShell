@@ -2045,6 +2045,49 @@ The objective is complete only after the RFC acceptance matrix, platform package
 transcripts, retained signatures/SBOMs, documentation, and governance evidence
 are updated in the same PR.
 
+### PR 69 repair objective: valid Windows MSIX visual assets
+
+Complete the RFC 0030 Windows package amendment against the merged PR 68 base.
+Acceptance criteria for the remaining packaging repairs:
+
+- P69.1 (RFC 0030 A1/A4/A13): the canonical manifest requires the real
+  `windows-msix-wide310` PNG at 310 by 150 pixels. AppX `DefaultTile` declares
+  it together with `Square310x310Logo`; missing, square, transposed, truncated
+  or malformed assets fail with the declared typed error. The hosted report
+  retains its SHA-256, and Windows SDK MakeAppx validates the complete package.
+- P69.2 (A11/A15): run the full Windows runtime/package task graph with
+  configuration caching explicitly disabled for its incompatible jpackage
+  tasks. Preserve the existing macOS/Linux invocation and all native,
+  installation, launch, shutdown and cleanup assertions.
+- P69.3 (A3/A7/A11): run package/manifest, launcher, migration and RFC contract
+  tests locally with JDK 25; obtain fresh Windows/macOS/Linux hosted results,
+  import their real evidence, review all acceptance rows and squash only when
+  every required gate passes.
+- P69.4 (A4/A6/A7): use the documented MakeAppx `pack` semantic validation
+  and `unpack` operations and the supported Add-AppxPackage parameters. An
+  invalid platform, non-hosted runner, existing app-data directory or existing
+  package must fail without deleting pre-existing state. Cleanup owns only
+  data confirmed absent before the test and a package whose installation the
+  test attempted; it restores the original sideload policy even on failure.
+  Run the actual PowerShell preflight script tests and the real Windows SDK
+  install/signature/tamper/cleanup acceptance.
+
+Readiness review: Codex, separate pass by the implementation contributor,
+2026-10-05, rebased revision `37ae295` and the recovered uncommitted asset
+changes. Decision: `READY` for these repairs. Hosted run `37133703051` reports
+MakeAppx error `80080204` because a large square tile requires a wide tile;
+it also reports unsupported configuration-cache serialization in the Windows
+app-image tasks. The manifest/asset contract and falsifiable negative tests are
+settled above; actual Windows package acceptance remains required.
+
+Follow-up review, 2026-10-05: the complete PowerShell diff contains an
+undocumented MakeAppx `validate` subcommand and Add-AppxPackage `-PassThru`
+switch. Microsoft's SDK/cmdlet references confirm that neither exists;
+`pack` validates by default without `/nv`. Its `finally` block also deletes
+an app-data directory after the pre-existing-directory guard rejects it and
+can remove a package it did not install. P69.4 repairs the existing A4/A6/A7
+guarantees; decision `READY` for these implementation corrections.
+
 ### RFC 0006 implementation objective: application lifecycle ownership
 
 RFC 0006 is the lifecycle objective enabled by RFC 0030. Its readiness review

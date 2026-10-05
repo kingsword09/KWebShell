@@ -24,6 +24,10 @@
     {
       "path": "assets/windows/StoreLogo.png",
       "kind": "windows-msix-store"
+    },
+    {
+      "path": "assets/windows/Wide310x150Logo.png",
+      "kind": "windows-msix-wide310"
     }
   ],
   "protocols": [

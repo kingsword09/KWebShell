@@ -76,3 +76,11 @@ the MSIX application entry point. Temurin module license material under
 values, and confirms the installed package preserves those bytes. Missing
 launcher classes, JRE files or license material, CEF subprocess files, or the
 exact launcher/subprocess identity fail packaging.
+
+Windows visual assets include 44 by 44, 150 by 150 and 310 by 310 square PNGs,
+the 310 by 150 wide PNG, and the 50 by 50 store PNG. All five kinds are required
+in the canonical application manifest. The wide tile is declared alongside the
+large square tile in AppX `DefaultTile`; dimensions and PNG decoding are checked
+before SDK packaging, and the hosted report retains each asset's SHA-256.
+The Windows `runtimeCheck` invocation uses `--no-configuration-cache` because
+its jpackage app-image tasks capture state that Gradle cannot serialize.

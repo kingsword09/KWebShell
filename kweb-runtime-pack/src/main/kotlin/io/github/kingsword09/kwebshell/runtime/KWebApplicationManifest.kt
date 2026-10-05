@@ -322,12 +322,13 @@ internal object KWebApplicationManifestContract {
                                 "windows-msix-square44",
                                 "windows-msix-square150",
                                 "windows-msix-square310",
+                                "windows-msix-wide310",
                                 "windows-msix-store",
                             ),
                         ),
                         code = "application.manifest.windows-icon-missing",
                         details = mapOf("target" to targetId),
-                        message = "A Windows target requires the complete square and store logo asset set.",
+                        message = "A Windows target requires the complete square, wide and store logo asset set.",
                     )
                     val subprocess = targetSpec.browserSubprocessExecutable
                     applicationPackageRequire(

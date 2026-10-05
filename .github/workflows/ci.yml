@@ -72,6 +72,13 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: Verify Windows MSIX preflight isolation
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .github/scripts/tests/test_windows_msix_preflight.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows MSIX preflight isolation failed.' }
+
       - name: Start macOS notification fixture agent
         if: runner.os == 'macOS'
         shell: bash
@@ -216,6 +223,9 @@ jobs:
             -PkwebNotificationActionMode=contract
             "-PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}"
           )
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            arguments+=(--no-configuration-cache)
+          fi
           if [[ "${{ runner.os }}" == "Linux" ]]; then
             XDG_CURRENT_DESKTOP=GNOME xvfb-run -a dbus-run-session -- \
               bash .github/scripts/run-linux-ui-verification.sh ./gradlew "${arguments[@]}"

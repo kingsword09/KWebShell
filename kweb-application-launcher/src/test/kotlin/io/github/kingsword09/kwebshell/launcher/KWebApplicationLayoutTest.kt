@@ -9,7 +9,7 @@ import kotlin.test.assertFailsWith
 class KWebApplicationLayoutTest {
     @Test
     fun windowsLayoutIsExplicit() {
-        val root = Path.of("/opt/kwebshell/KWebShell")
+        val root = Path.of("/opt/kwebshell/KWebShell").toAbsolutePath()
         val layout = KWebApplicationLayout.fromPackageRoot(root, KWebTarget.parse("windows-x64"))
         assertEquals(root.resolve("app"), layout.applicationDirectory)
         assertEquals(root.resolve("runtime"), layout.jreDirectory)
@@ -21,7 +21,7 @@ class KWebApplicationLayoutTest {
 
     @Test
     fun jarInsideAppDirectoryResolvesPackageRoot() {
-        val root = Path.of("/opt/kwebshell/KWebShell")
+        val root = Path.of("/opt/kwebshell/KWebShell").toAbsolutePath()
         val layout = KWebApplicationLayout.discover(
             root.resolve("app/kweb-application-launcher.jar").toUri(),
             KWebTarget.parse("windows-x64"),
@@ -42,7 +42,7 @@ class KWebApplicationLayoutTest {
 
     @Test
     fun macosJpackageLauncherUsesContentsMacOsLocation() {
-        val root = Path.of("/Applications/KWebShell.app/Contents")
+        val root = Path.of("/Applications/KWebShell.app/Contents").toAbsolutePath()
         val layout = KWebApplicationLayout.fromPackageRoot(root, KWebTarget.parse("macos-arm64"))
         assertEquals(root.resolve("MacOS/KWebShell"), layout.launcherExecutable)
     }

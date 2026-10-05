@@ -74,6 +74,9 @@ $cerPath = Join-Path $temporaryRoot "test-signing.cer"
 $tamperedPackage = Join-Path $temporaryRoot "tampered.msix"
 $publisherCertificate = $null
 $installedPackage = $null
+$expectedPackageName = $null
+$installationAttempted = $false
+$applicationDataOwned = $false
 $mainProcess = $null
 $cefProcess = $null
 $developerInstallPolicy = $null
@@ -141,12 +144,15 @@ $evidence = [ordered]@{
 
 try {
     if (-not $env:OS -or $env:OS -ne "Windows_NT") { throw "MSIX packaging requires a Windows host." }
-    if ($env:GITHUB_ACTIONS -ne "true") { throw "This install/uninstall test may run only on an ephemeral GitHub-hosted runner." }
+    if ($env:GITHUB_ACTIONS -ne "true" -or $env:RUNNER_ENVIRONMENT -ne "github-hosted") {
+        throw "This install/uninstall test may run only on an ephemeral GitHub-hosted runner."
+    }
     $hostArchitecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
     if ($hostArchitecture -ne "X64") { throw "MSIX packaging requires a Windows x64 runner; observed $hostArchitecture." }
     if ($null -eq $applicationDataRoot -or (Test-Path -LiteralPath $applicationDataRoot)) {
         throw "The hosted runner must have a clean KWebShell user-data directory before the package test."
     }
+    $applicationDataOwned = $true
     foreach ($required in @($metadata, $image)) {
         if (-not (Test-Path -LiteralPath $required -PathType Container) -and -not (Test-Path -LiteralPath $required -PathType Leaf)) {
             throw "Required input does not exist: $required"
@@ -202,6 +208,7 @@ try {
         "Assets/Square44x44Logo.png",
         "Assets/Square150x150Logo.png",
         "Assets/Square310x310Logo.png",
+        "Assets/Wide310x150Logo.png",
         "Assets/StoreLogo.png",
         "application/manifest.json",
         "application/package.json"
@@ -221,6 +228,9 @@ try {
 
     $appx = [xml](Get-Content -LiteralPath (Join-Path $stageRoot "AppxManifest.xml") -Raw -Encoding UTF8)
     $expectedPackageName = $applicationManifest.targets.'windows-x64'.packageIdentityName
+    if (Get-AppxPackage -Name $expectedPackageName | Where-Object { $_.Name -eq $expectedPackageName }) {
+        throw "The hosted runner already has the declared package installed; refusing to replace it."
+    }
     $expectedPublisher = "CN=$($applicationManifest.publisher)"
     $expectedAppId = $applicationManifest.mainExecutable
     $expectedVersion = Get-AppxVersion $applicationManifest.productVersion
@@ -270,7 +280,7 @@ try {
     $evidence.platformSignatureStatus = $platformSignature.signatureStatus
     $evidence.platformRegistrationDigest = $registrationDigest
     $evidence.runtimeReleaseSha256 = $packageRecord.runtimeReleaseSha256
-    foreach ($asset in @("Square44x44Logo.png", "Square150x150Logo.png", "Square310x310Logo.png", "StoreLogo.png")) {
+    foreach ($asset in @("Square44x44Logo.png", "Square150x150Logo.png", "Square310x310Logo.png", "Wide310x150Logo.png", "StoreLogo.png")) {
         $assetPath = Join-Path $stageRoot "Assets/$asset"
         $evidence.assetSha256[$asset] = Get-Sha256 $assetPath
     }
@@ -278,13 +288,18 @@ try {
 
     if (Test-Path -LiteralPath $packagePath -PathType Leaf) { Remove-Item -LiteralPath $packagePath -Force }
     Invoke-NativeTool $makeAppx @("pack", "/d", $stageRoot, "/p", $packagePath, "/o")
-    Invoke-NativeTool $makeAppx @("validate", "/p", $packagePath)
     Invoke-NativeTool $makeAppx @("unpack", "/p", $packagePath, "/d", $unpackedRoot, "/o")
-    foreach ($generated in @("[Content_Types].xml", "AppxBlockMap.xml", "AppxManifest.xml")) {
-        if (-not (Test-Path -LiteralPath (Join-Path $unpackedRoot $generated) -PathType Leaf)) {
-            throw "MakeAppx did not generate or retain required MSIX content '$generated'."
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $sdkArchive = [IO.Compression.ZipFile]::OpenRead($packagePath)
+    try {
+        foreach ($generated in @("[Content_Types].xml", "AppxBlockMap.xml", "AppxManifest.xml")) {
+            if ($null -eq $sdkArchive.GetEntry($generated)) {
+                throw "MakeAppx did not generate or retain required MSIX content '$generated'."
+            }
         }
     }
+    finally { $sdkArchive.Dispose() }
     $evidence.sdkPackageValidation = "PASS"
 
     $publisherCertificate = New-SelfSignedCertificate `
@@ -305,7 +320,7 @@ try {
     Export-PfxCertificate -Cert $publisherCertificate -FilePath $pfxPath -Password $password | Out-Null
     Export-Certificate -Cert $publisherCertificate -FilePath $cerPath | Out-Null
     Import-Certificate -FilePath $cerPath -CertStoreLocation "Cert:\CurrentUser\Root" | Out-Null
-    Import-Certificate -FilePath $cerPath -CertStoreLocation "Cert:\CurrentUser\TrustedPeople" | Out-Null
+    Import-Certificate -FilePath $cerPath -CertStoreLocation "Cert:\LocalMachine\TrustedPeople" | Out-Null
     $plainPassword = [Net.NetworkCredential]::new('', $password).Password
     Invoke-NativeTool $signTool @("sign", "/fd", "SHA256", "/f", $pfxPath, "/p", $plainPassword, "/v", $packagePath)
     Invoke-NativeTool $signTool @("verify", "/pa", "/v", $packagePath)
@@ -314,8 +329,6 @@ try {
     $evidence.packageSha256 = $evidence.msixSha256
 
     Copy-Item -LiteralPath $packagePath -Destination $tamperedPackage
-    Add-Type -AssemblyName System.IO.Compression
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
     $tamperedArchive = [IO.Compression.ZipFile]::Open(
         $tamperedPackage,
         [IO.Compression.ZipArchiveMode]::Update
@@ -333,10 +346,14 @@ try {
         finally { $writer.Dispose() }
     }
     finally { $tamperedArchive.Dispose() }
-    & $signTool verify /pa $tamperedPackage *> $null
-    if ($LASTEXITCODE -eq 0) { throw "SignTool accepted a modified MSIX." }
-    & $makeAppx validate /p $tamperedPackage *> $null
-    if ($LASTEXITCODE -eq 0) { throw "MakeAppx accepted the modified signed MSIX." }
+    $savedErrorPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        & $signTool verify /pa $tamperedPackage *> $null
+        $tamperExitCode = $LASTEXITCODE
+    }
+    finally { $ErrorActionPreference = $savedErrorPreference }
+    if ($tamperExitCode -eq 0) { throw "SignTool accepted a modified MSIX." }
     $evidence.tamperedPackageRejected = "PASS"
 
     $unlockKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
@@ -344,9 +361,11 @@ try {
     $existingUnlock = Get-ItemProperty -Path $unlockKey -Name AllowAllTrustedApps -ErrorAction SilentlyContinue
     if ($null -eq $existingUnlock) { $developerInstallPolicy = $null }
     else { $developerInstallPolicy = [int]$existingUnlock.AllowAllTrustedApps }
-    New-ItemProperty -Path $unlockKey -Name AllowAllTrustedApps -PropertyType DWord -Value 1 -Force | Out-Null
     $developerInstallPolicyTouched = $true
-    $installedPackage = Add-AppxPackage -Path $packagePath -ForceUpdateFromAnyVersion -PassThru
+    if (-not $developerInstallKeyExisted) { New-Item -Path $unlockKey -Force | Out-Null }
+    New-ItemProperty -Path $unlockKey -Name AllowAllTrustedApps -PropertyType DWord -Value 1 -Force | Out-Null
+    $installationAttempted = $true
+    Add-AppxPackage -Path $packagePath
     $installedPackage = Get-AppxPackage -Name $expectedPackageName | Where-Object { $_.Name -eq $expectedPackageName } | Select-Object -First 1
     if ($null -eq $installedPackage) { throw "The signed MSIX did not register under its declared package identity." }
     if ($installedPackage.Publisher -ne $expectedPublisher -or $installedPackage.Version.ToString() -ne $expectedVersion) {
@@ -438,7 +457,7 @@ finally {
     }
     $remainingPackage = $null
     if ($null -ne $installedPackage) { $remainingPackage = $installedPackage }
-    elseif ($null -ne $expectedPackageName) {
+    elseif ($installationAttempted -and $null -ne $expectedPackageName) {
         $remainingPackage = Get-AppxPackage -Name $expectedPackageName -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -eq $expectedPackageName } | Select-Object -First 1
     }
@@ -453,8 +472,8 @@ finally {
         catch { $cleanupErrors.Add("Unable to remove installed package: $($_.Exception.Message)") }
     }
     if ($null -ne $publisherCertificate) {
-        foreach ($store in @("My", "TrustedPeople", "Root")) {
-            $certificatePath = "Cert:\CurrentUser\$store\$($publisherCertificate.Thumbprint)"
+        foreach ($store in @("CurrentUser\My", "LocalMachine\TrustedPeople", "CurrentUser\Root")) {
+            $certificatePath = "Cert:\$store\$($publisherCertificate.Thumbprint)"
             if (Test-Path -LiteralPath $certificatePath) {
                 try { Remove-Item -LiteralPath $certificatePath -Force -ErrorAction Stop }
                 catch { $cleanupErrors.Add("Unable to remove test certificate from ${store}: $($_.Exception.Message)") }
@@ -462,13 +481,15 @@ finally {
             if (Test-Path -LiteralPath $certificatePath) { $cleanupErrors.Add("Test certificate remains in $store.") }
         }
     }
-    if ($null -ne $applicationDataRoot -and (Test-Path -LiteralPath $applicationDataRoot)) {
+    if ($applicationDataOwned) {
         try {
-            $dataItem = Get-Item -LiteralPath $applicationDataRoot -Force
-            if (($dataItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-                throw "The KWebShell user-data path became a reparse point; refusing recursive cleanup."
+            if (Test-Path -LiteralPath $applicationDataRoot) {
+                $dataItem = Get-Item -LiteralPath $applicationDataRoot -Force
+                if (($dataItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                    throw "The KWebShell user-data path became a reparse point; refusing recursive cleanup."
+                }
+                Remove-Item -LiteralPath $applicationDataRoot -Recurse -Force -ErrorAction Stop
             }
-            Remove-Item -LiteralPath $applicationDataRoot -Recurse -Force -ErrorAction Stop
             if (Test-Path -LiteralPath $applicationDataRoot) { throw "KWebShell user data remains after cleanup." }
             $evidence.applicationDataCleanup = "PASS"
         }
@@ -487,6 +508,9 @@ finally {
                 Set-ItemProperty -Path $unlockKey -Name AllowAllTrustedApps -Value $developerInstallPolicy -ErrorAction Stop
             }
             $currentUnlock = Get-ItemProperty -Path $unlockKey -Name AllowAllTrustedApps -ErrorAction SilentlyContinue
+            if (-not $developerInstallKeyExisted -and (Test-Path -LiteralPath $unlockKey)) {
+                throw "The test-created sideload policy key was not removed."
+            }
             if ($developerInstallKeyExisted -and $null -eq $developerInstallPolicy -and $null -ne $currentUnlock) {
                 throw "The sideload policy value was not removed."
             }

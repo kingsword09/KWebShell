@@ -1091,7 +1091,7 @@ private fun windowsAppxManifest(
     appendLine("  <Resources><Resource Language=\"en-us\" /></Resources>")
     appendLine("  <Applications><Application Id=\"${xml(manifest.mainExecutable)}\" Executable=\"${xml(manifest.mainExecutable)}.exe\" EntryPoint=\"Windows.FullTrustApplication\">")
     appendLine("    <uap:VisualElements DisplayName=\"${xml(manifest.displayName)}\" Description=\"${xml(manifest.displayName)}\" BackgroundColor=\"#071A3B\" ForegroundText=\"light\" Square44x44Logo=\"Assets/Square44x44Logo.png\" Square150x150Logo=\"Assets/Square150x150Logo.png\">")
-    appendLine("      <uap:DefaultTile Square310x310Logo=\"Assets/Square310x310Logo.png\" />")
+    appendLine("      <uap:DefaultTile Square310x310Logo=\"Assets/Square310x310Logo.png\" Wide310x150Logo=\"Assets/Wide310x150Logo.png\" />")
     appendLine("    </uap:VisualElements>")
     appendLine("    <Extensions>")
     manifest.protocols.forEach { protocol ->
@@ -1113,10 +1113,11 @@ private fun windowsIconEntries(
 ): Map<String, ByteArray> {
     validateApplicationAssetRoot(applicationAssetRoot)
     val expected = listOf(
-        WindowsIconAsset("windows-msix-square44", "Assets/Square44x44Logo.png", 44),
-        WindowsIconAsset("windows-msix-square150", "Assets/Square150x150Logo.png", 150),
-        WindowsIconAsset("windows-msix-square310", "Assets/Square310x310Logo.png", 310),
-        WindowsIconAsset("windows-msix-store", "Assets/StoreLogo.png", 50),
+        WindowsIconAsset("windows-msix-square44", "Assets/Square44x44Logo.png", 44, 44),
+        WindowsIconAsset("windows-msix-square150", "Assets/Square150x150Logo.png", 150, 150),
+        WindowsIconAsset("windows-msix-square310", "Assets/Square310x310Logo.png", 310, 310),
+        WindowsIconAsset("windows-msix-wide310", "Assets/Wide310x150Logo.png", 310, 150),
+        WindowsIconAsset("windows-msix-store", "Assets/StoreLogo.png", 50, 50),
     )
     return expected.associate { asset ->
         val icon = manifest.icons.singleOrNull { it.kind == asset.kind }
@@ -1159,7 +1160,7 @@ private fun windowsIconEntries(
         }
         applicationPackageRequire(
             bytes.copyOfRange(0, minOf(bytes.size, PNG_SIGNATURE.size)).contentEquals(PNG_SIGNATURE) &&
-                pngSize == (asset.dimension to asset.dimension),
+                pngSize == (asset.width to asset.height),
             code = "application.package.windows-icon-invalid",
             details = mapOf("kind" to asset.kind, "path" to icon.path),
             message = "A Windows package icon must have the PNG signature and its declared fixed dimensions.",
@@ -1175,7 +1176,7 @@ private fun windowsIconEntries(
             )
         }
         applicationPackageRequire(
-            image != null && image.width == asset.dimension && image.height == asset.dimension,
+            image != null && image.width == asset.width && image.height == asset.height,
             code = "application.package.windows-icon-invalid",
             details = mapOf("kind" to asset.kind, "path" to icon.path),
             message = "A Windows package icon must be a PNG with the dimensions required by its manifest kind.",
@@ -1195,7 +1196,8 @@ private fun ByteArray.readPngDimension(offset: Int): Int =
 private data class WindowsIconAsset(
     val kind: String,
     val packagePath: String,
-    val dimension: Int,
+    val width: Int,
+    val height: Int,
 )
 
 private fun linuxDesktopEntry(

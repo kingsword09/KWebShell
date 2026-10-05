@@ -29,9 +29,12 @@ class KWebApplicationManifestTest {
     @Test
     fun windowsTargetWithoutMsixIconIsRejected() {
         val source = KWebApplicationManifestLoader.load(repositoryRoot().resolve("runtime/application-manifest.json"))
-        val invalid = source.copy(icons = source.icons.filterNot { it.kind == "windows-msix-square44" })
-        assertFailsWith<KWebApplicationPackageException> {
-            KWebApplicationManifestContract.validate(invalid)
+        source.icons.forEach { requiredIcon ->
+            val invalid = source.copy(icons = source.icons.filterNot { it.kind == requiredIcon.kind })
+            val error = assertFailsWith<KWebApplicationPackageException>(requiredIcon.kind) {
+                KWebApplicationManifestContract.validate(invalid)
+            }
+            assertEquals("application.manifest.windows-icon-missing", error.code, requiredIcon.kind)
         }
     }
 

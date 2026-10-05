@@ -115,7 +115,7 @@ private fun verifyWindowsFailedStartup(packageRoot: java.nio.file.Path, reports:
     val process = ProcessBuilder(
         packageRoot.resolve("runtime/bin/java.exe").toString(),
         "--enable-native-access=ALL-UNNAMED",
-        "-cp", packageRoot.resolve("app/*").toString(),
+        "-cp", packageRoot.resolve("app").toString() + File.separator + "*",
         "io.github.kingsword09.kwebshell.launcher.KWebApplicationMainKt",
     ).directory(packageRoot.toFile())
         .redirectOutput(reports.resolve("failed-start-stdout.log"))

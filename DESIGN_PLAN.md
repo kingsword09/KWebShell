@@ -2117,6 +2117,12 @@ also ignored, and absent `LOCALAPPDATA` selects another profile location.
 P69.5 preserves the accepted ownership and explicit-profile guarantees;
 decision `READY` for repair, with real Windows failed-start evidence required.
 
+The next hosted run `37301657019`, PR head `60c84be` and tested merge revision
+`0247db9d8ad9c0b74061938d1e0991ca3c4782d7`, passed macOS/Linux but rejected the
+fixture's `Path.resolve("app/*")` before launching its JVM. Build the classpath
+wildcard as text after resolving `app`, because Windows Path rejects `*`.
+The corrected fixture still requires real failed-start process drainage.
+
 Evidence retention review at `60c84be`, 2026-10-05: the recorder copies retained
 artifacts into Git, while GitHub rejects files above 100 MiB. The local real
 application package is already 145,522,750 bytes, and the Windows package also

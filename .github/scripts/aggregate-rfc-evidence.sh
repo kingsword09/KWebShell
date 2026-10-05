@@ -10,21 +10,33 @@ cd "$(dirname "$0")/../.."
 
 downloaded="build/rfc-evidence/downloaded"
 input="docs/rfcs/evidence/manifest.json"
-catalog="build/rfc-evidence/catalog"
-mkdir -p "$catalog"
+catalog="docs/rfcs"
 
-cp docs/rfcs/[0-9][0-9][0-9][0-9]-*.md "$catalog/"
-# The recorder refuses a non-Implemented catalog. Normalize a temporary copy
-# for recording while keeping the repository bytes unchanged, so contract
-# digests match the checkout used by the later verification job.
-for rfc in 0001 0002 0003 0004 0006 0007 0008 0009 0011 0012 0013 0014 0015 0016 0030; do
-  file=$(ls docs/rfcs/${rfc}-*.md)
-  sed 's/^- Status: .*$/- Status: Implemented/' "$file" > "$catalog/$(basename "$file")"
+# RFC 0016 remains Accepted. Its reports are mandatory diagnostic artifacts,
+# not Implemented support records. Validate every target before updating the
+# manifest; retain the reports unchanged in the electron-migration artifacts.
+for target in macos-arm64 windows-x64 linux-x64; do
+  file=$(find "$downloaded" -type f -name migration-notifications-evidence.json -path "*electron-migration-${target}-*" | head -1)
+  if [ -z "$file" ] || [ ! -f "$file" ]; then
+    echo "Missing notifications evidence file for $target" >&2
+    exit 1
+  fi
+  if ! jq -e --arg target "$target" '
+    if $target == "linux-x64" then
+      .actionVerificationMode == "os-ui" and
+      .actionActivationObserved == true and .actionActivationCount == 1
+    else
+      .actionVerificationMode == "contract" and
+      .actionActivationObserved == false and .actionActivationCount == 0
+    end
+  ' "$file" > /dev/null 2>&1; then
+    echo "Invalid notification action evidence for $target: Linux requires one OS action; Windows/macOS require contract mode with zero activations." >&2
+    exit 1
+  fi
 done
 
 record() {
   local target="$1" rfc="$2" provider="$3" artifact="$4" file="$5" input="$6" output="$7" extra_name="${8:-}" extra_file="${9:-}"
-  local action_mode action_observed action_count
   if [ -z "$file" ] || [ ! -f "$file" ]; then
     echo "Missing $artifact evidence file for $target" >&2
     exit 1
@@ -76,21 +88,6 @@ record() {
   if [ "$rfc" = "0015" ]; then
     arguments="$arguments --service shell --matrix-row shell --from-compatibility-report $extra_file"
   fi
-  if [ "$rfc" = "0016" ]; then
-    action_mode=$(jq -er '.actionVerificationMode' "$file")
-    action_observed=$(jq -r '.actionActivationObserved' "$file")
-    action_count=$(jq -r '.actionActivationCount' "$file")
-    if [ "$target" = "linux-x64" ]; then
-      if [ "$action_mode" != "os-ui" ] || [ "$action_observed" != "true" ] || [ "$action_count" != "1" ]; then
-        echo "Linux notification evidence must contain exactly one deterministic OS action activation." >&2
-        exit 1
-      fi
-    elif [ "$action_mode" != "contract" ] || [ "$action_observed" != "false" ] || [ "$action_count" != "0" ]; then
-      echo "Hosted $target notification evidence must remain contract-only and cannot claim OS UI activation." >&2
-      exit 1
-    fi
-    arguments="$arguments --service notifications --from-compatibility-report $extra_file"
-  fi
   ./gradlew --no-daemon :kweb-rfc-governance:rfcEvidenceRecord \
     -PrfcEvidenceArguments="$arguments"
 }
@@ -112,7 +109,6 @@ for target in macos-arm64 windows-x64 linux-x64; do
     "0013|files.hosted|files|files-evidence.json|engine-integration|migration-files|compatibility.json|electron-migration"
     "0014|clipboard.hosted|clipboard|clipboard-evidence.json|clipboard|migration-clipboard|migration-clipboard-evidence.json|electron-migration"
     "0015|shell.hosted|shell|migration-shell-evidence.json|electron-migration|migration-shell|compatibility.json|electron-migration"
-    "0016|notifications.hosted|notifications|migration-notifications-evidence.json|electron-migration|migration-notifications|compatibility.json|electron-migration"
     "0007|window-controls.hosted|window-controls-report|window-controls-report.json|provider-lifecycle"
   )
   count=0

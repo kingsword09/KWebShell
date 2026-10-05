@@ -2215,6 +2215,30 @@ attempts `OpenClipboard` once while the test and service monitors use multiple
 processes. Bounded lock acquisition preserves the existing error taxonomy and
 serialized transaction contract. Required hosted verification remains pending.
 
+### PR 68 evidence status repair
+
+Repair the aggregation failure in run `37250414113` without claiming that
+RFC 0016 has completed acceptance. Acceptance criteria:
+
+- E68.1 (RFC 0016 A13/A14): record against the unchanged repository catalog.
+  Never rewrite an `Accepted` RFC to `Implemented` in a temporary catalog;
+  RFC 0016 diagnostic reports must not create support records.
+- E68.2 (A5/A7/A12): require all three notification reports before recording.
+  Linux must report `os-ui`, one observed activation; Windows/macOS must report
+  `contract`, zero activations. Missing/malformed reports, incorrect field
+  types, counts, or modes fail before any manifest update. Preserve raw bytes.
+- E68.3 (A13/A14): regression-test the real aggregation script's catalog,
+  report validation and manifest chaining; retain the strict governance gate.
+  Run fresh hosted verification, aggregation and strict governance. Existing
+  incomplete UI, reply and cold-activation acceptance remains blocking for merge.
+
+Readiness review: Codex, separate pass by the same contributor, 2026-10-05,
+revision `eab08df`, decision `READY` for this CI repair. All three native target
+jobs in run `37250414113` passed. Aggregation synthesized three Implemented
+RFC 0016 records from an Accepted catalog; the unchanged strict checker rejected
+them. The existing evidence schema permits support records only for Implemented
+RFCs. This repair preserves that contract and the pending notification scope.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.

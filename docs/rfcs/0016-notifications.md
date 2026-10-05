@@ -339,6 +339,9 @@ menu/dialog contract exists.
 | N68.7 / A2/A9 repair | Hosted macOS has its declared Notification Center agent before permission and action verification. | Image-disabled agent, already-running agent, missing GUI/service, real authorization/action. | ShellCheck, real repeatable setup and packaged CEF fixture on macOS arm64. | `configure-macos-notification-fixture.sh`, CI setup and `electronMigrationIntegrationTest`. | Local JDK 25/macOS run after `52c7130`: setup twice and packaged CEF action passed; hosted run pending. | `BLOCKED` — local agent and action checks pass; hosted bootstrap must also pass. |
 | N68.8 / A2/A5/A7 repair | Windows registers the fixture AUMID and must observe its real native action and application activation. | Identity collision/cleanup, native permission failure, unavailable UI, exactly one declared action. | Hosted Windows native ABI permission preflight and real migration fixture. | CI identity/preflight/cleanup, `configure-windows-notification-fixture.ps1`, required action assertions. | Fresh hosted evidence required. | `BLOCKED` — registration steps restored; missing action no longer passes the test. |
 | N68.9 / A12/A14 repair | Fresh hosted results validate the repaired fixtures without promoting untested RFC guarantees. | Missing target or action, stale evidence, premature support claim. | Notification/migration/native/TypeScript checks, three-target CI and governance. | Required CI jobs and this review record. | Local notification/migration checks, real CEF action and RFC contract tests passed; hosted evidence pending. | `BLOCKED` — remaining RFC rows retain their existing acceptance requirements. |
+| E68.1 / A13/A14 repair | Aggregation uses the unchanged catalog and creates no RFC 0016 support records while it remains Accepted. | Existing Implemented records, Accepted notification reports, catalog mutation. | Aggregation regression tests and strict hosted governance. | `aggregate-rfc-evidence.sh`; `AggregationTest.test_records_only_implemented_rfcs_and_preserves_catalog_and_raw_reports`, `test_recorder_failure_is_not_hidden_by_catalog_normalization`. | Local 2026-10-05 repair verification below; hosted verification pending. | `BLOCKED` — local tests pass; fresh real aggregation required. |
+| E68.2 / A5/A7/A12 repair | All three raw notification reports pass their exact action mode/count contract before any manifest update. | Missing/invalid JSON, wrong field types, wrong mode, missing/duplicate activation; preserve report bytes. | Aggregation regression tests and real hosted reports. | `AggregationTest.test_each_missing_notification_report_blocks_before_recording`, `test_invalid_action_reports_block_before_recording`. | Local tests and unchanged reports from run `37250414113`; fresh hosted verification pending. | `BLOCKED` — local validation passes; fresh target reports required. |
+| E68.3 / A13/A14 repair | Fresh hosted aggregation and strict governance pass without promoting incomplete notification acceptance. | Stale digests, missing Implemented evidence, incorrect manifest chaining. | Three-target CI, aggregation tests, strict governance. | CI `rfc-evidence` and `governance` jobs; `AggregationTest.test_missing_implemented_artifact_is_still_fatal`; pending A5/A7/A14 rows. | Fresh hosted run required. | `BLOCKED` — local orchestration passes; real recording and strict governance required. |
 
 ## Readiness review
 
@@ -479,6 +482,24 @@ The success path still passed the real CEF migration integration.
 Decision: `BLOCKED` for merge pending fresh hosted results, retained evidence,
 and completion of the requirement-by-requirement acceptance matrix. Local
 success does not promote the RFC or substitute for Windows/Linux evidence.
+
+### PR 68 evidence aggregation review, 2026-10-05
+
+Codex, separate review pass by the same contributor, reviewed the repair against
+`eab08df`. Readiness is recorded under E68.1–E68.3 in `DESIGN_PLAN.md`. The
+failure in run `37250414113` was three status conflicts: aggregation manufactured
+Implemented records for this Accepted RFC. The repair passes the unchanged
+catalog to the recorder and keeps notification reports as mandatory raw CI
+artifacts. No service, migration support row, or RFC status is promoted.
+
+Local validation: all five `test_aggregate_rfc_evidence.py` tests pass, including
+missing/invalid reports and recorder failures; ShellCheck and `git diff --check`
+pass; JDK 25 `:kweb-rfc-governance:contractTest` passes. Replaying the three
+unchanged notification reports downloaded from run `37250414113` through the
+isolated orchestration test produces 45 Implemented recorder invocations and
+zero RFC 0016 invocations. This test uses a recorder double and does not produce
+support evidence. Fresh hosted real recording and strict governance remain
+required. Overall notification acceptance remains `BLOCKED`.
 
 Retained evidence contains only contract/provider digests, permission state,
 capability booleans, notification ids/tags, action ids, event sequences,

@@ -388,6 +388,10 @@ jobs:
           done
           find build/rfc-evidence/downloaded -type f | sort
 
+      - name: Test RFC evidence aggregation
+        shell: bash
+        run: python3 -m unittest discover -s .github/scripts/tests -p 'test_*.py' -v
+
       - name: Record hosted RFC evidence
         shell: bash
         run: .github/scripts/aggregate-rfc-evidence.sh

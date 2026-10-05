@@ -7,6 +7,7 @@ import io.github.kingsword09.kwebshell.compose.KWebViewController
 import io.github.kingsword09.kwebshell.compose.KWebViewPageOwnership
 import io.github.kingsword09.kwebshell.core.KWebRect
 import io.github.kingsword09.kwebshell.core.KWebTarget
+import io.github.kingsword09.kwebshell.core.KWebConfigurationException
 import io.github.kingsword09.kwebshell.desktop.KWebDesktop
 import io.github.kingsword09.kwebshell.desktop.KWebDesktopEngine
 import io.github.kingsword09.kwebshell.desktop.KWebDesktopEngineConfiguration
@@ -17,18 +18,20 @@ import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebApplicat
 import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebApplicationLifecycleController
 import io.github.kingsword09.kwebshell.service.applicationlifecycle.JvmKWebApplicationLifecycleBackend
 import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebQuitReason
+import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebQuitResult
 import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebOpenedFile
 import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebApplicationEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import java.nio.file.Files
-import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.concurrent.CountDownLatch
 import javax.swing.SwingUtilities
@@ -45,16 +48,16 @@ internal class KWebApplicationMain {
         val target = currentTarget()
         val layout = applicationLayout(target)
         val root = layout.packageRoot
-        val names = NativeNames.forTarget(target)
-        System.setProperty("kweb.native.library.path", root.resolve(names.engineLibrary).toString())
+        System.setProperty("kweb.native.library.path", layout.nativeDirectory.resolve("kwebshell_engine.dll").toString())
         System.setProperty(
             "kweb.application.lifecycle.native.library.path",
-            root.resolve(names.lifecycleLibrary).toString(),
+            layout.nativeDirectory.resolve("kwebshell_application_lifecycle.dll").toString(),
         )
 
         val activation = parseActivation(arguments)
-        val transportRoot = writableStateRoot().resolve("transport")
-        val cacheRoot = writableStateRoot().resolve("profiles")
+        val stateRoot = KWebApplicationLayout.stateRoot(System.getenv("LOCALAPPDATA"))
+        val transportRoot = stateRoot.resolve("transport")
+        val cacheRoot = stateRoot.resolve("profiles")
         Files.createDirectories(transportRoot)
         Files.createDirectories(cacheRoot)
         val lifecycle = KWebApplicationLifecycleController(
@@ -82,13 +85,19 @@ internal class KWebApplicationMain {
         var window: ComposeWindow? = null
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val closed = CountDownLatch(1)
+        var failure: Throwable? = null
+        fun retainFailure(error: Throwable) {
+            val previous = failure
+            if (previous == null) failure = error
+            else if (previous !== error) previous.addSuppressed(error)
+        }
         try {
             val liveEngine = KWebDesktop.openEngine(
                 KWebDesktopEngineConfiguration(
-                    cefRuntime = root.resolve(names.cefRuntime),
-                    browserSubprocess = root.resolve(names.browserSubprocess),
-                    resources = root.resolve(names.resources),
-                    locales = root.resolve(names.locales),
+                    cefRuntime = layout.cefDirectory.resolve("libcef.dll"),
+                    browserSubprocess = layout.cefDirectory.resolve("KWebShellCef.exe"),
+                    resources = layout.cefDirectory,
+                    locales = layout.cefDirectory.resolve("locales"),
                     rootCache = cacheRoot,
                     log = cacheRoot.resolve("kweb-cef.log"),
                 ),
@@ -122,21 +131,35 @@ internal class KWebApplicationMain {
 
             closed.await()
             activationJob.cancel()
-            page.close()
-            page = null
-            profile.close()
-            profile = null
-            lifecycle.requestQuit(KWebQuitReason.USER_REQUEST)
         } catch (error: Throwable) {
-            runCatching { lifecycle.requestQuit(KWebQuitReason.SHUTDOWN) }
-            throw error
+            retainFailure(error)
         } finally {
             scope.cancel()
-            page?.let { runCatching { it.close() } }
-            profile?.let { runCatching { it.close() } }
-            if (engine == null) runCatching { lifecycle.close() }
-            window?.let { runCatching { onEventThread { it.dispose() } } }
+            withContext(NonCancellable) {
+                fun release(action: () -> Unit) {
+                    try { action() } catch (error: Throwable) { retainFailure(error) }
+                }
+                release { page?.close() }
+                release { profile?.close() }
+                try {
+                    val result = lifecycle.requestQuit(
+                        if (failure == null) KWebQuitReason.USER_REQUEST else KWebQuitReason.SHUTDOWN,
+                    )
+                    if (result != KWebQuitResult.GRACEFUL && result != KWebQuitResult.ALREADY_CLOSED) {
+                        retainFailure(lifecycle.terminalFailure() ?: KWebConfigurationException(
+                            code = "launcher.shutdown-failed",
+                            details = mapOf("result" to result.name),
+                            message = "The Windows application owner did not complete graceful shutdown.",
+                        ))
+                    }
+                } catch (error: Throwable) {
+                    retainFailure(error)
+                }
+                release { engine?.close() }
+                release { window?.let { onEventThread { it.dispose() } } }
+            }
         }
+        failure?.let { throw it }
     }
 
     private fun parseActivation(arguments: List<String>): KWebActivationBatch {
@@ -160,17 +183,10 @@ internal class KWebApplicationMain {
             target,
         )
 
-    private fun writableStateRoot(): Path = Path.of(
-        System.getenv("LOCALAPPDATA") ?: System.getProperty("user.home"),
-        "KWebShell",
+    private fun currentTarget(): KWebTarget = KWebApplicationLayout.target(
+        System.getProperty("os.name"),
+        System.getProperty("os.arch"),
     )
-
-    private fun currentTarget(): KWebTarget = when {
-        System.getProperty("os.name").startsWith("Windows") && System.getProperty("os.arch") in setOf("amd64", "x86_64") -> KWebTarget.parse("windows-x64")
-        System.getProperty("os.name").startsWith("Mac") && System.getProperty("os.arch") in setOf("aarch64", "arm64") -> KWebTarget.parse("macos-arm64")
-        System.getProperty("os.name").startsWith("Linux") && System.getProperty("os.arch") in setOf("amd64", "x86_64") -> KWebTarget.parse("linux-x64")
-        else -> error("Unsupported KWebShell launcher target: ${System.getProperty("os.name")}/${System.getProperty("os.arch")}")
-    }
 
     private fun createWindow(closed: CountDownLatch): ComposeWindow = onEventThread {
         ComposeWindow().apply {
@@ -189,22 +205,5 @@ internal class KWebApplicationMain {
         var result: Result<T>? = null
         SwingUtilities.invokeAndWait { result = runCatching(block) }
         return result!!.getOrThrow()
-    }
-}
-
-private data class NativeNames(
-    val engineLibrary: String,
-    val lifecycleLibrary: String,
-    val cefRuntime: String,
-    val browserSubprocess: String,
-    val resources: String,
-    val locales: String,
-) {
-    companion object {
-        fun forTarget(target: KWebTarget): NativeNames = when (target.operatingSystem.id) {
-            "windows" -> NativeNames("native/kwebshell_engine.dll", "native/kwebshell_application_lifecycle.dll", "cef/libcef.dll", "cef/KWebShellCef.exe", "cef", "cef/locales")
-            "macos" -> NativeNames("native/libkwebshell_engine.dylib", "native/libkwebshell_application_lifecycle.dylib", "runtime/KWebShell.app/Contents/Frameworks/Chromium Embedded Framework.framework/Chromium Embedded Framework", "runtime/KWebShell.app/Contents/Frameworks/KWebShell Helper.app/Contents/MacOS/KWebShell Helper", "runtime/KWebShell.app/Contents/Frameworks/Chromium Embedded Framework.framework/Resources", "runtime/KWebShell.app/Contents/Frameworks/Chromium Embedded Framework.framework/Resources")
-            else -> NativeNames("native/libkwebshell_engine.so", "native/libkwebshell_application_lifecycle.so", "runtime/libcef.so", "runtime/KWebShell", "runtime", "runtime/locales")
-        }
     }
 }

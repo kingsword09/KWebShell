@@ -41,6 +41,7 @@
       "paths": [
         ".github/scripts/aggregate-rfc-evidence.sh",
         ".github/scripts/build-and-verify-windows-msix.ps1",
+        ".github/scripts/tests/test_aggregate_rfc_evidence.py",
         ".github/scripts/tests/test_windows_msix_preflight.ps1",
         ".github/workflows/ci.yml",
         "DESIGN_PLAN.md",

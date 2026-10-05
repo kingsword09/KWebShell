@@ -63,6 +63,8 @@ class AggregationTest(unittest.TestCase):
                 for name in names:
                     (directory / name).write_text("{}\n")
             self.report(target).write_text(json.dumps(self.valid_report(target)) + "\n")
+        self.msix = self.root / "build/rfc-evidence/downloaded/application-package-windows-x64-revision/fixture.msix"
+        self.msix.write_bytes(b"orchestrator-artifact-fixture")
         # Replace only the Gradle process boundary, never the production script.
         recorder = self.root / "recorder.py"
         recorder.write_text('''import json
@@ -77,7 +79,8 @@ rfc = options["--rfc"]
 document, = catalog.glob(rfc + "-*.md")
 assert "- Status: Implemented" in document.read_text().splitlines(), "Cannot record an unimplemented RFC"
 manifest = json.loads(Path(arguments[1]).read_text())
-manifest["invocations"].append({"rfc": rfc, "target": options["--target"]})
+artifacts = [arguments[i + 1] for i, value in enumerate(arguments) if value == "--artifact"]
+manifest["invocations"].append({"rfc": rfc, "target": options["--target"], "artifacts": artifacts})
 Path(arguments[2]).write_text(json.dumps(manifest))
 ''')
         wrapper = self.root / "gradlew"
@@ -128,6 +131,15 @@ Path(arguments[2]).write_text(json.dumps(manifest))
             p.name: p.read_bytes() for p in (self.root / "docs/rfcs").glob("*.md")
         })
         self.assertEqual(reports, {target: self.report(target).read_bytes() for target in TARGETS})
+        windows_package, = [call for call in calls if call["rfc"] == "0030" and call["target"] == "windows-x64"]
+        self.assertIn("windows-msix=" + str(self.msix.relative_to(self.root)), windows_package["artifacts"])
+        self.assertEqual(b"orchestrator-artifact-fixture", self.msix.read_bytes())
+
+    def test_missing_windows_msix_blocks_aggregation(self):
+        self.msix.unlink()
+        result = self.run_script()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("Missing signed Windows MSIX evidence for windows-x64", result.stderr)
 
     def test_each_missing_notification_report_blocks_before_recording(self):
         for target in TARGETS:

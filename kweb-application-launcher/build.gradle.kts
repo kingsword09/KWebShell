@@ -8,6 +8,7 @@ import java.util.concurrent.TimeUnit
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
 import java.util.Locale
 import java.util.zip.ZipFile
@@ -103,6 +104,55 @@ private fun deleteWindowsSmokeState(root: java.nio.file.Path) {
         }
     }
     throw GradleException("Unable to remove test-owned Windows launcher smoke state '$normalized'.", lastFailure)
+}
+
+private fun verifyWindowsFailedStartup(packageRoot: java.nio.file.Path, reports: File) {
+    val dataRoot = reports.toPath().resolve("failed-start-local-app-data/KWebShell")
+    val profiles = dataRoot.resolve("profiles")
+    Files.createDirectories(profiles)
+    Files.writeString(profiles.resolve("primary"), "invalid-profile-directory", StandardOpenOption.CREATE_NEW)
+    val stderr = reports.resolve("failed-start-stderr.log")
+    val process = ProcessBuilder(
+        packageRoot.resolve("runtime/bin/java.exe").toString(),
+        "--enable-native-access=ALL-UNNAMED",
+        "-cp", packageRoot.resolve("app/*").toString(),
+        "io.github.kingsword09.kwebshell.launcher.KWebApplicationMainKt",
+    ).directory(packageRoot.toFile())
+        .redirectOutput(reports.resolve("failed-start-stdout.log"))
+        .redirectError(stderr)
+        .apply { environment()["LOCALAPPDATA"] = dataRoot.parent.toString() }
+        .start()
+    var exitCode: Int? = null
+    var profileFailureObserved = false
+    var processesDrained = false
+    try {
+        if (!process.waitFor(60, TimeUnit.SECONDS)) {
+            throw GradleException("The packaged JVM did not exit after a real Profile startup failure.")
+        }
+        exitCode = process.exitValue()
+        profileFailureObserved = stderr.readText().contains("The Profile path is not a directory.")
+        if (exitCode == 0 || !profileFailureObserved) {
+            throw GradleException("The packaged JVM did not report the expected Profile failure (exit=$exitCode).")
+        }
+        val deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
+        while (System.nanoTime() < deadline && windowsProcessesForSmoke(packageRoot, dataRoot).isNotEmpty()) {
+            Thread.sleep(250)
+        }
+        processesDrained = windowsProcessesForSmoke(packageRoot, dataRoot).isEmpty()
+        if (!processesDrained) throw GradleException("A packaged JVM or CEF process remained after failed startup.")
+    } finally {
+        if (process.isAlive) process.destroyForcibly().waitFor(10, TimeUnit.SECONDS)
+        windowsProcessesForSmoke(packageRoot, dataRoot).forEach { child ->
+            if (child.isAlive) child.destroyForcibly()
+            child.onExit().get(10, TimeUnit.SECONDS)
+        }
+        Files.writeString(reports.toPath().resolve("failed-start-summary.txt"), buildString {
+            appendLine("exitCode=$exitCode")
+            appendLine("profileFailureObserved=$profileFailureObserved")
+            appendLine("processesDrained=$processesDrained")
+        })
+        deleteWindowsSmokeState(dataRoot)
+    }
 }
 
 tasks.register("downloadPinnedWindowsJre") {
@@ -383,6 +433,7 @@ tasks.register("runWindowsApplicationImageSmokeTest") {
         val launcher = root.resolve("KWebShell.exe")
         val smokeLogs = layout.buildDirectory.dir("reports/windows-launcher-smoke").get().asFile
         smokeLogs.mkdirs()
+        verifyWindowsFailedStartup(root, smokeLogs)
         val smokeDataRoot = File(smokeLogs, "local-app-data/KWebShell").toPath()
         val previousCefProcesses = ProcessHandle.allProcesses()
             .filter { process -> process.info().command().orElse("").replace('\\', '/').endsWith("/KWebShellCef.exe", ignoreCase = true) }

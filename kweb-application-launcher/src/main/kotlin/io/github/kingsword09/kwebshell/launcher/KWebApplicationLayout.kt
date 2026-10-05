@@ -1,8 +1,10 @@
 package io.github.kingsword09.kwebshell.launcher
 
 import io.github.kingsword09.kwebshell.core.KWebTarget
+import io.github.kingsword09.kwebshell.core.KWebConfigurationException
 import java.net.URI
 import java.nio.file.Files
+import java.nio.file.InvalidPathException
 import java.nio.file.Path
 
 /** Explicit jpackage/MSIX payload layout; no runtime directory guessing. */
@@ -27,6 +29,35 @@ internal data class KWebApplicationLayout(
 
     companion object {
         const val PACKAGE_ROOT_PROPERTY: String = "kweb.application.root"
+
+        fun target(osName: String, architecture: String): KWebTarget {
+            if (osName.startsWith("Windows") && architecture in setOf("amd64", "x86_64")) {
+                return KWebTarget.parse("windows-x64")
+            }
+            throw KWebConfigurationException(
+                code = "launcher.target-unsupported",
+                details = mapOf("platform" to osName, "architecture" to architecture),
+                message = "This packaged JVM launcher requires Windows x64 with its pinned bundled JRE.",
+            )
+        }
+
+        fun stateRoot(localAppData: String?): Path {
+            fun invalid(cause: Throwable? = null): Nothing {
+                throw KWebConfigurationException(
+                    code = "launcher.state-root-invalid",
+                    details = mapOf("platform" to "windows-x64", "variable" to "LOCALAPPDATA"),
+                    message = "Windows LOCALAPPDATA must identify an absolute application-data directory.",
+                    cause = cause,
+                )
+            }
+            val path = try {
+                localAppData?.takeIf { it.isNotBlank() }?.let(Path::of)
+            } catch (error: InvalidPathException) {
+                invalid(error)
+            }
+            if (path == null || !path.isAbsolute) invalid()
+            return path.normalize().resolve("KWebShell")
+        }
 
         fun fromPackageRoot(root: Path, target: KWebTarget): KWebApplicationLayout {
             val packageRoot = root.toAbsolutePath().normalize()

@@ -2071,6 +2071,13 @@ Acceptance criteria for the remaining packaging repairs:
   test attempted; it restores the original sideload policy even on failure.
   Run the actual PowerShell preflight script tests and the real Windows SDK
   install/signature/tamper/cleanup acceptance.
+- P69.5 (A6/A15): a launcher startup failure closes the page and Profile before
+  application shutdown, drains the engine, disposes the window and returns a
+  nonzero exit. Preserve the original error and attach cleanup failures; never
+  silently substitute the user's home directory for missing `LOCALAPPDATA`.
+  Unit-test missing/blank/relative state paths and use the real Windows
+  app-image with a file blocking its Profile directory to verify failed-start
+  process cleanup before the normal launch/shutdown smoke test.
 
 Readiness review: Codex, separate pass by the implementation contributor,
 2026-10-05, rebased revision `37ae295` and the recovered uncommitted asset
@@ -2087,6 +2094,13 @@ switch. Microsoft's SDK/cmdlet references confirm that neither exists;
 an app-data directory after the pre-existing-directory guard rejects it and
 can remove a package it did not install. P69.4 repairs the existing A4/A6/A7
 guarantees; decision `READY` for these implementation corrections.
+
+Launcher review at `040935c`, 2026-10-05: its startup catch requests engine
+shutdown before closing remaining browser owners and discards the failure;
+the finalizer then leaves the engine unclosed. The normal shutdown result is
+also ignored, and absent `LOCALAPPDATA` selects another profile location.
+P69.5 preserves the accepted ownership and explicit-profile guarantees;
+decision `READY` for repair, with real Windows failed-start evidence required.
 
 ### RFC 0006 implementation objective: application lifecycle ownership
 

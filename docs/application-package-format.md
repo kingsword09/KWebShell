@@ -84,3 +84,10 @@ large square tile in AppX `DefaultTile`; dimensions and PNG decoding are checked
 before SDK packaging, and the hosted report retains each asset's SHA-256.
 The Windows `runtimeCheck` invocation uses `--no-configuration-cache` because
 its jpackage app-image tasks capture state that Gradle cannot serialize.
+
+The launcher requires Windows x64 and an absolute `LOCALAPPDATA`; missing or
+invalid state configuration fails explicitly. Its failed-start fixture runs
+the packaged main class with the bundled JRE and a blocked Profile directory,
+requires nonzero exit and complete JVM/CEF cleanup, then the normal smoke test
+exercises `KWebShell.exe`. Launcher unit tests run through `runtimeCheck` on
+all three hosted targets.

@@ -33,6 +33,7 @@ tasks.register("runtimeCheck") {
     dependsOn(":kweb-extensions:check")
     dependsOn(":kweb-desktop:check")
     dependsOn(":kweb-compose:check")
+    dependsOn(":kweb-application-launcher:check")
     dependsOn(":kweb-interop-probe:check")
     dependsOn(":kweb-cef-native:check")
     dependsOn(":kweb-runtime-pack:check")

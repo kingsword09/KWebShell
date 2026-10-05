@@ -80,7 +80,7 @@ retains its deterministic `windows-msix-proof` ZIP and raw report in Git;
 the full MSIX remains in the hosted application-package artifact for the
 workflow's 14-day retention. The proof contains exact signature/block-map/
 manifest, signed metadata, visual-asset and Temurin legal bytes, plus the
-original report and a package/entry digest index. Neither a metadata ZIP nor
+original report, both validated launcher shutdown summaries and a digest index. Neither a metadata ZIP nor
 this evidence ZIP is a distributable MSIX. Missing or inconsistent inputs block
 aggregation before any support record changes.
 

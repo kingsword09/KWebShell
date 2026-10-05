@@ -95,7 +95,9 @@ all three hosted targets.
 The complete signed MSIX is retained by the hosted application-package artifact
 for 14 days. The repository retains a deterministic proof ZIP containing exact
 MSIX signature/block-map/manifest bytes, signed application metadata, all five
-visual assets, required Temurin legal files and the raw verification report.
+visual assets, required Temurin legal files, the raw verification report and
+both launcher smoke summaries. The collector requires successful normal close
+and nonzero Profile-failure exit with no remaining application processes.
 The collector checks the complete package SHA-256, source revision and every
 required native result before recording; its index includes package size and
 entry digests. This keeps permanent evidence within GitHub's file-size limit.

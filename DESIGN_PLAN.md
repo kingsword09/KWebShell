@@ -2078,14 +2078,22 @@ Acceptance criteria for the remaining packaging repairs:
   Unit-test missing/blank/relative state paths and use the real Windows
   app-image with a file blocking its Profile directory to verify failed-start
   process cleanup before the normal launch/shutdown smoke test.
+  Normal close must observe exit code zero from the actual window process and
+  zero remaining package processes before uninstall.
 - P69.6 (A3/A4/A7/A11/A13/A17): retain the complete signed MSIX in the hosted
   application-package artifact for its declared 14-day retention. Before
   recording any support evidence, hash that exact MSIX and require the matching
   successful Windows report and source revision. Commit a deterministic ZIP of
   its exact signature/block-map/manifest, signed metadata, five visual assets,
-  Temurin legal files and raw report; reject missing, changed, ambiguous or
+  Temurin legal files, raw report and both launcher smoke summaries; reject missing, changed, ambiguous or
   oversized proof inputs. Unit-test the collector and real aggregation flow;
   the hosted Windows SDK run remains the authority for native verification.
+- P69.7 (required regression gates; RFC 0008 A6): crash the renderer only after
+  its conformance stream has delivered a frame, so cancellation exercises an
+  active host handler. The capability lab selects an exclusive port on both
+  configured loopback address families before starting its engine. Retain the
+  real crash/cancellation and capability-lab results on all hosted targets;
+  runtime port-conflict errors and renderer-terminal assertions remain strict.
 
 Readiness review: Codex, separate pass by the implementation contributor,
 2026-10-05, rebased revision `37ae295` and the recovered uncommitted asset
@@ -2110,6 +2118,14 @@ an app-data directory after the pre-existing-directory guard rejects it and
 can remove a package it did not install. P69.4 repairs the existing A4/A6/A7
 guarantees; decision `READY` for these implementation corrections.
 
+Run `37304633212` (PR `469c03b`, tested merge
+`9d3a25c9805ddf96b7b12a7dda7b70cf614affaf`) passed Windows MakeAppx validation
+and produced the installer, then CertEnroll rejected an ampersand-combined EKU
+string with `0x80070057`. P69.4 uses the documented code-signing EKU and an
+explicit non-CA constraint in one shared certificate factory. The Windows
+preflight must create and inspect that real certificate, then remove its
+private key and certificate before the CEF matrix work begins.
+
 Launcher review at `040935c`, 2026-10-05: its startup catch requests engine
 shutdown before closing remaining browser owners and discards the failure;
 the finalizer then leaves the engine unclosed. The normal shutdown result is
@@ -2120,8 +2136,22 @@ decision `READY` for repair, with real Windows failed-start evidence required.
 The next hosted run `37301657019`, PR head `60c84be` and tested merge revision
 `0247db9d8ad9c0b74061938d1e0991ca3c4782d7`, passed macOS/Linux but rejected the
 fixture's `Path.resolve("app/*")` before launching its JVM. Build the classpath
-wildcard as text after resolving `app`, because Windows Path rejects `*`.
+  wildcard as text after resolving `app`, because Windows Path rejects `*`.
 The corrected fixture still requires real failed-start process drainage.
+
+Exit-observation review at `469c03b`: the retained successful smoke summary in
+run `37300449695` has bootstrap PID 6104 and window PID 2036. Verify the actual
+window process's exit code in both app-image and installed-MSIX tests; preserve
+all package-process shutdown assertions before uninstall. Decision: `READY`
+for this correction to P69.5's existing successful-shutdown requirement.
+
+Regression-fixture review at `469c03b`: run `37304633212` crashes the macOS
+renderer immediately after a fire-and-forget stream open and then waits for a
+handler that may not have started. Its Linux capability lab checks only IPv4
+when choosing a port, while the native engine checks IPv4 and IPv6 with
+exclusive binding. P69.7 settles these fixture prerequisites without changing
+the production cancellation or remote-debugging policies. Decision: `READY`;
+real socket tests and fresh hosted conformance remain required.
 
 Evidence retention review at `60c84be`, 2026-10-05: the recorder copies retained
 artifacts into Git, while GitHub rejects files above 100 MiB. The local real

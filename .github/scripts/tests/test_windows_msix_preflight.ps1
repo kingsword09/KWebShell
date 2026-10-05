@@ -1,5 +1,6 @@
 $ErrorActionPreference = "Stop"
 $scriptPath = Join-Path $PSScriptRoot "../build-and-verify-windows-msix.ps1"
+. (Join-Path $PSScriptRoot "../windows-msix-signing.ps1")
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ("kweb-msix-preflight-" + [guid]::NewGuid().ToString('N'))
 $savedEnvironment = @{}
 foreach ($name in @("OS", "GITHUB_ACTIONS", "RUNNER_ENVIRONMENT", "LOCALAPPDATA", "TEMP")) {
@@ -58,6 +59,31 @@ try {
         Write-Output "PASS: $($case.name) preserves pre-existing state."
     }
     Write-Output "Passed $($cases.Count) real-script MSIX preflight rejection cases."
+    if ($windowsHost) {
+        $certificate = $null
+        try {
+            $publisher = "CN=KWebShell RFC 0030 signing fixture"
+            $certificate = New-KWebMsixSigningCertificate -Publisher $publisher
+            if ($certificate.Subject -ne $publisher -or -not $certificate.HasPrivateKey) {
+                throw "The Windows signing fixture must own a private key and match its publisher."
+            }
+            $eku = $certificate.Extensions | Where-Object { $_.Oid.Value -eq "2.5.29.37" }
+            $usages = @($eku.EnhancedKeyUsages | ForEach-Object { $_.Value })
+            $constraints = $certificate.Extensions | Where-Object { $_.Oid.Value -eq "2.5.29.19" }
+            if ($usages -notcontains "1.3.6.1.5.5.7.3.3" -or $null -eq $constraints -or $constraints.CertificateAuthority) {
+                throw "The Windows signing fixture must be a non-CA code-signing certificate."
+            }
+        }
+        finally {
+            if ($null -ne $certificate) {
+                $certificatePath = "Cert:\CurrentUser\My\$($certificate.Thumbprint)"
+                Remove-Item -LiteralPath $certificatePath -DeleteKey -Force
+                $certificate.Dispose()
+                if (Test-Path -LiteralPath $certificatePath) { throw "The signing fixture certificate remains after cleanup." }
+            }
+        }
+        Write-Output "PASS: real publisher-bound code-signing certificate creation and cleanup."
+    }
 }
 finally {
     foreach ($entry in $savedEnvironment.GetEnumerator()) {

@@ -22,8 +22,6 @@ import java.awt.Rectangle
 import java.awt.Robot
 import java.awt.image.BufferedImage
 import java.net.URI
-import java.net.InetAddress
-import java.net.ServerSocket
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -290,10 +288,7 @@ public class CapabilityLabRunner(
         OUTPUT_PROPERTY,
     )
 
-    private fun findFreePort(): Int = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { socket ->
-        socket.localPort.takeIf { it in 1024..65535 }
-            ?: throw CapabilityLabException("cdp-port-invalid", "The OS allocated an invalid CDP port.")
-    }
+    private fun findFreePort(): Int = findCapabilityLabCdpPort()
 }
 
 internal class CapabilityLabPhaseRunner(

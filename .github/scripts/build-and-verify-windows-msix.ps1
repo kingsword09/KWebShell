@@ -8,6 +8,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "windows-msix-signing.ps1")
 
 function Invoke-NativeTool {
     param([string] $Executable, [string[]] $Arguments)
@@ -29,6 +30,28 @@ function Find-WindowsSdkTool {
         Select-Object -First 1
     if ($null -eq $candidate) { throw "Windows SDK tool '$Name' was not found on PATH or under '$sdkRoot'." }
     return $candidate.FullName
+}
+
+function Get-PackageProcesses {
+    param([string] $PackageRoot)
+    $prefix = [IO.Path]::GetFullPath($PackageRoot).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    foreach ($entry in (Get-CimInstance -ClassName Win32_Process -Property ProcessId, ExecutablePath)) {
+        if (-not $entry.ExecutablePath -or -not ([IO.Path]::GetFullPath($entry.ExecutablePath)).StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { continue }
+        $candidate = Get-Process -Id $entry.ProcessId -ErrorAction SilentlyContinue
+        if ($null -eq $candidate) { continue }
+        try {
+            $candidate.EnableRaisingEvents = $true
+            if ($candidate.HasExited) { continue }
+            $actualPath = $candidate.Path
+            if (-not $actualPath) { throw "Unable to inspect a live package process: $($candidate.Id)" }
+            if (([IO.Path]::GetFullPath($actualPath)).StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
+                $candidate
+            }
+        }
+        catch {
+            if (-not $candidate.HasExited) { throw }
+        }
+    }
 }
 
 function Get-Sha256 {
@@ -74,6 +97,7 @@ $cerPath = Join-Path $temporaryRoot "test-signing.cer"
 $tamperedPackage = Join-Path $temporaryRoot "tampered.msix"
 $publisherCertificate = $null
 $installedPackage = $null
+$installRoot = $null
 $expectedPackageName = $null
 $installationAttempted = $false
 $applicationDataOwned = $false
@@ -134,6 +158,8 @@ $evidence = [ordered]@{
     installed = "NOT_RUN"
     developerInstallPolicyRestored = "NOT_RUN"
     launcherProcessId = $null
+    launcherExitCode = $null
+    remainingPackageProcessCount = $null
     launcherWindowObserved = $false
     cefSubprocessObserved = $false
     normalShutdown = "NOT_RUN"
@@ -302,18 +328,7 @@ try {
     finally { $sdkArchive.Dispose() }
     $evidence.sdkPackageValidation = "PASS"
 
-    $publisherCertificate = New-SelfSignedCertificate `
-        -Type Custom `
-        -Subject $expectedPublisher `
-        -FriendlyName "KWebShell RFC 0030 hosted-test signing" `
-        -CertStoreLocation "Cert:\CurrentUser\My" `
-        -KeyUsage DigitalSignature `
-        -KeyExportPolicy Exportable `
-        -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3&1.3.6.1.4.1.311.84.1.1") `
-        -KeyAlgorithm RSA `
-        -KeyLength 2048 `
-        -HashAlgorithm SHA256 `
-        -NotAfter (Get-Date).AddDays(2)
+    $publisherCertificate = New-KWebMsixSigningCertificate -Publisher $expectedPublisher
     $evidence.signingCertificateSubject = $publisherCertificate.Subject
     if ($publisherCertificate.Subject -ne $expectedPublisher) { throw "Test signing certificate subject differs from package Publisher." }
     $password = ConvertTo-SecureString ([guid]::NewGuid().ToString('N')) -AsPlainText -Force
@@ -402,15 +417,14 @@ try {
     $evidence.applicationUserModelId = $aumid
     $evidence.installed = "PASS"
 
-    $existingMainIds = @(Get-Process -Name "KWebShell" -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
-    $existingCefIds = @(Get-Process -Name "KWebShellCef" -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
     Start-Process -FilePath "$env:WINDIR\explorer.exe" -ArgumentList "shell:AppsFolder\$aumid"
     $deadline = [DateTime]::UtcNow.AddSeconds(60)
     while ([DateTime]::UtcNow -lt $deadline) {
-        $mainProcess = Get-Process -Name "KWebShell" -ErrorAction SilentlyContinue |
-            Where-Object { $_.Id -notin $existingMainIds } | Select-Object -First 1
-        $cefProcess = Get-Process -Name "KWebShellCef" -ErrorAction SilentlyContinue |
-            Where-Object { $_.Id -notin $existingCefIds } | Select-Object -First 1
+        $packageProcesses = @(Get-PackageProcesses $installRoot)
+        $mainProcess = $packageProcesses |
+            Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -eq $applicationManifest.displayName } | Select-Object -First 1
+        $cefProcess = $packageProcesses |
+            Where-Object { $_.ProcessName -eq "KWebShellCef" } | Select-Object -First 1
         if ($null -ne $mainProcess -and $mainProcess.MainWindowHandle -ne 0 -and $null -ne $cefProcess) { break }
         Start-Sleep -Milliseconds 500
     }
@@ -422,16 +436,19 @@ try {
     $evidence.cefSubprocessObserved = $true
 
     if (-not $mainProcess.CloseMainWindow()) { throw "The Compose window refused a normal close request." }
-    $deadline = [DateTime]::UtcNow.AddSeconds(60)
-    while ([DateTime]::UtcNow -lt $deadline -and (Get-Process -Id $mainProcess.Id -ErrorAction SilentlyContinue)) {
-        Start-Sleep -Milliseconds 250
+    if (-not $mainProcess.WaitForExit(60000)) { throw "The launcher did not shut down after a normal window close." }
+    $evidence.launcherExitCode = $mainProcess.ExitCode
+    if ($mainProcess.ExitCode -ne 0) {
+        throw "The installed Compose process exited with $($mainProcess.ExitCode) after normal close."
     }
-    if (Get-Process -Id $mainProcess.Id -ErrorAction SilentlyContinue) { throw "The launcher did not shut down after a normal window close." }
     $deadline = [DateTime]::UtcNow.AddSeconds(30)
-    while ([DateTime]::UtcNow -lt $deadline -and (Get-Process -Id $cefProcess.Id -ErrorAction SilentlyContinue)) {
+    $remaining = @(Get-PackageProcesses $installRoot)
+    while ([DateTime]::UtcNow -lt $deadline -and $remaining.Count -gt 0) {
         Start-Sleep -Milliseconds 250
+        $remaining = @(Get-PackageProcesses $installRoot)
     }
-    if (Get-Process -Id $cefProcess.Id -ErrorAction SilentlyContinue) { throw "The CEF subprocess remained after normal launcher shutdown." }
+    $evidence.remainingPackageProcessCount = $remaining.Count
+    if ($remaining.Count -gt 0) { throw "Package processes remained after normal launcher shutdown." }
     $evidence.normalShutdown = "PASS"
     $mainProcess = $null
     $cefProcess = $null
@@ -449,11 +466,19 @@ catch {
     throw
 }
 finally {
-    foreach ($process in @($mainProcess, $cefProcess)) {
-        if ($null -ne $process) {
-            try { Stop-Process -Id $process.Id -Force -ErrorAction Stop }
-            catch { $cleanupErrors.Add("Unable to stop process $($process.Id): $($_.Exception.Message)") }
+    $cleanupProcesses = @($mainProcess, $cefProcess)
+    if ($null -ne $installRoot) {
+        try { $cleanupProcesses += @(Get-PackageProcesses $installRoot) }
+        catch { $cleanupErrors.Add("Unable to inspect remaining package processes: $($_.Exception.Message)") }
+    }
+    foreach ($process in ($cleanupProcesses | Where-Object { $null -ne $_ } | Sort-Object -Property Id -Unique)) {
+        try {
+            if (-not $process.HasExited) {
+                $process.Kill()
+                if (-not $process.WaitForExit(10000)) { throw "The package process did not stop." }
+            }
         }
+        catch { if (-not $process.HasExited) { $cleanupErrors.Add("Unable to stop process $($process.Id): $($_.Exception.Message)") } }
     }
     $remainingPackage = $null
     if ($null -ne $installedPackage) { $remainingPackage = $installedPackage }
@@ -475,11 +500,15 @@ finally {
         foreach ($store in @("CurrentUser\My", "LocalMachine\TrustedPeople", "CurrentUser\Root")) {
             $certificatePath = "Cert:\$store\$($publisherCertificate.Thumbprint)"
             if (Test-Path -LiteralPath $certificatePath) {
-                try { Remove-Item -LiteralPath $certificatePath -Force -ErrorAction Stop }
+                try {
+                    if ($store -eq "CurrentUser\My") { Remove-Item -LiteralPath $certificatePath -DeleteKey -Force -ErrorAction Stop }
+                    else { Remove-Item -LiteralPath $certificatePath -Force -ErrorAction Stop }
+                }
                 catch { $cleanupErrors.Add("Unable to remove test certificate from ${store}: $($_.Exception.Message)") }
             }
             if (Test-Path -LiteralPath $certificatePath) { $cleanupErrors.Add("Test certificate remains in $store.") }
         }
+        $publisherCertificate.Dispose()
     }
     if ($applicationDataOwned) {
         try {

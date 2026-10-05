@@ -39,6 +39,7 @@ def create_fixture(directory, omitted=()):
         "tamperedPackageRejected": "PASS", "installed": "PASS", "normalShutdown": "PASS",
         "uninstalled": "PASS", "applicationDataCleanup": "PASS", "developerInstallPolicyRestored": "PASS",
         "launcherWindowObserved": True, "cefSubprocessObserved": True, "packageSignatureEntryCount": 20,
+        "launcherExitCode": 0, "remainingPackageProcessCount": 0,
         "msixSha256": digest, "packageSha256": digest, "failure": None,
         "manifestSha256": hashlib.sha256(contents.get("application/manifest.json", b"")).hexdigest(),
         "assetSha256": {name: hashlib.sha256(contents.get("Assets/" + name, b"")).hexdigest() for name in ASSETS},
@@ -47,4 +48,11 @@ def create_fixture(directory, omitted=()):
     }
     report_path = directory / "application-package-report.json"
     write_report(report_path, report)
+    smoke = directory.parent / "windows-launcher-smoke-windows-x64-revision"
+    smoke.mkdir(exist_ok=True)
+    (smoke / "smoke-summary.txt").write_text(
+        "launcherAlive=false\nlauncherExit=0\nwindowObserved=true\nwindowAlive=false\nwindowExit=0\n"
+        "cefObserved=true\ncefAlive=false\npackageProcesses=\nfailure=null\n"
+    )
+    (smoke / "failed-start-summary.txt").write_text("exitCode=1\nprofileFailureObserved=true\nprocessesDrained=true\n")
     return package, report_path, report, contents

@@ -450,6 +450,7 @@ tasks.register("runWindowsApplicationImageSmokeTest") {
         var failure: Throwable? = null
         var windowObserved = false
         var cefObserved = false
+        var windowExitCode: Int? = null
         var processSnapshot: List<String> = emptyList()
         fun updateProcessSnapshot() {
             processSnapshot = windowsProcessesForSmoke(root, smokeDataRoot).map { process ->
@@ -467,6 +468,7 @@ tasks.register("runWindowsApplicationImageSmokeTest") {
                     appendLine("windowObserved=$windowObserved")
                     appendLine("windowPid=${windowProcess?.pid()}")
                     appendLine("windowAlive=${windowProcess?.isAlive}")
+                    appendLine("windowExit=$windowExitCode")
                     appendLine("cefObserved=$cefObserved")
                     appendLine("cefPid=${cefProcess?.pid()}")
                     appendLine("cefAlive=${cefProcess?.isAlive}")
@@ -521,9 +523,19 @@ tasks.register("runWindowsApplicationImageSmokeTest") {
             if (!cefObserved) throw GradleException("The Windows launcher app-image did not start cef/KWebShellCef.exe.")
             val close = ProcessBuilder(
                 "powershell.exe", "-NoLogo", "-NoProfile", "-Command",
-                "\$p=Get-Process -Id ${windowProcess!!.pid()} -ErrorAction SilentlyContinue; if (\$p) { \$p.CloseMainWindow() | Out-Null }",
-            ).start()
-            if (!close.waitFor(15, TimeUnit.SECONDS)) close.destroyForcibly()
+                "\$ErrorActionPreference='Stop'; \$p=Get-Process -Id ${windowProcess!!.pid()} -ErrorAction Stop; " +
+                    "\$p.EnableRaisingEvents=\$true; " +
+                    "if (-not \$p.CloseMainWindow()) { throw 'The Compose window rejected normal close.' }; " +
+                    "if (-not \$p.WaitForExit(60000)) { throw 'The Compose process did not exit.' }; exit \$p.ExitCode",
+            ).redirectOutput(File(smokeLogs, "close-stdout.log"))
+                .redirectError(File(smokeLogs, "close-stderr.log"))
+                .start()
+            if (!close.waitFor(75, TimeUnit.SECONDS)) {
+                close.destroyForcibly()
+                throw GradleException("The Windows window-process close verifier timed out.")
+            }
+            windowExitCode = close.exitValue()
+            if (windowExitCode != 0) throw GradleException("The Windows Compose process failed normal shutdown: $windowExitCode.")
             if (!main.waitFor(60, TimeUnit.SECONDS)) {
                 main.destroyForcibly()
                 throw GradleException("The Windows launcher app-image failed to exit after normal window close.")

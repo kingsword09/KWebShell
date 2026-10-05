@@ -39,9 +39,9 @@ def digest_file(path):
 def locate_inputs(downloaded):
     root = downloaded.resolve()
 
-    def find(pattern):
+    def find(pattern, family="application-package"):
         matches = [p for p in root.rglob(pattern) if any(
-            part.startswith("application-package-windows-x64-") for part in p.relative_to(root).parts
+            part.startswith(family + "-windows-x64-") for part in p.relative_to(root).parts
         )]
         if len(matches) != 1:
             raise ValueError(f"Expected exactly one Windows MSIX {pattern} artifact; found {len(matches)}")
@@ -50,10 +50,30 @@ def locate_inputs(downloaded):
             raise ValueError("Windows MSIX evidence must be a regular file inside the downloaded artifacts")
         return path
 
-    return find("*.msix"), find("application-package-report.json")
+    return (
+        find("*.msix"), find("application-package-report.json"),
+        find("smoke-summary.txt", "windows-launcher-smoke"),
+        find("failed-start-summary.txt", "windows-launcher-smoke"),
+    )
 
 
-def retain(package, report_path, output, source_revision):
+def read_summary(path, expected):
+    if path.stat().st_size > 64 * 1024:
+        raise ValueError("Windows launcher summary exceeds its size limit")
+    raw = path.read_bytes()
+    values = {}
+    for line in raw.decode("utf-8").splitlines():
+        key, separator, value = line.partition("=")
+        if not separator or not key or key in values:
+            raise ValueError("Windows launcher summary has malformed or duplicate fields")
+        values[key] = value
+    for key, value in expected.items():
+        if values.get(key) != value:
+            raise ValueError(f"Windows launcher did not prove {key}={value}")
+    return raw, values
+
+
+def retain(package, report_path, output, source_revision, smoke_path, failed_start_path):
     if not re.fullmatch(r"[0-9a-f]{40}", source_revision):
         raise ValueError("Windows MSIX evidence requires the actual hosted source revision")
     if report_path.stat().st_size > 1024 * 1024:
@@ -80,12 +100,24 @@ def retain(package, report_path, output, source_revision):
         raise ValueError("Windows MSIX report lacks verified signed entries")
     if report.get("failure") is not None:
         raise ValueError("Windows MSIX report contains a failure")
+    for field in ("launcherExitCode", "remainingPackageProcessCount"):
+        if type(report.get(field)) is not int or report[field] != 0:
+            raise ValueError(f"Windows MSIX shutdown did not prove {field}=0")
+    smoke_bytes, _ = read_summary(smoke_path, {
+        "launcherAlive": "false", "launcherExit": "0", "windowObserved": "true", "windowAlive": "false",
+        "windowExit": "0", "cefObserved": "true", "cefAlive": "false", "packageProcesses": "", "failure": "null",
+    })
+    failed_start_bytes, failed_start = read_summary(failed_start_path, {
+        "profileFailureObserved": "true", "processesDrained": "true",
+    })
+    if not re.fullmatch(r"-?[0-9]+", failed_start.get("exitCode", "")) or int(failed_start["exitCode"]) == 0:
+        raise ValueError("Windows launcher failed-start probe must report a nonzero exit")
     package_digest = digest_file(package)
     if report.get("msixSha256") != package_digest or report.get("packageSha256") != package_digest:
         raise ValueError("Windows MSIX bytes do not match the verified package digest")
 
     retained = {}
-    total = len(report_bytes)
+    total = len(report_bytes) + len(smoke_bytes) + len(failed_start_bytes)
     with zipfile.ZipFile(package) as archive:
         entries = {}
         names = set()
@@ -123,9 +155,13 @@ def retain(package, report_path, output, source_revision):
         "msixFileName": package.name, "msixSha256": package_digest,
         "msixSizeBytes": package.stat().st_size, "entrySha256": hashes,
         "reportSha256": digest_bytes(report_bytes),
+        "launcherSmokeSha256": digest_bytes(smoke_bytes),
+        "launcherFailedStartSha256": digest_bytes(failed_start_bytes),
     }
     proof_entries = {"msix/" + name: data for name, data in retained.items()}
     proof_entries["verification/application-package-report.json"] = report_bytes
+    proof_entries["verification/windows-launcher-smoke.txt"] = smoke_bytes
+    proof_entries["verification/windows-launcher-failed-start.txt"] = failed_start_bytes
     proof_entries["index.json"] = (json.dumps(index, sort_keys=True, indent=2) + "\n").encode()
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=output.parent, prefix=".windows-msix-proof-", delete=False) as temporary:
@@ -153,8 +189,8 @@ def main():
     parser.add_argument("--source-revision", required=True)
     arguments = parser.parse_args()
     try:
-        package, report = locate_inputs(arguments.downloaded)
-        index = retain(package, report, arguments.output, arguments.source_revision)
+        package, report, smoke, failed_start = locate_inputs(arguments.downloaded)
+        index = retain(package, report, arguments.output, arguments.source_revision, smoke, failed_start)
     except (OSError, ValueError, zipfile.BadZipFile) as error:
         parser.exit(1, f"Windows MSIX evidence: {error}\n")
     print(f"Retained exact MSIX proof for {index['msixSha256']} ({index['msixSizeBytes']} bytes)")

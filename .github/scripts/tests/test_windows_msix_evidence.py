@@ -24,9 +24,11 @@ class WindowsMsixEvidenceTest(unittest.TestCase):
         self.artifacts = self.root / "application-package-windows-x64-revision"
         self.package, self.report_path, self.report, self.contents = create_fixture(self.artifacts)
         self.output = self.root / "proof.zip"
+        self.smoke = self.root / "windows-launcher-smoke-windows-x64-revision/smoke-summary.txt"
+        self.failed_start = self.smoke.with_name("failed-start-summary.txt")
 
     def retain(self, revision=REVISION):
-        return collector.retain(self.package, self.report_path, self.output, revision)
+        return collector.retain(self.package, self.report_path, self.output, revision, self.smoke, self.failed_start)
 
     def assert_rejected(self, message):
         with self.assertRaisesRegex(ValueError, message):
@@ -47,10 +49,13 @@ class WindowsMsixEvidenceTest(unittest.TestCase):
         with zipfile.ZipFile(self.output) as proof:
             self.assertEqual(set("msix/" + name for name in self.contents) | {
                 "index.json", "verification/application-package-report.json",
+                "verification/windows-launcher-smoke.txt", "verification/windows-launcher-failed-start.txt",
             }, set(proof.namelist()))
             for name, data in self.contents.items():
                 self.assertEqual(data, proof.read("msix/" + name))
             self.assertEqual(report_before, proof.read("verification/application-package-report.json"))
+            self.assertEqual(self.smoke.read_bytes(), proof.read("verification/windows-launcher-smoke.txt"))
+            self.assertEqual(self.failed_start.read_bytes(), proof.read("verification/windows-launcher-failed-start.txt"))
             self.assertEqual(index, json.loads(proof.read("index.json")))
 
     def test_every_native_gate_must_have_passed(self):
@@ -58,7 +63,8 @@ class WindowsMsixEvidenceTest(unittest.TestCase):
         for field in ("status", "packageSignatureVerification", "sdkPackageValidation", "signatureVerification",
                       "tamperedPackageRejected", "installed", "normalShutdown", "uninstalled",
                       "applicationDataCleanup", "developerInstallPolicyRestored", "launcherWindowObserved",
-                      "cefSubprocessObserved", "packageSignatureEntryCount", "schemaVersion", "target", "failure"):
+                      "cefSubprocessObserved", "packageSignatureEntryCount", "launcherExitCode",
+                      "remainingPackageProcessCount", "schemaVersion", "target", "failure"):
             with self.subTest(field=field):
                 write_report(self.report_path, {**original, field: "FAIL"})
                 self.assert_rejected("Windows MSIX")
@@ -100,7 +106,7 @@ class WindowsMsixEvidenceTest(unittest.TestCase):
         self.assertEqual([], list(self.root.glob(".windows-msix-proof-*")))
 
     def test_collection_requires_one_package_and_one_report(self):
-        self.assertEqual((self.package.resolve(), self.report_path.resolve()), collector.locate_inputs(self.root))
+        self.assertEqual(tuple(p.resolve() for p in (self.package, self.report_path, self.smoke, self.failed_start)), collector.locate_inputs(self.root))
         duplicate = self.artifacts / "duplicate.msix"
         duplicate.write_bytes(self.package.read_bytes())
         with self.assertRaisesRegex(ValueError, "exactly one"):
@@ -109,6 +115,22 @@ class WindowsMsixEvidenceTest(unittest.TestCase):
         self.report_path.unlink()
         with self.assertRaisesRegex(ValueError, "exactly one"):
             collector.locate_inputs(self.root)
+
+    def test_both_launcher_shutdown_summaries_are_required(self):
+        for path, before, after in (
+            (self.smoke, "launcherExit=0", "launcherExit=1"),
+            (self.smoke, "windowAlive=false", "windowAlive=true"),
+            (self.smoke, "windowExit=0", "windowExit=1"),
+            (self.smoke, "packageProcesses=", "packageProcesses=remaining-process"),
+            (self.failed_start, "exitCode=1", "exitCode=0"),
+            (self.failed_start, "profileFailureObserved=true", "profileFailureObserved=false"),
+            (self.failed_start, "processesDrained=true", "processesDrained=false"),
+        ):
+            with self.subTest(summary=path.name, field=before):
+                original = path.read_text()
+                path.write_text(original.replace(before, after))
+                self.assert_rejected("Windows launcher")
+                path.write_text(original)
 
 
 if __name__ == "__main__":

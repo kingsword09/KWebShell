@@ -177,8 +177,11 @@ cleanup report, the current hosted source revision, and an exact full-MSIX
 SHA-256 match. The proof contains the original bytes of `AppxManifest.xml`,
 `AppxBlockMap.xml`, `[Content_Types].xml`, `AppxSignature.p7x`, signed application
 metadata, all five PNG assets, both required Temurin legal files, and the raw
-Windows report. A compact index records the package digest/size, source revision
-and entry digests. Paths normalize ZIP separators and reject traversal or
+Windows report and both launcher smoke summaries. The collector requires a
+nonzero failed-start exit with the Profile error observed and all processes
+drained, plus exit code zero from the actual window process and no remaining
+installed-package processes before uninstall. A compact index records the package
+digest/size, source revision and entry/summary digests. Paths normalize ZIP separators and reject traversal or
 ambiguous names. Missing, altered or oversized inputs fail before recording.
 
 The proof and report are retained permanently through the existing RFC artifact
@@ -381,6 +384,14 @@ the recorded native run, not indefinite availability of its test installer.
   a hosted artifact; source revision, actual package hash and all native
   acceptance checks remain mandatory. Decision: `READY` for this retention
   correction, with collector negatives and real hosted import required.
+- Final prerequisite review at `469c03b`: the real normal-smoke result has
+  distinct bootstrap/window PIDs, so P69.5 observes the actual window exit code
+  and all installed-package processes. CertEnroll also rejected the malformed
+  EKU string after MakeAppx passed; P69.4 shares a code-signing certificate
+  factory with the early Windows preflight. The fixture ordering and dual-stack
+  port checks in P69.7 preserve the existing renderer/CDP guarantees. Decision:
+  `READY` for these verification repairs; all real hosted results remain
+  required before acceptance.
 
 ## Acceptance review
 

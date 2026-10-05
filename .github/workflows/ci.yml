@@ -298,7 +298,7 @@ jobs:
         with:
           name: windows-launcher-smoke-${{ matrix.target }}-${{ github.sha }}
           path: kweb-application-launcher/build/reports/windows-launcher-smoke/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
 
       - name: Upload application lifecycle evidence
@@ -399,7 +399,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p build/rfc-evidence/downloaded
-          for family in rfc-governance provider-lifecycle native-dialogs engine-integration electron-migration clipboard application-package application-lifecycle; do
+          for family in rfc-governance provider-lifecycle native-dialogs engine-integration electron-migration clipboard application-package windows-launcher-smoke application-lifecycle; do
             gh run download "$GITHUB_RUN_ID" \
               --repo "$GITHUB_REPOSITORY" \
               --pattern "$family-*-${{ github.sha }}" \

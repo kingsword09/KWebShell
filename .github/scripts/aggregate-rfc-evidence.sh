@@ -10,14 +10,16 @@ cd "$(dirname "$0")/../.."
 
 downloaded="build/rfc-evidence/downloaded"
 input="docs/rfcs/evidence/manifest.json"
+catalog="build/rfc-evidence/catalog"
+mkdir -p "$catalog"
 
-# The recorder refuses a non-Implemented catalog: normalize the statuses in
-# this workspace before recording. The checked-in flip lands in the same commit
-# as the checked-in records.
+cp docs/rfcs/[0-9][0-9][0-9][0-9]-*.md "$catalog/"
+# The recorder refuses a non-Implemented catalog. Normalize a temporary copy
+# for recording while keeping the repository bytes unchanged, so contract
+# digests match the checkout used by the later verification job.
 for rfc in 0001 0002 0003 0004 0006 0007 0008 0009 0011 0012 0013 0014 0015 0016 0030; do
   file=$(ls docs/rfcs/${rfc}-*.md)
-  sed 's/^- Status: .*$/- Status: Implemented/' "$file" > "$file.recorded"
-  mv "$file.recorded" "$file"
+  sed 's/^- Status: .*$/- Status: Implemented/' "$file" > "$catalog/$(basename "$file")"
 done
 
 record() {
@@ -27,7 +29,7 @@ record() {
     echo "Missing $artifact evidence file for $target" >&2
     exit 1
   fi
-  local arguments="record $input $output --catalog docs/rfcs --runtime runtime/cef-runtime.json --contracts docs/rfcs/evidence/contracts.json --repository-root . --rfc $rfc --provider $provider --electron-major 44 --target $target --artifact $artifact=$file"
+  local arguments="record $input $output --catalog $catalog --runtime runtime/cef-runtime.json --contracts docs/rfcs/evidence/contracts.json --repository-root . --rfc $rfc --provider $provider --electron-major 44 --target $target --artifact $artifact=$file"
   if [ -n "$extra_name" ]; then
     if [ -z "$extra_file" ] || [ ! -f "$extra_file" ]; then
       echo "Missing $extra_name evidence file for $target" >&2

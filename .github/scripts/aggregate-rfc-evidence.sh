@@ -35,6 +35,11 @@ for target in macos-arm64 windows-x64 linux-x64; do
   fi
 done
 
+windows_msix_proof="build/rfc-evidence/windows-msix-proof.zip"
+python3 .github/scripts/retain_windows_msix_evidence.py \
+  --downloaded "$downloaded" --output "$windows_msix_proof" \
+  --source-revision "$GITHUB_SHA"
+
 record() {
   local target="$1" rfc="$2" provider="$3" artifact="$4" file="$5" input="$6" output="$7" extra_name="${8:-}" extra_file="${9:-}"
   if [ -z "$file" ] || [ ! -f "$file" ]; then
@@ -127,12 +132,7 @@ for target in macos-arm64 windows-x64 linux-x64; do
       output="build/rfc-evidence/chain-${target}-${count}.json"
     fi
     if [ "$rfc" = "0030" ] && [ "$target" = "windows-x64" ]; then
-      windows_msix=$(find "$downloaded" -type f -name '*.msix' -path "*application-package-${target}-*" | head -1)
-      if [ -z "$windows_msix" ] || [ ! -f "$windows_msix" ]; then
-        echo "Missing signed Windows MSIX evidence for $target" >&2
-        exit 1
-      fi
-      record "$target" "$rfc" "$provider" "$artifact" "$file" "$chain" "$output" "windows-msix" "$windows_msix"
+      record "$target" "$rfc" "$provider" "$artifact" "$file" "$chain" "$output" "windows-msix-proof" "$windows_msix_proof"
     else
       record "$target" "$rfc" "$provider" "$artifact" "$file" "$chain" "$output" "${extra_name:-}" "${extra_file:-}"
     fi

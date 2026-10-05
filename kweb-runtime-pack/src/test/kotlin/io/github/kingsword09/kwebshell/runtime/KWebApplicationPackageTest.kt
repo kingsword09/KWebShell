@@ -13,6 +13,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class KWebApplicationPackageTest {
@@ -46,6 +47,38 @@ class KWebApplicationPackageTest {
             assertEquals(KWebRuntimeReleaseTestFixture.PRODUCT_VERSION, verified.manifest.productVersion)
             assertEquals(signature, verified.platformSignature)
             assertEquals(firstResult.runtimeReleaseSha256, verified.runtimeReleaseSha256)
+        }
+    }
+
+    @Test
+    fun windowsMetadataIsDeterministicAndBindsAssetBytes() {
+        KWebRuntimeReleaseTestFixture.create(KWebTarget.parse("windows-x64")).use { fixture ->
+            val manifestPath = writeManifest(fixture.root, KWebRuntimeReleaseTestFixture.PRODUCT_VERSION)
+            val manifest = KWebApplicationManifestLoader.load(manifestPath)
+            val assetRoot = Files.createDirectory(fixture.root.resolve("application-assets"))
+            manifest.icons.forEach { icon ->
+                val copy = assetRoot.resolve(icon.path)
+                Files.createDirectories(copy.parent)
+                Files.copy(repositoryRoot().resolve("runtime").resolve(icon.path), copy)
+            }
+            val release = fixture.sign()
+            val first = fixture.outputDirectory.resolve("windows-first.zip")
+            val second = fixture.outputDirectory.resolve("windows-second.zip")
+            val input = request(fixture, manifestPath, release.pack, testSignature(fixture.target), first)
+                .copy(applicationAssetRoot = assetRoot)
+            val firstResult = KWebApplicationPackageAssembler.build(input)
+            KWebApplicationPackageAssembler.build(input.copy(outputPackage = second))
+            assertContentEquals(Files.readAllBytes(first), Files.readAllBytes(second))
+
+            val widePath = assetRoot.resolve(manifest.icons.single { it.kind == "windows-msix-wide310" }.path)
+            val image = ImageIO.read(widePath.toFile())
+            image.setRGB(0, 0, image.getRGB(0, 0) xor 0x00ffffff)
+            assertTrue(ImageIO.write(image, "png", widePath.toFile()))
+            val changed = KWebApplicationPackageAssembler.build(
+                input.copy(outputPackage = fixture.outputDirectory.resolve("windows-changed.zip")),
+            )
+            assertEquals(firstResult.manifestSha256, changed.manifestSha256)
+            assertNotEquals(firstResult.packageSha256, changed.packageSha256)
         }
     }
 
@@ -130,6 +163,11 @@ class KWebApplicationPackageTest {
                                 val tile = tiles.item(0).attributes
                                 assertEquals("Assets/Square310x310Logo.png", tile.getNamedItem("Square310x310Logo").nodeValue)
                                 assertEquals("Assets/Wide310x150Logo.png", tile.getNamedItem("Wide310x150Logo").nodeValue)
+                                val visual = xml.getElementsByTagNameNS(
+                                    "http://schemas.microsoft.com/appx/manifest/uap/windows10",
+                                    "VisualElements",
+                                ).item(0)
+                                assertEquals(null, visual.attributes.getNamedItem("ForegroundText"), "Windows 10 rejects the Windows 8 ForegroundText attribute")
                                 assertEquals(
                                     sourceManifest.protocols.size + sourceManifest.fileTypes.size,
                                     xml.getElementsByTagNameNS(

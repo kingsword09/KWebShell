@@ -2078,6 +2078,14 @@ Acceptance criteria for the remaining packaging repairs:
   Unit-test missing/blank/relative state paths and use the real Windows
   app-image with a file blocking its Profile directory to verify failed-start
   process cleanup before the normal launch/shutdown smoke test.
+- P69.6 (A3/A4/A7/A11/A13/A17): retain the complete signed MSIX in the hosted
+  application-package artifact for its declared 14-day retention. Before
+  recording any support evidence, hash that exact MSIX and require the matching
+  successful Windows report and source revision. Commit a deterministic ZIP of
+  its exact signature/block-map/manifest, signed metadata, five visual assets,
+  Temurin legal files and raw report; reject missing, changed, ambiguous or
+  oversized proof inputs. Unit-test the collector and real aggregation flow;
+  the hosted Windows SDK run remains the authority for native verification.
 
 Readiness review: Codex, separate pass by the implementation contributor,
 2026-10-05, rebased revision `37ae295` and the recovered uncommitted asset
@@ -2086,6 +2094,13 @@ MakeAppx error `80080204` because a large square tile requires a wide tile;
 it also reports unsupported configuration-cache serialization in the Windows
 app-image tasks. The manifest/asset contract and falsifiable negative tests are
 settled above; actual Windows package acceptance remains required.
+
+Hosted follow-up: run `37300449695` for PR head `040935c` (tested merge revision
+`f69126ffdd759ebf205c3df0ec08de4ea3399e20`) passed macOS/Linux and
+the Windows wide-tile check, then MakeAppx rejected `ForegroundText` on the
+Windows 10 `uap:VisualElements` schema (`C00CE015`). P69.1 also removes that
+obsolete attribute and asserts its absence; the actual SDK validation remains
+mandatory on the next Windows run.
 
 Follow-up review, 2026-10-05: the complete PowerShell diff contains an
 undocumented MakeAppx `validate` subcommand and Add-AppxPackage `-PassThru`
@@ -2101,6 +2116,15 @@ the finalizer then leaves the engine unclosed. The normal shutdown result is
 also ignored, and absent `LOCALAPPDATA` selects another profile location.
 P69.5 preserves the accepted ownership and explicit-profile guarantees;
 decision `READY` for repair, with real Windows failed-start evidence required.
+
+Evidence retention review at `60c84be`, 2026-10-05: the recorder copies retained
+artifacts into Git, while GitHub rejects files above 100 MiB. The local real
+application package is already 145,522,750 bytes, and the Windows package also
+bundles its JRE and launcher. Replace the draft's full-MSIX Git retention with
+P69.6's verified compact proof, preserving the full MSIX in the existing hosted
+artifact and recording its actual digest/size. No native check is removed.
+Decision: `READY`; the collector, retained bytes and final hosted source must
+pass acceptance before merge.
 
 ### RFC 0006 implementation objective: application lifecycle ownership
 

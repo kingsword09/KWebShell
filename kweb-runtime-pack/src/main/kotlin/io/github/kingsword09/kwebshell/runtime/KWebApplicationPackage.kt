@@ -1090,7 +1090,7 @@ private fun windowsAppxManifest(
     appendLine("  <Dependencies><TargetDeviceFamily Name=\"Windows.Desktop\" MinVersion=\"${xml(appxMinimumOsVersion(targetSpec.minimumOs))}\" MaxVersionTested=\"10.0.26100.0\" /></Dependencies>")
     appendLine("  <Resources><Resource Language=\"en-us\" /></Resources>")
     appendLine("  <Applications><Application Id=\"${xml(manifest.mainExecutable)}\" Executable=\"${xml(manifest.mainExecutable)}.exe\" EntryPoint=\"Windows.FullTrustApplication\">")
-    appendLine("    <uap:VisualElements DisplayName=\"${xml(manifest.displayName)}\" Description=\"${xml(manifest.displayName)}\" BackgroundColor=\"#071A3B\" ForegroundText=\"light\" Square44x44Logo=\"Assets/Square44x44Logo.png\" Square150x150Logo=\"Assets/Square150x150Logo.png\">")
+    appendLine("    <uap:VisualElements DisplayName=\"${xml(manifest.displayName)}\" Description=\"${xml(manifest.displayName)}\" BackgroundColor=\"#071A3B\" Square44x44Logo=\"Assets/Square44x44Logo.png\" Square150x150Logo=\"Assets/Square150x150Logo.png\">")
     appendLine("      <uap:DefaultTile Square310x310Logo=\"Assets/Square310x310Logo.png\" Wide310x150Logo=\"Assets/Wide310x150Logo.png\" />")
     appendLine("    </uap:VisualElements>")
     appendLine("    <Extensions>")

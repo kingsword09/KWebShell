@@ -91,3 +91,11 @@ the packaged main class with the bundled JRE and a blocked Profile directory,
 requires nonzero exit and complete JVM/CEF cleanup, then the normal smoke test
 exercises `KWebShell.exe`. Launcher unit tests run through `runtimeCheck` on
 all three hosted targets.
+
+The complete signed MSIX is retained by the hosted application-package artifact
+for 14 days. The repository retains a deterministic proof ZIP containing exact
+MSIX signature/block-map/manifest bytes, signed application metadata, all five
+visual assets, required Temurin legal files and the raw verification report.
+The collector checks the complete package SHA-256, source revision and every
+required native result before recording; its index includes package size and
+entry digests. This keeps permanent evidence within GitHub's file-size limit.

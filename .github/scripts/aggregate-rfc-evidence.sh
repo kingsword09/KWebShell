@@ -22,6 +22,7 @@ done
 
 record() {
   local target="$1" rfc="$2" provider="$3" artifact="$4" file="$5" input="$6" output="$7" extra_name="${8:-}" extra_file="${9:-}"
+  local action_mode action_observed action_count
   if [ -z "$file" ] || [ ! -f "$file" ]; then
     echo "Missing $artifact evidence file for $target" >&2
     exit 1
@@ -74,7 +75,19 @@ record() {
     arguments="$arguments --service shell --matrix-row shell --from-compatibility-report $extra_file"
   fi
   if [ "$rfc" = "0016" ]; then
-    arguments="$arguments --service notifications --matrix-row notification --from-compatibility-report $extra_file"
+    action_mode=$(jq -er '.actionVerificationMode' "$file")
+    action_observed=$(jq -r '.actionActivationObserved' "$file")
+    action_count=$(jq -r '.actionActivationCount' "$file")
+    if [ "$target" = "linux-x64" ]; then
+      if [ "$action_mode" != "os-ui" ] || [ "$action_observed" != "true" ] || [ "$action_count" != "1" ]; then
+        echo "Linux notification evidence must contain exactly one deterministic OS action activation." >&2
+        exit 1
+      fi
+    elif [ "$action_mode" != "contract" ] || [ "$action_observed" != "false" ] || [ "$action_count" != "0" ]; then
+      echo "Hosted $target notification evidence must remain contract-only and cannot claim OS UI activation." >&2
+      exit 1
+    fi
+    arguments="$arguments --service notifications --from-compatibility-report $extra_file"
   fi
   ./gradlew --no-daemon :kweb-rfc-governance:rfcEvidenceRecord \
     -PrfcEvidenceArguments="$arguments"

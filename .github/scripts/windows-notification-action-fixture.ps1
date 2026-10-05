@@ -40,15 +40,60 @@ public static class KWebShellMouse {
     }
 }
 '@
+$script:diagnosticsEnabled = $env:KWEB_NOTIFICATION_CAPTURE_DIAGNOSTICS -eq '1'
+if ($script:diagnosticsEnabled) {
+    Add-Type -AssemblyName System.Drawing
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type @'
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.Windows.Forms;
+public static class KWebShellDiagnostics {
+    public static void Capture(string path) {
+        var bounds = SystemInformation.VirtualScreen;
+        using (var bitmap = new Bitmap(bounds.Width, bounds.Height))
+        using (var graphics = Graphics.FromImage(bitmap)) {
+            graphics.CopyFromScreen(bounds.Left, bounds.Top, 0, 0, bitmap.Size);
+            bitmap.Save(path, ImageFormat.Png);
+        }
+    }
+}
+'@
+}
+
+function Save-DiagnosticsScreenshot([string] $name) {
+    if (-not $script:diagnosticsEnabled) {
+        return
+    }
+    $path = Join-Path (Get-Location) $name
+    [KWebShellDiagnostics]::Capture($path)
+    Write-Output "Notification fixture: captured $path."
+}
+
 $build = [int](Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuildNumber
 $screenWidth = [KWebShellScreen]::GetSystemMetrics(0)
+if ($script:diagnosticsEnabled) {
+    [pscustomobject]@{
+        build = $build
+        screenWidth = $screenWidth
+        screenHeight = [KWebShellScreen]::GetSystemMetrics(1)
+        virtualScreenLeft = [KWebShellScreen]::GetSystemMetrics(76)
+        virtualScreenTop = [KWebShellScreen]::GetSystemMetrics(77)
+        virtualScreenWidth = [KWebShellScreen]::GetSystemMetrics(78)
+        virtualScreenHeight = [KWebShellScreen]::GetSystemMetrics(79)
+        actionCenterShortcut = if ($build -ge 22000) { 'Win+N' } else { 'Win+A' }
+    } | ConvertTo-Json -Compress | Set-Content -Encoding UTF8 (Join-Path (Get-Location) 'windows-notification-diagnostics.json')
+}
 [KWebShellInput]::CloseActionCenter()
 Start-Sleep -Milliseconds 500
 [KWebShellInput]::OpenActionCenter($build)
 Start-Sleep -Milliseconds 750
+Save-DiagnosticsScreenshot 'windows-notification-before-click.png'
 [KWebShellMouse]::Click($screenWidth - 900 + 304, 234)
 Start-Sleep -Milliseconds 750
+Save-DiagnosticsScreenshot 'windows-notification-after-card-click.png'
 [KWebShellMouse]::Click($screenWidth - 900 + 540, 435)
+Save-DiagnosticsScreenshot 'windows-notification-after-action-click.png'
 Write-Output 'Notification fixture: declared OS action clicked.'
 Start-Sleep -Milliseconds 1000
 exit 0

@@ -396,6 +396,8 @@
         ".github/scripts/run-linux-ui-verification.sh",
         ".github/scripts/windows-notification-action-fixture.ps1",
         ".github/workflows/ci.yml",
+        ".github/workflows/macos-notification-conformance.yml",
+        ".github/workflows/windows-notification-conformance.yml",
         "README.md",
         "build.gradle.kts",
         "docs/kmp-native-services-and-electron-migration.md",

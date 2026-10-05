@@ -285,6 +285,7 @@ val migrationIntegrationJavaOptions = providers.provider {
         "-Dkweb.notifications.native.library.path=${notificationsNativeLibrary.get().absolutePath}",
         "-Dkweb.migration.notification.action.helper=${macNotificationActionFixture.get().asFile.absolutePath}",
         "-Dkweb.migration.notification.action.helper.windows=${windowsNotificationActionFixture.asFile.absolutePath}",
+        "-Dkweb.migration.notification.action.mode=${providers.gradleProperty("kwebNotificationActionMode").orElse("os-ui").get()}",
         "-Dkweb.migration.notifications.bridge.javascript=${notificationsBridgeJavascript.asFile.absolutePath}",
         "-Dkweb.migration.preload.javascript=${generatedDirectory.get().file("KWebElectronPreload.js").asFile.absolutePath}",
         "-Dkweb.migration.manifest=${fixtureManifest.asFile.absolutePath}",

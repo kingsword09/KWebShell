@@ -18,9 +18,16 @@ lifecycle policy checks.
 
 Hosts must observe `permission()` and request undetermined OS authorization
 before showing notifications. The migration integration test checks the real
-provider status before driving the system notification UI; its action fixture
-requires macOS Accessibility access or the Windows interactive desktop. Missing
-permission or an unavailable action fails the test with redacted diagnostics.
+provider status and the notification action contract in the required hosted CI.
+The physical macOS/Windows notification-center action is a separate manual
+conformance workflow because hosted desktop layout and accessibility state are
+not stable CI inputs. Use
+`.github/workflows/macos-notification-conformance.yml` and
+`.github/workflows/windows-notification-conformance.yml`. The Electron
+capability matrix remains `UNSUPPORTED` for the notification migration row
+until both workflows retain fresh OS-visible action evidence. Missing
+permission or an unavailable provider still fails the required test with
+redacted diagnostics.
 
 GitHub's macOS image disables the Notification Center LaunchAgent. CI runs
 `bash .github/scripts/configure-macos-notification-fixture.sh` to enable and
@@ -28,11 +35,14 @@ start that exact agent and verify its process before the packaged fixture.
 The service label is read from Apple's plist; application permission remains
 subject to the real system prompt.
 
-For the Windows hosted warm-action fixture, run
+For the Windows action conformance fixture, run
 `.github/scripts/configure-windows-notification-fixture.ps1` with Windows
 PowerShell 5.1 before the integration test, then run it with `-Cleanup` afterward.
-It registers only the test desktop AUMID. CI then runs the native test's
-`--fixture-permission` mode to verify the WinRT provider and requires the real
-desktop action on the GitHub-hosted `windows-2022` runner.
+It registers only the test desktop AUMID. Required CI runs the native test's
+`--fixture-permission` mode and the deterministic action/payload contract;
+the action through `.github/workflows/windows-notification-conformance.yml`
+when an interactive desktop is available. Pass
+`["self-hosted","Windows","X64","windows-notifications"]` only from a
+diagnostic branch when GitHub-hosted Windows cannot provide that desktop.
 These steps do not enable denied OS notifications or establish MSIX/cold-
 activation conformance.

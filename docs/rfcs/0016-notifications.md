@@ -300,7 +300,12 @@ The provider id and target capability record are retained with evidence. The
 Linux provider uses the exact declared D-Bus name; a fake daemon is allowed
 only as the hosted fixture's independent test double and is never a runtime
 fallback. The Windows and macOS providers must run against the real platform
-frameworks in hosted jobs.
+frameworks in hosted jobs. OS-visible notification-center actions are a
+separate conformance check because hosted desktop layout and accessibility
+state are not stable inputs to the required contract job. Until that workflow
+retains fresh Windows and macOS action evidence, the Electron capability matrix
+keeps the `notification` row `UNSUPPORTED`; the hosted contract record must
+not promote it or claim A5/A7 support.
 
 ## Electron migration boundary
 
@@ -320,9 +325,9 @@ menu/dialog contract exists.
 | A2 / permission | Permission request and observed status are exact per provider; denied/undetermined/not-applicable/unavailable are distinct. | Prompt grant/deny, repeated request, Linux daemon present/absent, owner close during prompt. | Real Windows, macOS, Linux providers and negative fixtures. | Permission provider tests and hosted permission transcript. | Redacted status/provider facts only. | `NOT_RUN` before implementation. |
 | A3 / content policy | Titles, bodies, ids, tags, icon, urgency, timeout, actions and reply fields are bounded and rejected before native mutation. | UTF-8 boundary, controls, duplicate action, unsupported reply/icon, malformed identity. | Common corpus, bridge validation, native negative ABI tests on all targets. | Common validators, generated bridge, C ABI validation. | No notification body/content retained. | `NOT_RUN` before implementation. |
 | A4 / show and replacement | Valid requests show exactly once and same-tag replacement has deterministic old-close/new-show ordering. | First show, duplicate id, tag collision, native rejection, rate limit, concurrent replacement. | Real runtime providers and event-order assertions on all targets. | Service coordinator and provider callbacks. | Provider/status/sequence facts only. | `NOT_RUN` before implementation. |
-| A5 / actions and reply | Actions/reply are advertised per target and unsupported fields fail instead of disappearing. | Button activation, reply response, unknown action, duplicate native callback, Linux reply rejection. | OS-visible action fixtures on all advertised targets. | Capability matrix, provider callbacks, migration fixture. | Action id and bounded reply length, no body. | `NOT_RUN` before implementation. |
+| A5 / actions and reply | Actions/reply are advertised per target and unsupported fields fail instead of disappearing. | Button activation, reply response, unknown action, duplicate native callback, Linux reply rejection. | Deterministic payload/provider tests on all targets; OS-visible action conformance is a separate manual workflow for Windows/macOS. | Capability matrix, provider callbacks, migration fixture, notification action conformance workflow. | Action id and bounded reply length, no body; manual UI transcript when run. | `NOT_RUN` before implementation. |
 | A6 / explicit close and timeout | Close and service-owned timeout withdraw the declared notification once with exact reason/result. | Existing/missing id, short/long expiry, persistent close, close race, provider close failure. | Provider integration and native callback/order tests on all targets. | Lifecycle coordinator and native close ABI. | Outcome/reason facts only. | `NOT_RUN` before implementation. |
-| A7 / activation | Warm and cold notification activation reaches the correct RFC 0006 application owner exactly once. | Primary/secondary process, wrong app id, unknown action, bounded reply, duplicate callback, owner close. | Packaged protocol activation and real OS notification response on all targets. | RFC 0006 activation sink, provider router, two-process fixture. | Redacted activation transcript and sequence facts. | `NOT_RUN` before implementation. |
+| A7 / activation | Warm and cold notification activation reaches the correct RFC 0006 application owner exactly once. | Primary/secondary process, wrong app id, unknown action, bounded reply, duplicate callback, owner close. | Hosted contract/provider routing tests on all targets; real OS notification response is a separate manual conformance workflow for Windows/macOS. | RFC 0006 activation sink, provider router, two-process fixture, notification action conformance workflow. | Redacted activation transcript and sequence facts; manual UI transcript when run. | `NOT_RUN` before implementation. |
 | A8 / lifecycle and bounds | Admission is bounded, native calls are serialized, close cancels pre-boundary work, and terminal events are ordered once. | 32/33 active, 16/17 rate window, slow native call, owner close, renderer termination. | JVM lifecycle tests, C ABI live-count tests, CEF bridge fixture. | Coordinator, owner close, event sequence tests. | Counts, statuses and sequence facts only. | `NOT_RUN` before implementation. |
 | A9 / platform providers | The declared WinRT, UNUserNotificationCenter, and D-Bus providers are used without backend or UI fallback. | Missing framework, missing session daemon, identity mismatch, native ABI mismatch. | Native ABI and independent real provider jobs on all targets. | Native sources, FFM binding, provider ids. | Provider identity and typed absence evidence. | `NOT_RUN` before implementation. |
 | A10 / renderer authority | Renderer creation requires exact origin/main frame, service grant, and declared policy; activation routing is host-only. | Missing grant, child frame, cross-origin page, copied request, owner close. | RFC 0003 policy tests and real CEF fixture on all targets. | Bridge route, policy engine, migration fixture. | Boolean authority outcomes only. | `NOT_RUN` before implementation. |
@@ -380,13 +385,16 @@ reads the plist label, enables/bootstraps/starts that agent and requires its
 real process. It does not alter application authorization records.
 
 The same PR revision removed Windows AUMID registration, native permission
-preflight and cleanup when switching runners. Those prerequisites are restored;
-UI exit 2 is again a failing required action, rather than a successful fixture
-with an absent action in its evidence. Local setup twice, ShellCheck,
-Actionlint, JDK 25 notification/migration checks, RFC contract tests and the
-real macOS packaged CEF migration fixture pass. The latter reports one `open`
-action and one application-owner activation. Hosted verification and the
-remaining RFC acceptance rows are still blocking.
+preflight and cleanup when switching runners. Those prerequisites are restored.
+The required hosted job now runs deterministic provider, payload, permission,
+and routing-contract checks without pretending that an unavailable shell UI
+was clicked. Real Windows and macOS Notification Center action verification is
+isolated in `.github/workflows/windows-notification-conformance.yml` and
+`.github/workflows/macos-notification-conformance.yml`. Run the GitHub-hosted
+workflow first; use the Windows `interactive-self-hosted` mode only from a
+non-`main` diagnostic branch when the hosted desktop cannot expose the action
+surface. Hosted verification and the remaining RFC acceptance rows are still
+blocking.
 
 ### PR 68 notification-action repair review (2026-10-04)
 

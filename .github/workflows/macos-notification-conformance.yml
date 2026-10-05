@@ -1,0 +1,98 @@
+name: macOS Notification Action Conformance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    name: macOS notification action
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 25 runtime
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Set up Node.js 24 LTS
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install pinned TypeScript compiler
+        run: npm ci
+
+      - name: Start macOS notification fixture agent
+        shell: bash
+        run: bash .github/scripts/configure-macos-notification-fixture.sh
+
+      - name: Resolve pinned CEF artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact="$(jq -er '.artifacts[] | select(.target == "macos-arm64")' runtime/cef-runtime.json)"
+          archive="$(jq -er '.fileName' <<<"$artifact")"
+          directory="${archive%.tar.bz2}"
+          {
+            echo "CEF_ARCHIVE=$archive"
+            echo "CEF_DIRECTORY=$directory"
+          } >> "$GITHUB_ENV"
+
+      - name: Cache pinned CEF archive
+        uses: actions/cache@v6
+        with:
+          path: .cef-ci/archives
+          key: cef-macos-arm64-${{ hashFiles('runtime/cef-runtime.json') }}
+
+      - name: Download pinned CEF archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .cef-ci/archives
+          archive=".cef-ci/archives/$CEF_ARCHIVE"
+          if [[ ! -f "$archive" ]]; then
+            curl --fail --location --retry 3 --retry-all-errors \
+              --output "$archive" \
+              "https://cef-builds.spotifycdn.com/$CEF_ARCHIVE"
+          fi
+
+      - name: Verify pinned CEF archive
+        shell: bash
+        run: |
+          ./gradlew --no-daemon :kweb-runtime-pack:verifyCefRuntimeArtifact \
+            -PkwebTarget=macos-arm64 \
+            -PcefRuntimeArchive="$PWD/.cef-ci/archives/$CEF_ARCHIVE"
+
+      - name: Extract verified CEF archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .cef-ci/source
+          tar -xjf ".cef-ci/archives/$CEF_ARCHIVE" -C .cef-ci/source
+
+      - name: Run real macOS notification action conformance
+        shell: bash
+        run: |
+          ./gradlew --no-daemon --max-workers=1 \
+            :kweb-electron-migration:electronMigrationIntegrationTest \
+            -PcefRoot="$PWD/.cef-ci/source/$CEF_DIRECTORY" \
+            -PkwebMigrationTarget=macos-arm64 \
+            -PkwebNotificationActionMode=os-ui \
+            -PkwebExpectHardwareGpuUnavailable=false
+
+      - name: Upload notification conformance evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: macos-notification-conformance-${{ github.run_id }}
+          path: kweb-electron-migration/build/migration-integration/migration-notifications-evidence.json
+          if-no-files-found: warn
+          retention-days: 14

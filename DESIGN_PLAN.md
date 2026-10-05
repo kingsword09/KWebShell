@@ -2131,10 +2131,12 @@ without changing its public contract or bypassing OS permission. Acceptance:
   the notification-center shortcut for the runner's OS build; macOS uses the
   clock's Accessibility element and scoped action/button matching.
 - N68.4 (A12/A14): failures retain only stage, provider/status, UI counts and
-  error codes. Real Windows/macOS/Linux verification must pass before claiming
-  support; missing hosted evidence and unrelated unverified RFC rows remain
-  explicitly blocking. Run notification JVM/native/FFM tests, migration tests,
-  generated TypeScript checks, and documentation/governance validation.
+  error codes. The required hosted job validates deterministic provider,
+  payload, permission and routing contracts; real Windows/macOS UI action
+  verification runs through the dedicated manual conformance workflow and
+  remains blocking for support promotion. Run notification JVM/native/FFM
+  tests, migration tests, generated TypeScript checks, and
+  documentation/governance validation.
 - N68.5 (A8/A9): Windows FFM open, calls and close retain one dedicated owner
   thread for the WinRT apartment lifetime. Concurrent callers serialize there;
   a failed factory releases the executor, native errors preserve their type,
@@ -2171,13 +2173,15 @@ fixture, keeping its OS permission and action assertions mandatory. Acceptance:
   Setup must verify the real process, be repeatable, and fail on an unavailable
   GUI session or service. It must not edit application authorization data.
 - N68.8 (A2/A5/A7): restore the owned Windows AUMID registration and native
-  permission preflight removed in `6f9375b`. A missing desktop action is a
-  failing required test. Each successful target must observe exactly one
-  declared native action and one application-owner activation.
-- N68.9 (A12/A14): validate shell/PowerShell setup, run the real macOS packaged
-  CEF fixture and notification/migration tests, and require fresh hosted
-  macOS/Windows/Linux results. Preserve incomplete RFC acceptance as blocking;
-  a repaired CI run does not certify the remaining cold-activation/reply rows.
+  permission preflight removed in `6f9375b`. The required hosted job validates
+  the native payload and routing contract; the dedicated manual conformance
+  workflow must observe exactly one declared native action and one
+  application-owner activation before Windows UI support is promoted.
+- N68.9 (A12/A14): validate shell/PowerShell setup, run the deterministic
+  notification/migration tests on hosted macOS/Windows/Linux, and retain real
+  OS UI action evidence separately. Preserve incomplete RFC acceptance as
+  blocking; a repaired hosted CI run does not certify the remaining
+  cold-activation/reply rows.
 
 Readiness review: Codex, separate pass by the same contributor, 2026-10-04,
 revision `52c7130`, decision `READY` for these fixture repairs. Run

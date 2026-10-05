@@ -111,6 +111,7 @@ private const val CLIPBOARD_BRIDGE_PROPERTY = "kweb.migration.clipboard.bridge.j
 private const val NOTIFICATIONS_LIBRARY_PROPERTY = "kweb.notifications.native.library.path"
 private const val NOTIFICATION_ACTION_HELPER_PROPERTY = "kweb.migration.notification.action.helper"
 private const val WINDOWS_NOTIFICATION_ACTION_HELPER_PROPERTY = "kweb.migration.notification.action.helper.windows"
+private const val NOTIFICATION_ACTION_MODE_PROPERTY = "kweb.migration.notification.action.mode"
 private const val NOTIFICATIONS_BRIDGE_PROPERTY = "kweb.migration.notifications.bridge.javascript"
 private const val PRELOAD_PROPERTY = "kweb.migration.preload.javascript"
 private const val REPORT_PROPERTY = "kweb.migration.report"
@@ -123,6 +124,17 @@ public fun main() {
     )
     KWebElectronCompatibilityReportValidator.validate(report)
     require(report.migrationReady) { "The migration fixture cannot run with a blocked compatibility report." }
+    val notificationActionMode = System.getProperty(NOTIFICATION_ACTION_MODE_PROPERTY, "os-ui")
+    require(notificationActionMode == "os-ui" || notificationActionMode == "contract") {
+        "Unsupported notification action mode: $notificationActionMode"
+    }
+    val notificationActionVerificationMode = if (
+        (System.getProperty("kweb.migration.target") ?: "").startsWith("linux-")
+    ) {
+        "os-ui"
+    } else {
+        notificationActionMode
+    }
     val appRoot = root.resolve("app-data")
     val sessionRoot = root.resolve("session-data")
     val profileRoot = root.resolve("profiles")
@@ -681,7 +693,8 @@ public fun main() {
                 }
                 activatedNotificationActions += checkNotNull(notificationActivations.single().actionId)
             }
-            if ((System.getProperty("kweb.migration.target") ?: "").startsWith("macos-")) {
+            if (notificationActionMode == "os-ui" &&
+                (System.getProperty("kweb.migration.target") ?: "").startsWith("macos-")) {
                 val actionHelper = requiredPath(NOTIFICATION_ACTION_HELPER_PROPERTY).toAbsolutePath().normalize()
                 val actionProcess = ProcessBuilder(actionHelper.toString()).inheritIO().start()
                 require(actionProcess.waitFor(30, TimeUnit.SECONDS)) {
@@ -698,7 +711,8 @@ public fun main() {
                 }
                 activatedNotificationActions += checkNotNull(notificationActivations.single().actionId)
             }
-            if ((System.getProperty("kweb.migration.target") ?: "").startsWith("windows-")) {
+            if (notificationActionMode == "os-ui" &&
+                (System.getProperty("kweb.migration.target") ?: "").startsWith("windows-")) {
                 val actionHelper = requiredPath(WINDOWS_NOTIFICATION_ACTION_HELPER_PROPERTY).toAbsolutePath().normalize()
                 val actionProcess = ProcessBuilder(
                     "powershell.exe",
@@ -1221,6 +1235,7 @@ public fun main() {
           "actionActivationObserved": ${activatedNotificationActions.isNotEmpty()},
           "actionActivationCount": ${activatedNotificationActions.size},
           "activatedActionIds": [${activatedNotificationActions.joinToString(",") { "\"$it\"" }}],
+          "actionVerificationMode": "$notificationActionVerificationMode",
           "applicationOwnerActivationObserved": ${applicationActivations.any { it.batch.source == KWebActivationSource.PROTOCOL }},
           "applicationOwnerActivationCount": ${applicationActivations.count { it.batch.source == KWebActivationSource.PROTOCOL }},
           "permissionDenied": true,

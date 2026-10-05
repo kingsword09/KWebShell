@@ -1,0 +1,119 @@
+name: Windows Notification Action Conformance
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner-mode:
+        description: "Desktop runner used for the real notification-center action"
+        required: true
+        default: github-hosted
+        type: choice
+        options:
+          - github-hosted
+          - interactive-self-hosted
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    name: Windows notification action (${{ inputs.runner-mode }})
+    if: inputs.runner-mode == 'github-hosted' || (github.ref_type == 'branch' && github.ref != 'refs/heads/main')
+    runs-on: ${{ inputs.runner-mode == 'interactive-self-hosted' && fromJSON('["self-hosted", "Windows", "X64", "windows-notifications"]') || 'windows-2022' }}
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 25 runtime
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Set up Node.js 24 LTS
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install pinned TypeScript compiler
+        run: npm ci
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Register Windows notification fixture identity
+        id: windows-notification-identity
+        shell: pwsh
+        run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .github/scripts/configure-windows-notification-fixture.ps1
+
+      - name: Resolve pinned CEF artifact
+        shell: pwsh
+        run: |
+          $artifact = (Get-Content runtime/cef-runtime.json -Raw | ConvertFrom-Json).artifacts |
+            Where-Object { $_.target -eq 'windows-x64' }
+          if ($null -eq $artifact) { throw 'Pinned windows-x64 CEF artifact is missing.' }
+          "CEF_ARCHIVE=$($artifact.fileName)" >> $env:GITHUB_ENV
+          "CEF_DIRECTORY=$([IO.Path]::GetFileNameWithoutExtension([IO.Path]::GetFileNameWithoutExtension($artifact.fileName)))" >> $env:GITHUB_ENV
+
+      - name: Cache pinned CEF archive
+        uses: actions/cache@v6
+        with:
+          path: .cef-ci/archives
+          key: cef-windows-x64-${{ hashFiles('runtime/cef-runtime.json') }}
+
+      - name: Download pinned CEF archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .cef-ci/archives | Out-Null
+          $archive = Join-Path (Resolve-Path .cef-ci/archives) $env:CEF_ARCHIVE
+          if (-not (Test-Path $archive)) {
+            Invoke-WebRequest -Uri "https://cef-builds.spotifycdn.com/$env:CEF_ARCHIVE" -OutFile $archive
+          }
+
+      - name: Verify pinned CEF archive
+        shell: pwsh
+        run: |
+          ./gradlew --no-daemon :kweb-runtime-pack:verifyCefRuntimeArtifact `
+            -PkwebTarget=windows-x64 `
+            "-PcefRuntimeArchive=$((Resolve-Path .cef-ci/archives/$env:CEF_ARCHIVE).Path)"
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned CEF archive verification failed.' }
+
+      - name: Extract verified CEF archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .cef-ci/source | Out-Null
+          tar.exe -xjf ".cef-ci/archives/$env:CEF_ARCHIVE" -C .cef-ci/source
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned CEF archive extraction failed.' }
+
+      - name: Run real Windows notification action conformance
+        shell: pwsh
+        env:
+          KWEB_NOTIFICATION_CAPTURE_DIAGNOSTICS: "1"
+        run: |
+          ./gradlew --no-daemon --max-workers=1 `
+            :kweb-electron-migration:electronMigrationIntegrationTest `
+            "-PcefRoot=$((Resolve-Path .cef-ci/source/$env:CEF_DIRECTORY).Path)" `
+            -PkwebMigrationTarget=windows-x64 `
+            -PkwebNotificationActionMode=os-ui `
+            -PkwebExpectHardwareGpuUnavailable=true
+          if ($LASTEXITCODE -ne 0) { throw 'Windows notification action conformance failed.' }
+
+      - name: Upload notification conformance evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-notification-conformance-${{ github.run_id }}
+          path: |
+            kweb-electron-migration/build/migration-integration/migration-notifications-evidence.json
+            windows-notification-*.png
+            windows-notification-*.jpg
+            windows-notification-diagnostics.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Remove Windows notification fixture identity
+        if: always() && steps.windows-notification-identity.outcome == 'success'
+        shell: pwsh
+        run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .github/scripts/configure-windows-notification-fixture.ps1 -Cleanup

@@ -213,6 +213,7 @@ jobs:
             --max-workers=1
             runtimeCheck
             "-PcefRoot=$PWD/.cef-ci/source/$CEF_DIRECTORY"
+            -PkwebNotificationActionMode=contract
             "-PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}"
           )
           if [[ "${{ runner.os }}" == "Linux" ]]; then

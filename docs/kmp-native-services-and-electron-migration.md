@@ -456,6 +456,7 @@ The initial mapping direction is:
 | `fs/promises` and relative `path` workflows | Rewrite to `KWebFiles` logical workspaces, owner-bound handles, bounded I/O, directory enumeration, and watch streams. Absolute paths, synchronous fs, `Buffer`, and `webUtils.getPathForFile` remain blocked. |
 | `clipboard` | `KWebClipboard` + generated `ClipboardBridge`; SYSTEM text/HTML/RTF/URI-list only. Linux PRIMARY, images, custom native formats, and direct renderer clipboard access remain unsupported. |
 | `shell` | `KWebShell` + generated `ShellBridge`: allowlisted external URI launch, RFC 0013 handle open/reveal, and verified OS trash/recycle. Raw paths, commands, permanent deletion, and shortcut metadata remain blocked. |
+| `notifications` | `KWebNotifications` + generated `NotificationsBridge`: packaged-identity native notifications, bounded actions/replies where the target advertises them, replacement, close, and RFC 0006 activation routing. Custom images, in-page fallbacks, and generic channels remain blocked. |
 | `nativeTheme` | Separate native service family after conformance publication. |
 | `screen`, `globalShortcut`, `Menu`, `Tray`, notifications | Separate UI/system service families after native lifecycle tests. |
 | `utilityProcess`, `child_process` | Explicit policy-controlled process service; never implicit Node execution. |

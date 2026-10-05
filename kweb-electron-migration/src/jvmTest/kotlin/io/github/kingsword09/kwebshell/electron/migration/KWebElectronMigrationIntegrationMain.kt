@@ -25,6 +25,22 @@ import io.github.kingsword09.kwebshell.service.apppaths.bridgeDispatcher
 import io.github.kingsword09.kwebshell.service.clipboard.JvmKWebClipboard
 import io.github.kingsword09.kwebshell.service.clipboard.KWebClipboard
 import io.github.kingsword09.kwebshell.service.clipboard.bridgeDispatcher as clipboardBridgeDispatcher
+import io.github.kingsword09.kwebshell.service.notifications.JvmKWebNotifications
+import io.github.kingsword09.kwebshell.service.notifications.KWebNotificationActivation
+import io.github.kingsword09.kwebshell.service.notifications.KWebNotificationPermissionStatus
+import io.github.kingsword09.kwebshell.service.notifications.KWebNotifications
+import io.github.kingsword09.kwebshell.service.notifications.bridgeDispatcher as notificationsBridgeDispatcher
+import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebActivationBatch
+import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebActivationSource
+import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebApplicationBackendStart
+import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebApplicationEvent
+import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebApplicationLifecycleBackend
+import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebApplicationLifecycleConfiguration
+import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebApplicationLifecycleController
+import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebApplicationRegistrationOperation
+import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebApplicationRegistrationReport
+import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebApplicationStartResult
+import io.github.kingsword09.kwebshell.service.applicationlifecycle.KWebRelaunchResult
 import io.github.kingsword09.kwebshell.service.files.JvmKWebFiles
 import io.github.kingsword09.kwebshell.service.files.JvmKWebFilesConfiguration
 import io.github.kingsword09.kwebshell.service.files.JvmKWebFilesPageOwner
@@ -43,6 +59,9 @@ import io.github.kingsword09.kwebshell.services.KWebServicePermissionPolicy
 import io.github.kingsword09.kwebshell.services.KWebServiceScope
 import io.github.kingsword09.kwebshell.services.KWebServiceGrant
 import io.github.kingsword09.kwebshell.services.policy.KWebInMemoryConsentStore
+import io.github.kingsword09.kwebshell.services.policy.KWebConsentRequest
+import io.github.kingsword09.kwebshell.services.policy.KWebConsentStatus
+import io.github.kingsword09.kwebshell.services.policy.KWebOsConsentProvider
 import io.github.kingsword09.kwebshell.services.policy.KWebPolicyAudit
 import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
 import io.github.kingsword09.kwebshell.services.policy.KWebUserGestureRegistry
@@ -70,6 +89,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -88,6 +108,11 @@ private const val SHELL_LIBRARY_PROPERTY = "kweb.shell.native.library.path"
 private const val SHELL_BRIDGE_PROPERTY = "kweb.migration.shell.bridge.javascript"
 private const val CLIPBOARD_LIBRARY_PROPERTY = "kweb.clipboard.native.library.path"
 private const val CLIPBOARD_BRIDGE_PROPERTY = "kweb.migration.clipboard.bridge.javascript"
+private const val NOTIFICATIONS_LIBRARY_PROPERTY = "kweb.notifications.native.library.path"
+private const val NOTIFICATION_ACTION_HELPER_PROPERTY = "kweb.migration.notification.action.helper"
+private const val WINDOWS_NOTIFICATION_ACTION_HELPER_PROPERTY = "kweb.migration.notification.action.helper.windows"
+private const val NOTIFICATION_ACTION_MODE_PROPERTY = "kweb.migration.notification.action.mode"
+private const val NOTIFICATIONS_BRIDGE_PROPERTY = "kweb.migration.notifications.bridge.javascript"
 private const val PRELOAD_PROPERTY = "kweb.migration.preload.javascript"
 private const val REPORT_PROPERTY = "kweb.migration.report"
 
@@ -99,6 +124,17 @@ public fun main() {
     )
     KWebElectronCompatibilityReportValidator.validate(report)
     require(report.migrationReady) { "The migration fixture cannot run with a blocked compatibility report." }
+    val notificationActionMode = System.getProperty(NOTIFICATION_ACTION_MODE_PROPERTY, "os-ui")
+    require(notificationActionMode == "os-ui" || notificationActionMode == "contract") {
+        "Unsupported notification action mode: $notificationActionMode"
+    }
+    val notificationActionVerificationMode = if (
+        (System.getProperty("kweb.migration.target") ?: "").startsWith("linux-")
+    ) {
+        "os-ui"
+    } else {
+        notificationActionMode
+    }
     val appRoot = root.resolve("app-data")
     val sessionRoot = root.resolve("session-data")
     val profileRoot = root.resolve("profiles")
@@ -113,6 +149,7 @@ public fun main() {
         filesBridge = Files.readString(requiredPath(FILES_BRIDGE_PROPERTY)),
         shellBridge = Files.readString(requiredPath(SHELL_BRIDGE_PROPERTY)),
         clipboardBridge = Files.readString(requiredPath(CLIPBOARD_BRIDGE_PROPERTY)),
+        notificationsBridge = Files.readString(requiredPath(NOTIFICATIONS_BRIDGE_PROPERTY)),
         preload = Files.readString(requiredPath(PRELOAD_PROPERTY)),
     )
     val window = onAwtThread {
@@ -122,6 +159,124 @@ public fun main() {
             setLocationRelativeTo(null)
             isVisible = true
             require(isDisplayable && isShowing && windowHandle != 0L)
+        }
+    }
+    val applicationActivations = CopyOnWriteArrayList<KWebApplicationEvent.Activation>()
+    val applicationTarget = io.github.kingsword09.kwebshell.core.KWebTarget.parse(
+        System.getProperty("kweb.migration.target") ?: "macos-arm64",
+    )
+    val applicationLifecycle = KWebApplicationLifecycleController(
+        KWebApplicationLifecycleConfiguration(
+            applicationId = "io.github.kwebshell.migration.fixture",
+            target = applicationTarget,
+            packageIdentity = "io.github.kwebshell.migration.fixture",
+            registeredSchemes = setOf("kweb"),
+            registeredExtensions = emptySet(),
+            packageRoot = root.toString(),
+            transportRoot = root.resolve("application-lifecycle-transport").toString(),
+            relaunchExecutable = null,
+            isPackaged = false,
+        ),
+        object : KWebApplicationLifecycleBackend {
+            override suspend fun acquire(
+                configuration: KWebApplicationLifecycleConfiguration,
+                initial: KWebActivationBatch,
+                onActivation: suspend (KWebActivationBatch) -> Unit,
+            ): KWebApplicationBackendStart = KWebApplicationBackendStart.Primary
+
+            override suspend fun release() = Unit
+            override suspend fun relaunch(preservePendingActivation: Boolean): KWebRelaunchResult =
+                KWebRelaunchResult.UNAVAILABLE
+
+            override suspend fun installAssociations(): KWebApplicationRegistrationReport = registration(true)
+            override suspend fun removeAssociations(): KWebApplicationRegistrationReport = registration(false)
+
+            private fun registration(registered: Boolean) = KWebApplicationRegistrationReport(
+                operation = if (registered) KWebApplicationRegistrationOperation.INSTALL
+                else KWebApplicationRegistrationOperation.REMOVE,
+                target = applicationTarget,
+                applicationId = "io.github.kwebshell.migration.fixture",
+                provider = "migration-fixture.lifecycle-test-backend",
+                registered = registered,
+                observedDigest = "fixture-only",
+            )
+        },
+    )
+    require(
+        runBlocking {
+            applicationLifecycle.start(
+                KWebActivationBatch(
+                    source = KWebActivationSource.INITIAL_ARGUMENTS,
+                    uris = listOf("kweb://migration-fixture/start"),
+                ),
+            )
+        } == KWebApplicationStartResult.PRIMARY,
+    ) { "The RFC 0006 application lifecycle controller did not acquire its fixture owner." }
+    val applicationActivationCollector = CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
+        applicationLifecycle.events.collect { event ->
+            if (event is KWebApplicationEvent.Activation) applicationActivations += event
+        }
+    }
+    val notificationActivations = CopyOnWriteArrayList<KWebNotificationActivation>()
+    val notifications = run {
+        var opened: KWebNotifications? = null
+        try {
+            if (applicationTarget.id.startsWith("macos-")) {
+                val mismatch = runCatching {
+                    JvmKWebNotifications.open(
+                        requiredPath(NOTIFICATIONS_LIBRARY_PROPERTY),
+                        "io.github.kwebshell.migration.fixture",
+                        "io.github.kwebshell.migration.wrong-bundle",
+                    ) { error("A mismatched notification identity cannot route activation.") }
+                }
+                mismatch.getOrNull()?.close()
+                require((mismatch.exceptionOrNull() as? io.github.kingsword09.kwebshell.core.KWebNativeException)?.code ==
+                    "notifications.platform-unavailable") { "The native provider accepted a mismatched macOS bundle identity." }
+            }
+            val notifications = JvmKWebNotifications.open(
+                requiredPath(NOTIFICATIONS_LIBRARY_PROPERTY),
+                "io.github.kwebshell.migration.fixture",
+                if (applicationTarget.id.startsWith("macos-")) "io.github.kwebshell.migration.notifications"
+                else "io.github.kwebshell.migration.fixture",
+            ) { activation ->
+                notificationActivations += activation
+                applicationLifecycle.acceptProtocolActivation(activation.toProtocolUri())
+            }
+            opened = notifications
+            val initialPermission = runBlocking { notifications.permission() }
+            val permission = if (initialPermission.status == KWebNotificationPermissionStatus.NOT_DETERMINED) {
+                val authorization = if (applicationTarget.id.startsWith("macos-")) {
+                    ProcessBuilder(requiredPath(NOTIFICATION_ACTION_HELPER_PROPERTY).toString(), "--authorize")
+                        .inheritIO().start()
+                } else null
+                try {
+                    runBlocking { notifications.requestPermission() }
+                } finally {
+                    if (authorization != null && !authorization.waitFor(2, TimeUnit.SECONDS)) {
+                        authorization.destroyForcibly().waitFor()
+                    }
+                }
+            } else initialPermission
+            val expectedPermission = if (applicationTarget.id.startsWith("linux-")) {
+                KWebNotificationPermissionStatus.NOT_APPLICABLE
+            } else KWebNotificationPermissionStatus.GRANTED
+            require(permission.status == expectedPermission) {
+                "Notification fixture: provider=${permission.provider} permission=${permission.status}; expected=$expectedPermission"
+            }
+            println("Notification fixture: provider=${permission.provider} permission=${permission.status}")
+            notifications
+        } catch (error: Throwable) {
+            val cleanup = listOf<() -> Unit>(
+                { opened?.close() },
+                { applicationActivationCollector.cancel() },
+                { applicationLifecycle.close() },
+                { server.close() },
+                { onAwtThread { window.dispose() } },
+            )
+            cleanup.forEach { action ->
+                runCatching(action).exceptionOrNull()?.let(error::addSuppressed)
+            }
+            throw error
         }
     }
     val gestures = KWebUserGestureRegistry()
@@ -149,6 +304,7 @@ public fun main() {
     val clipboard = JvmKWebClipboard.open(requiredPath(CLIPBOARD_LIBRARY_PROPERTY))
     engine.nativeServices.install(KWebAppPaths.Key, appPaths)
     engine.nativeServices.install(KWebClipboard.Key, clipboard)
+    engine.nativeServices.install(KWebNotifications.Key, notifications)
     val profile = runBlocking { engine.openProfile("electron-migration-fixture") }
     val cdp = KWebExampleCdpClient(port, 30_000)
     val allowPolicy = KWebServicePermissionPolicy.exact(
@@ -200,6 +356,38 @@ public fun main() {
         osConsent = null,
         audit = KWebPolicyAudit(),
     )
+    val notificationConsentStore = KWebInMemoryConsentStore("migration-notifications")
+    val notificationPolicyEngine = KWebServicePolicyEngine(
+        rendererGrants = KWebServicePermissionPolicy.exact(
+            KWebNotifications.DESCRIPTOR.operations.filter { it.rendererPermission != null }.map { operation ->
+                KWebServiceGrant(KWebNotifications.DESCRIPTOR.id, operation.id)
+            }.toSet(),
+        ),
+        gestures = gestures,
+        consentStore = notificationConsentStore,
+        osConsent = object : KWebOsConsentProvider {
+            override val facility: String = "fixture.notifications"
+            override suspend fun status(request: KWebConsentRequest): KWebConsentStatus = KWebConsentStatus.GRANTED
+        },
+        audit = KWebPolicyAudit(),
+    )
+    KWebNotifications.DESCRIPTOR.operations.filter { it.requiresOsConsent }.forEach { operation ->
+        notificationConsentStore.record(
+            KWebConsentRequest(KWebNotifications.DESCRIPTOR.id, operation.id, server.origin, "fixture.notifications"),
+            granted = true,
+            decidedBy = "hosted-fixture",
+        )
+    }
+    val deniedNotificationPolicyEngine = KWebServicePolicyEngine(
+        rendererGrants = KWebServicePermissionPolicy.exact(emptySet()),
+        gestures = gestures,
+        consentStore = KWebInMemoryConsentStore("migration-notifications-denied"),
+        osConsent = object : KWebOsConsentProvider {
+            override val facility: String = "fixture.notifications"
+            override suspend fun status(request: KWebConsentRequest): KWebConsentStatus = KWebConsentStatus.GRANTED
+        },
+        audit = KWebPolicyAudit(),
+    )
     val deniedShellPolicyEngine = KWebServicePolicyEngine(
         rendererGrants = KWebServicePermissionPolicy.exact(emptySet()),
         gestures = gestures,
@@ -234,6 +422,7 @@ public fun main() {
     val filesOwner = AtomicReference<JvmKWebFilesPageOwner?>()
     val shellService = AtomicReference<JvmKWebShellHandle?>()
     val ownerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val activatedNotificationActions = CopyOnWriteArrayList<String>()
     var activePage: KWebPage? = null
     var deniedFiles: KWebFiles? = null
     var deniedShell: JvmKWebShellHandle? = null
@@ -312,6 +501,19 @@ public fun main() {
                                 methods = setOf("read", "readPayload", "write", "clear", "closePayload"),
                                 dispatcher = clipboard.clipboardBridgeDispatcher(
                                     clipboardPolicyEngine,
+                                    KWebPolicySubject(
+                                        engineId = "migration-fixture",
+                                        profileId = "electron-migration-fixture",
+                                        pageId = pageId,
+                                        origin = server.origin,
+                                        scope = KWebServiceScope.APPLICATION,
+                                    ),
+                                ),
+                            ),
+                            KWebBridgeRoute(
+                                methods = setOf("permission", "requestPermission", "capabilities", "show", "close"),
+                                dispatcher = notifications.notificationsBridgeDispatcher(
+                                    notificationPolicyEngine,
                                     KWebPolicySubject(
                                         engineId = "migration-fixture",
                                         profileId = "electron-migration-fixture",
@@ -463,6 +665,118 @@ public fun main() {
             )
             val clipboardClearJson = Json.parseToJsonElement(clipboardClear).jsonObject
             require(clipboardClearJson["cleared"]?.jsonObject?.get("sequence")?.jsonPrimitive?.content?.toLongOrNull() != null)
+            val notificationCapabilities = Json.parseToJsonElement(
+                session.evaluateString(
+                    "(async()=>JSON.stringify(await window.desktop.getNotificationCapabilities({scope:'application'})))()",
+                ),
+            ).jsonObject
+            require(notificationCapabilities["actions"]?.jsonPrimitive?.content == "true") {
+                "The hosted notification provider did not advertise actions: $notificationCapabilities"
+            }
+            val notificationShown = Json.parseToJsonElement(
+                session.evaluateString(
+                    """
+                    (async()=>JSON.stringify(await window.desktop.showNotification({
+                      id:"migration-notification-1",tag:"migration-fixture",title:"KWebShell notification fixture",
+                      body:"notification fixture body",icon:"APPLICATION",urgency:"NORMAL",timeout:"SYSTEM",
+                      actions:[{id:"open",title:"Open fixture",kind:"BUTTON",replyPlaceholder:null}]
+                    })))()
+                    """.trimIndent(),
+                ),
+            ).jsonObject
+            require(notificationShown["id"]?.jsonPrimitive?.content == "migration-notification-1")
+            if ((System.getProperty("kweb.migration.target") ?: "").startsWith("linux-")) {
+                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+                while (notificationActivations.isEmpty() && System.nanoTime() < deadline) Thread.sleep(50)
+                require(notificationActivations.singleOrNull()?.actionId == "open") {
+                    "The Linux notification fixture did not route its ActionInvoked signal exactly once: $notificationActivations"
+                }
+                activatedNotificationActions += checkNotNull(notificationActivations.single().actionId)
+            }
+            if (notificationActionMode == "os-ui" &&
+                (System.getProperty("kweb.migration.target") ?: "").startsWith("macos-")) {
+                val actionHelper = requiredPath(NOTIFICATION_ACTION_HELPER_PROPERTY).toAbsolutePath().normalize()
+                val actionProcess = ProcessBuilder(actionHelper.toString()).inheritIO().start()
+                require(actionProcess.waitFor(30, TimeUnit.SECONDS)) {
+                    actionProcess.destroyForcibly()
+                    "The macOS notification Accessibility action fixture exceeded its deadline."
+                }
+                require(actionProcess.exitValue() == 0) {
+                    "The macOS notification Accessibility action fixture failed with exit ${actionProcess.exitValue()}."
+                }
+                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+                while (notificationActivations.isEmpty() && System.nanoTime() < deadline) Thread.sleep(50)
+                require(notificationActivations.singleOrNull()?.actionId == "open") {
+                    "The macOS notification fixture did not route its OS action exactly once: $notificationActivations"
+                }
+                activatedNotificationActions += checkNotNull(notificationActivations.single().actionId)
+            }
+            if (notificationActionMode == "os-ui" &&
+                (System.getProperty("kweb.migration.target") ?: "").startsWith("windows-")) {
+                val actionHelper = requiredPath(WINDOWS_NOTIFICATION_ACTION_HELPER_PROPERTY).toAbsolutePath().normalize()
+                val actionProcess = ProcessBuilder(
+                    "powershell.exe",
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    actionHelper.toString(),
+                ).inheritIO().start()
+                require(actionProcess.waitFor(40, TimeUnit.SECONDS)) {
+                    actionProcess.destroyForcibly()
+                    "The Windows notification UI action fixture exceeded its deadline."
+                }
+                require(actionProcess.exitValue() == 0) {
+                    "The Windows notification UI action fixture failed with exit ${actionProcess.exitValue()}."
+                }
+                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+                while (notificationActivations.isEmpty() && System.nanoTime() < deadline) Thread.sleep(50)
+                require(notificationActivations.singleOrNull()?.actionId == "open") {
+                    "The Windows notification fixture did not route its OS action exactly once: $notificationActivations"
+                }
+                activatedNotificationActions += checkNotNull(notificationActivations.single().actionId)
+            }
+            if (activatedNotificationActions.isNotEmpty()) {
+                val activationDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+                while (
+                    applicationActivations.none { it.batch.source == KWebActivationSource.PROTOCOL } &&
+                    System.nanoTime() < activationDeadline
+                ) Thread.sleep(50)
+                val protocolActivations = applicationActivations.filter {
+                    it.batch.source == KWebActivationSource.PROTOCOL
+                }
+                require(protocolActivations.size == 1) {
+                    "The RFC 0006 application owner did not receive exactly one notification activation: $protocolActivations"
+                }
+                val routed = protocolActivations.single().batch.uris.singleOrNull().orEmpty()
+                require(
+                    routed.startsWith(
+                        "kweb://notification?app=io.github.kwebshell.migration.fixture&" +
+                            "id=migration-notification-1&tag=migration-fixture&action=open",
+                    ),
+                ) {
+                    "The RFC 0006 owner received a mismatched notification activation envelope."
+                }
+            }
+            val notificationReplaced = Json.parseToJsonElement(
+                session.evaluateString(
+                    """
+                    (async()=>JSON.stringify(await window.desktop.showNotification({
+                      id:"migration-notification-2",tag:"migration-fixture",title:"KWebShell notification fixture",
+                      body:"notification fixture replacement",icon:"APPLICATION",urgency:"NORMAL",timeout:"SYSTEM",
+                      actions:[]
+                    })))()
+                    """.trimIndent(),
+                ),
+            ).jsonObject
+            require(notificationReplaced["outcome"]?.jsonPrimitive?.content == "REPLACED")
+            val notificationClosed = Json.parseToJsonElement(
+                session.evaluateString(
+                    "(async()=>JSON.stringify(await window.desktop.closeNotification({id:'migration-notification-2'})))()",
+                ),
+            ).jsonObject
+            require(notificationClosed["id"]?.jsonPrimitive?.content == "migration-notification-2")
             mintClipboardGesture()
             val files = session.evaluateString(
                 """
@@ -724,6 +1038,19 @@ public fun main() {
                                 ),
                             ),
                         ),
+                        KWebBridgeRoute(
+                            methods = setOf("permission", "requestPermission", "capabilities", "show", "close"),
+                            dispatcher = notifications.notificationsBridgeDispatcher(
+                                deniedNotificationPolicyEngine,
+                                KWebPolicySubject(
+                                    engineId = "migration-fixture",
+                                    profileId = "electron-migration-fixture",
+                                    pageId = "denied-page",
+                                    origin = server.origin,
+                                    scope = KWebServiceScope.APPLICATION,
+                                ),
+                            ),
+                        ),
                     ),
                 ),
                 "${server.indexUrl}?denied",
@@ -746,6 +1073,12 @@ public fun main() {
                 "(async()=>{try{await window.desktop.openExternal({uri:'https://example.invalid'});return 'unexpected'}catch(e){return e.code}})()",
             )
             require(shellCode == "service.permission-denied") { "Denied shell page returned '$shellCode'." }
+            val notificationCode = session.evaluateString(
+                "(async()=>{try{await window.desktop.getNotificationCapabilities({scope:'application'});return 'unexpected'}catch(e){return e.code}})()",
+            )
+            require(notificationCode == "service.permission-denied") {
+                "Denied notification page returned '$notificationCode'."
+            }
         }
         deniedPage.close()
         activePage = null
@@ -770,7 +1103,10 @@ public fun main() {
         unconfiguredPage.close()
         activePage = null
         profile.close()
+        if (notifications.lifecycle.value != KWebLifecycleState.CLOSED) notifications.close()
         engine.close()
+        applicationActivationCollector.cancel()
+        applicationLifecycle.close()
         require(appPaths.lifecycle.value == KWebLifecycleState.CLOSED)
         require(engine.nativeServices.lifecycle.value == KWebLifecycleState.CLOSED)
     } catch (error: Throwable) {
@@ -801,6 +1137,17 @@ public fun main() {
         }
         try {
             if (clipboard.lifecycle.value != KWebLifecycleState.CLOSED) clipboard.close()
+        } catch (error: Throwable) {
+            failure = failure.append(error)
+        }
+        try {
+            if (notifications.lifecycle.value != KWebLifecycleState.CLOSED) notifications.close()
+        } catch (error: Throwable) {
+            failure = failure.append(error)
+        }
+        try {
+            applicationActivationCollector.cancel()
+            if (applicationLifecycle.lifecycle.value != KWebLifecycleState.CLOSED) applicationLifecycle.close()
         } catch (error: Throwable) {
             failure = failure.append(error)
         }
@@ -869,6 +1216,34 @@ public fun main() {
         }
         """.trimIndent() + "\n",
     )
+    Files.writeString(
+        root.resolve("migration-notifications-evidence.json"),
+        """
+        {
+          "schemaVersion": 1,
+          "target": "${System.getProperty("kweb.migration.target") ?: "unknown"}",
+          "cefRuntime": "stock-cef-151",
+          "contractRevision": "2026-10-02.1",
+          "exactOriginMainFrame": true,
+          "childFrameTransportAbsent": true,
+          "crossOriginBridgeAbsent": true,
+          "namedOperationsOnly": true,
+          "capabilitiesObserved": true,
+          "showObserved": true,
+          "replacementObserved": true,
+          "closeObserved": true,
+          "actionActivationObserved": ${activatedNotificationActions.isNotEmpty()},
+          "actionActivationCount": ${activatedNotificationActions.size},
+          "activatedActionIds": [${activatedNotificationActions.joinToString(",") { "\"$it\"" }}],
+          "actionVerificationMode": "$notificationActionVerificationMode",
+          "applicationOwnerActivationObserved": ${applicationActivations.any { it.batch.source == KWebActivationSource.PROTOCOL }},
+          "applicationOwnerActivationCount": ${applicationActivations.count { it.batch.source == KWebActivationSource.PROTOCOL }},
+          "permissionDenied": true,
+          "customImageInputAbsent": true,
+          "ownerClosed": true
+        }
+        """.trimIndent() + "\n",
+    )
     println("KWebShell typed Electron migration fixture passed against real CEF.")
 }
 
@@ -914,6 +1289,7 @@ private class MigrationFixtureServer(
     filesBridge: String,
     shellBridge: String,
     clipboardBridge: String,
+    notificationsBridge: String,
     preload: String,
 ) : AutoCloseable {
     private val executor = Executors.newCachedThreadPool { task ->
@@ -928,6 +1304,7 @@ private class MigrationFixtureServer(
             "<script>$filesBridge</script>" +
             "<script>$shellBridge</script>" +
             "<script>$clipboardBridge</script>" +
+            "<script>$notificationsBridge</script>" +
             "<script>globalThis.KWebApplicationStreamsBridge={createClient(){return {openDownloadProgress:async function* (request){yield {downloadId:request.downloadId,done:false};yield {downloadId:request.downloadId,done:true}}}}}</script>" +
             "<script>$preload</script>"
         ).toByteArray(StandardCharsets.UTF_8)

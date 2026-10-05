@@ -23,45 +23,41 @@ jobs:
       matrix:
         include:
           - target: macos-arm64
-            os: macos-15
+            runner: '["macos-15"]'
             gpu-contract: hardware GPU contract
             expect-hardware-gpu-unavailable: false
             benchmark-machine-class: unused
             run-application-benchmark: false
             run-live-html5: false
           - target: windows-x64
-            os: windows-2022
+            runner: '["windows-2022"]'
             gpu-contract: GPU unavailable contract
             expect-hardware-gpu-unavailable: true
             benchmark-machine-class: github-hosted-windows-2022-x64
             run-application-benchmark: true
             run-live-html5: true
           - target: linux-x64
-            os: ubuntu-24.04
+            runner: '["ubuntu-24.04"]'
             gpu-contract: GPU unavailable contract
             expect-hardware-gpu-unavailable: true
             benchmark-machine-class: unused
             run-application-benchmark: false
             run-live-html5: false
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ fromJSON(matrix.runner) }}
     timeout-minutes: 90
 
     steps:
-      - name: Configure line endings for deterministic contract digests
-        shell: bash
-        run: git config --global core.eol lf
-
       - name: Check out repository
         uses: actions/checkout@v7
+
+      - name: Configure line endings for deterministic contract digests
+        run: git config --local core.eol lf
 
       - name: Set up JDK 25 runtime
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "25"
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
 
       - name: Set up Node.js 24 LTS
         uses: actions/setup-node@v6
@@ -70,12 +66,35 @@ jobs:
           cache: npm
 
       - name: Install pinned TypeScript compiler
-        shell: bash
         run: npm ci
 
       - name: Set up MSVC
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Start macOS notification fixture agent
+        if: runner.os == 'macOS'
+        shell: bash
+        run: bash .github/scripts/configure-macos-notification-fixture.sh
+
+      - name: Register Windows notification fixture identity
+        id: windows-notification-identity
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .github/scripts/configure-windows-notification-fixture.ps1
+
+      - name: Verify Windows notification fixture through the native ABI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cmake -S kweb-service-notifications/native -B kweb-service-notifications/build/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DKWEB_PROJECT_ARCH=x86_64
+          if ($LASTEXITCODE -ne 0) { throw 'Notification native configuration failed.' }
+          cmake --build kweb-service-notifications/build/native --config Release
+          if ($LASTEXITCODE -ne 0) { throw 'Notification native build failed.' }
+          & kweb-service-notifications/build/native/contract/kweb_notifications_tests.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Notification native contract tests failed.' }
+          & kweb-service-notifications/build/native/contract/kweb_notifications_tests.exe --fixture-permission
+          if ($LASTEXITCODE -ne 0) { throw 'Notification native fixture permission failed.' }
 
       - name: Install Linux native dependencies
         if: runner.os == 'Linux'
@@ -194,6 +213,7 @@ jobs:
             --max-workers=1
             runtimeCheck
             "-PcefRoot=$PWD/.cef-ci/source/$CEF_DIRECTORY"
+            -PkwebNotificationActionMode=contract
             "-PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}"
           )
           if [[ "${{ runner.os }}" == "Linux" ]]; then
@@ -280,6 +300,10 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Remove Windows notification fixture identity
+        if: always() && runner.os == 'Windows' && steps.windows-notification-identity.outcome == 'success'
+        shell: pwsh
+        run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .github/scripts/configure-windows-notification-fixture.ps1 -Cleanup
 
   governance:
     name: Verify checked-in RFC evidence
@@ -363,6 +387,10 @@ jobs:
               --dir "build/rfc-evidence/downloaded/$family"
           done
           find build/rfc-evidence/downloaded -type f | sort
+
+      - name: Test RFC evidence aggregation
+        shell: bash
+        run: python3 -m unittest discover -s .github/scripts/tests -p 'test_*.py' -v
 
       - name: Record hosted RFC evidence
         shell: bash

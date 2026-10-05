@@ -17,4 +17,7 @@ contextBridge.exposeInMainWorld("desktop", {
   openResource: (request: unknown) => ipcRenderer.invoke("shell.openResource", request),
   revealResource: (request: unknown) => ipcRenderer.invoke("shell.revealResource", request),
   trashResource: (request: unknown) => ipcRenderer.invoke("shell.trashResource", request),
+  getNotificationCapabilities: (request: unknown) => ipcRenderer.invoke("notification.capabilities", request),
+  showNotification: (request: unknown) => ipcRenderer.invoke("notification.show", request),
+  closeNotification: (request: unknown) => ipcRenderer.invoke("notification.close", request),
 });

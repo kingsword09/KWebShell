@@ -10,14 +10,29 @@ cd "$(dirname "$0")/../.."
 
 downloaded="build/rfc-evidence/downloaded"
 input="docs/rfcs/evidence/manifest.json"
+catalog="docs/rfcs"
 
-# The recorder refuses a non-Implemented catalog: normalize the statuses in
-# this workspace before recording. The checked-in flip lands in the same commit
-# as the checked-in records.
-for rfc in 0001 0002 0003 0004 0006 0007 0008 0009 0011 0012 0013 0014 0015 0030; do
-  file=$(ls docs/rfcs/${rfc}-*.md)
-  sed 's/^- Status: .*$/- Status: Implemented/' "$file" > "$file.recorded"
-  mv "$file.recorded" "$file"
+# RFC 0016 remains Accepted. Its reports are mandatory diagnostic artifacts,
+# not Implemented support records. Validate every target before updating the
+# manifest; retain the reports unchanged in the electron-migration artifacts.
+for target in macos-arm64 windows-x64 linux-x64; do
+  file=$(find "$downloaded" -type f -name migration-notifications-evidence.json -path "*electron-migration-${target}-*" | head -1)
+  if [ -z "$file" ] || [ ! -f "$file" ]; then
+    echo "Missing notifications evidence file for $target" >&2
+    exit 1
+  fi
+  if ! jq -e --arg target "$target" '
+    if $target == "linux-x64" then
+      .actionVerificationMode == "os-ui" and
+      .actionActivationObserved == true and .actionActivationCount == 1
+    else
+      .actionVerificationMode == "contract" and
+      .actionActivationObserved == false and .actionActivationCount == 0
+    end
+  ' "$file" > /dev/null 2>&1; then
+    echo "Invalid notification action evidence for $target: Linux requires one OS action; Windows/macOS require contract mode with zero activations." >&2
+    exit 1
+  fi
 done
 
 record() {
@@ -26,7 +41,7 @@ record() {
     echo "Missing $artifact evidence file for $target" >&2
     exit 1
   fi
-  local arguments="record $input $output --catalog docs/rfcs --runtime runtime/cef-runtime.json --contracts docs/rfcs/evidence/contracts.json --repository-root . --rfc $rfc --provider $provider --electron-major 44 --target $target --artifact $artifact=$file"
+  local arguments="record $input $output --catalog $catalog --runtime runtime/cef-runtime.json --contracts docs/rfcs/evidence/contracts.json --repository-root . --rfc $rfc --provider $provider --electron-major 44 --target $target --artifact $artifact=$file"
   if [ -n "$extra_name" ]; then
     if [ -z "$extra_file" ] || [ ! -f "$extra_file" ]; then
       echo "Missing $extra_name evidence file for $target" >&2

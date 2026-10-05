@@ -146,6 +146,16 @@ accepting stale checked-in evidence or inventing a local approval.
 
 ## CI behavior
 
+Aggregation passes the unchanged repository catalog to the recorder. It must
+never promote an RFC through a temporary catalog. RFC 0016 is still `Accepted`:
+its three `migration-notifications-evidence.json` files remain mandatory raw
+`electron-migration-*` artifacts, but produce no support records in the manifest.
+Before any recording, aggregation requires Linux's one observed OS action and
+Windows/macOS contract mode with zero activations. Missing or invalid reports
+fail the job. Separate OS action conformance and the remaining RFC acceptance
+rows still block notification support and merge; green governance establishes
+catalog/evidence consistency, not completed RFC 0016 acceptance.
+
 - Documentation-only pull requests (markdown and `docs/rfcs/**`) run
   `git diff --check` and `rfcGovernanceCheck` only — never the native matrix.
 - Regular verification jobs run `runtimeCheck` on all three hosted targets.

@@ -383,6 +383,46 @@
         "kweb-service-shell/src",
         "settings.gradle.kts"
       ]
+    },
+    {
+      "rfcId": "0016",
+      "paths": [
+        ".github/scripts/aggregate-rfc-evidence.sh",
+        ".github/scripts/configure-linux-shell-fixture.sh",
+        ".github/scripts/configure-macos-notification-fixture.sh",
+        ".github/scripts/configure-windows-notification-fixture.ps1",
+        ".github/scripts/linux-notification-fixture.c",
+        ".github/scripts/macos-notification-action-fixture.swift",
+        ".github/scripts/run-linux-ui-verification.sh",
+        ".github/scripts/windows-notification-action-fixture.ps1",
+        ".github/workflows/ci.yml",
+        ".github/workflows/macos-notification-conformance.yml",
+        ".github/workflows/windows-notification-conformance.yml",
+        "README.md",
+        "build.gradle.kts",
+        "docs/kmp-native-services-and-electron-migration.md",
+        "docs/rfcs/0016-notifications.md",
+        "docs/rfcs/evidence/contracts.json",
+        "kweb-electron-migration/README.md",
+        "kweb-electron-migration/build.gradle.kts",
+        "kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronCapabilityMatrix.kt",
+        "kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronMigrationContract.kt",
+        "kweb-electron-migration/src/jvmMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronPreloadGenerator.kt",
+        "kweb-electron-migration/src/jvmTest/java/io/github/kingsword09/kwebshell/electron/migration/MacBundleIntegrationLauncher.java",
+        "kweb-electron-migration/src/jvmTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronMigrationIntegrationMain.kt",
+        "kweb-electron-migration/src/jvmTest/resources/migration-fixture",
+        "kweb-electron-migration/src/jvmTest/resources/migration-golden",
+        "kweb-electron-migration/src/jvmTest/resources/preload-runtime-test.mjs",
+        "kweb-rfc-governance/build.gradle.kts",
+        "kweb-rfc-governance/src/main/kotlin/io/github/kingsword09/kwebshell/rfc/KWebRfcServiceCatalog.kt",
+        "kweb-service-application-lifecycle/src/commonMain",
+        "kweb-service-application-lifecycle/src/commonTest",
+        "kweb-service-notifications/README.md",
+        "kweb-service-notifications/build.gradle.kts",
+        "kweb-service-notifications/native",
+        "kweb-service-notifications/src",
+        "settings.gradle.kts"
+      ]
     }
   ]
 }

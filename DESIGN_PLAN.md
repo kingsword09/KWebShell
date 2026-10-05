@@ -2112,6 +2112,133 @@ runtime APIs, the evidence schema, or historical support claims. Acceptance:
 These checks include a recorded review pass. Automated metadata/evidence checks
 remain necessary but do not certify the semantic completeness of a contract.
 
+### PR 68 repair objective: verify real notification actions
+
+Repair the failing RFC 0016 notification submission and desktop action fixtures
+without changing its public contract or bypassing OS permission. Acceptance:
+
+- N68.1 (RFC 0016 A2/A9): observe provider permission before showing a hosted
+  notification; macOS authorization is answered through the real, fixture-owned
+  system prompt. Its bundle identity is distinct from the production package,
+  so test authorization cannot inherit production application consent. Denial
+  or unavailable permission remains a failing test.
+- N68.2 (A4/A5): Windows constructs its WinRT toast only after the complete XML
+  payload has been populated. Native assertions inspect the resulting toast's
+  content and action arguments, including escaped text.
+- N68.3 (A5/A7): each OS driver locates the fixture notification in its actual
+  desktop UI, invokes the declared action, and the integration test observes
+  exactly one matching native callback and RFC 0006 activation. Windows selects
+  the notification-center shortcut for the runner's OS build; macOS uses the
+  clock's Accessibility element and scoped action/button matching.
+- N68.4 (A12/A14): failures retain only stage, provider/status, UI counts and
+  error codes. The required hosted job validates deterministic provider,
+  payload, permission and routing contracts; real Windows/macOS UI action
+  verification runs through the dedicated manual conformance workflow and
+  remains blocking for support promotion. Run notification JVM/native/FFM
+  tests, migration tests, generated TypeScript checks, and
+  documentation/governance validation.
+- N68.5 (A8/A9): Windows FFM open, calls and close retain one dedicated owner
+  thread for the WinRT apartment lifetime. Concurrent callers serialize there;
+  a failed factory releases the executor, native errors preserve their type,
+  close runs once on the owning thread, and post-close calls fail explicitly.
+  JVM thread/lifecycle tests and real hosted permission/show/action gates are
+  required. Native diagnostics retain only operation and HRESULT.
+- N68.6 (A2/A5/A9): hosted warm notification tests register their own Windows
+  desktop AUMID, verify the real WinRT setting, reject identity collisions and
+  remove only their own registration. This fixture does not certify MSIX or
+  cold activation. macOS enumerates the declared UI agents by native process id
+  because they may be absent from the application list. Preflight failure must
+  close the GUI, HTTP fixture and native/lifecycle owners and exit nonzero.
+
+Review pass: Codex, same contributor, 2026-10-04, PR head `8ebe7df`. These are
+repairs to the existing A2/A4/A5/A7/A9/A12 guarantees, not a revised API. The
+existing hosted run `37169156002` passes Linux and fails the macOS/Windows
+action lookup. Acceptance remains blocked until fresh real target results.
+
+Follow-up review: run `37172110932` compiled the Windows provider but exposed a
+native permission failure after dispatch moved from the creating thread to a
+coroutine worker. The N68.5 repair preserves the existing serialized-call
+contract; no alternate provider or permission policy is introduced. Native
+apartment ownership is an implementation repair, while hosted results remain
+required to distinguish any further registration defect.
+
+### PR 68 hosted desktop prerequisites repair
+
+Restore the real desktop facilities required by the existing notification
+fixture, keeping its OS permission and action assertions mandatory. Acceptance:
+
+- N68.7 (RFC 0016 A2/A9): enable, bootstrap if necessary, and start the declared
+  macOS Notification Center LaunchAgent before integration. GitHub's image
+  disables this agent in `images/macos/scripts/build/configure-system.sh`.
+  Setup must verify the real process, be repeatable, and fail on an unavailable
+  GUI session or service. It must not edit application authorization data.
+- N68.8 (A2/A5/A7): restore the owned Windows AUMID registration and native
+  permission preflight removed in `6f9375b`. The required hosted job validates
+  the native payload and routing contract; the dedicated manual conformance
+  workflow must observe exactly one declared native action and one
+  application-owner activation before Windows UI support is promoted.
+- N68.9 (A12/A14): validate shell/PowerShell setup, run the deterministic
+  notification/migration tests on hosted macOS/Windows/Linux, and retain real
+  OS UI action evidence separately. Preserve incomplete RFC acceptance as
+  blocking; a repaired hosted CI run does not certify the remaining
+  cold-activation/reply rows.
+
+Readiness review: Codex, separate pass by the same contributor, 2026-10-04,
+revision `52c7130`, decision `READY` for these fixture repairs. Run
+`37197414544` reports one macOS notification-related process and zero windows,
+then authorization timeout; the upstream image explicitly unloads the
+Notification Center agent. The Windows registration/preflight/cleanup steps
+are absent from that revision's workflow. These are declared runtime
+prerequisites, not changes to the service's public contract.
+
+### PR 68 Windows clipboard contention repair
+
+Preserve the RFC 0014 provider's independent-reader guarantee when another
+process briefly owns the Win32 clipboard lock. Acceptance:
+
+- C68.1 (RFC 0014 A3/A5/A8): retry only `OpenClipboard` acquisition for at most
+  250 ms with 5 ms intervals; do not repeat a read/write/clear transaction or
+  select another backend. Real concurrent readers and a deliberately held
+  clipboard must succeed after the lock is released within that bound.
+- C68.2 (A3/A7): a lock retained past the bound returns the existing typed
+  operation error and leaves previous content unchanged. Native tests exercise
+  open, snapshot, read, write and clear contention with real Win32 ownership;
+  assertions must execute in Release builds.
+- C68.3 (A7/A8): run clipboard JVM/native/FFM integration, including the four
+  independent readers, on the real hosted Windows target and regress macOS
+  and Linux. Record actual results and refresh affected evidence in this PR.
+
+Readiness review: Codex, separate pass by the same contributor, 2026-10-04,
+revision `52c7130`, decision `READY`. Run `37197414544` fails Windows
+`clipboardIntegrationTest` with native `read-unavailable`; the Win32 provider
+attempts `OpenClipboard` once while the test and service monitors use multiple
+processes. Bounded lock acquisition preserves the existing error taxonomy and
+serialized transaction contract. Required hosted verification remains pending.
+
+### PR 68 evidence status repair
+
+Repair the aggregation failure in run `37250414113` without claiming that
+RFC 0016 has completed acceptance. Acceptance criteria:
+
+- E68.1 (RFC 0016 A13/A14): record against the unchanged repository catalog.
+  Never rewrite an `Accepted` RFC to `Implemented` in a temporary catalog;
+  RFC 0016 diagnostic reports must not create support records.
+- E68.2 (A5/A7/A12): require all three notification reports before recording.
+  Linux must report `os-ui`, one observed activation; Windows/macOS must report
+  `contract`, zero activations. Missing/malformed reports, incorrect field
+  types, counts, or modes fail before any manifest update. Preserve raw bytes.
+- E68.3 (A13/A14): regression-test the real aggregation script's catalog,
+  report validation and manifest chaining; retain the strict governance gate.
+  Run fresh hosted verification, aggregation and strict governance. Existing
+  incomplete UI, reply and cold-activation acceptance remains blocking for merge.
+
+Readiness review: Codex, separate pass by the same contributor, 2026-10-05,
+revision `eab08df`, decision `READY` for this CI repair. All three native target
+jobs in run `37250414113` passed. Aggregation synthesized three Implemented
+RFC 0016 records from an Accepted catalog; the unchanged strict checker rejected
+them. The existing evidence schema permits support records only for Implemented
+RFCs. This repair preserves that contract and the pending notification scope.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.

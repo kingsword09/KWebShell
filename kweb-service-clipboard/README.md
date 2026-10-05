@@ -11,6 +11,10 @@ Windows uses Win32 clipboard formats and sequence numbers, macOS uses
 `CLIPBOARD` selection. Linux `PRIMARY`, arbitrary native formats, images,
 and hidden toolkit/backend fallbacks are not published.
 
+Windows waits up to 250 ms for another clipboard user to release the Win32
+lock, checking every 5 ms. Only lock acquisition is retried; each admitted
+transfer executes once and a retained lock returns the typed operation error.
+
 `ClipboardBridge` is generated from `src/mainBridge/clipboard-bridge.json`.
 Renderer operations remain exact-origin, main-frame, permission, and gesture
 checked by the existing policy engine.

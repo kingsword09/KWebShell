@@ -5,6 +5,7 @@ import io.github.kingsword09.kwebshell.service.dialogs.KWebDialogs
 import io.github.kingsword09.kwebshell.service.files.KWebFiles
 import io.github.kingsword09.kwebshell.service.clipboard.KWebClipboard
 import io.github.kingsword09.kwebshell.service.shell.KWebShell
+import io.github.kingsword09.kwebshell.service.notifications.KWebNotifications
 import io.github.kingsword09.kwebshell.service.windowcontrols.KWebWindowControls
 
 /** The published contract version of one installed native service. */
@@ -26,6 +27,7 @@ public object KWebRfcServiceCatalog {
         KWebRfcServiceContract(KWebFiles.DESCRIPTOR.id, KWebFiles.DESCRIPTOR.version.toString()),
         KWebRfcServiceContract(KWebClipboard.DESCRIPTOR.id, KWebClipboard.DESCRIPTOR.version.toString()),
         KWebRfcServiceContract(KWebShell.DESCRIPTOR.id, KWebShell.DESCRIPTOR.version.toString()),
+        KWebRfcServiceContract(KWebNotifications.DESCRIPTOR.id, KWebNotifications.DESCRIPTOR.version.toString()),
     )
 
     public fun find(id: String): KWebRfcServiceContract? = published.singleOrNull { it.id == id }

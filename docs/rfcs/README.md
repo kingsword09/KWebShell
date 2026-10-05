@@ -220,7 +220,7 @@ Agents may work in parallel only when dependencies do not overlap.
 | [0013](0013-scoped-filesystem.md) | P0 | 0002, 0003, 0004 | Capability-based files and directories |
 | [0014](0014-clipboard.md) | P0 | 0003, 0004 | Typed system clipboard |
 | [0015](0015-shell-integration.md) | P0 | 0003, 0013 | External URLs, reveal, and trash |
-| [0016](0016-notifications.md) | P0 | 0003, 0004, 0027, 0030 | Native notifications and activation |
+| [0016](0016-notifications.md) | P0 | 0003, 0004, 0006, 0030 | Native notifications and activation |
 | [0017](0017-native-menus.md) | P0 | 0003, 0004, 0027 | Application/window/context menus |
 | [0018](0018-tray-status-item.md) | P1 | 0004, 0017, 0027, 0030 | Tray/status item lifecycle |
 | [0040](0040-native-prompts.md) | P1 | 0003, 0007, 0027 | Owner-bound native message prompts |

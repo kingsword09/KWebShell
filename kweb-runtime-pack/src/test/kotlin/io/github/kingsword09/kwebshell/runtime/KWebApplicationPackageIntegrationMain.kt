@@ -5,6 +5,9 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.BasicFileAttributes
 import java.security.KeyPairGenerator
+import java.util.concurrent.TimeUnit
+
+private const val WINDOWS_MSIX_PROCESS_TIMEOUT_MINUTES = 15L
 
 internal fun main() {
     val root = Files.createTempDirectory("kweb-application-package-integration-")
@@ -149,7 +152,8 @@ internal fun main() {
                 "-SourceRevision",
                 System.getenv("GITHUB_SHA").orEmpty(),
             ).inheritIO().start()
-            check(process.waitFor() == 0) { "The Windows SDK MSIX build/install/launch/uninstall verification failed." }
+            val exitCode = waitForWindowsMsixVerification(process)
+            check(exitCode == 0) { "The Windows SDK MSIX build/install/launch/uninstall verification failed: exit=$exitCode." }
             check(Files.isRegularFile(packagePath)) { "The Windows SDK did not produce a signed MSIX: $packagePath" }
             println("KWebShell Windows MSIX integration passed for ${target.id}: ${sha256(packagePath)}")
             return
@@ -182,6 +186,22 @@ private fun requiredPath(property: String): Path =
 private fun requiredText(property: String): String =
     System.getProperty(property)?.takeIf(String::isNotBlank)
         ?: error("Missing system property $property")
+
+private fun waitForWindowsMsixVerification(process: Process): Int {
+    if (process.waitFor(WINDOWS_MSIX_PROCESS_TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
+        return process.exitValue()
+    }
+    val descendants = process.toHandle().descendants().toList()
+    descendants.asReversed().forEach { descendant ->
+        if (descendant.isAlive) descendant.destroyForcibly()
+    }
+    if (process.isAlive) process.destroyForcibly()
+    runCatching { process.onExit().get(30, TimeUnit.SECONDS) }
+    throw IllegalStateException(
+        "Windows SDK MSIX build/install/launch/uninstall verification timed out after " +
+            "$WINDOWS_MSIX_PROCESS_TIMEOUT_MINUTES minutes; inspect the last reported MSIX phase.",
+    )
+}
 
 private fun repositoryRoot(): Path {
     var current: Path? = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize()

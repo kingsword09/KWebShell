@@ -9,13 +9,26 @@ param(
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "windows-msix-signing.ps1")
+$currentPhase = "initialization"
+
+function Set-MsixPhase {
+    param([Parameter(Mandatory = $true)][string] $Name)
+    $script:currentPhase = $Name
+    Write-Output "KWebShell MSIX phase: $Name"
+}
 
 function Invoke-NativeTool {
-    param([string] $Executable, [string[]] $Arguments)
+    param(
+        [string] $Executable,
+        [string[]] $Arguments,
+        [Parameter(Mandatory = $true)][string] $Phase
+    )
+    Set-MsixPhase "$Phase.start"
     & $Executable @Arguments
     if ($LASTEXITCODE -ne 0) {
         throw "$([IO.Path]::GetFileName($Executable)) failed with exit code $LASTEXITCODE."
     }
+    Set-MsixPhase "$Phase.complete"
 }
 
 function Find-WindowsSdkTool {
@@ -313,8 +326,9 @@ try {
     $evidence.stagedPayloadTreeSha256 = Get-TreeSha256 $stageRoot
 
     if (Test-Path -LiteralPath $packagePath -PathType Leaf) { Remove-Item -LiteralPath $packagePath -Force }
-    Invoke-NativeTool $makeAppx @("pack", "/d", $stageRoot, "/p", $packagePath, "/o")
-    Invoke-NativeTool $makeAppx @("unpack", "/p", $packagePath, "/d", $unpackedRoot, "/o")
+    Invoke-NativeTool $makeAppx @("pack", "/d", $stageRoot, "/p", $packagePath, "/o") "makeappx-pack"
+    Invoke-NativeTool $makeAppx @("unpack", "/p", $packagePath, "/d", $unpackedRoot, "/o") "makeappx-unpack"
+    Set-MsixPhase "verify-package-archive.start"
     Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $sdkArchive = [IO.Compression.ZipFile]::OpenRead($packagePath)
@@ -327,18 +341,29 @@ try {
     }
     finally { $sdkArchive.Dispose() }
     $evidence.sdkPackageValidation = "PASS"
+    Set-MsixPhase "verify-package-archive.complete"
 
+    Set-MsixPhase "create-signing-certificate.start"
     $publisherCertificate = New-KWebMsixSigningCertificate -Publisher $expectedPublisher
     $evidence.signingCertificateSubject = $publisherCertificate.Subject
     if ($publisherCertificate.Subject -ne $expectedPublisher) { throw "Test signing certificate subject differs from package Publisher." }
+    Set-MsixPhase "create-signing-certificate.complete"
     $password = ConvertTo-SecureString ([guid]::NewGuid().ToString('N')) -AsPlainText -Force
+    Set-MsixPhase "export-signing-pfx.start"
     Export-PfxCertificate -Cert $publisherCertificate -FilePath $pfxPath -Password $password | Out-Null
+    Set-MsixPhase "export-signing-pfx.complete"
+    Set-MsixPhase "export-signing-certificate.start"
     Export-Certificate -Cert $publisherCertificate -FilePath $cerPath | Out-Null
+    Set-MsixPhase "export-signing-certificate.complete"
+    Set-MsixPhase "import-root-certificate.start"
     Import-Certificate -FilePath $cerPath -CertStoreLocation "Cert:\CurrentUser\Root" | Out-Null
+    Set-MsixPhase "import-root-certificate.complete"
+    Set-MsixPhase "import-trusted-people-certificate.start"
     Import-Certificate -FilePath $cerPath -CertStoreLocation "Cert:\LocalMachine\TrustedPeople" | Out-Null
+    Set-MsixPhase "import-trusted-people-certificate.complete"
     $plainPassword = [Net.NetworkCredential]::new('', $password).Password
-    Invoke-NativeTool $signTool @("sign", "/fd", "SHA256", "/f", $pfxPath, "/p", $plainPassword, "/v", $packagePath)
-    Invoke-NativeTool $signTool @("verify", "/pa", "/v", $packagePath)
+    Invoke-NativeTool $signTool @("sign", "/fd", "SHA256", "/f", $pfxPath, "/p", $plainPassword, "/v", $packagePath) "signtool-sign"
+    Invoke-NativeTool $signTool @("verify", "/pa", "/v", $packagePath) "signtool-verify"
     $evidence.signatureVerification = "PASS"
     $evidence.msixSha256 = Get-Sha256 $packagePath
     $evidence.packageSha256 = $evidence.msixSha256
@@ -361,6 +386,7 @@ try {
         finally { $writer.Dispose() }
     }
     finally { $tamperedArchive.Dispose() }
+    Set-MsixPhase "signtool-verify-tampered.start"
     $savedErrorPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = "Continue"
@@ -370,6 +396,7 @@ try {
     finally { $ErrorActionPreference = $savedErrorPreference }
     if ($tamperExitCode -eq 0) { throw "SignTool accepted a modified MSIX." }
     $evidence.tamperedPackageRejected = "PASS"
+    Set-MsixPhase "signtool-verify-tampered.complete"
 
     $unlockKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
     $developerInstallKeyExisted = Test-Path -LiteralPath $unlockKey
@@ -380,7 +407,9 @@ try {
     if (-not $developerInstallKeyExisted) { New-Item -Path $unlockKey -Force | Out-Null }
     New-ItemProperty -Path $unlockKey -Name AllowAllTrustedApps -PropertyType DWord -Value 1 -Force | Out-Null
     $installationAttempted = $true
+    Set-MsixPhase "install-msix.start"
     Add-AppxPackage -Path $packagePath
+    Set-MsixPhase "install-msix.complete"
     $installedPackage = Get-AppxPackage -Name $expectedPackageName | Where-Object { $_.Name -eq $expectedPackageName } | Select-Object -First 1
     if ($null -eq $installedPackage) { throw "The signed MSIX did not register under its declared package identity." }
     if ($installedPackage.Publisher -ne $expectedPublisher -or $installedPackage.Version.ToString() -ne $expectedVersion) {
@@ -453,6 +482,7 @@ try {
     $mainProcess = $null
     $cefProcess = $null
 
+    Set-MsixPhase "uninstall-msix.start"
     Remove-AppxPackage -Package $installedPackage.PackageFullName
     $installedPackage = $null
     if (Get-AppxPackage -Name $expectedPackageName -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq $expectedPackageName }) {
@@ -460,9 +490,10 @@ try {
     }
     $evidence.uninstalled = "PASS"
     $evidence.status = "PASS"
+    Set-MsixPhase "uninstall-msix.complete"
 }
 catch {
-    $evidence.failure = $_.Exception.Message
+    $evidence.failure = "Phase '$currentPhase': $($_.Exception.Message)"
     throw
 }
 finally {

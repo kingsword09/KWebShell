@@ -375,16 +375,11 @@ try {
     Set-MsixPhase "export-signing-certificate.start"
     Export-Certificate -Cert $publisherCertificate -FilePath $cerPath | Out-Null
     Set-MsixPhase "export-signing-certificate.complete"
-    Set-MsixPhase "import-root-certificate.start"
-    Add-CurrentUserCertificate -CertificatePath $cerPath -StoreName "Root"
-    Set-MsixPhase "import-root-certificate.complete"
     Set-MsixPhase "import-trusted-people-certificate.start"
     Add-CurrentUserCertificate -CertificatePath $cerPath -StoreName "TrustedPeople"
     Set-MsixPhase "import-trusted-people-certificate.complete"
     $plainPassword = [Net.NetworkCredential]::new('', $password).Password
     Invoke-NativeTool $signTool @("sign", "/fd", "SHA256", "/f", $pfxPath, "/p", $plainPassword, "/v", $packagePath) "signtool-sign"
-    Invoke-NativeTool $signTool @("verify", "/pa", "/v", $packagePath) "signtool-verify"
-    $evidence.signatureVerification = "PASS"
     $evidence.msixSha256 = Get-Sha256 $packagePath
     $evidence.packageSha256 = $evidence.msixSha256
 
@@ -406,18 +401,6 @@ try {
         finally { $writer.Dispose() }
     }
     finally { $tamperedArchive.Dispose() }
-    Set-MsixPhase "signtool-verify-tampered.start"
-    $savedErrorPreference = $ErrorActionPreference
-    try {
-        $ErrorActionPreference = "Continue"
-        & $signTool verify /pa $tamperedPackage *> $null
-        $tamperExitCode = $LASTEXITCODE
-    }
-    finally { $ErrorActionPreference = $savedErrorPreference }
-    if ($tamperExitCode -eq 0) { throw "SignTool accepted a modified MSIX." }
-    $evidence.tamperedPackageRejected = "PASS"
-    Set-MsixPhase "signtool-verify-tampered.complete"
-
     $unlockKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
     $developerInstallKeyExisted = Test-Path -LiteralPath $unlockKey
     $existingUnlock = Get-ItemProperty -Path $unlockKey -Name AllowAllTrustedApps -ErrorAction SilentlyContinue
@@ -426,10 +409,29 @@ try {
     $developerInstallPolicyTouched = $true
     if (-not $developerInstallKeyExisted) { New-Item -Path $unlockKey -Force | Out-Null }
     New-ItemProperty -Path $unlockKey -Name AllowAllTrustedApps -PropertyType DWord -Value 1 -Force | Out-Null
+
+    Set-MsixPhase "install-tampered-msix.start"
+    $tamperedError = $null
+    try {
+        Add-AppxPackage -Path $tamperedPackage -ErrorAction Stop
+    }
+    catch { $tamperedError = $_.Exception }
+    if ($null -eq $tamperedError) {
+        $unexpectedTamperedPackage = Get-AppxPackage -Name $expectedPackageName -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -eq $expectedPackageName } | Select-Object -First 1
+        if ($null -ne $unexpectedTamperedPackage) {
+            Remove-AppxPackage -Package $unexpectedTamperedPackage.PackageFullName -ErrorAction SilentlyContinue
+        }
+        throw "Windows accepted a modified MSIX package."
+    }
+    $evidence.tamperedPackageRejected = "PASS"
+    Set-MsixPhase "install-tampered-msix.complete"
+
     $installationAttempted = $true
     Set-MsixPhase "install-msix.start"
     Add-AppxPackage -Path $packagePath
     Set-MsixPhase "install-msix.complete"
+    $evidence.signatureVerification = "PASS"
     $installedPackage = Get-AppxPackage -Name $expectedPackageName | Where-Object { $_.Name -eq $expectedPackageName } | Select-Object -First 1
     if ($null -eq $installedPackage) { throw "The signed MSIX did not register under its declared package identity." }
     if ($installedPackage.Publisher -ne $expectedPublisher -or $installedPackage.Version.ToString() -ne $expectedVersion) {
@@ -548,7 +550,7 @@ finally {
         catch { $cleanupErrors.Add("Unable to remove installed package: $($_.Exception.Message)") }
     }
     if ($null -ne $publisherCertificate) {
-        foreach ($store in @("CurrentUser\My", "CurrentUser\TrustedPeople", "CurrentUser\Root")) {
+        foreach ($store in @("CurrentUser\My", "CurrentUser\TrustedPeople")) {
             $certificatePath = "Cert:\$store\$($publisherCertificate.Thumbprint)"
             if (Test-Path -LiteralPath $certificatePath) {
                 try {

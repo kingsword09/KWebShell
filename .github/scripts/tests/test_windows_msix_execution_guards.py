@@ -17,11 +17,9 @@ class WindowsMsixExecutionGuardsTest(unittest.TestCase):
             "create-signing-certificate",
             "export-signing-pfx",
             "export-signing-certificate",
-            "import-root-certificate",
             "import-trusted-people-certificate",
             "signtool-sign",
-            "signtool-verify",
-            "signtool-verify-tampered",
+            "install-tampered-msix",
             "install-msix",
             "uninstall-msix",
         ):
@@ -33,7 +31,9 @@ class WindowsMsixExecutionGuardsTest(unittest.TestCase):
         self.assertIn('StoreLocation]::CurrentUser', source)
         self.assertNotIn('certutil.exe', source)
         self.assertIn('StoreName "TrustedPeople"', source)
+        self.assertNotIn('StoreName "Root"', source)
         self.assertNotIn('Cert:\\LocalMachine\\TrustedPeople', source)
+        self.assertIn('Add-AppxPackage -Path $tamperedPackage', source)
 
     def test_powershell_failure_retains_last_phase(self):
         source = POWERSHELL_SCRIPT.read_text()

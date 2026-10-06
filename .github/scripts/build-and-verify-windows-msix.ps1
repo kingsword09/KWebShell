@@ -31,6 +31,26 @@ function Invoke-NativeTool {
     Set-MsixPhase "$Phase.complete"
 }
 
+function Add-CurrentUserCertificate {
+    param(
+        [Parameter(Mandatory = $true)][string] $CertificatePath,
+        [Parameter(Mandatory = $true)][string] $StoreName
+    )
+    $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($CertificatePath)
+    $store = [Security.Cryptography.X509Certificates.X509Store]::new(
+        $StoreName,
+        [Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser
+    )
+    try {
+        $store.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+        $store.Add($certificate)
+    }
+    finally {
+        $store.Close()
+        $certificate.Dispose()
+    }
+}
+
 function Find-WindowsSdkTool {
     param([string] $Name)
     $onPath = Get-Command $Name -ErrorAction SilentlyContinue
@@ -200,7 +220,6 @@ try {
 
     $makeAppx = Find-WindowsSdkTool "makeappx.exe"
     $signTool = Find-WindowsSdkTool "signtool.exe"
-    $certUtil = (Get-Command "certutil.exe" -ErrorAction Stop).Source
     $evidence.windowsSdk.makeAppx = $makeAppx
     $evidence.windowsSdk.signTool = $signTool
     $evidence.metadataArchiveSha256 = Get-Sha256 $metadata
@@ -356,9 +375,11 @@ try {
     Set-MsixPhase "export-signing-certificate.start"
     Export-Certificate -Cert $publisherCertificate -FilePath $cerPath | Out-Null
     Set-MsixPhase "export-signing-certificate.complete"
-    Invoke-NativeTool $certUtil @("-user", "-silent", "-f", "-addstore", "Root", $cerPath) "import-root-certificate"
+    Set-MsixPhase "import-root-certificate.start"
+    Add-CurrentUserCertificate -CertificatePath $cerPath -StoreName "Root"
+    Set-MsixPhase "import-root-certificate.complete"
     Set-MsixPhase "import-trusted-people-certificate.start"
-    Import-Certificate -FilePath $cerPath -CertStoreLocation "Cert:\CurrentUser\TrustedPeople" | Out-Null
+    Add-CurrentUserCertificate -CertificatePath $cerPath -StoreName "TrustedPeople"
     Set-MsixPhase "import-trusted-people-certificate.complete"
     $plainPassword = [Net.NetworkCredential]::new('', $password).Password
     Invoke-NativeTool $signTool @("sign", "/fd", "SHA256", "/f", $pfxPath, "/p", $plainPassword, "/v", $packagePath) "signtool-sign"

@@ -29,9 +29,10 @@ class WindowsMsixExecutionGuardsTest(unittest.TestCase):
                 self.assertIn(phase, source)
         self.assertIn('Set-MsixPhase "$Phase.start"', source)
         self.assertIn('Set-MsixPhase "$Phase.complete"', source)
-        self.assertIn('certutil.exe', source)
-        self.assertIn('"-user", "-silent", "-f", "-addstore", "Root"', source)
-        self.assertIn('Cert:\\CurrentUser\\TrustedPeople', source)
+        self.assertIn('function Add-CurrentUserCertificate', source)
+        self.assertIn('StoreLocation]::CurrentUser', source)
+        self.assertNotIn('certutil.exe', source)
+        self.assertIn('StoreName "TrustedPeople"', source)
         self.assertNotIn('Cert:\\LocalMachine\\TrustedPeople', source)
 
     def test_powershell_failure_retains_last_phase(self):

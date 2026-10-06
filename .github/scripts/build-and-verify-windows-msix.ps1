@@ -356,7 +356,7 @@ try {
     Set-MsixPhase "export-signing-certificate.start"
     Export-Certificate -Cert $publisherCertificate -FilePath $cerPath | Out-Null
     Set-MsixPhase "export-signing-certificate.complete"
-    Invoke-NativeTool $certUtil @("-user", "-f", "-addstore", "Root", $cerPath) "import-root-certificate"
+    Invoke-NativeTool $certUtil @("-user", "-silent", "-f", "-addstore", "Root", $cerPath) "import-root-certificate"
     Set-MsixPhase "import-trusted-people-certificate.start"
     Import-Certificate -FilePath $cerPath -CertStoreLocation "Cert:\CurrentUser\TrustedPeople" | Out-Null
     Set-MsixPhase "import-trusted-people-certificate.complete"

@@ -30,7 +30,7 @@ class WindowsMsixExecutionGuardsTest(unittest.TestCase):
         self.assertIn('Set-MsixPhase "$Phase.start"', source)
         self.assertIn('Set-MsixPhase "$Phase.complete"', source)
         self.assertIn('certutil.exe', source)
-        self.assertIn('"-user", "-f", "-addstore", "Root"', source)
+        self.assertIn('"-user", "-silent", "-f", "-addstore", "Root"', source)
         self.assertIn('Cert:\\CurrentUser\\TrustedPeople', source)
         self.assertNotIn('Cert:\\LocalMachine\\TrustedPeople', source)
 

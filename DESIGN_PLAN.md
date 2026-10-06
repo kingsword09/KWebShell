@@ -2550,6 +2550,36 @@ RFC 0016 records from an Accepted catalog; the unchanged strict checker rejected
 them. The existing evidence schema permits support records only for Implemented
 RFCs. This repair preserves that contract and the pending notification scope.
 
+### RFC 0027 implementation objective: bounded native image and icon values
+
+RFC 0027 is the independent image value boundary required by menus, tray,
+capture, notifications, and page capture. The objective is complete only when
+the same PR publishes the bounded common model, deterministic codec, package
+resource verification, native providers, generated bridge, migration mapping,
+three-target evidence, and final acceptance review:
+
+1. `kweb-service-image` publishes immutable PNG/JPEG values with fixed encoded,
+   decoded, pixel, dimension, variant, alpha, color-space, intent, and digest
+   limits. Input and output byte arrays are copied and bounded.
+2. The JVM codec performs all parsing and normalization off native UI threads,
+   rejects malformed/unsupported formats, decompression bombs, non-identity
+   EXIF orientation, and digest/path violations before native dispatch, and
+   emits deterministic canonical RGBA8 sRGB PNG bytes.
+3. The versioned C ABI converts normalized RGBA into `HBITMAP`, `CGImageRef`,
+   and `GdkPixbuf` through exact target providers. JDK 25 FFM keeps layouts and
+   native handles internal, validates ABI/struct sizes, and proves release and
+   live-count behavior without a fallback provider.
+4. The generated bridge exposes only bounded named `decode` and `encodePng`
+   calls. RFC 0003 exact-origin/main-frame/grant/owner checks cover malformed,
+   oversized, child-frame, cross-origin, cancellation, and close races.
+5. Electron `nativeImage` construction/export rows are individually classified;
+   path/URL fetching, mutation identity, platform handles, SVG/script, and
+   unknown operations remain explicit blockers. Package scans exclude tests and
+   native handles from runtime payloads.
+6. Common, JVM/native/FFM, CEF bridge, migration, packaging, and hosted
+   Windows/macOS/Linux evidence pass and the RFC matrix records every row before
+   the focused squash PR is merged.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.

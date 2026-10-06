@@ -96,6 +96,12 @@ exact-origin isolation, resource-handle ownership, directory-trash policy, and
 post-trash source absence. Raw renderer paths, commands, permanent deletion,
 and shortcut metadata remain explicit migration blockers.
 
+RFC 0027 classifies Electron `nativeImage` construction and export as a bounded
+rewrite to `KWebNativeImage` and the generated `ImageBridge`. PNG/JPEG bytes and
+package resource IDs with exact SHA-256 digests are supported by the declared
+fixture; URL/path loading, SVG, mutation identity, platform handles, and
+unknown image methods remain explicit blockers.
+
 ## Manifest v2 and inventory prerequisites
 
 Manifest v2 requires an exact `rendererOrigin`, an explicit `rendererProfile`,

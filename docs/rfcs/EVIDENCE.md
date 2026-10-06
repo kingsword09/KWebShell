@@ -17,7 +17,7 @@ builds CEF, never runs the native matrix, and never publishes a capability.
 | RFC contract bindings | `docs/rfcs/evidence/contracts.json` |
 | Pinned CEF/Chromium identity | `runtime/cef-runtime.json` |
 | Electron capability matrix | `KWebElectronCapabilityMatrix` (conservative runtime code) |
-| Published service descriptors | `KWebAppPaths`, `KWebWindowControls`, `KWebDialogs` |
+| Published service descriptors | `KWebAppPaths`, `KWebWindowControls`, `KWebDialogs`, `KWebNativeImage` |
 | Packaged schema | `rfc-evidence-manifest.schema.json` in the module resources |
 
 ## Evidence manifest format
@@ -97,6 +97,12 @@ when:
 A stale record is never support: an `Implemented` RFC whose evidence is stale
 reports the `stale` state with structured reasons and the matrix row it backed
 becomes unbacked.
+
+RFC 0027 retains one `native-image-evidence.json` provider record and one
+validated Electron compatibility report per hosted target. The report binds the
+actual image bridge, package, runtime, native library, and capability-matrix
+digests; it contains dimensions, provider identity, bounded status facts, and
+zero live handles after close, never source pixels or native pointers.
 
 ## RFC states and matrix backing
 

@@ -467,6 +467,19 @@
         "kweb-service-notifications/src",
         "settings.gradle.kts"
       ]
+    },
+    {
+      "rfcId": "0027",
+      "paths": [
+        "DESIGN_PLAN.md",
+        "docs/rfcs/0027-native-image-and-icons.md",
+        "kweb-rfc-governance/src/main/kotlin/io/github/kingsword09/kwebshell/rfc/KWebRfcServiceCatalog.kt",
+        "kweb-service-image/README.md",
+        "kweb-service-image/build.gradle.kts",
+        "kweb-service-image/native",
+        "kweb-service-image/src",
+        "settings.gradle.kts"
+      ]
     }
   ]
 }

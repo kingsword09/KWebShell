@@ -19,7 +19,7 @@ SCRIPT = REPOSITORY / ".github/scripts/aggregate-rfc-evidence.sh"
 TARGETS = ("macos-arm64", "windows-x64", "linux-x64")
 IMPLEMENTED = {
     "0001", "0002", "0003", "0004", "0006", "0007", "0008", "0009",
-    "0010", "0011", "0012", "0013", "0014", "0015", "0030",
+    "0010", "0011", "0012", "0013", "0014", "0015", "0027", "0030",
 }
 ARTIFACTS = {
     "rfc-governance": ["TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml"],
@@ -28,6 +28,7 @@ ARTIFACTS = {
     "application-package": ["application-package-report.json"],
     "application-lifecycle": ["application-lifecycle-report.json"],
     "clipboard": ["clipboard-evidence.json"],
+    "image-integration": ["native-image-evidence.json", "compatibility.json"],
     "engine-integration": [
         "stream-conformance.json", "application-shutdown.json", "page-lifecycle-evidence.json",
         "renderer-lifecycle-evidence.json", "profile-data-evidence.json", "network-policy-evidence.json",
@@ -126,7 +127,7 @@ Path(arguments[2]).write_text(json.dumps(manifest))
         result = self.run_script()
         self.assertEqual(0, result.returncode, result.stderr)
         calls = json.loads(self.manifest.read_text())["invocations"]
-        self.assertEqual(45, len(calls))
+        self.assertEqual(48, len(calls))
         self.assertEqual(
             {(rfc, target) for rfc in IMPLEMENTED for target in TARGETS},
             {(call["rfc"], call["target"]) for call in calls},

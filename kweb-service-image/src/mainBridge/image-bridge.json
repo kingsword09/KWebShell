@@ -1,0 +1,51 @@
+{
+  "namespace": "ImageBridge",
+  "kotlinPackage": "io.github.kingsword09.kwebshell.service.image.generated",
+  "version": 1,
+  "types": [
+    {
+      "name": "DecodeRequest",
+      "fields": [
+        { "name": "sourceKind", "type": "string" },
+        { "name": "format", "type": "string" },
+        { "name": "payload", "type": "string" },
+        { "name": "resourceId", "type": "string", "nullable": true },
+        { "name": "sha256", "type": "string", "nullable": true },
+        { "name": "intent", "type": "string" }
+      ]
+    },
+    {
+      "name": "ImageResponse",
+      "fields": [
+        { "name": "width", "type": "int32" },
+        { "name": "height", "type": "int32" },
+        { "name": "alphaMode", "type": "string" },
+        { "name": "colorSpace", "type": "string" },
+        { "name": "intent", "type": "string" },
+        { "name": "pngBase64", "type": "string" }
+      ]
+    },
+    {
+      "name": "EncodeRequest",
+      "fields": [
+        { "name": "width", "type": "int32" },
+        { "name": "height", "type": "int32" },
+        { "name": "alphaMode", "type": "string" },
+        { "name": "colorSpace", "type": "string" },
+        { "name": "intent", "type": "string" },
+        { "name": "pngBase64", "type": "string" }
+      ]
+    },
+    {
+      "name": "EncodedResponse",
+      "fields": [
+        { "name": "format", "type": "string" },
+        { "name": "pngBase64", "type": "string" }
+      ]
+    }
+  ],
+  "methods": [
+    { "name": "decode", "request": "DecodeRequest", "response": "ImageResponse" },
+    { "name": "encodePng", "request": "EncodeRequest", "response": "EncodedResponse" }
+  ]
+}

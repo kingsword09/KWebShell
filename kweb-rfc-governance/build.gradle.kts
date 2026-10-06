@@ -25,6 +25,7 @@ dependencies {
     implementation(project(":kweb-service-clipboard"))
     implementation(project(":kweb-service-shell"))
     implementation(project(":kweb-service-notifications"))
+    implementation(project(":kweb-service-image"))
     implementation(libs.kotlinx.serialization.json)
     testImplementation(kotlin("test-junit5"))
     testRuntimeOnly(libs.junit.platform.launcher)

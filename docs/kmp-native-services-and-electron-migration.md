@@ -457,6 +457,7 @@ The initial mapping direction is:
 | `clipboard` | `KWebClipboard` + generated `ClipboardBridge`; SYSTEM text/HTML/RTF/URI-list only. Linux PRIMARY, images, custom native formats, and direct renderer clipboard access remain unsupported. |
 | `shell` | `KWebShell` + generated `ShellBridge`: allowlisted external URI launch, RFC 0013 handle open/reveal, and verified OS trash/recycle. Raw paths, commands, permanent deletion, and shortcut metadata remain blocked. |
 | `notifications` | `KWebNotifications` + generated `NotificationsBridge`: packaged-identity native notifications, bounded actions/replies where the target advertises them, replacement, close, and RFC 0006 activation routing. Custom images, in-page fallbacks, and generic channels remain blocked. |
+| `nativeImage` | Accepted RFC 0027 `KWebNativeImage` + generated `ImageBridge` objective: bounded PNG/JPEG values and exact package-resource digests; the migration row remains unsupported until provider and fixture evidence is promoted. |
 | `nativeTheme` | Separate native service family after conformance publication. |
 | `screen`, `globalShortcut`, `Menu`, `Tray`, notifications | Separate UI/system service families after native lifecycle tests. |
 | `utilityProcess`, `child_process` | Explicit policy-controlled process service; never implicit Node execution. |
@@ -605,6 +606,15 @@ permission- and native-gesture-checked; trash succeeds only after the provider
 verifies that the original resource identity is absent. Missing handlers,
 headless sessions, and missing desktop facilities fail typed without selecting
 a fallback backend.
+
+RFC 0027 adds the accepted `kweb-service-image` objective for bounded immutable
+PNG/JPEG values. The JVM codec normalizes accepted bytes to deterministic RGBA8
+sRGB PNG, package resources require exact SHA-256 digests, and the native ABI
+owns Win32, CoreGraphics, and GdkPixbuf handles behind JDK 25 FFM. The generated
+`ImageBridge` exposes only named decode/encode operations; URL/path loading,
+SVG execution, mutable image identity, and platform handles remain blocked in
+the renderer. Its Electron `nativeImage` matrix row stays unsupported until
+fresh provider and migration evidence is retained.
 
 ## 10. Manifest V3 Is Independent
 

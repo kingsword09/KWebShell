@@ -200,6 +200,7 @@ try {
 
     $makeAppx = Find-WindowsSdkTool "makeappx.exe"
     $signTool = Find-WindowsSdkTool "signtool.exe"
+    $certUtil = (Get-Command "certutil.exe" -ErrorAction Stop).Source
     $evidence.windowsSdk.makeAppx = $makeAppx
     $evidence.windowsSdk.signTool = $signTool
     $evidence.metadataArchiveSha256 = Get-Sha256 $metadata
@@ -355,6 +356,7 @@ try {
     Set-MsixPhase "export-signing-certificate.start"
     Export-Certificate -Cert $publisherCertificate -FilePath $cerPath | Out-Null
     Set-MsixPhase "export-signing-certificate.complete"
+    Invoke-NativeTool $certUtil @("-user", "-f", "-addstore", "Root", $cerPath) "import-root-certificate"
     Set-MsixPhase "import-trusted-people-certificate.start"
     Import-Certificate -FilePath $cerPath -CertStoreLocation "Cert:\CurrentUser\TrustedPeople" | Out-Null
     Set-MsixPhase "import-trusted-people-certificate.complete"
@@ -525,7 +527,7 @@ finally {
         catch { $cleanupErrors.Add("Unable to remove installed package: $($_.Exception.Message)") }
     }
     if ($null -ne $publisherCertificate) {
-        foreach ($store in @("CurrentUser\My", "CurrentUser\TrustedPeople")) {
+        foreach ($store in @("CurrentUser\My", "CurrentUser\TrustedPeople", "CurrentUser\Root")) {
             $certificatePath = "Cert:\$store\$($publisherCertificate.Thumbprint)"
             if (Test-Path -LiteralPath $certificatePath) {
                 try {

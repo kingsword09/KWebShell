@@ -21,7 +21,7 @@ REQUIRED_ENTRIES = (
 )
 PASS_FIELDS = (
     "packageSignatureVerification", "sdkPackageValidation", "signatureVerification",
-    "tamperedPackageRejected", "installed", "normalShutdown", "uninstalled",
+    "tamperedPackageRejected", "installed", "nativeActivation", "normalShutdown", "uninstalled",
     "applicationDataCleanup", "developerInstallPolicyRestored",
 )
 MAX_PROOF_BYTES = 96 * 1024 * 1024
@@ -93,6 +93,11 @@ def retain(package, report_path, output, source_revision, smoke_path, failed_sta
     for field in PASS_FIELDS:
         if report.get(field) != "PASS":
             raise ValueError(f"Windows MSIX verification did not pass: {field}")
+    if report.get("activationHresult") != "0x00000000":
+        raise ValueError("Windows MSIX native activation did not return S_OK")
+    activation_pid = report.get("activationProcessId")
+    if type(activation_pid) is not int or not 0 < activation_pid <= 0xFFFFFFFF:
+        raise ValueError("Windows MSIX native activation lacks a positive DWORD process ID")
     for field in ("launcherWindowObserved", "cefSubprocessObserved"):
         if report.get(field) is not True:
             raise ValueError(f"Windows MSIX verification did not observe {field}")

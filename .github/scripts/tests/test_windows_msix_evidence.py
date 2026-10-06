@@ -61,7 +61,7 @@ class WindowsMsixEvidenceTest(unittest.TestCase):
     def test_every_native_gate_must_have_passed(self):
         original = dict(self.report)
         for field in ("status", "packageSignatureVerification", "sdkPackageValidation", "signatureVerification",
-                      "tamperedPackageRejected", "installed", "normalShutdown", "uninstalled",
+                      "tamperedPackageRejected", "installed", "nativeActivation", "normalShutdown", "uninstalled",
                       "applicationDataCleanup", "developerInstallPolicyRestored", "launcherWindowObserved",
                       "cefSubprocessObserved", "packageSignatureEntryCount", "launcherExitCode",
                       "remainingPackageProcessCount", "schemaVersion", "target", "failure"):
@@ -69,6 +69,22 @@ class WindowsMsixEvidenceTest(unittest.TestCase):
                 write_report(self.report_path, {**original, field: "FAIL"})
                 self.assert_rejected("Windows MSIX")
         write_report(self.report_path, original)
+
+    def test_native_activation_requires_exact_success_and_positive_dword_pid(self):
+        for field, values in (
+            ("nativeActivation", (None, "NOT_RUN", "FAIL", True)),
+            ("activationHresult", (None, "0x80070005", "0", 0, True)),
+            ("activationProcessId", (None, 0, -1, True, "100", 1.0, 0x100000000)),
+        ):
+            for value in values:
+                with self.subTest(field=field, value=value):
+                    write_report(self.report_path, {**self.report, field: value})
+                    self.assert_rejected("Windows MSIX")
+            missing = dict(self.report)
+            del missing[field]
+            write_report(self.report_path, missing)
+            self.assert_rejected("Windows MSIX")
+        write_report(self.report_path, self.report)
 
     def test_mutated_package_wrong_revision_and_wrong_resource_hashes_fail(self):
         with self.assertRaisesRegex(ValueError, "sourceRevision"):

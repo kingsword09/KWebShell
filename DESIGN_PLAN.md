@@ -2128,6 +2128,70 @@ test now checks the physical HKCU certificate entry for an unintended user impor
 and requires the inherited view to be empty after machine-store cleanup. The
 machine import, exact-byte/private-key and no-root-CA assertions remain required.
 
+P69.9 (RFC 0030 A4/A7/A11/A18-A20): make installed-AUMID activation
+observable without changing its launcher/window/CEF/shutdown requirements.
+Use the Windows SDK `IApplicationActivationManager` through an out-of-process
+COM activation manager with `AO_NOERRORUI`, retaining the HRESULT and returned
+bootstrap PID. The jpackage bootstrap may exit after spawning the actual
+window owner; do not equate their PIDs or treat bootstrap exit as JVM failure.
+Require native success and a positive PID before the unchanged 60-second
+visible-window/CEF gate. Never directly launch an EXE as an activation fallback.
+Record activation, observation and normal-shutdown phases separately. Retain
+bounded package-process/session/token snapshots, available test-owned runtime
+logs and recent AppModel events before cleanup in a report-adjacent JSON
+sidecar. Diagnostic failures must not replace the original failure or prevent
+cleanup. The collector rejects missing, failed or malformed activation results.
+Test native unregistered-AUMID rejection, diagnostics bounds/ownership/error
+handling and collector negatives; use the real installed signed MSIX for the
+positive activation/window/CEF/exit-zero/drainage/uninstall/cleanup chain.
+Keep the production GitHub-hosted guard, existing data/trust guards and all
+three-target evidence gates. Local probes must not impersonate hosted CI.
+
+P69.9 readiness review: Codex, separate pass by the same contributor,
+2026-10-06, base `058e8ee` plus this contract amendment. SDK 10.0.26100.0
+confirms the interface/class GUIDs and vtable. The isolated local native probe
+returned `0x80070057`/PID 0 for an unregistered AUMID; real signed-MSIX
+activation returned `0x00000000`/PID 13908, with distinct window PID 14028,
+CEF PID 5108, exit 0, no remaining processes, uninstall and exact owned
+certificate/profile cleanup. Evidence is retained locally in
+`build/local-msix/deployment-251b2f2437f2456888b4d9d24201898b/` and
+`build/local-msix/native-activation-negative.json`; it is not hosted evidence.
+Decision: `READY` for the internal fixture amendment; hosted acceptance remains
+`BLOCKED` by the failed Windows run until the changed revision is submitted
+and passes. No public API or support state is promoted.
+
+P69.9 local verification and separate same-contributor review, 2026-10-06:
+the final helper SHA-256 is
+`1117188c6a8cb7becece93f7d4419a288d3cc9015ae485fe95970b781baae8e4`.
+The unchanged signed MSIX from base `058e8ee` was intentionally reused;
+only the internal test activation/diagnostics implementation changed. Final
+probe `deployment-5e40e9e22232483ca1d360a5104c5383` returned S_OK/PID 13380,
+observed real window PID 5956 and CEF PID 8284, window exit 0, no remaining
+package processes, uninstall and exact owned trust/profile cleanup. Its
+pre-cleanup sidecar retained 40 snapshots, one CEF log and caller token/session;
+bootstrap PID 13380 exited 0 separately. The earlier changed-helper positive
+`deployment-74e1be3fc17840259cea42b3b6fa14a3` also passed. Deliberate native
+rejection `deployment-e3d4b0b034df42868b7e08e1218e37f6` retained the original
+HRESULT/PID failure and sidecar before successful owned cleanup. This rejection
+is not a reproduction of the hosted window-observation timeout.
+All 23 Python script/collector/aggregation tests pass using local Git Bash,
+checksum-verified jq 1.8.1 and `PYTHONUTF8=1`; initial missing-tool/Windows
+encoding failures are retained as environment findings, not code fixes.
+The real PowerShell native/diagnostic suite passes, including token/session,
+snapshot/event/log/file ceilings, ownership/reparse guards and diagnostic
+failure preservation. Four production preflight rejection cases pass; its
+hosted-only machine-trust subtest correctly refuses this local host. Real
+local trust/deployment is covered by the separate guarded install probes.
+Runtime tests: 78 pass, one explicitly skipped Unix-only fixture; launcher:
+six pass; governance contracts: 71 pass and 42 RFC catalog entries valid.
+The initial contract-path sorting mistake was corrected and the same Gradle
+command rerun successfully. Full diff review preserves hosted-only execution,
+exact visible-window/CEF checks, bounded waits, normal exit-zero/drainage and
+owned cleanup; no direct-EXE fallback, evidence rewrite or support promotion.
+`git diff --check` passes. A18-A20 pass their local scenarios, but required
+changed-source hosted verification and final RFC acceptance remain `NOT_RUN`.
+No commit, branch, push, PR edit or CI rerun was performed.
+
 Readiness review: Codex, separate pass by the implementation contributor,
 2026-10-05, rebased revision `37ae295` and the recovered uncommitted asset
 changes. Decision: `READY` for these repairs. Hosted run `37133703051` reports

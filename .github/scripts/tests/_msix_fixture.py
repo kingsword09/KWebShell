@@ -37,6 +37,7 @@ def create_fixture(directory, omitted=()):
         "platformSignatureStatus": "VERIFIED", "packageSignatureVerification": "PASS",
         "sdkPackageValidation": "PASS", "signatureVerification": "PASS",
         "tamperedPackageRejected": "PASS", "installed": "PASS", "normalShutdown": "PASS",
+        "nativeActivation": "PASS", "activationHresult": "0x00000000", "activationProcessId": 100,
         "uninstalled": "PASS", "applicationDataCleanup": "PASS", "developerInstallPolicyRestored": "PASS",
         "launcherWindowObserved": True, "cefSubprocessObserved": True, "packageSignatureEntryCount": 20,
         "launcherExitCode": 0, "remainingPackageProcessCount": 0,

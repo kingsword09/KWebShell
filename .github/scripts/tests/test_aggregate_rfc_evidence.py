@@ -151,6 +151,13 @@ Path(arguments[2]).write_text(json.dumps(manifest))
         write_report(self.msix_report_path, {**self.msix_report, "normalShutdown": "FAIL"})
         self.assert_preflight_failure("Windows MSIX")
 
+    def test_invalid_windows_activation_blocks_before_recording(self):
+        for field, value in (("nativeActivation", "NOT_RUN"), ("activationHresult", "0x80070005"),
+                             ("activationProcessId", 0), ("activationProcessId", True)):
+            with self.subTest(field=field, value=value):
+                write_report(self.msix_report_path, {**self.msix_report, field: value})
+                self.assert_preflight_failure("Windows MSIX")
+
     def test_each_missing_notification_report_blocks_before_recording(self):
         for target in TARGETS:
             with self.subTest(target=target):

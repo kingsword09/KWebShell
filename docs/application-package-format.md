@@ -74,6 +74,17 @@ in that machine store. Cleanup removes only the generated thumbprint from both
 stores and deletes its signing key, including when package verification fails.
 The fixture does not add a root CA or depend on interactive certificate UI.
 
+Installed-package verification uses the native registered-AUMID activation
+manager rather than an opaque Explorer request. Its report requires a successful
+HRESULT and positive bootstrap PID; the actual visible Compose window can have
+a different PID. Window/CEF observation and normal-shutdown phases are recorded
+separately. Before owned cleanup, a bounded `.activation.json` report sidecar
+retains package process/window/session snapshots, caller token elevation and
+integrity, available owned runtime log tails and recent AppModel events. Missing
+logs/channels and diagnostic errors are explicit; AUMID activation cannot
+redirect GUI launcher stdout/stderr. These diagnostics neither permit direct
+EXE fallback nor relax visible-window/CEF, exit-zero, drainage or cleanup gates.
+
 The selected Windows entry-point contract is a JVM/Compose launcher named
 `KWebShell.exe`. The package carries the pinned Temurin JRE `25.0.4.1+1` at
 `runtime/`, with the jpackage classpath in `app/`. The

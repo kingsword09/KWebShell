@@ -9,6 +9,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "windows-msix-signing.ps1")
+. (Join-Path $PSScriptRoot "windows-msix-activation.ps1")
 $currentPhase = "initialization"
 
 function Set-MsixPhase {
@@ -116,6 +117,9 @@ $installationAttempted = $false
 $applicationDataOwned = $false
 $mainProcess = $null
 $cefProcess = $null
+$activationProcess = $null
+$activationStartedAt = $null
+$activationSnapshots = [Collections.Generic.List[object]]::new()
 $developerInstallPolicy = $null
 $developerInstallKeyExisted = $false
 $developerInstallPolicyTouched = $false
@@ -169,6 +173,13 @@ $evidence = [ordered]@{
     signatureVerification = "NOT_RUN"
     tamperedPackageRejected = "NOT_RUN"
     installed = "NOT_RUN"
+    nativeActivation = "NOT_RUN"
+    activationHresult = $null
+    activationProcessId = $null
+    activationDiagnostics = $null
+    activationDiagnosticsFailure = $null
+    activationProcessInspectionFailure = $null
+    activationSnapshotFailure = $null
     developerInstallPolicyRestored = "NOT_RUN"
     launcherProcessId = $null
     launcherExitCode = $null
@@ -448,24 +459,52 @@ try {
     $evidence.applicationUserModelId = $aumid
     $evidence.installed = "PASS"
 
-    Start-Process -FilePath "$env:WINDIR\explorer.exe" -ArgumentList "shell:AppsFolder\$aumid"
+    Set-MsixPhase "activate-installed-aumid.start"
+    $activationStartedAt = [DateTime]::UtcNow
+    $evidence.nativeActivation = "FAIL"
+    $activation = Invoke-KWebMsixActivation -ApplicationUserModelId $aumid
+    $evidence.activationHresult = $activation.hresult
+    $evidence.activationProcessId = $activation.processId
+    if ($activation.signedHresult -ne 0 -or $activation.processId -eq 0) {
+        throw "Installed AUMID activation failed: HRESULT $($activation.hresult), PID $($activation.processId), AUMID '$aumid'."
+    }
+    $evidence.nativeActivation = "PASS"
+    $activationProcess = Get-Process -Id $activation.processId -ErrorAction SilentlyContinue
+    if ($null -ne $activationProcess) {
+        try { $activationProcess.EnableRaisingEvents = $true }
+        catch { $evidence.activationProcessInspectionFailure = $_.Exception.Message }
+    }
+    Set-MsixPhase "activate-installed-aumid.complete"
+    Set-MsixPhase "observe-installed-window-cef.start"
+    $packageProcessObserved = $false
     $deadline = [DateTime]::UtcNow.AddSeconds(60)
     while ([DateTime]::UtcNow -lt $deadline) {
         $packageProcesses = @(Get-PackageProcesses $installRoot)
+        Add-KWebMsixProcessSnapshot -Snapshots $activationSnapshots -Processes $packageProcesses
+        if ($packageProcesses.Count -gt 0) { $packageProcessObserved = $true }
         $mainProcess = $packageProcesses |
             Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -eq $applicationManifest.displayName } | Select-Object -First 1
         $cefProcess = $packageProcesses |
             Where-Object { $_.ProcessName -eq "KWebShellCef" } | Select-Object -First 1
+        if ($null -ne $mainProcess) {
+            $evidence.launcherProcessId = $mainProcess.Id
+            $evidence.launcherWindowObserved = $true
+        }
+        if ($null -ne $cefProcess) { $evidence.cefSubprocessObserved = $true }
         if ($null -ne $mainProcess -and $mainProcess.MainWindowHandle -ne 0 -and $null -ne $cefProcess) { break }
         Start-Sleep -Milliseconds 500
     }
-    if ($null -eq $mainProcess) { throw "The installed MSIX did not start the KWebShell JVM launcher." }
+    if ($null -eq $mainProcess) {
+        throw "Native activation succeeded (PID $($activation.processId)), but no matching visible Compose window was observed within 60 seconds; package processes observed: $packageProcessObserved."
+    }
     if ($mainProcess.MainWindowHandle -eq 0) { throw "The installed launcher did not create a visible Compose window." }
     if ($null -eq $cefProcess) { throw "The launcher did not start the KWebShellCef browser subprocess." }
     $evidence.launcherProcessId = $mainProcess.Id
     $evidence.launcherWindowObserved = $true
     $evidence.cefSubprocessObserved = $true
+    Set-MsixPhase "observe-installed-window-cef.complete"
 
+    Set-MsixPhase "normal-shutdown.start"
     if (-not $mainProcess.CloseMainWindow()) { throw "The Compose window refused a normal close request." }
     if (-not $mainProcess.WaitForExit(60000)) { throw "The launcher did not shut down after a normal window close." }
     $evidence.launcherExitCode = $mainProcess.ExitCode
@@ -481,6 +520,7 @@ try {
     $evidence.remainingPackageProcessCount = $remaining.Count
     if ($remaining.Count -gt 0) { throw "Package processes remained after normal launcher shutdown." }
     $evidence.normalShutdown = "PASS"
+    Set-MsixPhase "normal-shutdown.complete"
     $mainProcess = $null
     $cefProcess = $null
 
@@ -499,6 +539,20 @@ catch {
     throw
 }
 finally {
+    if ($null -ne $activationStartedAt) {
+        if ($null -ne $installRoot) {
+            try { Add-KWebMsixProcessSnapshot -Snapshots $activationSnapshots -Processes @(Get-PackageProcesses $installRoot) }
+            catch { $evidence.activationSnapshotFailure = $_.Exception.Message }
+        }
+        try {
+            $diagnosticsPath = $report + ".activation.json"
+            Save-KWebMsixActivationDiagnostics -Path $diagnosticsPath -Evidence $evidence -StartedAt $activationStartedAt `
+                -Snapshots $activationSnapshots -ApplicationDataRoot $applicationDataRoot -ApplicationDataOwned $applicationDataOwned `
+                -ActivationProcess $activationProcess
+            $evidence.activationDiagnostics = [IO.Path]::GetFileName($diagnosticsPath)
+        }
+        catch { $evidence.activationDiagnosticsFailure = $_.Exception.Message }
+    }
     $cleanupProcesses = @($mainProcess, $cefProcess)
     if ($null -ne $installRoot) {
         try { $cleanupProcesses += @(Get-PackageProcesses $installRoot) }

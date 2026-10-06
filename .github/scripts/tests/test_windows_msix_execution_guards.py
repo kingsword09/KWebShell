@@ -22,6 +22,9 @@ class WindowsMsixExecutionGuardsTest(unittest.TestCase):
             "signtool-sign",
             "install-tampered-msix",
             "install-msix",
+            "activate-installed-aumid",
+            "observe-installed-window-cef",
+            "normal-shutdown",
             "uninstall-msix",
         ):
             with self.subTest(phase=phase):
@@ -54,6 +57,27 @@ class WindowsMsixExecutionGuardsTest(unittest.TestCase):
         self.assertIn("process.waitFor(WINDOWS_MSIX_PROCESS_TIMEOUT_MINUTES, TimeUnit.MINUTES)", source)
         self.assertIn("process.toHandle().descendants()", source)
         self.assertNotIn("check(process.waitFor() == 0)", source)
+
+    def test_native_activation_has_no_explorer_or_executable_fallback(self):
+        source = POWERSHELL_SCRIPT.read_text()
+        helper = (POWERSHELL_SCRIPT.parent / "windows-msix-activation.ps1").read_text()
+        self.assertIn("Invoke-KWebMsixActivation -ApplicationUserModelId $aumid", source)
+        self.assertIn("$activation.signedHresult -ne 0 -or $activation.processId -eq 0", source)
+        self.assertNotIn("shell:AppsFolder", source)
+        self.assertNotIn("Start-Process", source)
+        self.assertIn("[PreserveSig] int ActivateApplication", helper)
+        self.assertIn("CoCreateInstance(ref classId, IntPtr.Zero, 4", helper)
+        self.assertIn("manager.ActivateApplication(appId, null, 2", helper)
+        self.assertIn("Marshal.ReleaseComObject(manager)", helper)
+
+    def test_diagnostics_precede_cleanup_and_cannot_replace_primary_failure(self):
+        source = POWERSHELL_SCRIPT.read_text()
+        finalizer = source[source.index("finally {\n    if ($null -ne $activationStartedAt)"):]
+        self.assertLess(finalizer.index("Save-KWebMsixActivationDiagnostics"), finalizer.index("$process.Kill()"))
+        self.assertLess(finalizer.index("Save-KWebMsixActivationDiagnostics"), finalizer.index("Remove-AppxPackage"))
+        self.assertLess(finalizer.index("Save-KWebMsixActivationDiagnostics"), finalizer.index("Remove-Item -LiteralPath $applicationDataRoot"))
+        self.assertIn("catch { $evidence.activationDiagnosticsFailure = $_.Exception.Message }", finalizer)
+        self.assertIn("$evidence.launcherWindowObserved = $true", source[source.index("while ([DateTime]::UtcNow -lt $deadline)"):])
 
 
 if __name__ == "__main__":

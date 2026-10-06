@@ -210,6 +210,9 @@ the recorded native run, not indefinite availability of its test installer.
 | A15 / normal Windows entry point | A clean MSIX install starts jpackage JVM/Compose `KWebShell.exe` with `app/` classpath and `runtime/` Temurin JRE, plus `cef/KWebShellCef.exe` and native CEF payload; normal close and failed startup drain all owned processes. | Visible application window and CEF child; missing runtime files fail before packaging; invalid/missing state root fails explicitly; a file blocking the Profile directory causes nonzero exit and no remaining JVM/CEF processes; normal close ends both processes. | `:kweb-application-launcher:check` on all hosted targets; `verifyWindowsFailedStartup` using the bundled JRE/classpath, followed by `runWindowsApplicationImageSmokeTest` and installed MSIX launch/close on Windows x64. | Launcher layout/state-root/target tests, ordered owner cleanup, app-image verifier/smoke task and Windows SDK package script. | Retain failed-start and normal smoke summaries, launcher PID/window, CEF observation, exit and runtime paths. | `NOT_RUN` for the repaired Windows startup path; local launcher contract tests pass. |
 | A16 / Windows ARM64 package | Windows ARM64 package requests fail explicitly; no x64 payload is substituted. | Request `windows-arm64`; assert target-specific error before emitting metadata. | `windowsMsixMetadataRejectsArm64AndMalformedAssets`; Windows target guard. | `windowsMsixMetadataEntries` target check; manifest continues to enumerate KMP targets without advertising ARM64 package delivery. | Test result and target error code. | `PASS` locally: `application.package.windows-target-unsupported`; hosted Windows runtime not required for this negative path. |
 | A17 / bundled JRE license material | The pinned Temurin JRE's module license and assembly exception remain present in both the app-image and installed MSIX, and the retained report binds their bytes. | Verify the pinned Windows archive contains both files; missing app-image file fails before MakeAppx; installed file missing or byte-changed fails after install; report includes both SHA-256 values and the staged tree digest. | `verifyWindowsApplicationImage`; Windows-hosted `.github/scripts/build-and-verify-windows-msix.ps1` install test. | Launcher app-image required-file check; PowerShell staging and installed-file checks. | `application-package-report.json` records `temurinLicenseSha256`, `temurinAssemblyExceptionSha256`, resolved installed paths, and `stagedPayloadTreeSha256`; exact legal bytes are retained in the compact proof and the full MSIX in hosted artifacts. | `NOT_RUN` for app-image/MSIX hosted execution. The pinned Temurin JRE archive hash was verified locally and its archive listing contains both required legal files; package propagation remains unverified until Windows CI. |
+| A18 / A4 installed activation | Native installed-AUMID success with HRESULT/PID, real window/CEF and unchanged graceful shutdown. | Valid installed AUMID; unregistered AUMID fails; bootstrap/window PIDs may differ; no EXE fallback. | Real PowerShell native rejection test and local installed-MSIX probe; Windows hosted package integration. | `.github/scripts/windows-msix-activation.ps1`, package script and `tests/test_windows_msix_activation.ps1`. | Local positive `deployment-74e1be3fc17840259cea42b3b6fa14a3` binds base `058e8ee` plus helper SHA-256; native S_OK/PID 832, window PID 12760, CEF PID 13424, exit 0, drainage/uninstall/cleanup PASS. Windows run `37413731041` lacks native diagnostics. | Local `PASS`; amended hosted implementation `NOT_RUN`. Local feasibility is not hosted acceptance. |
+| A19 / A7 failure observability | Bounded diagnostics precede owned cleanup and preserve the primary failure. | Missing window/CEF; exited bootstrap; unavailable event channel/log; diagnostic read/write failure; reparse/non-owned data; text/count/file bounds. | PowerShell diagnostics tests and Windows local/hosted failure capture; source review of cleanup ordering. | Activation helper, package-script finally integration and native/source-guard tests. | Local deliberate native failure `deployment-e3d4b0b034df42868b7e08e1218e37f6`: HRESULT `0x80070057`/PID 0 and pre-cleanup sidecar retained; exact package/trust/profile cleanup PASS. | Local native/helper/ordering tests `PASS`; hosted failure capture `NOT_RUN`. Window/CEF timeout is not claimed reproduced by a native rejection test. |
+| A20 / A11 evidence integrity | Collector refuses absent, failed or malformed native activation evidence without relaxing existing gates. | Success; missing HRESULT/PID/PASS; failure HRESULT; zero, bool or non-integer PID. | Python collector/aggregation tests on every hosted target. | Collector, shared report fixture, collector negatives and aggregation rejection tests; RFC digest includes helper and tests. | Local script suite: 23 tests PASS with real Git Bash/jq orchestration, isolated recorder and UTF-8 Python environment. No support evidence generated. | Local `PASS`; changed-source three-target hosted evidence and final review `NOT_RUN`. |
 
 ## Readiness review
 
@@ -405,6 +408,52 @@ the recorded native run, not indefinite availability of its test installer.
 - Decision: `READY` for this repair of A2/A4/A6/A7. No public API or signing
   policy changes; amended Windows acceptance remains `NOT_RUN` until the
   repaired revision produces real hosted evidence.
+
+### Observable installed activation amendment
+
+The Windows conformance fixture activates only the registered installed AUMID
+through `IApplicationActivationManager.ActivateApplication` (Windows SDK
+`ShObjIdl_core.h`). Use `CLSCTX_LOCAL_SERVER` and `AO_NOERRORUI`; retain the
+native signed HRESULT as uppercase `0xXXXXXXXX` and its returned DWORD PID.
+`activationHresult == "0x00000000"`, integer `activationProcessId > 0` and
+`nativeActivation == "PASS"` are mandatory report/collector gates. This PID
+is the jpackage bootstrap, not necessarily the Compose window owner. The
+existing exact-title visible window, CEF child, exit-zero normal close,
+process drainage, installation, signature and cleanup gates remain unchanged.
+No direct executable or unpacked-image fallback is permitted.
+
+Failure reports distinguish native activation from window/CEF observation and
+normal shutdown. A report-adjacent `.activation.json` sidecar is written before
+cleanup on installed-launch attempts, retaining up to 64 snapshots of 16
+package processes, caller session/elevation/integrity information, up to 64
+recent events per AppModel channel and up to four 64-KiB tails of available
+test-owned CEF/JVM log files. Text is bounded; reparse points and non-owned
+data are not read. Missing channels/logs or diagnostic failures are explicit
+diagnostic errors, not successful runtime evidence, and cannot hide the primary
+failure or stop owned-resource cleanup. AUMID activation cannot redirect the
+GUI launcher's stdout/stderr; absent startup logs remain an observation limit.
+The sidecar has a 2-MiB ceiling and is retained in the existing hosted
+application-package artifact, not used to manufacture a successful RFC record.
+
+Readiness review: 2026-10-06, Codex, separate same-contributor pass against
+`058e8ee` and P69.9 in `DESIGN_PLAN.md`. Actual isolated SDK/COM feasibility
+results are recorded there, including distinct bootstrap/window PIDs and full
+owned cleanup. Scope is the internal Windows conformance fixture, not a public
+API or a renderer-policy change. Missing hosted diagnostics are a verification
+finding, not permission to weaken activation or visible-window requirements.
+Decision: `READY` for implementation; final acceptance remains blocked until
+the changed source passes Windows CI and the required evidence refresh/review.
+
+Local implementation review, 2026-10-06, same contributor: the complete
+worktree diff and new helper/native-test files were reviewed against A18-A20.
+Final helper hash, real installed positive/negative probe paths and actual
+test counts are recorded in P69.9 of `DESIGN_PLAN.md`. The final native
+positive returned S_OK/bootstrap PID 13380, window PID 5956, CEF PID 8284,
+exit 0 and full owned cleanup; its sidecar retains real logs and observations.
+Collector/aggregation negatives, diagnostic bounds/ownership/error tests and
+governance contract tests pass locally. Decision: local scenarios `PASS`,
+changed-source hosted verification `NOT_RUN`; this is not final PR acceptance
+and does not supersede the existing hosted-evidence blockers.
 
 ## Acceptance review
 

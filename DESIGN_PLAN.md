@@ -2121,6 +2121,13 @@ Strict governance still rejects stale hosted contract evidence and unbacked
 matrix rows; the existing CI recording/import sequence must refresh these
 after the real three-target run. No support row is promoted by local tests.
 
+Native preflight follow-up: run `37413597350` at `bad155c` imported and read back
+the correct public machine certificate, then exposed an incorrect test assertion:
+the logical CurrentUser TrustedPeople view inherits LocalMachine entries. The
+test now checks the physical HKCU certificate entry for an unintended user import
+and requires the inherited view to be empty after machine-store cleanup. The
+machine import, exact-byte/private-key and no-root-CA assertions remain required.
+
 Readiness review: Codex, separate pass by the implementation contributor,
 2026-10-05, rebased revision `37ae295` and the recovered uncommitted asset
 changes. Decision: `READY` for these repairs. Hosted run `37133703051` reports

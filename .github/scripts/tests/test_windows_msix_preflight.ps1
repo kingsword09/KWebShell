@@ -88,7 +88,13 @@ try {
                 }
             }
             finally { $trusted.Dispose() }
-            foreach ($store in @("CurrentUser\TrustedPeople", "CurrentUser\Root", "LocalMachine\Root")) {
+            # CurrentUser's logical TrustedPeople view inherits machine trust.
+            # Inspect its physical backing to distinguish a separate user import.
+            $userTrustEntry = "HKCU:\Software\Microsoft\SystemCertificates\TrustedPeople\Certificates\$($certificate.Thumbprint)"
+            if (Test-Path -LiteralPath $userTrustEntry) {
+                throw "MSIX signing trust must not create a separate current-user certificate."
+            }
+            foreach ($store in @("CurrentUser\Root", "LocalMachine\Root")) {
                 if (Test-Path -LiteralPath "Cert:\$store\$($certificate.Thumbprint)") {
                     throw "MSIX signing trust must not populate $store."
                 }
@@ -103,6 +109,9 @@ try {
                         else { Remove-Item -LiteralPath $certificatePath -Force }
                     }
                     if (Test-Path -LiteralPath $certificatePath) { throw "The signing fixture certificate remains in $store after cleanup." }
+                }
+                if (Test-Path -LiteralPath "Cert:\CurrentUser\TrustedPeople\$($certificate.Thumbprint)") {
+                    throw "The signing fixture trust remains visible after machine-store cleanup."
                 }
                 $certificate.Dispose()
             }

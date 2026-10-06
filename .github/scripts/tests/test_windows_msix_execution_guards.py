@@ -17,7 +17,6 @@ class WindowsMsixExecutionGuardsTest(unittest.TestCase):
             "create-signing-certificate",
             "export-signing-pfx",
             "export-signing-certificate",
-            "import-root-certificate",
             "import-trusted-people-certificate",
             "signtool-sign",
             "signtool-verify",
@@ -29,6 +28,9 @@ class WindowsMsixExecutionGuardsTest(unittest.TestCase):
                 self.assertIn(phase, source)
         self.assertIn('Set-MsixPhase "$Phase.start"', source)
         self.assertIn('Set-MsixPhase "$Phase.complete"', source)
+        self.assertIn('Cert:\\CurrentUser\\TrustedPeople', source)
+        self.assertNotIn('Cert:\\CurrentUser\\Root', source)
+        self.assertNotIn('Cert:\\LocalMachine\\TrustedPeople', source)
 
     def test_powershell_failure_retains_last_phase(self):
         source = POWERSHELL_SCRIPT.read_text()

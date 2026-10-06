@@ -355,11 +355,8 @@ try {
     Set-MsixPhase "export-signing-certificate.start"
     Export-Certificate -Cert $publisherCertificate -FilePath $cerPath | Out-Null
     Set-MsixPhase "export-signing-certificate.complete"
-    Set-MsixPhase "import-root-certificate.start"
-    Import-Certificate -FilePath $cerPath -CertStoreLocation "Cert:\CurrentUser\Root" | Out-Null
-    Set-MsixPhase "import-root-certificate.complete"
     Set-MsixPhase "import-trusted-people-certificate.start"
-    Import-Certificate -FilePath $cerPath -CertStoreLocation "Cert:\LocalMachine\TrustedPeople" | Out-Null
+    Import-Certificate -FilePath $cerPath -CertStoreLocation "Cert:\CurrentUser\TrustedPeople" | Out-Null
     Set-MsixPhase "import-trusted-people-certificate.complete"
     $plainPassword = [Net.NetworkCredential]::new('', $password).Password
     Invoke-NativeTool $signTool @("sign", "/fd", "SHA256", "/f", $pfxPath, "/p", $plainPassword, "/v", $packagePath) "signtool-sign"
@@ -528,7 +525,7 @@ finally {
         catch { $cleanupErrors.Add("Unable to remove installed package: $($_.Exception.Message)") }
     }
     if ($null -ne $publisherCertificate) {
-        foreach ($store in @("CurrentUser\My", "LocalMachine\TrustedPeople", "CurrentUser\Root")) {
+        foreach ($store in @("CurrentUser\My", "CurrentUser\TrustedPeople")) {
             $certificatePath = "Cert:\$store\$($publisherCertificate.Thumbprint)"
             if (Test-Path -LiteralPath $certificatePath) {
                 try {

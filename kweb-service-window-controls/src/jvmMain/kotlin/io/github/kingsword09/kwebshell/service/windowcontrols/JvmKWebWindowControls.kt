@@ -890,6 +890,9 @@ internal class ComposeKWebWindowControls private constructor(
             if (native.providerId() == "macos.AppKit") {
                 val device = window.graphicsConfiguration?.device
                     ?: unavailable("set-fullscreen", "The owner window has no available display device.")
+                if (window.extendedState != Frame.NORMAL) {
+                    window.extendedState = Frame.NORMAL
+                }
                 device.fullScreenWindow = window
             } else {
                 window.placement = WindowPlacement.Fullscreen

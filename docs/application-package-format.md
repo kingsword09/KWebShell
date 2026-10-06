@@ -60,11 +60,19 @@ association declarations become a report; unsupported hooks are blocking and
 are never executed.
 
 The Windows provider must pass Windows SDK `MakeAppx` validation,
-`SignTool` signature verification, altered-package rejection, clean install,
+AppX deployment signature verification, altered-package rejection, clean install,
 observed identity inspection, normal launcher/CEF start and close, and
 uninstall on the existing GitHub-hosted `windows-2022` runner. It does not restore or declare a Windows App SDK
 dependency and does not claim notification activation; those runtime guarantees
 belong to RFC 0016/0006.
+
+The ephemeral Windows runner creates a publisher-bound code-signing certificate
+in `CurrentUser\My` and imports only its public certificate into
+`LocalMachine\TrustedPeople`, which AppX deployment requires. The early native
+preflight verifies the exact certificate bytes and absence of its private key
+in that machine store. Cleanup removes only the generated thumbprint from both
+stores and deletes its signing key, including when package verification fails.
+The fixture does not add a root CA or depend on interactive certificate UI.
 
 The selected Windows entry-point contract is a JVM/Compose launcher named
 `KWebShell.exe`. The package carries the pinned Temurin JRE `25.0.4.1+1` at

@@ -31,26 +31,6 @@ function Invoke-NativeTool {
     Set-MsixPhase "$Phase.complete"
 }
 
-function Add-CurrentUserCertificate {
-    param(
-        [Parameter(Mandatory = $true)][string] $CertificatePath,
-        [Parameter(Mandatory = $true)][string] $StoreName
-    )
-    $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($CertificatePath)
-    $store = [Security.Cryptography.X509Certificates.X509Store]::new(
-        $StoreName,
-        [Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser
-    )
-    try {
-        $store.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
-        $store.Add($certificate)
-    }
-    finally {
-        $store.Close()
-        $certificate.Dispose()
-    }
-}
-
 function Find-WindowsSdkTool {
     param([string] $Name)
     $onPath = Get-Command $Name -ErrorAction SilentlyContinue
@@ -376,7 +356,7 @@ try {
     Export-Certificate -Cert $publisherCertificate -FilePath $cerPath | Out-Null
     Set-MsixPhase "export-signing-certificate.complete"
     Set-MsixPhase "import-trusted-people-certificate.start"
-    Add-CurrentUserCertificate -CertificatePath $cerPath -StoreName "TrustedPeople"
+    Add-KWebMsixTrustedCertificate -CertificatePath $cerPath
     Set-MsixPhase "import-trusted-people-certificate.complete"
     $plainPassword = [Net.NetworkCredential]::new('', $password).Password
     Invoke-NativeTool $signTool @("sign", "/fd", "SHA256", "/f", $pfxPath, "/p", $plainPassword, "/v", $packagePath) "signtool-sign"
@@ -550,7 +530,7 @@ finally {
         catch { $cleanupErrors.Add("Unable to remove installed package: $($_.Exception.Message)") }
     }
     if ($null -ne $publisherCertificate) {
-        foreach ($store in @("CurrentUser\My", "CurrentUser\TrustedPeople")) {
+        foreach ($store in @("CurrentUser\My", "LocalMachine\TrustedPeople")) {
             $certificatePath = "Cert:\$store\$($publisherCertificate.Thumbprint)"
             if (Test-Path -LiteralPath $certificatePath) {
                 try {

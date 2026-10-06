@@ -2094,6 +2094,32 @@ Acceptance criteria for the remaining packaging repairs:
   configured loopback address families before starting its engine. Retain the
   real crash/cancellation and capability-lab results on all hosted targets;
   runtime port-conflict errors and renderer-terminal assertions remain strict.
+- P69.8 (RFC 0030 A2/A4/A6/A7): trust only the temporary publisher certificate
+  in `LocalMachine\TrustedPeople`, as required by Windows AppX deployment.
+  Import its public certificate noninteractively, verify the exact certificate
+  bytes and absence of a private key in that store, and remove that thumbprint
+  plus its `CurrentUser\My` private key on success or failure. The Windows
+  preflight exercises real machine-store import/readback/cleanup; the full
+  hosted package test must install the signed MSIX, reject tampering, launch
+  and close the real JVM/CEF processes, and uninstall successfully. Keep the
+  three-target CI and evidence checks mandatory.
+
+Certificate-store readiness review: Codex, separate pass by the same contributor,
+2026-10-06, revision `d37e199`. Run `37409668716` signs the package successfully
+but `Add-AppxPackage` fails with `0x800B0109`. The script imports trust into
+`CurrentUser\TrustedPeople`, and its source regression test incorrectly forbids
+the required machine store. Microsoft's [MSIX signing certificate guidance](https://learn.microsoft.com/en-us/windows/msix/package/create-certificate-package-signing)
+explicitly requires Local Machine Trusted People. Decision: `READY` for P69.8,
+an implementation repair to the existing installation and cleanup guarantees.
+Actual Windows installation and evidence remain required for acceptance.
+
+P69.8 local verification, 2026-10-06: all 19 Python script/evidence tests and
+three real PowerShell preflight rejection cases pass. The new machine-store
+guard rejects the previous `d37e199` script. JDK 25 runtime-package tests,
+manifest validation, launcher tests and RFC contract/catalog tests pass.
+Strict governance still rejects stale hosted contract evidence and unbacked
+matrix rows; the existing CI recording/import sequence must refresh these
+after the real three-target run. No support row is promoted by local tests.
 
 Readiness review: Codex, separate pass by the implementation contributor,
 2026-10-05, rebased revision `37ae295` and the recovered uncommitted asset

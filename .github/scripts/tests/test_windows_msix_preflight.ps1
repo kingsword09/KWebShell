@@ -60,6 +60,9 @@ try {
     }
     Write-Output "Passed $($cases.Count) real-script MSIX preflight rejection cases."
     if ($windowsHost) {
+        if ($savedEnvironment.GITHUB_ACTIONS -ne "true" -or $savedEnvironment.RUNNER_ENVIRONMENT -ne "github-hosted") {
+            throw "The machine certificate trust test requires an ephemeral GitHub-hosted runner."
+        }
         $certificate = $null
         try {
             $publisher = "CN=KWebShell RFC 0030 signing fixture"
@@ -73,16 +76,38 @@ try {
             if ($usages -notcontains "1.3.6.1.5.5.7.3.3" -or $null -eq $constraints -or $constraints.CertificateAuthority) {
                 throw "The Windows signing fixture must be a non-CA code-signing certificate."
             }
+            $publicCertificatePath = Join-Path $testRoot "signing.cer"
+            Export-Certificate -Cert $certificate -FilePath $publicCertificatePath | Out-Null
+            Add-KWebMsixTrustedCertificate -CertificatePath $publicCertificatePath
+            $trustedPath = "Cert:\LocalMachine\TrustedPeople\$($certificate.Thumbprint)"
+            $trusted = Get-Item -LiteralPath $trustedPath -ErrorAction Stop
+            try {
+                if ($trusted.HasPrivateKey -or
+                    [Convert]::ToBase64String($trusted.RawData) -ne [Convert]::ToBase64String($certificate.RawData)) {
+                    throw "AppX deployment must trust the exact public signing certificate in LocalMachine\TrustedPeople."
+                }
+            }
+            finally { $trusted.Dispose() }
+            foreach ($store in @("CurrentUser\TrustedPeople", "CurrentUser\Root", "LocalMachine\Root")) {
+                if (Test-Path -LiteralPath "Cert:\$store\$($certificate.Thumbprint)") {
+                    throw "MSIX signing trust must not populate $store."
+                }
+            }
         }
         finally {
             if ($null -ne $certificate) {
-                $certificatePath = "Cert:\CurrentUser\My\$($certificate.Thumbprint)"
-                Remove-Item -LiteralPath $certificatePath -DeleteKey -Force
+                foreach ($store in @("LocalMachine\TrustedPeople", "CurrentUser\My")) {
+                    $certificatePath = "Cert:\$store\$($certificate.Thumbprint)"
+                    if (Test-Path -LiteralPath $certificatePath) {
+                        if ($store -eq "CurrentUser\My") { Remove-Item -LiteralPath $certificatePath -DeleteKey -Force }
+                        else { Remove-Item -LiteralPath $certificatePath -Force }
+                    }
+                    if (Test-Path -LiteralPath $certificatePath) { throw "The signing fixture certificate remains in $store after cleanup." }
+                }
                 $certificate.Dispose()
-                if (Test-Path -LiteralPath $certificatePath) { throw "The signing fixture certificate remains after cleanup." }
             }
         }
-        Write-Output "PASS: real publisher-bound code-signing certificate creation and cleanup."
+        Write-Output "PASS: real publisher-bound certificate creation, LocalMachine\TrustedPeople trust and private-key/certificate cleanup."
     }
 }
 finally {

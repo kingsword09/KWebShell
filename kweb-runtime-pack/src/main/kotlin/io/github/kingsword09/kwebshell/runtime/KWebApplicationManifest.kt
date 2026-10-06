@@ -52,8 +52,9 @@ internal data class KWebApplicationTarget(
     val minimumOs: String,
     val format: KWebApplicationPackageFormat,
     val bundleId: String? = null,
-    val aumid: String? = null,
+    val packageIdentityName: String? = null,
     val desktopId: String? = null,
+    val browserSubprocessExecutable: String? = null,
 )
 
 @Serializable
@@ -241,6 +242,11 @@ internal object KWebApplicationManifestContract {
             )
         }
         applicationPackageRequire(
+            manifest.icons.map { it.kind }.distinct().size == manifest.icons.size,
+            code = "application.manifest.icon-kind-duplicate",
+            message = "The application manifest contains duplicate icon kinds.",
+        )
+        applicationPackageRequire(
             manifest.protocols.map { it.scheme }.distinct().size == manifest.protocols.size,
             code = "application.manifest.protocol-duplicate",
             message = "The application manifest contains duplicate protocol schemes.",
@@ -303,7 +309,42 @@ internal object KWebApplicationManifestContract {
             )
             when (target.operatingSystem.id) {
                 "macos" -> requireIdentity(targetSpec.bundleId, manifest.applicationId, "bundleId", targetId)
-                "windows" -> requireIdentity(targetSpec.aumid, manifest.applicationId, "aumid", targetId)
+                "windows" -> {
+                    requireIdentity(
+                        targetSpec.packageIdentityName,
+                        manifest.applicationId,
+                        "packageIdentityName",
+                        targetId,
+                    )
+                    applicationPackageRequire(
+                        manifest.icons.map { it.kind }.containsAll(
+                            setOf(
+                                "windows-msix-square44",
+                                "windows-msix-square150",
+                                "windows-msix-square310",
+                                "windows-msix-wide310",
+                                "windows-msix-store",
+                            ),
+                        ),
+                        code = "application.manifest.windows-icon-missing",
+                        details = mapOf("target" to targetId),
+                        message = "A Windows target requires the complete square, wide and store logo asset set.",
+                    )
+                    val subprocess = targetSpec.browserSubprocessExecutable
+                    applicationPackageRequire(
+                        subprocess != null,
+                        code = "application.manifest.browser-subprocess-missing",
+                        details = mapOf("target" to targetId),
+                        message = "A Windows target must declare its CEF browser subprocess executable.",
+                    )
+                    validateExecutable(checkNotNull(subprocess), "browserSubprocessExecutable")
+                    applicationPackageRequire(
+                        subprocess != manifest.mainExecutable,
+                        code = "application.manifest.browser-subprocess-conflict",
+                        details = mapOf("target" to targetId),
+                        message = "The browser subprocess executable must differ from the application launcher executable.",
+                    )
+                }
                 "linux" -> requireIdentity(targetSpec.desktopId, "${manifest.applicationId}.desktop", "desktopId", targetId)
             }
         }

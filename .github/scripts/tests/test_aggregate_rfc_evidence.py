@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 
+from _msix_fixture import REVISION, create_fixture, write_report
 
 REPOSITORY = Path(__file__).resolve().parents[3]
 SCRIPT = REPOSITORY / ".github/scripts/aggregate-rfc-evidence.sh"
@@ -47,6 +48,7 @@ class AggregationTest(unittest.TestCase):
         script = self.root / ".github/scripts/aggregate-rfc-evidence.sh"
         script.parent.mkdir(parents=True)
         shutil.copyfile(SCRIPT, script)
+        shutil.copyfile(SCRIPT.with_name("retain_windows_msix_evidence.py"), script.with_name("retain_windows_msix_evidence.py"))
         catalog = self.root / "docs/rfcs"
         catalog.mkdir(parents=True)
         for source in (REPOSITORY / "docs/rfcs").glob("[0-9][0-9][0-9][0-9]-*.md"):
@@ -63,6 +65,10 @@ class AggregationTest(unittest.TestCase):
                 for name in names:
                     (directory / name).write_text("{}\n")
             self.report(target).write_text(json.dumps(self.valid_report(target)) + "\n")
+        self.msix, self.msix_report_path, self.msix_report, _ = create_fixture(
+            self.root / "build/rfc-evidence/downloaded/application-package-windows-x64-revision"
+        )
+        self.msix_before = self.msix.read_bytes()
         # Replace only the Gradle process boundary, never the production script.
         recorder = self.root / "recorder.py"
         recorder.write_text('''import json
@@ -77,7 +83,8 @@ rfc = options["--rfc"]
 document, = catalog.glob(rfc + "-*.md")
 assert "- Status: Implemented" in document.read_text().splitlines(), "Cannot record an unimplemented RFC"
 manifest = json.loads(Path(arguments[1]).read_text())
-manifest["invocations"].append({"rfc": rfc, "target": options["--target"]})
+artifacts = [arguments[i + 1] for i, value in enumerate(arguments) if value == "--artifact"]
+manifest["invocations"].append({"rfc": rfc, "target": options["--target"], "artifacts": artifacts})
 Path(arguments[2]).write_text(json.dumps(manifest))
 ''')
         wrapper = self.root / "gradlew"
@@ -103,7 +110,7 @@ Path(arguments[2]).write_text(json.dumps(manifest))
         import os
         return subprocess.run(
             ["bash", ".github/scripts/aggregate-rfc-evidence.sh"], cwd=self.root,
-            env={**os.environ, "KWEB_TEST_PYTHON": sys.executable},
+            env={**os.environ, "KWEB_TEST_PYTHON": sys.executable, "GITHUB_SHA": REVISION},
             text=True, capture_output=True, timeout=60,
         )
 
@@ -128,6 +135,28 @@ Path(arguments[2]).write_text(json.dumps(manifest))
             p.name: p.read_bytes() for p in (self.root / "docs/rfcs").glob("*.md")
         })
         self.assertEqual(reports, {target: self.report(target).read_bytes() for target in TARGETS})
+        windows_package, = [call for call in calls if call["rfc"] == "0030" and call["target"] == "windows-x64"]
+        self.assertIn("windows-msix-proof=build/rfc-evidence/windows-msix-proof.zip", windows_package["artifacts"])
+        self.assertTrue((self.root / "build/rfc-evidence/windows-msix-proof.zip").is_file())
+        self.assertEqual(self.msix_before, self.msix.read_bytes())
+
+    def test_missing_windows_msix_blocks_aggregation(self):
+        self.msix.unlink()
+        result = self.run_script()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("Windows MSIX evidence", result.stderr)
+        self.assertEqual(self.manifest_before, self.manifest.read_bytes())
+
+    def test_failed_windows_native_report_blocks_before_recording(self):
+        write_report(self.msix_report_path, {**self.msix_report, "normalShutdown": "FAIL"})
+        self.assert_preflight_failure("Windows MSIX")
+
+    def test_invalid_windows_activation_blocks_before_recording(self):
+        for field, value in (("nativeActivation", "NOT_RUN"), ("activationHresult", "0x80070005"),
+                             ("activationProcessId", 0), ("activationProcessId", True)):
+            with self.subTest(field=field, value=value):
+                write_report(self.msix_report_path, {**self.msix_report, field: value})
+                self.assert_preflight_failure("Windows MSIX")
 
     def test_each_missing_notification_report_blocks_before_recording(self):
         for target in TARGETS:

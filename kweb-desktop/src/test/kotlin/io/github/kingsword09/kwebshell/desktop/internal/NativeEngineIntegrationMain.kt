@@ -2919,13 +2919,14 @@ private fun runRendererCrashLifecycle() {
             cdp.evaluate(
                 """
                 (async () => {
-                  globalThis.__crashStream = "open";
+                  globalThis.__crashStream = "opening";
                   const stream = ConformanceBridge.createClient().openStreamEvents({frames: 1000});
-                  for await (const chunk of stream) { /* streams until the crash */ }
+                  for await (const chunk of stream) { globalThis.__crashStream = "active"; }
                   globalThis.__crashStream = "ended";
                 })(); "stream-open"
                 """.trimIndent(),
             )
+            cdp.awaitExpression("globalThis.__crashStream === 'active'")
 
             // Crash the renderer through the test-only ABI kill switch: the
             // renderer process dies like a real crash, so the stream query is

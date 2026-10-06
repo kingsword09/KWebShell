@@ -256,6 +256,17 @@ renderer-evaluation API.
   `Accepted` to `Implemented`; future changes to any bound implementation,
   migration row, or evidence workflow require a fresh three-target recording.
 
+## Renderer-crash fixture review, PR 69
+
+Run `37304633212`, PR head `469c03b`, exposed a test-ordering defect in A6:
+the test crashed the renderer immediately after requesting an asynchronous
+stream, before its host handler was guaranteed to be active. Codex reviewed
+this as a separate pass by the implementation contributor on 2026-10-05.
+Decision: `READY` for the fixture correction in P69.7 of `DESIGN_PLAN.md`.
+The fixture must observe a delivered frame before the real renderer crash,
+then retain all cancellation, terminal ordering and owner-release assertions.
+The runtime contract is unchanged; fresh three-target evidence remains required.
+
 ## Evidence lifecycle
 
 RFC 0008 evidence is retained under

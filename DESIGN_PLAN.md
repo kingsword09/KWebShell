@@ -2015,23 +2015,334 @@ package boundary over the signed RFC 0001 runtime release:
    and unsafe paths fail before packaging.
 2. `kweb-runtime-pack` verifies the signed runtime release, creates immutable
    packaged-state and capability/SBOM records, emits target-specific macOS
-   Launch Services, Windows AppX, or Linux Debian registration metadata, and
-   publishes atomically.
-3. macOS and Windows packages use deterministic ZIP-compatible containers; the
-   Linux provider emits a real Debian `ar` package with deterministic control
-   and data tarballs. All package-level statements are Ed25519-signed with an
+   Launch Services, Windows MSIX (with a JVM/Compose `KWebShell.exe` launcher,
+   bundled SHA-256-pinned Temurin JRE 25.0.4.1+1, separate `KWebShellCef.exe`
+   subprocess, protocol/file declarations, and signed visual assets), or Linux
+   Debian registration metadata, and publishes atomically. The Windows x64
+   provider uses the GitHub-hosted Windows SDK MakeAppx/SignTool toolchain for
+   a real installable MSIX; the Kotlin assembler emits only an internal signed
+   metadata ZIP and rejects `.msix` output.
+   RFC 0016 owns App SDK notification dependencies/activation; RFC 0006 owns
+   lifecycle routing. Windows ARM64 package creation fails until a matching
+   pinned JRE is available, with no x64 fallback.
+3. macOS packages use a deterministic ZIP-compatible container; Windows must
+   emit an installable MSIX; the Linux provider emits a real Debian `ar` package
+   with deterministic control and data tarballs. All package-level statements are Ed25519-signed with an
    explicitly supplied key pair and verified before publication.
 4. Electron builder/forge metadata is mapped by a closed migration contract;
    unsupported hooks are blocking and are never executed.
 5. Unit tests cover manifest schema, identity, six-target metadata generation,
    deterministic rebuilds, nested runtime verification, package signatures,
-   tampering, and migration blockers. Hosted package evidence is required for
+   tampering, Windows JVM launcher/JRE, and migration blockers. GitHub-hosted
+   Windows CI must build the app-image, create/verify/install the MSIX, observe
+   normal launcher/CEF start and shutdown, uninstall, and retain package
+   identity/signature/digest evidence. App SDK toast registration is RFC 0016.
+   Hosted package evidence is required for
    `macos-arm64`, `windows-x64`, and `linux-x64`; the manifest and local tests
    still cover all six `KWebTarget` values.
 
 The objective is complete only after the RFC acceptance matrix, platform package
 transcripts, retained signatures/SBOMs, documentation, and governance evidence
 are updated in the same PR.
+
+### PR 69 repair objective: valid Windows MSIX visual assets
+
+Complete the RFC 0030 Windows package amendment against the merged PR 68 base.
+Acceptance criteria for the remaining packaging repairs:
+
+- P69.1 (RFC 0030 A1/A4/A13): the canonical manifest requires the real
+  `windows-msix-wide310` PNG at 310 by 150 pixels. AppX `DefaultTile` declares
+  it together with `Square310x310Logo`; missing, square, transposed, truncated
+  or malformed assets fail with the declared typed error. The hosted report
+  retains its SHA-256, and Windows SDK MakeAppx validates the complete package.
+- P69.2 (A11/A15): run the full Windows runtime/package task graph with
+  configuration caching explicitly disabled for its incompatible jpackage
+  tasks. Preserve the existing macOS/Linux invocation and all native,
+  installation, launch, shutdown and cleanup assertions.
+- P69.3 (A3/A7/A11): run package/manifest, launcher, migration and RFC contract
+  tests locally with JDK 25; obtain fresh Windows/macOS/Linux hosted results,
+  import their real evidence, review all acceptance rows and squash only when
+  every required gate passes.
+- P69.4 (A4/A6/A7): use the documented MakeAppx `pack` semantic validation
+  and `unpack` operations and the supported Add-AppxPackage parameters. An
+  invalid platform, non-hosted runner, existing app-data directory or existing
+  package must fail without deleting pre-existing state. Cleanup owns only
+  data confirmed absent before the test and a package whose installation the
+  test attempted; it restores the original sideload policy even on failure.
+  Run the actual PowerShell preflight script tests and the real Windows SDK
+  install/signature/tamper/cleanup acceptance.
+- P69.5 (A6/A15): a launcher startup failure closes the page and Profile before
+  application shutdown, drains the engine, disposes the window and returns a
+  nonzero exit. Preserve the original error and attach cleanup failures; never
+  silently substitute the user's home directory for missing `LOCALAPPDATA`.
+  Unit-test missing/blank/relative state paths and use the real Windows
+  app-image with a file blocking its Profile directory to verify failed-start
+  process cleanup before the normal launch/shutdown smoke test.
+  Normal close must observe exit code zero from the actual window process and
+  zero remaining package processes before uninstall.
+- P69.6 (A3/A4/A7/A11/A13/A17): retain the complete signed MSIX in the hosted
+  application-package artifact for its declared 14-day retention. Before
+  recording any support evidence, hash that exact MSIX and require the matching
+  successful Windows report and source revision. Commit a deterministic ZIP of
+  its exact signature/block-map/manifest, signed metadata, five visual assets,
+  Temurin legal files, raw report and both launcher smoke summaries; reject missing, changed, ambiguous or
+  oversized proof inputs. Unit-test the collector and real aggregation flow;
+  the hosted Windows SDK run remains the authority for native verification.
+- P69.7 (required regression gates; RFC 0008 A6): crash the renderer only after
+  its conformance stream has delivered a frame, so cancellation exercises an
+  active host handler. The capability lab selects an exclusive port on both
+  configured loopback address families before starting its engine. Retain the
+  real crash/cancellation and capability-lab results on all hosted targets;
+  runtime port-conflict errors and renderer-terminal assertions remain strict.
+- P69.8 (RFC 0030 A2/A4/A6/A7): trust only the temporary publisher certificate
+  in `LocalMachine\TrustedPeople`, as required by Windows AppX deployment.
+  Import its public certificate noninteractively, verify the exact certificate
+  bytes and absence of a private key in that store, and remove that thumbprint
+  plus its `CurrentUser\My` private key on success or failure. The Windows
+  preflight exercises real machine-store import/readback/cleanup; the full
+  hosted package test must install the signed MSIX, reject tampering, launch
+  and close the real JVM/CEF processes, and uninstall successfully. Keep the
+  three-target CI and evidence checks mandatory.
+
+Certificate-store readiness review: Codex, separate pass by the same contributor,
+2026-10-06, revision `d37e199`. Run `37409668716` signs the package successfully
+but `Add-AppxPackage` fails with `0x800B0109`. The script imports trust into
+`CurrentUser\TrustedPeople`, and its source regression test incorrectly forbids
+the required machine store. Microsoft's [MSIX signing certificate guidance](https://learn.microsoft.com/en-us/windows/msix/package/create-certificate-package-signing)
+explicitly requires Local Machine Trusted People. Decision: `READY` for P69.8,
+an implementation repair to the existing installation and cleanup guarantees.
+Actual Windows installation and evidence remain required for acceptance.
+
+P69.8 local verification, 2026-10-06: all 19 Python script/evidence tests and
+three real PowerShell preflight rejection cases pass. The new machine-store
+guard rejects the previous `d37e199` script. JDK 25 runtime-package tests,
+manifest validation, launcher tests and RFC contract/catalog tests pass.
+Strict governance still rejects stale hosted contract evidence and unbacked
+matrix rows; the existing CI recording/import sequence must refresh these
+after the real three-target run. No support row is promoted by local tests.
+
+Native preflight follow-up: run `37413597350` at `bad155c` imported and read back
+the correct public machine certificate, then exposed an incorrect test assertion:
+the logical CurrentUser TrustedPeople view inherits LocalMachine entries. The
+test now checks the physical HKCU certificate entry for an unintended user import
+and requires the inherited view to be empty after machine-store cleanup. The
+machine import, exact-byte/private-key and no-root-CA assertions remain required.
+
+P69.9 (RFC 0030 A4/A7/A11/A18-A20): make installed-AUMID activation
+observable without changing its launcher/window/CEF/shutdown requirements.
+Use the Windows SDK `IApplicationActivationManager` through an out-of-process
+COM activation manager with `AO_NOERRORUI`, retaining the HRESULT and returned
+bootstrap PID. The jpackage bootstrap may exit after spawning the actual
+window owner; do not equate their PIDs or treat bootstrap exit as JVM failure.
+Require native success and a positive PID before the unchanged 60-second
+visible-window/CEF gate. Never directly launch an EXE as an activation fallback.
+Record activation, observation and normal-shutdown phases separately. Retain
+bounded package-process/session/token snapshots, available test-owned runtime
+logs and recent AppModel events before cleanup in a report-adjacent JSON
+sidecar. Diagnostic failures must not replace the original failure or prevent
+cleanup. The collector rejects missing, failed or malformed activation results.
+Test native unregistered-AUMID rejection, diagnostics bounds/ownership/error
+handling and collector negatives; use the real installed signed MSIX for the
+positive activation/window/CEF/exit-zero/drainage/uninstall/cleanup chain.
+Keep the production GitHub-hosted guard, existing data/trust guards and all
+three-target evidence gates. Local probes must not impersonate hosted CI.
+
+P69.10 (RFC 0030 A4/A7/A18/A21): keep the embedded Windows browser in its
+application-owned JVM when the caller is elevated. Chromium must not relaunch
+the executable to change the host token; append `do-not-de-elevate` before
+browser startup, only for the Windows browser process. Preserve the caller's
+token, CEF child sandbox settings, explicit profile and CDP policy. Verify the
+real CEF command-line policy for browser/child processes and repeated application,
+then install a newly built signed MSIX with absent application data, activate
+its AUMID, observe the Compose window and CEF children, close with exit zero,
+and verify drainage/uninstall/owned cleanup. Run all three hosted targets and
+refresh acceptance evidence before merge.
+
+Readiness review for P69.10: Codex, separate same-contributor pass, 2026-10-06,
+base `bdcd6dc`. Run `37446757759` has successful native activation but a
+`KWebShell.exe` error dialog and no final Compose window. Local signed-package
+probes `deployment-9f2fc91f999849a4afc4fb87730b0c00` and
+`deployment-4a37c3118f8b49f4a54c1684f2ae2a9f` reproduce
+the `engine-create` operation failing with `cef-initialize-failed`; live
+process inspection shows the JVM spawning another launcher with
+`--do-not-de-elevate`. Pinned Chromium 151.0.7922.109
+[`ChromeBrowserMainPartsWin::MaybeAutoDeElevate`](https://github.com/chromium/chromium/blob/151.0.7922.109/chrome/browser/chrome_browser_main_win.cc#L988) explicitly
+returns its early-exit code after this replacement, unless that switch is set.
+This violates the embedded host's existing ownership contract. Decision:
+`READY` for the Windows startup repair. MSIX filesystem virtualization also
+explains the missing logs; a path-only probe still fails and is not a fix.
+The separate macOS FFM stress exit 133 remains under investigation; no native
+test, privilege policy or visible-window assertion may be weakened.
+
+P69.11 (RFC 0030 A6/A7/A22): before creating transport/Profile children,
+create the declared `%LOCALAPPDATA%\KWebShell` directory and resolve that same
+directory through a Win32 file handle (`CreateFileW` with backup semantics,
+`GetFinalPathNameByHandleW`, `CloseHandle`) in an internal JDK 25 Java FFM
+binding. Pass its physical path consistently to Kotlin and CEF. This follows
+MSIX's existing virtualization of the chosen directory; it must not choose a
+different Profile, disable virtualization, relax native path containment, or
+add a package capability. Native/path failures become
+`launcher.state-root-unavailable`; missing/invalid `LOCALAPPDATA` keeps
+`launcher.state-root-invalid`. Test real Unicode/existing/missing directory
+resolution and handle release, file-blocked creation and generic validation;
+verify the actual signed MSIX from absent data through AUMID startup,
+Profile creation, normal shutdown and cleanup. Retain the same SDK/package
+and three-target requirements as P69.10.
+
+Validate/open the Profile before constructing the Compose window. The existing
+blocked-Profile test must observe its typed failure without initializing a
+window; the normal smoke and installed tests still require the actual visible
+window, CEF children and exit-zero cleanup.
+
+P69.11 readiness review: Codex, separate same-contributor pass, 2026-10-06,
+base `bdcd6dc` plus P69.10. Native in-package probe
+`deployment-0310a25fd4d74b45868969d76a3d67fd/physical-paths.json`
+proves a handle to the declared directory resolves to the package's
+`LocalCache/Local/KWebShell`. With P69.10 applied, installed probe
+`deployment-7291d9fc32314581aec39adb191e4cb5` has exactly the expected
+bootstrap/JVM pair but fails normal close; the following direct diagnostic
+captures `open-profile-context` / `profile-path-invalid`. This is a second
+cold-install defect masked by pre-creating the unvirtualized directory in the
+earlier local fixture. Decision: `READY` for resolving the selected directory
+before sharing it across JVM/CEF. Final installed and hosted verification
+remains blocking.
+
+P69.10/P69.11 local acceptance and separate same-contributor review,
+2026-10-06: the four selected native ABI/configuration/policy checks pass;
+the final CEF policy test also passes with CMake-3.21-compatible runtime
+lookup. All nine launcher tests pass on Windows (zero failures/skips).
+The rebuilt app-image's invalid-Profile probe returns exit 1 with the expected
+error and no processes; normal launch returns window exit 0 with CEF observed
+and no processes. The test executable is excluded from the runtime payload.
+SDK probe `sdk-probe-fd4e427499b04d2a8f694afa714b4f4b` packs, unpacks and
+signs the complete app-image. Real AUMID probe
+`deployment-54d1744ce2eb417fb1be82a36e58c981` starts from absent data,
+rejects tampering, installs, returns S_OK/bootstrap PID 12088, observes window
+PID 11080 and CEF PID 11788, closes with exit 0 and zero remaining processes,
+then uninstalls and removes owned trust/data. Its package SHA-256 is
+`98c1c6eb1fcc7409c72f8a7973ceb798fc6d18287ca0015bad90021eadc3dc39`;
+the installed engine and launcher JAR match the local build by SHA-256.
+The probe's `sourceRevision` is base `bdcd6dc` plus these worktree changes;
+its native-source, native-DLL and launcher-JAR hashes identify the tested
+implementation. These are local diagnostic artifacts under `build/local-msix`,
+not hosted support evidence. Review covers the native browser-only switch,
+FFM handle/call-state ownership and primary-error preservation, Profile-before-
+window ordering, native/unit assertions, package contents and contract-digest
+bindings. Local A21/A22 scenarios: `PASS`; changed-source hosted acceptance:
+`NOT_RUN`. Same-source macOS rerun of `37446757759` passes; the original exit
+133 is not claimed fixed by these Windows changes.
+
+P69.9 readiness review: Codex, separate pass by the same contributor,
+2026-10-06, base `058e8ee` plus this contract amendment. SDK 10.0.26100.0
+confirms the interface/class GUIDs and vtable. The isolated local native probe
+returned `0x80070057`/PID 0 for an unregistered AUMID; real signed-MSIX
+activation returned `0x00000000`/PID 13908, with distinct window PID 14028,
+CEF PID 5108, exit 0, no remaining processes, uninstall and exact owned
+certificate/profile cleanup. Evidence is retained locally in
+`build/local-msix/deployment-251b2f2437f2456888b4d9d24201898b/` and
+`build/local-msix/native-activation-negative.json`; it is not hosted evidence.
+Decision: `READY` for the internal fixture amendment; hosted acceptance remains
+`BLOCKED` by the failed Windows run until the changed revision is submitted
+and passes. No public API or support state is promoted.
+
+P69.9 local verification and separate same-contributor review, 2026-10-06:
+the final helper SHA-256 is
+`1117188c6a8cb7becece93f7d4419a288d3cc9015ae485fe95970b781baae8e4`.
+The unchanged signed MSIX from base `058e8ee` was intentionally reused;
+only the internal test activation/diagnostics implementation changed. Final
+probe `deployment-5e40e9e22232483ca1d360a5104c5383` returned S_OK/PID 13380,
+observed real window PID 5956 and CEF PID 8284, window exit 0, no remaining
+package processes, uninstall and exact owned trust/profile cleanup. Its
+pre-cleanup sidecar retained 40 snapshots, one CEF log and caller token/session;
+bootstrap PID 13380 exited 0 separately. The earlier changed-helper positive
+`deployment-74e1be3fc17840259cea42b3b6fa14a3` also passed. Deliberate native
+rejection `deployment-e3d4b0b034df42868b7e08e1218e37f6` retained the original
+HRESULT/PID failure and sidecar before successful owned cleanup. This rejection
+is not a reproduction of the hosted window-observation timeout.
+All 23 Python script/collector/aggregation tests pass using local Git Bash,
+checksum-verified jq 1.8.1 and `PYTHONUTF8=1`; initial missing-tool/Windows
+encoding failures are retained as environment findings, not code fixes.
+The real PowerShell native/diagnostic suite passes, including token/session,
+snapshot/event/log/file ceilings, ownership/reparse guards and diagnostic
+failure preservation. Four production preflight rejection cases pass; its
+hosted-only machine-trust subtest correctly refuses this local host. Real
+local trust/deployment is covered by the separate guarded install probes.
+Runtime tests: 78 pass, one explicitly skipped Unix-only fixture; launcher:
+six pass; governance contracts: 71 pass and 42 RFC catalog entries valid.
+The initial contract-path sorting mistake was corrected and the same Gradle
+command rerun successfully. Full diff review preserves hosted-only execution,
+exact visible-window/CEF checks, bounded waits, normal exit-zero/drainage and
+owned cleanup; no direct-EXE fallback, evidence rewrite or support promotion.
+`git diff --check` passes. A18-A20 pass their local scenarios, but required
+changed-source hosted verification and final RFC acceptance remain `NOT_RUN`.
+No commit, branch, push, PR edit or CI rerun was performed.
+
+Readiness review: Codex, separate pass by the implementation contributor,
+2026-10-05, rebased revision `37ae295` and the recovered uncommitted asset
+changes. Decision: `READY` for these repairs. Hosted run `37133703051` reports
+MakeAppx error `80080204` because a large square tile requires a wide tile;
+it also reports unsupported configuration-cache serialization in the Windows
+app-image tasks. The manifest/asset contract and falsifiable negative tests are
+settled above; actual Windows package acceptance remains required.
+
+Hosted follow-up: run `37300449695` for PR head `040935c` (tested merge revision
+`f69126ffdd759ebf205c3df0ec08de4ea3399e20`) passed macOS/Linux and
+the Windows wide-tile check, then MakeAppx rejected `ForegroundText` on the
+Windows 10 `uap:VisualElements` schema (`C00CE015`). P69.1 also removes that
+obsolete attribute and asserts its absence; the actual SDK validation remains
+mandatory on the next Windows run.
+
+Follow-up review, 2026-10-05: the complete PowerShell diff contains an
+undocumented MakeAppx `validate` subcommand and Add-AppxPackage `-PassThru`
+switch. Microsoft's SDK/cmdlet references confirm that neither exists;
+`pack` validates by default without `/nv`. Its `finally` block also deletes
+an app-data directory after the pre-existing-directory guard rejects it and
+can remove a package it did not install. P69.4 repairs the existing A4/A6/A7
+guarantees; decision `READY` for these implementation corrections.
+
+Run `37304633212` (PR `469c03b`, tested merge
+`9d3a25c9805ddf96b7b12a7dda7b70cf614affaf`) passed Windows MakeAppx validation
+and produced the installer, then CertEnroll rejected an ampersand-combined EKU
+string with `0x80070057`. P69.4 uses the documented code-signing EKU and an
+explicit non-CA constraint in one shared certificate factory. The Windows
+preflight must create and inspect that real certificate, then remove its
+private key and certificate before the CEF matrix work begins.
+
+Launcher review at `040935c`, 2026-10-05: its startup catch requests engine
+shutdown before closing remaining browser owners and discards the failure;
+the finalizer then leaves the engine unclosed. The normal shutdown result is
+also ignored, and absent `LOCALAPPDATA` selects another profile location.
+P69.5 preserves the accepted ownership and explicit-profile guarantees;
+decision `READY` for repair, with real Windows failed-start evidence required.
+
+The next hosted run `37301657019`, PR head `60c84be` and tested merge revision
+`0247db9d8ad9c0b74061938d1e0991ca3c4782d7`, passed macOS/Linux but rejected the
+fixture's `Path.resolve("app/*")` before launching its JVM. Build the classpath
+  wildcard as text after resolving `app`, because Windows Path rejects `*`.
+The corrected fixture still requires real failed-start process drainage.
+
+Exit-observation review at `469c03b`: the retained successful smoke summary in
+run `37300449695` has bootstrap PID 6104 and window PID 2036. Verify the actual
+window process's exit code in both app-image and installed-MSIX tests; preserve
+all package-process shutdown assertions before uninstall. Decision: `READY`
+for this correction to P69.5's existing successful-shutdown requirement.
+
+Regression-fixture review at `469c03b`: run `37304633212` crashes the macOS
+renderer immediately after a fire-and-forget stream open and then waits for a
+handler that may not have started. Its Linux capability lab checks only IPv4
+when choosing a port, while the native engine checks IPv4 and IPv6 with
+exclusive binding. P69.7 settles these fixture prerequisites without changing
+the production cancellation or remote-debugging policies. Decision: `READY`;
+real socket tests and fresh hosted conformance remain required.
+
+Evidence retention review at `60c84be`, 2026-10-05: the recorder copies retained
+artifacts into Git, while GitHub rejects files above 100 MiB. The local real
+application package is already 145,522,750 bytes, and the Windows package also
+bundles its JRE and launcher. Replace the draft's full-MSIX Git retention with
+P69.6's verified compact proof, preserving the full MSIX in the existing hosted
+artifact and recording its actual digest/size. No native check is removed.
+Decision: `READY`; the collector, retained bytes and final hosted source must
+pass acceptance before merge.
 
 ### RFC 0006 implementation objective: application lifecycle ownership
 

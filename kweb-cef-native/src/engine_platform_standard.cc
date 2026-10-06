@@ -177,6 +177,10 @@ bool InitializeCefOnPlatform(const CefMainArgs &main_args,
 void ConfigureEngineCommandLineOnPlatform(
     const CefString &process_type, CefRefPtr<CefCommandLine> command_line) {
   if (process_type.empty()) {
+#if defined(_WIN32)
+    // Chromium must not replace the embedding JVM to change its token.
+    command_line->AppendSwitch("do-not-de-elevate");
+#endif
     command_line->AppendSwitchWithValue("remote-debugging-address",
                                         "127.0.0.1");
   }

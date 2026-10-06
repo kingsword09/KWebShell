@@ -72,6 +72,15 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: Verify Windows MSIX preflight isolation
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .github/scripts/tests/test_windows_msix_preflight.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows MSIX preflight isolation failed.' }
+          powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .github/scripts/tests/test_windows_msix_activation.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows MSIX native activation diagnostics failed.' }
+
       - name: Start macOS notification fixture agent
         if: runner.os == 'macOS'
         shell: bash
@@ -216,6 +225,9 @@ jobs:
             -PkwebNotificationActionMode=contract
             "-PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}"
           )
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            arguments+=(--no-configuration-cache)
+          fi
           if [[ "${{ runner.os }}" == "Linux" ]]; then
             XDG_CURRENT_DESKTOP=GNOME xvfb-run -a dbus-run-session -- \
               bash .github/scripts/run-linux-ui-verification.sh ./gradlew "${arguments[@]}"
@@ -279,6 +291,15 @@ jobs:
         with:
           name: application-package-${{ matrix.target }}-${{ github.sha }}
           path: kweb-runtime-pack/build/reports/application-package/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Windows launcher smoke evidence
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-launcher-smoke-${{ matrix.target }}-${{ github.sha }}
+          path: kweb-application-launcher/build/reports/windows-launcher-smoke/
           if-no-files-found: error
           retention-days: 14
 
@@ -380,7 +401,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p build/rfc-evidence/downloaded
-          for family in rfc-governance provider-lifecycle native-dialogs engine-integration electron-migration clipboard application-package application-lifecycle; do
+          for family in rfc-governance provider-lifecycle native-dialogs engine-integration electron-migration clipboard application-package windows-launcher-smoke application-lifecycle; do
             gh run download "$GITHUB_RUN_ID" \
               --repo "$GITHUB_REPOSITORY" \
               --pattern "$family-*-${{ github.sha }}" \

@@ -70,6 +70,20 @@ sorted canonically, the digest is recomputed, and the output is stable. Two runs
 with the same inputs produce identical bytes; any manual edit of a record or its
 digest fails validation.
 
+## Windows MSIX proof retention
+
+For the RFC 0030 Windows MSIX amendment, aggregation first runs
+`.github/scripts/retain_windows_msix_evidence.py` against the actual downloaded
+MSIX and native report. It requires the current hosted source revision, complete
+package SHA-256 and successful SDK/install/launch/cleanup results. The recorder
+retains its deterministic `windows-msix-proof` ZIP and raw report in Git;
+the full MSIX remains in the hosted application-package artifact for the
+workflow's 14-day retention. The proof contains exact signature/block-map/
+manifest, signed metadata, visual-asset and Temurin legal bytes, plus the
+original report, both validated launcher shutdown summaries and a digest index. Neither a metadata ZIP nor
+this evidence ZIP is a distributable MSIX. Missing or inconsistent inputs block
+aggregation before any support record changes.
+
 ## Staleness
 
 Evidence expires when a bound contract changes. The check marks a record stale

@@ -8,7 +8,28 @@
   "helperExecutables": [
     "KWebShell Helper"
   ],
-  "icons": [],
+  "icons": [
+    {
+      "path": "assets/windows/Square150x150Logo.png",
+      "kind": "windows-msix-square150"
+    },
+    {
+      "path": "assets/windows/Square310x310Logo.png",
+      "kind": "windows-msix-square310"
+    },
+    {
+      "path": "assets/windows/Square44x44Logo.png",
+      "kind": "windows-msix-square44"
+    },
+    {
+      "path": "assets/windows/StoreLogo.png",
+      "kind": "windows-msix-store"
+    },
+    {
+      "path": "assets/windows/Wide310x150Logo.png",
+      "kind": "windows-msix-wide310"
+    }
+  ],
   "protocols": [
     {
       "scheme": "kweb",
@@ -46,12 +67,14 @@
     "windows-arm64": {
       "minimumOs": "10.0.17763",
       "format": "windows-msix",
-      "aumid": "io.github.kingsword09.kwebshell"
+      "packageIdentityName": "io.github.kingsword09.kwebshell",
+      "browserSubprocessExecutable": "KWebShellCef"
     },
     "windows-x64": {
       "minimumOs": "10.0.17763",
       "format": "windows-msix",
-      "aumid": "io.github.kingsword09.kwebshell"
+      "packageIdentityName": "io.github.kingsword09.kwebshell",
+      "browserSubprocessExecutable": "KWebShellCef"
     }
   },
   "capabilities": [],

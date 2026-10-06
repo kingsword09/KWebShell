@@ -111,6 +111,18 @@ requires nonzero exit and complete JVM/CEF cleanup, then the normal smoke test
 exercises `KWebShell.exe`. Launcher unit tests run through `runtimeCheck` on
 all three hosted targets.
 
+Before creating transport/Profile children, the launcher resolves the selected
+data directory through a Win32 handle. This follows MSIX's physical directory
+redirection so JVM and CEF share the same path identity; it does not change the
+selected Profile or disable virtualization. Directory creation/resolution
+failure returns `launcher.state-root-unavailable` with the original cause.
+
+The embedded Windows browser preserves its JVM owner and caller token.
+Its CEF browser policy sets `do-not-de-elevate` so Chromium cannot relaunch
+the application during initialization. This requests no elevation and does
+not alter child sandbox settings; real installed-AUMID startup and graceful
+shutdown remain required even when the test runner is elevated.
+
 The complete signed MSIX is retained by the hosted application-package artifact
 for 14 days. The repository retains a deterministic proof ZIP containing exact
 MSIX signature/block-map/manifest bytes, signed application metadata, all five

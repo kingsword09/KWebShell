@@ -139,9 +139,20 @@ JRE is substituted.
 The Windows launcher requires an absolute, nonblank `LOCALAPPDATA` and stores
 its application state below `KWebShell` there. Missing/invalid configuration
 fails with `launcher.state-root-invalid`; it must not select another profile
-root. Failed startup closes Page/Profile owners before application shutdown,
+root. The launcher creates this selected directory and resolves its physical
+path through a Win32 file handle before deriving transport and Profile paths.
+This follows MSIX's existing file virtualization, so both JVM and CEF use the
+same directory identity. It does not move data or disable virtualization.
+Creation/resolution failures return `launcher.state-root-unavailable` with
+the original cause. Failed startup closes Page/Profile owners before application shutdown,
 drains the engine and disposes the window. Shutdown failure returns a nonzero
 process exit and preserves the original startup error with cleanup failures.
+
+The embedded Windows CEF browser keeps the application-owned JVM and its
+existing token. Its browser command line sets `do-not-de-elevate` before
+Chromium startup; Chromium's standalone-browser automatic relaunch cannot
+replace the embedding JVM. This neither requests elevation nor changes child
+sandbox settings. The callback leaves renderer/utility command lines unchanged.
 
 ### D. Association metadata boundary
 
@@ -213,6 +224,20 @@ the recorded native run, not indefinite availability of its test installer.
 | A18 / A4 installed activation | Native installed-AUMID success with HRESULT/PID, real window/CEF and unchanged graceful shutdown. | Valid installed AUMID; unregistered AUMID fails; bootstrap/window PIDs may differ; no EXE fallback. | Real PowerShell native rejection test and local installed-MSIX probe; Windows hosted package integration. | `.github/scripts/windows-msix-activation.ps1`, package script and `tests/test_windows_msix_activation.ps1`. | Local positive `deployment-74e1be3fc17840259cea42b3b6fa14a3` binds base `058e8ee` plus helper SHA-256; native S_OK/PID 832, window PID 12760, CEF PID 13424, exit 0, drainage/uninstall/cleanup PASS. Windows run `37413731041` lacks native diagnostics. | Local `PASS`; amended hosted implementation `NOT_RUN`. Local feasibility is not hosted acceptance. |
 | A19 / A7 failure observability | Bounded diagnostics precede owned cleanup and preserve the primary failure. | Missing window/CEF; exited bootstrap; unavailable event channel/log; diagnostic read/write failure; reparse/non-owned data; text/count/file bounds. | PowerShell diagnostics tests and Windows local/hosted failure capture; source review of cleanup ordering. | Activation helper, package-script finally integration and native/source-guard tests. | Local deliberate native failure `deployment-e3d4b0b034df42868b7e08e1218e37f6`: HRESULT `0x80070057`/PID 0 and pre-cleanup sidecar retained; exact package/trust/profile cleanup PASS. | Local native/helper/ordering tests `PASS`; hosted failure capture `NOT_RUN`. Window/CEF timeout is not claimed reproduced by a native rejection test. |
 | A20 / A11 evidence integrity | Collector refuses absent, failed or malformed native activation evidence without relaxing existing gates. | Success; missing HRESULT/PID/PASS; failure HRESULT; zero, bool or non-integer PID. | Python collector/aggregation tests on every hosted target. | Collector, shared report fixture, collector negatives and aggregation rejection tests; RFC digest includes helper and tests. | Local script suite: 23 tests PASS with real Git Bash/jq orchestration, isolated recorder and UTF-8 Python environment. No support evidence generated. | Local `PASS`; changed-source three-target hosted evidence and final review `NOT_RUN`. |
+| A21 / A4 Windows host ownership | Chromium startup preserves the embedding JVM and caller token instead of relaunching the executable to de-elevate. | Real CEF browser/renderer/utility command lines; repeat configuration; elevated installed AUMID startup with absent user data, Compose/CEF observation, exit zero and drainage. | Native CEF policy test and real local/hosted MSIX installation; three-target runtime regression. | `ConfigureEngineCommandLineOnPlatform`; `kweb_windows_engine_command_line_tests`; installed package integration. | P69.10/P69.11 local review in `DESIGN_PLAN.md`; `deployment-54d1744ce2eb417fb1be82a36e58c981` binds the package, engine and launcher hashes and records S_OK, window/CEF, exit 0 and full cleanup. | Local `PASS`; changed-source hosted verification `NOT_RUN`. No supported-state promotion until hosted evidence and final review pass. |
+| A22 / A6-A7 virtualized state | JVM and CEF receive the physical identity of the selected application-data directory; failure is typed and never changes the Profile. | Existing/Unicode/missing native directory; file-blocked creation; missing/invalid environment; real MSIX with no pre-created unvirtualized data, normal close and cleanup. | Windows native FFM/path tests; shared launcher tests on all targets; real installed AUMID integration. | `WindowsStateDirectory.resolve`, `KWebApplicationLayout.prepareStateRoot`, `WindowsStateDirectoryTest` and the shared layout tests; Profile opens before window creation. | Same local installed proof as A21; nine launcher tests pass, including three real Win32 path tests. P69.11 records the reproduced path failure and exact passing package hash. | Local `PASS`; changed-source hosted verification `NOT_RUN`. No filesystem-virtualization or containment bypass. |
+
+A21 readiness review: Codex, separate same-contributor pass, 2026-10-06,
+revision `bdcd6dc` plus this amendment. P69.10 records the real reproduced
+replacement process and the matching pinned Chromium implementation. Decision:
+`READY` for repairing existing host ownership; final acceptance is `BLOCKED`
+until the native policy and installed-package scenarios pass.
+
+A22 readiness review: Codex, separate same-contributor pass, 2026-10-06,
+revision `bdcd6dc` plus P69.10/P69.11. Actual Win32 handle resolution within
+the installed package and the subsequent native Profile failure are recorded
+in the design plan. Decision: `READY`; final acceptance remains `BLOCKED`
+until the new native/path tests and full installed-package scenario pass.
 
 ## Readiness review
 

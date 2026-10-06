@@ -55,7 +55,7 @@ internal class KWebApplicationMain {
         )
 
         val activation = parseActivation(arguments)
-        val stateRoot = KWebApplicationLayout.stateRoot(System.getenv("LOCALAPPDATA"))
+        val stateRoot = KWebApplicationLayout.prepareStateRoot(System.getenv("LOCALAPPDATA"))
         val transportRoot = stateRoot.resolve("transport")
         val cacheRoot = stateRoot.resolve("profiles")
         Files.createDirectories(transportRoot)
@@ -104,11 +104,11 @@ internal class KWebApplicationMain {
             )
             engine = liveEngine
             lifecycle.registerShutdownParticipant(liveEngine.applicationShutdownParticipant())
+            val liveProfile = liveEngine.openProfile("primary")
+            profile = liveProfile
             val liveWindow = createWindow(closed)
             window = liveWindow
             val host: KWebComposeWindowHost = KWebDesktop.composeWindowHost(liveWindow)
-            val liveProfile = liveEngine.openProfile("primary")
-            profile = liveProfile
             val livePage = liveProfile.openPage(host, "about:blank", KWebRect(0, 0, 900, 650))
             page = livePage
             val controller = KWebViewController(livePage, KWebViewPageOwnership.EXTERNAL)

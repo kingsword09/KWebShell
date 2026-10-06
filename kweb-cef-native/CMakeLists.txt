@@ -539,6 +539,31 @@ else()
     "kweb-cef-native supports only Windows, macOS, and Linux hosts; got '${CMAKE_SYSTEM_NAME}'.")
 endif()
 
+if(WIN32)
+  add_executable(kweb_windows_engine_command_line_tests
+    tests/windows_engine_command_line_tests.cc
+    src/engine_platform_standard.cc
+  )
+  SET_EXECUTABLE_TARGET_PROPERTIES(kweb_windows_engine_command_line_tests)
+  target_compile_options(kweb_windows_engine_command_line_tests PRIVATE /EHsc)
+  target_include_directories(kweb_windows_engine_command_line_tests PRIVATE include src)
+  target_link_libraries(kweb_windows_engine_command_line_tests PRIVATE
+    kweb_contract_support libcef_lib libcef_dll_wrapper ${CEF_STANDARD_LIBS}
+  )
+  set_target_properties(kweb_windows_engine_command_line_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/policy-tests"
+  )
+  add_dependencies(kweb_windows_engine_command_line_tests ${KWEB_HOST_TARGET})
+  add_test(NAME kweb_windows_engine_command_line_tests
+    COMMAND kweb_windows_engine_command_line_tests
+  )
+  set_tests_properties(kweb_windows_engine_command_line_tests PROPERTIES
+    LABELS "cef;engine;native;windows;policy"
+    WORKING_DIRECTORY "${KWEB_TARGET_OUT_DIR}"
+    TIMEOUT 30
+  )
+endif()
+
 if(UNIX AND NOT APPLE)
   find_program(KWEB_SELF_TEST_LAUNCHER NAMES xvfb-run REQUIRED)
 else()

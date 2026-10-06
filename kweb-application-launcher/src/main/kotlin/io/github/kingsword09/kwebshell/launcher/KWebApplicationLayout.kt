@@ -3,6 +3,7 @@ package io.github.kingsword09.kwebshell.launcher
 import io.github.kingsword09.kwebshell.core.KWebTarget
 import io.github.kingsword09.kwebshell.core.KWebConfigurationException
 import java.net.URI
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
@@ -57,6 +58,21 @@ internal data class KWebApplicationLayout(
             }
             if (path == null || !path.isAbsolute) invalid()
             return path.normalize().resolve("KWebShell")
+        }
+
+        fun prepareStateRoot(localAppData: String?): Path {
+            val declared = stateRoot(localAppData)
+            try {
+                Files.createDirectories(declared)
+                return WindowsStateDirectory.resolve(declared)
+            } catch (error: IOException) {
+                throw KWebConfigurationException(
+                    code = "launcher.state-root-unavailable",
+                    details = mapOf("platform" to "windows-x64", "path" to declared.toString()),
+                    message = "The selected Windows application-data directory could not be created or resolved.",
+                    cause = error,
+                )
+            }
         }
 
         fun fromPackageRoot(root: Path, target: KWebTarget): KWebApplicationLayout {

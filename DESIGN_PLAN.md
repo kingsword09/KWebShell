@@ -2147,6 +2147,91 @@ positive activation/window/CEF/exit-zero/drainage/uninstall/cleanup chain.
 Keep the production GitHub-hosted guard, existing data/trust guards and all
 three-target evidence gates. Local probes must not impersonate hosted CI.
 
+P69.10 (RFC 0030 A4/A7/A18/A21): keep the embedded Windows browser in its
+application-owned JVM when the caller is elevated. Chromium must not relaunch
+the executable to change the host token; append `do-not-de-elevate` before
+browser startup, only for the Windows browser process. Preserve the caller's
+token, CEF child sandbox settings, explicit profile and CDP policy. Verify the
+real CEF command-line policy for browser/child processes and repeated application,
+then install a newly built signed MSIX with absent application data, activate
+its AUMID, observe the Compose window and CEF children, close with exit zero,
+and verify drainage/uninstall/owned cleanup. Run all three hosted targets and
+refresh acceptance evidence before merge.
+
+Readiness review for P69.10: Codex, separate same-contributor pass, 2026-10-06,
+base `bdcd6dc`. Run `37446757759` has successful native activation but a
+`KWebShell.exe` error dialog and no final Compose window. Local signed-package
+probes `deployment-9f2fc91f999849a4afc4fb87730b0c00` and
+`deployment-4a37c3118f8b49f4a54c1684f2ae2a9f` reproduce
+the `engine-create` operation failing with `cef-initialize-failed`; live
+process inspection shows the JVM spawning another launcher with
+`--do-not-de-elevate`. Pinned Chromium 151.0.7922.109
+[`ChromeBrowserMainPartsWin::MaybeAutoDeElevate`](https://github.com/chromium/chromium/blob/151.0.7922.109/chrome/browser/chrome_browser_main_win.cc#L988) explicitly
+returns its early-exit code after this replacement, unless that switch is set.
+This violates the embedded host's existing ownership contract. Decision:
+`READY` for the Windows startup repair. MSIX filesystem virtualization also
+explains the missing logs; a path-only probe still fails and is not a fix.
+The separate macOS FFM stress exit 133 remains under investigation; no native
+test, privilege policy or visible-window assertion may be weakened.
+
+P69.11 (RFC 0030 A6/A7/A22): before creating transport/Profile children,
+create the declared `%LOCALAPPDATA%\KWebShell` directory and resolve that same
+directory through a Win32 file handle (`CreateFileW` with backup semantics,
+`GetFinalPathNameByHandleW`, `CloseHandle`) in an internal JDK 25 Java FFM
+binding. Pass its physical path consistently to Kotlin and CEF. This follows
+MSIX's existing virtualization of the chosen directory; it must not choose a
+different Profile, disable virtualization, relax native path containment, or
+add a package capability. Native/path failures become
+`launcher.state-root-unavailable`; missing/invalid `LOCALAPPDATA` keeps
+`launcher.state-root-invalid`. Test real Unicode/existing/missing directory
+resolution and handle release, file-blocked creation and generic validation;
+verify the actual signed MSIX from absent data through AUMID startup,
+Profile creation, normal shutdown and cleanup. Retain the same SDK/package
+and three-target requirements as P69.10.
+
+Validate/open the Profile before constructing the Compose window. The existing
+blocked-Profile test must observe its typed failure without initializing a
+window; the normal smoke and installed tests still require the actual visible
+window, CEF children and exit-zero cleanup.
+
+P69.11 readiness review: Codex, separate same-contributor pass, 2026-10-06,
+base `bdcd6dc` plus P69.10. Native in-package probe
+`deployment-0310a25fd4d74b45868969d76a3d67fd/physical-paths.json`
+proves a handle to the declared directory resolves to the package's
+`LocalCache/Local/KWebShell`. With P69.10 applied, installed probe
+`deployment-7291d9fc32314581aec39adb191e4cb5` has exactly the expected
+bootstrap/JVM pair but fails normal close; the following direct diagnostic
+captures `open-profile-context` / `profile-path-invalid`. This is a second
+cold-install defect masked by pre-creating the unvirtualized directory in the
+earlier local fixture. Decision: `READY` for resolving the selected directory
+before sharing it across JVM/CEF. Final installed and hosted verification
+remains blocking.
+
+P69.10/P69.11 local acceptance and separate same-contributor review,
+2026-10-06: the four selected native ABI/configuration/policy checks pass;
+the final CEF policy test also passes with CMake-3.21-compatible runtime
+lookup. All nine launcher tests pass on Windows (zero failures/skips).
+The rebuilt app-image's invalid-Profile probe returns exit 1 with the expected
+error and no processes; normal launch returns window exit 0 with CEF observed
+and no processes. The test executable is excluded from the runtime payload.
+SDK probe `sdk-probe-fd4e427499b04d2a8f694afa714b4f4b` packs, unpacks and
+signs the complete app-image. Real AUMID probe
+`deployment-54d1744ce2eb417fb1be82a36e58c981` starts from absent data,
+rejects tampering, installs, returns S_OK/bootstrap PID 12088, observes window
+PID 11080 and CEF PID 11788, closes with exit 0 and zero remaining processes,
+then uninstalls and removes owned trust/data. Its package SHA-256 is
+`98c1c6eb1fcc7409c72f8a7973ceb798fc6d18287ca0015bad90021eadc3dc39`;
+the installed engine and launcher JAR match the local build by SHA-256.
+The probe's `sourceRevision` is base `bdcd6dc` plus these worktree changes;
+its native-source, native-DLL and launcher-JAR hashes identify the tested
+implementation. These are local diagnostic artifacts under `build/local-msix`,
+not hosted support evidence. Review covers the native browser-only switch,
+FFM handle/call-state ownership and primary-error preservation, Profile-before-
+window ordering, native/unit assertions, package contents and contract-digest
+bindings. Local A21/A22 scenarios: `PASS`; changed-source hosted acceptance:
+`NOT_RUN`. Same-source macOS rerun of `37446757759` passes; the original exit
+133 is not claimed fixed by these Windows changes.
+
 P69.9 readiness review: Codex, separate pass by the same contributor,
 2026-10-06, base `058e8ee` plus this contract amendment. SDK 10.0.26100.0
 confirms the interface/class GUIDs and vtable. The isolated local native probe

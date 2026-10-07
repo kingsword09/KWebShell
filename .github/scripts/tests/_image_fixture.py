@@ -49,6 +49,7 @@ def write_image_fixture(root, target):
             "roundTrip": json.dumps({"width": 2, "height": 1, "alphaMode": "STRAIGHT", "colorSpace": "SRGB", "roundTrip": True, "format": "image/png"}),
             "malformedBase64": "image.payload-invalid", "oversizedInput": "image.payload-too-large", "oversizedOutput": "image.payload-too-large",
             "svgRejected": "image.format-unsupported", "urlRejected": "image.payload-invalid",
+            "intentRejected": "image.intent-invalid",
             "pathRejected": "image.resource-id-invalid", "cancelled": "bridge.call.cancelled",
             "ownerClosed": "image.owner-closed", "permissionDenied": "service.permission-denied",
         },

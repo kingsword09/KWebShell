@@ -193,6 +193,23 @@ class JvmKWebImageCodecTest {
     }
 
     @Test
+    fun jpegEmbeddedIccIsConvertedToSrgb(): Unit = runBlocking {
+        val image = BufferedImage(8, 8, BufferedImage.TYPE_INT_RGB)
+        image.setRGB(0, 0, 8, 8, IntArray(64) { Color(128, 128, 128).rgb }, 0, 8)
+        val jpeg = ByteArrayOutputStream().also { check(ImageIO.write(image, "jpeg", it)) }.toByteArray()
+        val profile = java.awt.color.ICC_Profile.getInstance(java.awt.color.ColorSpace.CS_LINEAR_RGB).data
+        val payload = "ICC_PROFILE\u0000".toByteArray(Charsets.US_ASCII) + byteArrayOf(1, 1) + profile
+        val size = payload.size + 2
+        val tagged = jpeg.copyOfRange(0, 2) + byteArrayOf(0xff.toByte(), 0xe2.toByte(), (size ushr 8).toByte(), size.toByte()) +
+            payload + jpeg.copyOfRange(2, jpeg.size)
+        val decoded = codec.decode(KWebImageSource.Encoded(KWebImageEncoded(KWebImageFormat.JPEG, tagged)))
+        val pixel = ImageIO.read(decoded.png.bytes.inputStream()).getRGB(0, 0)
+        assertTrue(((pixel ushr 16) and 255) in 186..190, "The JPEG ICC profile must convert linear RGB to sRGB.")
+        assertEquals(KWebImageAlphaMode.OPAQUE, decoded.alphaMode)
+        assertEquals(KWebImageColorSpace.SRGB, decoded.colorSpace)
+    }
+
+    @Test
     fun malformedAndOversizedIccProfilesFailWithinTheirBound(): Unit = runBlocking {
         val valid = png(1, 1, intArrayOf(Color.WHITE.rgb))
         assertEquals(KWebImageErrorCode.PAYLOAD_INVALID, assertFailsWith<KWebConfigurationException> {

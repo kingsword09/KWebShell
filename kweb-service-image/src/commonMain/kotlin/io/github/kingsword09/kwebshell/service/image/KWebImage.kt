@@ -244,7 +244,6 @@ public object KWebImageErrorCode {
     public const val NATIVE_FAILED: String = "image.native-failed"
     public const val OUTCOME_UNKNOWN: String = "image.outcome-unknown"
     public const val OWNER_CLOSED: String = "image.owner-closed"
-    public const val CANCELLED: String = "image.cancelled"
     public const val ALPHA_MODE_UNSUPPORTED: String = "image.alpha-mode-unsupported"
     public const val VARIANT_INVALID: String = "image.variant-invalid"
     public const val HANDLE_LIMIT: String = "image.handle-limit"

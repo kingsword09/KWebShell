@@ -22,6 +22,20 @@ class KWebElectronImageMigrationTest {
     }
 
     @Test
+    fun preloadTypesMustMatchTheirDeclaredImageChannel() {
+        val manifest = fixture()
+        val method = manifest.preloadMethods.single { it.name == "decodeImage" }
+        for (invalid in listOf(method.copy(parameterType = "OtherRequest"), method.copy(returnType = "Promise<OtherResponse>"))) {
+            val error = assertFailsWith<KWebElectronMigrationException> {
+                KWebElectronPreloadGenerator().generate(manifest.copy(
+                    preloadMethods = manifest.preloadMethods.map { if (it.name == method.name) invalid else it },
+                ))
+            }
+            assertEquals(KWebElectronMigrationErrorCode.MAPPING_UNRESOLVED, error.code)
+        }
+    }
+
+    @Test
     fun wrongImageTypesVersionsPoliciesAndHostOperationsAreBlocked() {
         val manifest = fixture()
         val channel = manifest.channels.single { it.name == "nativeImage.decode" }

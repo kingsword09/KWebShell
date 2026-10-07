@@ -27,6 +27,7 @@ CODEC_TESTS = {
     "pngCrcTruncationAnimationAndTrailingBytesAreRejected",
     "pixelAndDimensionLimitsAreCheckedBeforePixelAllocation",
     "embeddedLinearRgbIccIsConvertedToSrgbWithAlphaPreserved",
+    "jpegEmbeddedIccIsConvertedToSrgb",
     "malformedAndOversizedIccProfilesFailWithinTheirBound",
     "canonicalPngPreservesPixelsAndMaximumWidthRows",
 }
@@ -99,6 +100,7 @@ def validate_target(root, target):
     for scenario, code in {
         "malformedBase64": "image.payload-invalid", "oversizedInput": "image.payload-too-large", "oversizedOutput": "image.payload-too-large",
         "svgRejected": "image.format-unsupported", "urlRejected": "image.payload-invalid",
+        "intentRejected": "image.intent-invalid",
         "pathRejected": "image.resource-id-invalid", "cancelled": "bridge.call.cancelled",
         "ownerClosed": "image.owner-closed", "permissionDenied": "service.permission-denied",
     }.items():

@@ -609,6 +609,7 @@ public fun main() {
                 Triple("malformedBase64", "payload:'%%%'", "image.payload-invalid"),
                 Triple("oversizedInput", "payload:'A'.repeat(699056)", "image.payload-too-large"),
                 Triple("svgRejected", "format:'image/svg+xml'", "image.format-unsupported"),
+                Triple("intentRejected", "intent:'UNKNOWN'", "image.intent-invalid"),
                 Triple("urlRejected", "sourceKind:'url'", "image.payload-invalid"),
                 Triple("pathRejected", "sourceKind:'package',resourceId:'../icon.png',sha256:'0'.repeat(64)", "image.resource-id-invalid"),
             )) {

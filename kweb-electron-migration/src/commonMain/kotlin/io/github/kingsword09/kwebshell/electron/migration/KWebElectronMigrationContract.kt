@@ -642,12 +642,12 @@ public object KWebElectronManifestValidator {
                 )
             }
             if (method.adapter == KWebElectronAdapterKind.NATIVE_IMAGE_OPERATION &&
-                (!IDENTIFIER.matches(method.parameterType) || !method.returnType.startsWith("Promise<"))
+                (method.parameterType != channel.requestType || method.returnType != "Promise<${channel.responseType}>")
             ) {
                 invalid(
                     KWebElectronMigrationErrorCode.MAPPING_UNRESOLVED,
                     "method" to method.name,
-                    message = "A native image preload method must use a named request type and Promise response.",
+                    message = "A native image preload method must exactly match its channel request and Promise response types.",
                 )
             }
         }

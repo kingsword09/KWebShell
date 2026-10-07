@@ -176,9 +176,13 @@ never retries through another provider. Stable errors are:
 `image.resource-id-invalid`, `image.resource-not-found`,
 `image.resource-digest-mismatch`, `image.intent-invalid`,
 `image.platform-unavailable`, `image.native-failed`, `image.outcome-unknown`,
-`image.owner-closed`, `image.cancelled`, `image.alpha-mode-unsupported`,
+`image.owner-closed`, `image.alpha-mode-unsupported`,
 `image.variant-invalid`, and `image.handle-limit`. Premultiplied input metadata
 is rejected until an explicit conversion contract exists.
+
+Cancellation preserves Kotlin coroutine cancellation and the generated bridge's
+`bridge.call.cancelled` result. The unused draft `image.cancelled` constant is
+removed; cancellation is not converted into a service failure.
 
 No error or event contains source bytes, a filesystem path, a native pointer, or
 an application command line. The generated bridge transports encoded bytes as
@@ -257,7 +261,7 @@ binding. The exact provider and unavailable status are recorded per target.
 
 `BLOCKED` — the implementation branch uses `Implemented` to let the existing
 recorder bind the first three-target evidence in this same focused PR; this is
-not merge acceptance. Local image unit tests (19), migration tests (48), RFC
+not merge acceptance. Local image unit tests (20), migration tests (49), RFC
 contract tests (71), native CTest/FFM, real CEF image calls, generated TypeScript
 and JavaScript, and native package verification have passed. Fresh Windows x64,
 macOS arm64 and Linux x64 hosted artifacts, strict governance, exact evidence

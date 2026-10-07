@@ -88,7 +88,7 @@ private fun decodeBase64(payload: String): ByteArray = try {
 }
 
 private fun parseIntent(value: String): KWebImageIntent = runCatching { KWebImageIntent.valueOf(value) }
-    .getOrElse { throw invalidBridge("The image intent is not published.") }
+    .getOrElse { throw KWebBridgeException(KWebImageErrorCode.INTENT_INVALID, "The image intent is not published.") }
 
 private fun parseAlpha(value: String): KWebImageAlphaMode = runCatching { KWebImageAlphaMode.valueOf(value) }
     .getOrElse { throw invalidBridge("The image alpha mode is not published.") }

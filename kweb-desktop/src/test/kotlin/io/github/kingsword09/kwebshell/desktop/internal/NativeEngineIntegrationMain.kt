@@ -84,6 +84,10 @@ import io.github.kingsword09.kwebshell.services.policy.KWebInMemoryConsentStore
 import io.github.kingsword09.kwebshell.services.policy.KWebPolicyAudit
 import io.github.kingsword09.kwebshell.services.policy.KWebServicePolicyEngine
 import io.github.kingsword09.kwebshell.services.policy.KWebUserGestureRegistry
+import io.github.kingsword09.kwebshell.bridge.KWebStreamBridgeDispatcher
+import io.github.kingsword09.kwebshell.bridge.KWebStreamFrameSink
+import io.github.kingsword09.kwebshell.bridge.KWebStreamCreditGate
+import io.github.kingsword09.kwebshell.bridge.KWebBridgeRequest
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeDispatchers
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeException
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeRoute
@@ -2870,6 +2874,32 @@ private fun runRendererCrashLifecycle() {
     val events = CopyOnWriteArrayList<NativeBrowserEvent>()
     val rendererTerminated = CountDownLatch(1)
     val closed = CountDownLatch(1)
+    val lateFrameReady = CountDownLatch(1)
+    val lateFrameRejected = java.util.concurrent.atomic.AtomicBoolean(false)
+    val delegate = ConformanceBridgeStreamDispatcher(streamHandler)
+    val crashStreamDispatcher = object : KWebStreamBridgeDispatcher by delegate {
+        override suspend fun dispatchStream(request: KWebBridgeRequest, sink: KWebStreamFrameSink, gate: KWebStreamCreditGate) {
+            delegate.dispatchStream(request, object : KWebStreamFrameSink {
+                private var delivered = false
+                override suspend fun send(frameJson: String): Boolean {
+                    if (!delivered) {
+                        delivered = true
+                        return sink.send(frameJson)
+                    }
+                    // Hold a real in-flight response until CEF has removed its native owner.
+                    return kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                        lateFrameReady.countDown()
+                        require(closed.await(30, TimeUnit.SECONDS)) { "Native CLOSED did not reach the pending stream frame." }
+                        val accepted = sink.send(frameJson)
+                        require(!accepted) { "A stream frame reached a destroyed native owner." }
+                        lateFrameRejected.set(true)
+                        false
+                    }
+                }
+                override suspend fun complete(frameJson: String) = sink.complete(frameJson)
+            }, gate)
+        }
+    }
     var surface: ComposeBrowserSurface? = null
     var browser: NativeBrowser? = null
     val cdp = CdpClient(configuration.remoteDebuggingPort)
@@ -2901,7 +2931,7 @@ private fun runRendererCrashLifecycle() {
                 height = 600,
                 bridgeOrigin = origin.origin,
                 bridgeDispatcher = bridgeDispatcher,
-                streamDispatcher = ConformanceBridgeStreamDispatcher(streamHandler),
+                streamDispatcher = crashStreamDispatcher,
             ) { event ->
                 events += event
                 when (event.type) {
@@ -2927,6 +2957,7 @@ private fun runRendererCrashLifecycle() {
                 """.trimIndent(),
             )
             cdp.awaitExpression("globalThis.__crashStream === 'active'")
+            require(lateFrameReady.await(30, TimeUnit.SECONDS)) { "The renderer-crash stream did not reach its in-flight frame." }
 
             // Crash the renderer through the test-only ABI kill switch: the
             // renderer process dies like a real crash, so the stream query is
@@ -2959,6 +2990,7 @@ private fun runRendererCrashLifecycle() {
             require(terminalIndex >= 0 && closedIndex > terminalIndex) {
                 "Renderer terminal ownership ordering was not preserved: $events"
             }
+            require(lateFrameRejected.get()) { "The late native stream response was not exercised." }
             liveBrowser.close()
             engine.close()
             require(
@@ -2979,6 +3011,7 @@ private fun runRendererCrashLifecycle() {
                         listOf(
                             "real-renderer-crash",
                             "stream-cancelled-on-renderer-disconnect",
+                            "in-flight-frame-after-native-close-is-cancelled",
                             "renderer-terminated-retains-reason-and-status",
                             "renderer-terminated-precedes-closed",
                             "terminal-close-is-idempotent",

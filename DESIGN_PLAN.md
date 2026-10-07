@@ -2607,6 +2607,13 @@ Acceptance criteria, recorded before the repair implementation:
   aggregation, run fresh complete hosted verification on all three targets,
   import the exact hosted evidence, and pass strict governance. Review the full
   PR diff and update every applicable acceptance row without inventing results.
+- E70.5 (RFC 0004 acceptance 3 / RFC 0008 A6): run `37563468017` passed Windows
+  and Linux but exposed a stream response racing native renderer teardown on
+  macOS. A response to a removed handle is cancellation only after native
+  terminal receipt or explicit owner close; other response errors remain fatal.
+  A real CEF fixture must hold one in-flight frame until the native CLOSED
+  event, then prove cancellation, no callback failure, ordered terminal events
+  and zero native owners on every target.
 
 Readiness review: Codex, separate pass by the same contributor, 2026-10-07,
 base revision `5bf0b88` and RFC contract `2026-10-07.1`. The actual CI stack traces,

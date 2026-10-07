@@ -173,6 +173,7 @@
         "kweb-desktop/src/main/kotlin/io/github/kingsword09/kwebshell/desktop/internal/NativeContract.kt",
         "kweb-desktop/src/test/kotlin/io/github/kingsword09/kwebshell/desktop/KWebDesktopContractTest.kt",
         "kweb-desktop/src/test/kotlin/io/github/kingsword09/kwebshell/desktop/internal/NativeEngineIntegrationMain.kt",
+        "kweb-desktop/src/test/kotlin/io/github/kingsword09/kwebshell/desktop/internal/NativeStatusContractTest.kt",
         "kweb-desktop/src/test/kotlin/io/github/kingsword09/kwebshell/desktop/internal/ffm/FfmBindingContractTest.kt",
         "kweb-electron-migration/README.md",
         "kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronCapabilityMatrix.kt",

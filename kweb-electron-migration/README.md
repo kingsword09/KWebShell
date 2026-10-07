@@ -96,6 +96,24 @@ exact-origin isolation, resource-handle ownership, directory-trash policy, and
 post-trash source absence. Raw renderer paths, commands, permanent deletion,
 and shortcut metadata remain explicit migration blockers.
 
+RFC 0027 classifies Electron `nativeImage` construction and export as a bounded
+rewrite to `KWebNativeImage` and the generated `ImageBridge`. PNG/JPEG bytes and
+package resource IDs with exact SHA-256 digests are supported by the declared
+fixture; URL/path loading, SVG, mutation identity, platform handles, and
+unknown image methods remain explicit blockers.
+
+| Electron use | Required rewrite |
+|---|---|
+| `createFromBuffer`, `createFromDataURL` | Validate PNG/JPEG bytes and call the asynchronous `nativeImage.decode` channel with `NATIVE_IMAGE_OPERATION`. |
+| `toPNG` | Call the declared `nativeImage.encodePng` channel with the immutable image metadata. |
+| package images | Declare an exact resource ID and SHA-256 digest for `decode`. |
+| `toJPEG`, `resize`, `isEmpty`, mutation, native handles, path loaders, unknown methods | Blocked; no object-identity or unbounded Electron emulation is generated. |
+
+The generated facade forwards the named request, response, timeout and abort
+signal to `ImageBridge`. Input and output are each limited to 512 KiB of encoded
+bytes. Direct Electron calls remain inventory blockers until the application
+rewrites them to these declared typed channels.
+
 ## Manifest v2 and inventory prerequisites
 
 Manifest v2 requires an exact `rendererOrigin`, an explicit `rendererProfile`,

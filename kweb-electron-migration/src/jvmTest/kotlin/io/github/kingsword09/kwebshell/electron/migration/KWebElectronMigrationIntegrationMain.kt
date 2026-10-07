@@ -22,6 +22,9 @@ import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPathKind
 import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPaths
 import io.github.kingsword09.kwebshell.service.apppaths.KWebAppPathsConfiguration
 import io.github.kingsword09.kwebshell.service.apppaths.bridgeDispatcher
+import io.github.kingsword09.kwebshell.service.image.JvmKWebNativeImage
+import io.github.kingsword09.kwebshell.service.image.KWebNativeImage
+import io.github.kingsword09.kwebshell.service.image.bridgeDispatcher as imageBridgeDispatcher
 import io.github.kingsword09.kwebshell.service.clipboard.JvmKWebClipboard
 import io.github.kingsword09.kwebshell.service.clipboard.KWebClipboard
 import io.github.kingsword09.kwebshell.service.clipboard.bridgeDispatcher as clipboardBridgeDispatcher
@@ -113,6 +116,8 @@ private const val NOTIFICATION_ACTION_HELPER_PROPERTY = "kweb.migration.notifica
 private const val WINDOWS_NOTIFICATION_ACTION_HELPER_PROPERTY = "kweb.migration.notification.action.helper.windows"
 private const val NOTIFICATION_ACTION_MODE_PROPERTY = "kweb.migration.notification.action.mode"
 private const val NOTIFICATIONS_BRIDGE_PROPERTY = "kweb.migration.notifications.bridge.javascript"
+private const val IMAGE_LIBRARY_PROPERTY = "kweb.image.native.library.path"
+private const val IMAGE_BRIDGE_PROPERTY = "kweb.migration.image.bridge.javascript"
 private const val PRELOAD_PROPERTY = "kweb.migration.preload.javascript"
 private const val REPORT_PROPERTY = "kweb.migration.report"
 
@@ -150,6 +155,7 @@ public fun main() {
         shellBridge = Files.readString(requiredPath(SHELL_BRIDGE_PROPERTY)),
         clipboardBridge = Files.readString(requiredPath(CLIPBOARD_BRIDGE_PROPERTY)),
         notificationsBridge = Files.readString(requiredPath(NOTIFICATIONS_BRIDGE_PROPERTY)),
+        imageBridge = Files.readString(requiredPath(IMAGE_BRIDGE_PROPERTY)),
         preload = Files.readString(requiredPath(PRELOAD_PROPERTY)),
     )
     val window = onAwtThread {
@@ -302,8 +308,11 @@ public fun main() {
         ),
     )
     val clipboard = JvmKWebClipboard.open(requiredPath(CLIPBOARD_LIBRARY_PROPERTY))
+    val images = JvmKWebNativeImage.open(requiredPath(IMAGE_LIBRARY_PROPERTY))
+    val imageEvidence = linkedMapOf<String, String>()
     engine.nativeServices.install(KWebAppPaths.Key, appPaths)
     engine.nativeServices.install(KWebClipboard.Key, clipboard)
+    engine.nativeServices.install(KWebNativeImage.Key, images)
     engine.nativeServices.install(KWebNotifications.Key, notifications)
     val profile = runBlocking { engine.openProfile("electron-migration-fixture") }
     val cdp = KWebExampleCdpClient(port, 30_000)
@@ -353,6 +362,15 @@ public fun main() {
         rendererGrants = KWebServicePermissionPolicy.exact(emptySet()),
         gestures = gestures,
         consentStore = KWebInMemoryConsentStore("migration-clipboard-denied"),
+        osConsent = null,
+        audit = KWebPolicyAudit(),
+    )
+    val imagePolicyEngine = KWebServicePolicyEngine(
+        rendererGrants = KWebServicePermissionPolicy.exact(
+            setOf(KWebServiceGrant("native-image", "decode"), KWebServiceGrant("native-image", "encode-png")),
+        ),
+        gestures = gestures,
+        consentStore = KWebInMemoryConsentStore("migration-image"),
         osConsent = null,
         audit = KWebPolicyAudit(),
     )
@@ -511,6 +529,19 @@ public fun main() {
                                 ),
                             ),
                             KWebBridgeRoute(
+                                methods = setOf("decode", "encodePng"),
+                                dispatcher = images.imageBridgeDispatcher(
+                                    imagePolicyEngine,
+                                    KWebPolicySubject(
+                                        engineId = "migration-fixture",
+                                        profileId = "electron-migration-fixture",
+                                        pageId = pageId,
+                                        origin = server.origin,
+                                        scope = KWebServiceScope.APPLICATION,
+                                    ),
+                                ),
+                            ),
+                            KWebBridgeRoute(
                                 methods = setOf("permission", "requestPermission", "capabilities", "show", "close"),
                                 dispatcher = notifications.notificationsBridgeDispatcher(
                                     notificationPolicyEngine,
@@ -557,6 +588,57 @@ public fun main() {
         cdp.awaitPage(server.indexUrl)
         cdp.openPageSession(server.indexUrl).use { session ->
             session.awaitExpression("typeof globalThis.desktop === 'object'")
+            val imageResult = session.evaluateString(
+                """
+                (async()=>{
+                  const canvas=document.createElement('canvas');canvas.width=2;canvas.height=1;
+                  canvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray([255,0,0,127,0,255,0,255]),2,1),0,0);
+                  globalThis.__imageRequest={sourceKind:'encoded',format:'image/png',payload:canvas.toDataURL('image/png').split(',')[1],resourceId:null,sha256:null,intent:'NORMAL'};
+                  const image=await window.desktop.decodeImage(globalThis.__imageRequest);
+                  const encoded=await window.desktop.encodeImagePng(image);
+                  return JSON.stringify({width:image.width,height:image.height,alphaMode:image.alphaMode,colorSpace:image.colorSpace,roundTrip:encoded.pngBase64===image.pngBase64,format:encoded.format});
+                })()
+                """.trimIndent(),
+            )
+            val imageJson = Json.parseToJsonElement(imageResult).jsonObject
+            require(imageJson["width"]?.jsonPrimitive?.content == "2" && imageJson["height"]?.jsonPrimitive?.content == "1")
+            require(imageJson["alphaMode"]?.jsonPrimitive?.content == "STRAIGHT" && imageJson["colorSpace"]?.jsonPrimitive?.content == "SRGB")
+            require(imageJson["roundTrip"]?.jsonPrimitive?.content == "true" && imageJson["format"]?.jsonPrimitive?.content == "image/png")
+            imageEvidence["roundTrip"] = imageResult
+            for ((scenario, override, expected) in listOf(
+                Triple("malformedBase64", "payload:'%%%'", "image.payload-invalid"),
+                Triple("oversizedInput", "payload:'A'.repeat(699056)", "image.payload-too-large"),
+                Triple("svgRejected", "format:'image/svg+xml'", "image.format-unsupported"),
+                Triple("intentRejected", "intent:'UNKNOWN'", "image.intent-invalid"),
+                Triple("urlRejected", "sourceKind:'url'", "image.payload-invalid"),
+                Triple("pathRejected", "sourceKind:'package',resourceId:'../icon.png',sha256:'0'.repeat(64)", "image.resource-id-invalid"),
+            )) {
+                val code = session.evaluateString(
+                    "(async()=>{try{await window.desktop.decodeImage({...globalThis.__imageRequest,$override});return 'unexpected'}catch(e){return e.code}})()",
+                )
+                require(code == expected) { "Image bridge scenario $scenario returned $code." }
+                imageEvidence[scenario] = code
+            }
+            val oversizedOutput = session.evaluateString(
+                """
+                (async()=>{
+                  const canvas=document.createElement('canvas');canvas.width=512;canvas.height=512;
+                  const pixels=new Uint8ClampedArray(512*512*4);let seed=17;
+                  for(let i=0;i<pixels.length;i++){seed=(Math.imul(seed,1664525)+1013904223)|0;pixels[i]=(i%4===3)?255:(seed>>>24);}
+                  canvas.getContext('2d').putImageData(new ImageData(pixels,512,512),0,0);
+                  const payload=canvas.toDataURL('image/jpeg',0.85).split(',')[1];
+                  if(payload.length>699052)throw new Error('JPEG fixture exceeds input bound');
+                  try{await window.desktop.decodeImage({...globalThis.__imageRequest,format:'image/jpeg',payload});return 'unexpected'}catch(e){return e.code}
+                })()
+                """.trimIndent(),
+            )
+            require(oversizedOutput == "image.payload-too-large") { "Image bridge output bound returned $oversizedOutput." }
+            imageEvidence["oversizedOutput"] = oversizedOutput
+            val cancelledImage = session.evaluateString(
+                "(async()=>{const controller=new AbortController();controller.abort();try{await window.desktop.decodeImage(globalThis.__imageRequest,{signal:controller.signal});return 'unexpected'}catch(e){return e.code}})()",
+            )
+            require(cancelledImage == "bridge.call.cancelled") { "Cancelled image request returned $cancelledImage." }
+            imageEvidence["cancelled"] = cancelledImage
             val paths = session.evaluateString(
                 "(async()=>JSON.stringify(await Promise.all([window.desktop.getPath('home'), window.desktop.getPath('downloads')])))()",
             )
@@ -954,6 +1036,12 @@ public fun main() {
         cdp.awaitPage(server.indexUrl)
         val ownerSession = cdp.openPageSession(server.indexUrl)
         ownerSession.awaitExpression("typeof globalThis.desktop === 'object'")
+        images.close()
+        val imageClosed = ownerSession.evaluateString(
+            "(async()=>{try{await window.desktop.decodeImage({sourceKind:'encoded',format:'image/png',payload:'AQ==',resourceId:null,sha256:null,intent:'NORMAL'});return 'unexpected'}catch(e){return e.code}})()",
+        )
+        require(imageClosed == "image.owner-closed") { "Closed image service returned $imageClosed." }
+        imageEvidence["ownerClosed"] = imageClosed
         require(ownerSession.evaluateString("void (globalThis.__ownerCall=window.desktop.getPath('documents'));'started'") == "started")
         slowDispatcher.awaitStarted("documents")
         ownerSession.close()
@@ -1039,6 +1127,19 @@ public fun main() {
                             ),
                         ),
                         KWebBridgeRoute(
+                            methods = setOf("decode", "encodePng"),
+                            dispatcher = images.imageBridgeDispatcher(
+                                denyPolicyEngine,
+                                KWebPolicySubject(
+                                    engineId = "migration-fixture",
+                                    profileId = "electron-migration-fixture",
+                                    pageId = "denied-page",
+                                    origin = server.origin,
+                                    scope = KWebServiceScope.APPLICATION,
+                                ),
+                            ),
+                        ),
+                        KWebBridgeRoute(
                             methods = setOf("permission", "requestPermission", "capabilities", "show", "close"),
                             dispatcher = notifications.notificationsBridgeDispatcher(
                                 deniedNotificationPolicyEngine,
@@ -1065,6 +1166,11 @@ public fun main() {
                 "(async()=>{try{await window.desktop.getPath('home');return 'unexpected'}catch(e){return e.code}})()",
             )
             require(code == "service.permission-denied") { "Denied page returned '$code'." }
+            val imageDenied = session.evaluateString(
+                "(async()=>{try{await window.desktop.decodeImage({sourceKind:'encoded',format:'image/png',payload:'AQ==',resourceId:null,sha256:null,intent:'NORMAL'});return 'unexpected'}catch(e){return e.code}})()",
+            )
+            require(imageDenied == "service.permission-denied") { "Denied image page returned $imageDenied." }
+            imageEvidence["permissionDenied"] = imageDenied
             val clipboardCode = session.evaluateString(
                 "(async()=>{try{await window.desktop.readClipboard({selection:'system',formats:['text/plain']});return 'unexpected'}catch(e){return e.code}})()",
             )
@@ -1132,6 +1238,11 @@ public fun main() {
         }
         try {
             if (appPaths.lifecycle.value != KWebLifecycleState.CLOSED) appPaths.close()
+        } catch (error: Throwable) {
+            failure = failure.append(error)
+        }
+        try {
+            if (images.lifecycle.value != KWebLifecycleState.CLOSED) images.close()
         } catch (error: Throwable) {
             failure = failure.append(error)
         }
@@ -1244,6 +1355,15 @@ public fun main() {
         }
         """.trimIndent() + "\n",
     )
+    Files.writeString(root.resolve("migration-image-evidence.json"), buildJsonObject {
+        put("schemaVersion", 1)
+        put("target", applicationTarget.id)
+        put("observed", buildJsonObject { imageEvidence.forEach { (name, value) -> put(name, value) } })
+        put("childFrameTransportAbsent", true)
+        put("crossOriginBridgeAbsent", true)
+        put("unconfiguredBridgeAbsent", true)
+        put("ownerClosed", images.lifecycle.value == KWebLifecycleState.CLOSED)
+    }.toString() + "\n")
     println("KWebShell typed Electron migration fixture passed against real CEF.")
 }
 
@@ -1290,6 +1410,7 @@ private class MigrationFixtureServer(
     shellBridge: String,
     clipboardBridge: String,
     notificationsBridge: String,
+    imageBridge: String,
     preload: String,
 ) : AutoCloseable {
     private val executor = Executors.newCachedThreadPool { task ->
@@ -1305,6 +1426,7 @@ private class MigrationFixtureServer(
             "<script>$shellBridge</script>" +
             "<script>$clipboardBridge</script>" +
             "<script>$notificationsBridge</script>" +
+            "<script>$imageBridge</script>" +
             "<script>globalThis.KWebApplicationStreamsBridge={createClient(){return {openDownloadProgress:async function* (request){yield {downloadId:request.downloadId,done:false};yield {downloadId:request.downloadId,done:true}}}}}</script>" +
             "<script>$preload</script>"
         ).toByteArray(StandardCharsets.UTF_8)

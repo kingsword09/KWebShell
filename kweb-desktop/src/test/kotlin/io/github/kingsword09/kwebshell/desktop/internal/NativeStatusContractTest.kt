@@ -5,6 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 
 class NativeStatusContractTest {
     @Test
@@ -20,6 +21,18 @@ class NativeStatusContractTest {
         assertEquals(70, NativeStatus.PROFILE_CONTEXT_INITIALIZATION_FAILED.value)
         assertEquals(null, NativeStatus.fromValue(-1))
         assertEquals(null, NativeStatus.fromValue(Int.MAX_VALUE))
+    }
+
+    @Test
+    fun streamTeardownDoesNotHideNativeErrorsOrInvalidLiveOwners() {
+        assertTrue(isExpectedStreamTerminationStatus(NativeStatus.BRIDGE_REQUEST_NOT_FOUND.value, false))
+        assertTrue(isExpectedStreamTerminationStatus(NativeStatus.INVALID_HANDLE.value, true))
+        assertFalse(isExpectedStreamTerminationStatus(NativeStatus.INVALID_HANDLE.value, false))
+        for (status in listOf(NativeStatus.INVALID_ARGUMENT, NativeStatus.BRIDGE_RESPONSE_INVALID,
+            NativeStatus.CEF_UI_TASK_FAILED, NativeStatus.INTERNAL_ERROR)) {
+            assertFalse(isExpectedStreamTerminationStatus(status.value, true), status.name)
+            assertFalse(isExpectedStreamTerminationStatus(status.value, false), status.name)
+        }
     }
 
     @Test

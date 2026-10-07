@@ -77,6 +77,14 @@ the Linux freedesktop notification daemon; it reports target capabilities for
 actions/replies, routes activation through RFC 0006, and rejects custom image
 bytes, generic IPC, and in-page fallback behavior.
 
+RFC 0027 adds `kweb-service-image` for bounded immutable PNG/JPEG values, exact
+package-resource digests, deterministic RGBA8 sRGB PNG normalization, and
+Win32/CoreGraphics/GdkPixbuf providers behind JDK 25 FFM. The host codec accepts
+16 MiB and 6,000,000 pixels; the named renderer operations limit encoded input
+and output to 512 KiB. URL/path loading, SVG, mutable identity and platform
+handles are outside v1. Three-target provider, CEF, unit and package evidence
+is required by the [acceptance matrix](docs/rfcs/0027-native-image-and-icons.md#acceptance-matrix).
+
 All further Electron-class capabilities are split into reviewable KMP-first
 contracts in the [RFC catalog](docs/rfcs/README.md). An RFC is not a support
 claim: each capability enters the public matrix only after its common contract,

@@ -12,6 +12,9 @@
   const shellBridge = globalThis.ShellBridge;
   if (!shellBridge || typeof shellBridge.createClient !== "function") throw new Error("ShellBridge is required by this migration facade.");
   const shellClient = shellBridge.createClient();
+  const imageBridge = globalThis.ImageBridge;
+  if (!imageBridge || typeof imageBridge.createClient !== "function") throw new Error("ImageBridge is required by this migration facade.");
+  const imageClient = imageBridge.createClient();
   const notificationsBridge = globalThis.NotificationsBridge;
   if (!notificationsBridge || typeof notificationsBridge.createClient !== "function") throw new Error("NotificationsBridge is required by this migration facade.");
   const notificationsClient = notificationsBridge.createClient();
@@ -48,6 +51,8 @@
     closeClipboardPayload: (request, options) => clipboardClient.closePayload(request, options),
     closeHandle: (request, options) => filesClient.closeHandle(request, options),
     closeNotification: (request, options) => notificationsClient.close(request, options),
+    decodeImage: (request, options) => imageClient.decode(request, options),
+    encodeImagePng: (request, options) => imageClient.encodePng(request, options),
     getNotificationCapabilities: (request, options) => notificationsClient.capabilities(request, options),
     getPath: (name, options) => {
       const kind = pathKinds[name];

@@ -74,6 +74,12 @@ function binding(node, seen = new Set()) {
   if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'require' && !checker.getSymbolAtLocation(node.expression)) {
     return literal(node.arguments[0]) === 'electron' ? 'electron' : null;
   }
+  if (ts.isCallExpression(node)) {
+    const target = binding(node.expression, seen);
+    if (target?.startsWith('electron.nativeImage.create') || target?.startsWith('electron.nativeImage.instance.')) {
+      return 'electron.nativeImage.instance';
+    }
+  }
   if (!ts.isIdentifier(node)) return null;
   const symbol = checker.getSymbolAtLocation(node);
   if (!symbol) return electronNames.has(node.text) ? `electron.${node.text}` : null;
@@ -158,6 +164,8 @@ for (const fileName of sourceNames) {
         emit(sf, node, 'PRELOAD_GLOBAL', literal(node.arguments[0]) ?? '<dynamic>', { exports });
       } else if (target?.startsWith('electron.app.')) {
         emit(sf, node, 'LIFECYCLE_EVENT', `app.${literal(node.arguments[0]) ?? '<dynamic>'}`, { operation: target });
+      } else if (target?.startsWith('electron.nativeImage.')) {
+        emit(sf, node, 'UNCLASSIFIED', target, { symbol: 'nativeImage', operation: target });
       } else if (target?.startsWith('electron.')) {
         emit(sf, node, 'UNCLASSIFIED', target);
       }

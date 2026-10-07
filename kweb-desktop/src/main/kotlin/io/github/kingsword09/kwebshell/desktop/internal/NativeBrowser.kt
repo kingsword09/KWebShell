@@ -138,6 +138,7 @@ internal class NativeBrowser private constructor(
     private val closeFailure = AtomicReference<KWebNativeException?>()
     private val fatalFailure = AtomicReference<KWebNativeException?>()
     private val rendererTerminated = AtomicBoolean(false)
+    private val nativeTerminalReceived = AtomicBoolean(false)
     private val devtoolsFailure = AtomicReference<KWebNativeException?>()
     private val devtoolsOpenedEvent = AtomicReference(CountDownLatch(0))
     private val devtoolsClosedEvent = AtomicReference(CountDownLatch(0))
@@ -482,6 +483,15 @@ internal class NativeBrowser private constructor(
         if (callbackHandle.get() == 0L) {
             callbackHandle.compareAndSet(0, browserHandle)
         }
+        // Native teardown can finish before the queued Kotlin callback cancels
+        // a stream. Record receipt here without invoking listeners on the upcall.
+        if (engine.ownsHandle(engineHandle) && callbackHandle.get() == browserHandle) {
+            when (type) {
+                NativeBrowserEventType.RENDERER_TERMINATED.value,
+                NativeBrowserEventType.FATAL_ERROR.value,
+                NativeBrowserEventType.CLOSED.value -> nativeTerminalReceived.set(true)
+            }
+        }
         try {
             callbackExecutor.execute {
                 processNativeEvent(
@@ -662,7 +672,7 @@ internal class NativeBrowser private constructor(
                             val status = NativeBindings.browserBridgeRespond(browserHandle, requestId, frameJson)
                             if (status == NativeStatus.OK.value) return true
                             // The peer or transport is gone; the stream must end.
-                            if (status != NativeStatus.BRIDGE_REQUEST_NOT_FOUND.value) {
+                            if (!isExpectedStreamTerminationStatus(status, closeStarted.get() || nativeTerminalReceived.get())) {
                                 recordCallbackFailure(
                                     "native.bridge.frame-response-rejected",
                                     mapOf("requestId" to requestId.toString(), "status" to status.toString()),
@@ -691,7 +701,7 @@ internal class NativeBrowser private constructor(
                     KWebBridgeProtocol.encodeFailure(error),
                 )
                 if (status != NativeStatus.OK.value &&
-                    status != NativeStatus.BRIDGE_REQUEST_NOT_FOUND.value
+                    !isExpectedStreamTerminationStatus(status, closeStarted.get() || nativeTerminalReceived.get())
                 ) {
                     recordCallbackFailure(
                         "native.bridge.failure-response-rejected",
@@ -1269,3 +1279,7 @@ internal class NativeBrowser private constructor(
         internal fun liveNativeBrowserCount(): Long = NativeBindings.liveBrowserCount()
     }
 }
+
+internal fun isExpectedStreamTerminationStatus(status: Int, ownerTerminating: Boolean): Boolean =
+    status == NativeStatus.BRIDGE_REQUEST_NOT_FOUND.value ||
+        (ownerTerminating && status == NativeStatus.INVALID_HANDLE.value)

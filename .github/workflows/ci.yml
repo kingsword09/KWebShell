@@ -114,6 +114,7 @@ jobs:
             dbus-x11 \
             libasound2-dev \
             libglib2.0-dev \
+            libgdk-pixbuf-2.0-dev \
             libgtk-3-dev \
             libnss3-tools \
             openbox \
@@ -285,6 +286,19 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Upload native image evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: image-integration-${{ matrix.target }}-${{ github.sha }}
+          path: |
+            kweb-service-image/build/reports/image-integration/
+            kweb-service-image/build/reports/image-native-tests.xml
+            kweb-service-image/build/test-results/jvmTest/*.xml
+            kweb-service-image/build/distributions/*.zip
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload application package evidence
         if: always()
         uses: actions/upload-artifact@v6
@@ -401,7 +415,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p build/rfc-evidence/downloaded
-          for family in rfc-governance provider-lifecycle native-dialogs engine-integration electron-migration clipboard application-package windows-launcher-smoke application-lifecycle; do
+          for family in rfc-governance provider-lifecycle native-dialogs engine-integration electron-migration clipboard image-integration application-package windows-launcher-smoke application-lifecycle; do
             gh run download "$GITHUB_RUN_ID" \
               --repo "$GITHUB_REPOSITORY" \
               --pattern "$family-*-${{ github.sha }}" \

@@ -81,6 +81,7 @@ public class KWebElectronInventoryScanner public constructor(
     private fun classify(fact: KWebElectronAstFact, manifest: KWebElectronManifest?): KWebElectronInventoryFinding {
         val mapping = when (fact.kind) {
             KWebElectronInventoryFindingKind.ELECTRON_IMPORT -> mappingForElectron(fact.symbol)
+            KWebElectronInventoryFindingKind.UNCLASSIFIED -> if (fact.symbol == "nativeImage") mappingForElectron(fact.symbol) else null
             KWebElectronInventoryFindingKind.ELECTRON_CHANNEL -> matrix.singleOrNull { it.id == "ipc-request" }
             KWebElectronInventoryFindingKind.PRELOAD_GLOBAL -> matrix.singleOrNull { it.id == "context-bridge" }
             KWebElectronInventoryFindingKind.NODE_IMPORT, KWebElectronInventoryFindingKind.NATIVE_ADDON -> matrix.singleOrNull { it.id == "node-runtime" }
@@ -113,6 +114,7 @@ public class KWebElectronInventoryScanner public constructor(
         "dialog" -> "dialog"
         "clipboard" -> "clipboard"
         "shell" -> "shell"
+        "nativeImage" -> "native-image"
         "nativeTheme" -> "native-theme"
         "screen" -> "screen"
         "globalShortcut" -> "global-shortcut"

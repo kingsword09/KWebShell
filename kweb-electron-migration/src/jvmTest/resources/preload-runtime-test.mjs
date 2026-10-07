@@ -111,6 +111,16 @@ globalThis.NotificationsBridge = Object.freeze({
   },
 });
 
+const imageCalls = [];
+const imageResult = Object.freeze({ width: 2, height: 1, alphaMode: "STRAIGHT", colorSpace: "SRGB", intent: "NORMAL", pngBase64: "fixture" });
+globalThis.ImageBridge = Object.freeze({
+  createClient() {
+    return {
+      decode(request, options) { imageCalls.push({ operation: "decode", request, options }); return Promise.resolve(imageResult); },
+      encodePng(request, options) { imageCalls.push({ operation: "encodePng", request, options }); return Promise.resolve({ format: "image/png", pngBase64: request.pngBase64 }); },
+    };
+  },
+});
 eval(source);
 const home = await globalThis.desktop.getPath("home", { timeoutMs: 123 });
 if (home !== "/fixture/home") throw new Error(`Unexpected home result: ${home}`);
@@ -153,4 +163,13 @@ const watch = globalThis.desktop.watchDirectory({ handle: workspace.handle });
 const watchValues = [];
 for await (const event of watch) watchValues.push(event);
 if (watchValues.length !== 1 || watchValues[0].name !== "watch.txt") throw new Error("The generated files watch adapter did not preserve stream values.");
+const imageRequest = { sourceKind: "encoded", format: "image/png", payload: "fixture", intent: "NORMAL", resourceId: null, sha256: null };
+const imageOptions = { signal: new AbortController().signal, timeoutMs: 234 };
+const image = await globalThis.desktop.decodeImage(imageRequest, imageOptions);
+const encodedImage = await globalThis.desktop.encodeImagePng(image, imageOptions);
+if (image !== imageResult || encodedImage.pngBase64 !== imageResult.pngBase64 || imageCalls.length !== 2 ||
+    imageCalls[0].request !== imageRequest || imageCalls[1].request !== imageResult ||
+    imageCalls.some(call => call.options !== imageOptions) || imageCalls[1].operation !== "encodePng") {
+  throw new Error("The generated image adapter did not preserve its named requests, responses and cancellation options.");
+}
 console.log("KWebShell generated Electron preload runtime passed.");

@@ -8,6 +8,7 @@ Renderer origin: `app://migration-fixture`; profile: `default`.
 - [ ] Install `app-paths` (version `1.0.0`)
 - [ ] Install `clipboard` (version `1.0.0`)
 - [ ] Install `files` (version `1.0.0`)
+- [ ] Install `native-image` (version `1.0.0`)
 - [ ] Install `notifications` (version `1.0.0`)
 - [ ] Install `shell` (version `1.0.0`)
 
@@ -24,6 +25,8 @@ Renderer origin: `app://migration-fixture`; profile: `default`.
 - [ ] Preload method `closeClipboardPayload` -> Channel `clipboard.closePayload` (Status: `ADAPTER`)
 - [ ] Preload method `closeHandle` -> Channel `fs.closeHandle` (Status: `ADAPTER`)
 - [ ] Preload method `closeNotification` -> Channel `notification.close` (Status: `ADAPTER`)
+- [ ] Preload method `decodeImage` -> Channel `nativeImage.decode` (Status: `ADAPTER`)
+- [ ] Preload method `encodeImagePng` -> Channel `nativeImage.encodePng` (Status: `ADAPTER`)
 - [ ] Preload method `getNotificationCapabilities` -> Channel `notification.capabilities` (Status: `ADAPTER`)
 - [ ] Preload method `getPath` -> Channel `app.getPath` (Status: `ADAPTER`)
 - [ ] Preload method `listDirectory` -> Channel `fs.listDirectory` (Status: `ADAPTER`)

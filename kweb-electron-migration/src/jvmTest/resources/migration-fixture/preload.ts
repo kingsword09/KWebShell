@@ -19,5 +19,7 @@ contextBridge.exposeInMainWorld("desktop", {
   trashResource: (request: unknown) => ipcRenderer.invoke("shell.trashResource", request),
   getNotificationCapabilities: (request: unknown) => ipcRenderer.invoke("notification.capabilities", request),
   showNotification: (request: unknown) => ipcRenderer.invoke("notification.show", request),
+  decodeImage: (request: unknown) => ipcRenderer.invoke("nativeImage.decode", request),
+  encodeImagePng: (request: unknown) => ipcRenderer.invoke("nativeImage.encodePng", request),
   closeNotification: (request: unknown) => ipcRenderer.invoke("notification.close", request),
 });

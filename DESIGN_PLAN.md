@@ -2550,6 +2550,80 @@ RFC 0016 records from an Accepted catalog; the unchanged strict checker rejected
 them. The existing evidence schema permits support records only for Implemented
 RFCs. This repair preserves that contract and the pending notification scope.
 
+### RFC 0027 implementation objective: bounded native image and icon values
+
+RFC 0027 is the independent image value boundary required by menus, tray,
+capture, notifications, and page capture. The objective is complete only when
+the same PR publishes the bounded common model, deterministic codec, package
+resource verification, native providers, generated bridge, migration mapping,
+three-target evidence, and final acceptance review:
+
+1. `kweb-service-image` publishes immutable PNG/JPEG values with fixed encoded,
+   decoded, pixel, dimension, variant, alpha, color-space, intent, and digest
+   limits. Input and output byte arrays are copied and bounded.
+2. The JVM codec performs all parsing and normalization off native UI threads,
+   rejects malformed/unsupported formats, decompression bombs, non-identity
+   EXIF orientation, and digest/path violations before native dispatch, and
+   emits deterministic canonical RGBA8 sRGB PNG bytes.
+3. The versioned C ABI converts normalized RGBA into `HBITMAP`, `CGImageRef`,
+   and `GdkPixbuf` through exact target providers. JDK 25 FFM keeps layouts and
+   native handles internal, validates ABI/struct sizes, and proves release and
+   live-count behavior without a fallback provider.
+4. The generated bridge exposes only bounded named `decode` and `encodePng`
+   calls. RFC 0003 exact-origin/main-frame/grant/owner checks cover malformed,
+   oversized, child-frame, cross-origin, cancellation, and close races.
+5. Electron `nativeImage` construction/export rows are individually classified;
+   path/URL fetching, mutation identity, platform handles, SVG/script, and
+   unknown operations remain explicit blockers. Package scans exclude tests and
+   native handles from runtime payloads.
+6. Common, JVM/native/FFM, CEF bridge, migration, packaging, and hosted
+   Windows/macOS/Linux evidence pass and the RFC matrix records every row before
+   the focused squash PR is merged.
+
+### PR #70 repair: native image lifecycle and truthful acceptance evidence
+
+Complete the existing RFC 0027 objective in the same PR. Hosted run
+`37492837039` fails on Linux after unloading/reloading GdkPixbuf, and on
+Windows/macOS while hashing the not-yet-written provider report. Preserve and
+finish the related worktree changes; do not replace those failures with
+synthetic compatibility or provider results.
+
+Acceptance criteria, recorded before the repair implementation:
+
+- E70.1 (A5/A6): keep the loaded native provider resident for the process lifetime,
+  while each service releases its handles. Reopening providers, concurrent owner
+  and handle close, the 256-handle ceiling, and use after close must pass real
+  C ABI/FFM tests on Windows x64, macOS arm64, and Linux x64.
+- E70.2 (A1/A2/A3/A4): finish the bounded codec corrections, including the reviewed
+  6,000,000-pixel ceiling, strict malformed/EXIF handling, immutable resources,
+  metadata validation, and deterministic PNG tests. Generate report values from
+  successful assertions and observed provider/codec results, after creating the
+  report directory; never read a report before writing it.
+- E70.3 (A7/A8/A9): finish the declared image migration adapter, generated preload,
+  inventory blockers, and real CEF fixture. Use the migration fixture's actual
+  compatibility report in aggregation; it must contain the native-image service
+  and named decode/encode policies exercised by that fixture.
+- E70.4 (A10/U1): verify native packaging and generated TypeScript, regression-test
+  aggregation, run fresh complete hosted verification on all three targets,
+  import the exact hosted evidence, and pass strict governance. Review the full
+  PR diff and update every applicable acceptance row without inventing results.
+- E70.5 (RFC 0004 acceptance 3 / RFC 0008 A6): run `37563468017` passed Windows
+  and Linux but exposed a stream response racing native renderer teardown on
+  macOS. A response to a removed handle is cancellation only after native
+  terminal receipt or explicit owner close; other response errors remain fatal.
+  A real CEF fixture must hold one in-flight frame until the native CLOSED
+  event, then prove cancellation, no callback failure, ordered terminal events
+  and zero native owners on every target.
+
+Readiness review: Codex, separate pass by the same contributor, 2026-10-07,
+base revision `5bf0b88` and RFC contract `2026-10-07.1`. The actual CI stack traces,
+FFM ownership, codec allocations, generated-adapter pipeline, and hosted evidence
+flow were inspected. GdkPixbuf registers process-global types and therefore its
+library must outlive individual owners. The original report hashes its own
+nonexistent output and claims unexecuted checks. Existing codec/lifecycle edits
+remain unverified until the acceptance runs above. Decision: **READY** for this
+repair; supported-state acceptance remains pending fresh evidence.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.

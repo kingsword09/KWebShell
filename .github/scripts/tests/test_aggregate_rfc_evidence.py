@@ -13,13 +13,14 @@ import tempfile
 import unittest
 
 from _msix_fixture import REVISION, create_fixture, write_report
+from _image_fixture import write_image_fixture
 
 REPOSITORY = Path(__file__).resolve().parents[3]
 SCRIPT = REPOSITORY / ".github/scripts/aggregate-rfc-evidence.sh"
 TARGETS = ("macos-arm64", "windows-x64", "linux-x64")
 IMPLEMENTED = {
     "0001", "0002", "0003", "0004", "0006", "0007", "0008", "0009",
-    "0010", "0011", "0012", "0013", "0014", "0015", "0030",
+    "0010", "0011", "0012", "0013", "0014", "0015", "0027", "0030",
 }
 ARTIFACTS = {
     "rfc-governance": ["TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml"],
@@ -28,6 +29,7 @@ ARTIFACTS = {
     "application-package": ["application-package-report.json"],
     "application-lifecycle": ["application-lifecycle-report.json"],
     "clipboard": ["clipboard-evidence.json"],
+    "image-integration": ["native-image-evidence.json"],
     "engine-integration": [
         "stream-conformance.json", "application-shutdown.json", "page-lifecycle-evidence.json",
         "renderer-lifecycle-evidence.json", "profile-data-evidence.json", "network-policy-evidence.json",
@@ -48,6 +50,7 @@ class AggregationTest(unittest.TestCase):
         script = self.root / ".github/scripts/aggregate-rfc-evidence.sh"
         script.parent.mkdir(parents=True)
         shutil.copyfile(SCRIPT, script)
+        shutil.copyfile(SCRIPT.with_name("validate_image_evidence.py"), script.with_name("validate_image_evidence.py"))
         shutil.copyfile(SCRIPT.with_name("retain_windows_msix_evidence.py"), script.with_name("retain_windows_msix_evidence.py"))
         catalog = self.root / "docs/rfcs"
         catalog.mkdir(parents=True)
@@ -65,6 +68,7 @@ class AggregationTest(unittest.TestCase):
                 for name in names:
                     (directory / name).write_text("{}\n")
             self.report(target).write_text(json.dumps(self.valid_report(target)) + "\n")
+            write_image_fixture(self.root / "build/rfc-evidence/downloaded", target)
         self.msix, self.msix_report_path, self.msix_report, _ = create_fixture(
             self.root / "build/rfc-evidence/downloaded/application-package-windows-x64-revision"
         )
@@ -84,7 +88,7 @@ document, = catalog.glob(rfc + "-*.md")
 assert "- Status: Implemented" in document.read_text().splitlines(), "Cannot record an unimplemented RFC"
 manifest = json.loads(Path(arguments[1]).read_text())
 artifacts = [arguments[i + 1] for i, value in enumerate(arguments) if value == "--artifact"]
-manifest["invocations"].append({"rfc": rfc, "target": options["--target"], "artifacts": artifacts})
+manifest["invocations"].append({"rfc": rfc, "target": options["--target"], "artifacts": artifacts, "compatibility": options.get("--from-compatibility-report"), "service": options.get("--service")})
 Path(arguments[2]).write_text(json.dumps(manifest))
 ''')
         wrapper = self.root / "gradlew"
@@ -126,7 +130,7 @@ Path(arguments[2]).write_text(json.dumps(manifest))
         result = self.run_script()
         self.assertEqual(0, result.returncode, result.stderr)
         calls = json.loads(self.manifest.read_text())["invocations"]
-        self.assertEqual(45, len(calls))
+        self.assertEqual(48, len(calls))
         self.assertEqual(
             {(rfc, target) for rfc in IMPLEMENTED for target in TARGETS},
             {(call["rfc"], call["target"]) for call in calls},
@@ -139,6 +143,27 @@ Path(arguments[2]).write_text(json.dumps(manifest))
         self.assertIn("windows-msix-proof=build/rfc-evidence/windows-msix-proof.zip", windows_package["artifacts"])
         self.assertTrue((self.root / "build/rfc-evidence/windows-msix-proof.zip").is_file())
         self.assertEqual(self.msix_before, self.msix.read_bytes())
+
+    def test_image_uses_real_migration_compatibility_and_retains_all_proofs(self):
+        result = self.run_script()
+        self.assertEqual(0, result.returncode, result.stderr)
+        calls = [call for call in json.loads(self.manifest.read_text())["invocations"] if call["rfc"] == "0027"]
+        self.assertEqual(3, len(calls))
+        for call in calls:
+            self.assertEqual("native-image", call["service"])
+            self.assertIn("electron-migration-" + call["target"], call["compatibility"])
+            self.assertEqual({"native-image", "compatibility", "migration-image", "image-package", "image-runtime",
+                              "image-native-tests", "image-codec-tests", "image-contract-tests"},
+                             {value.split("=", 1)[0] for value in call["artifacts"]})
+
+    def test_missing_image_compatibility_blocks_before_any_recording(self):
+        for target in TARGETS:
+            with self.subTest(target=target):
+                report = self.report(target).with_name("compatibility.json")
+                original = report.read_bytes()
+                report.write_text("{}")
+                self.assert_preflight_failure(target)
+                report.write_bytes(original)
 
     def test_missing_windows_msix_blocks_aggregation(self):
         self.msix.unlink()

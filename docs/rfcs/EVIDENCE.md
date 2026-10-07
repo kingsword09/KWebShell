@@ -98,11 +98,15 @@ A stale record is never support: an `Implemented` RFC whose evidence is stale
 reports the `stale` state with structured reasons and the matrix row it backed
 becomes unbacked.
 
-RFC 0027 retains one `native-image-evidence.json` provider record and one
-validated Electron compatibility report per hosted target. The report binds the
-actual image bridge, package, runtime, native library, and capability-matrix
-digests; it contains dimensions, provider identity, bounded status facts, and
-zero live handles after close, never source pixels or native pointers.
+RFC 0027 retains the observed native provider report, real CEF image scenarios,
+validated Electron compatibility report, named common/JVM and CTest results,
+and the verified native provider ZIP and package digest per hosted target.
+`validate_image_evidence.py` rejects missing/skipped tests, mismatched providers,
+absent image policies, unobserved failure cases and substituted package bytes
+before recording any RFC. Contract bindings cover the image service, bridge,
+migration fixture and evidence collector. Reports contain dimensions, provider
+identity, bounded status facts and zero live handles after close, never source
+pixels or native pointers.
 
 ## RFC states and matrix backing
 

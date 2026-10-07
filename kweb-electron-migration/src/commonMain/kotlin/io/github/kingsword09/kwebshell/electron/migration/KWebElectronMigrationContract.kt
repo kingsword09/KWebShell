@@ -20,6 +20,7 @@ public enum class KWebElectronAdapterKind {
     CLIPBOARD_OPERATION,
     SHELL_OPERATION,
     NOTIFICATIONS_OPERATION,
+    NATIVE_IMAGE_OPERATION,
     FILES_WATCH_DIRECTORY,
     NAMED_APPLICATION_STREAM,
 }
@@ -329,6 +330,9 @@ public object KWebElectronManifestValidator {
     private val NOTIFICATIONS_OPERATIONS: Set<String> = setOf(
         "permission", "request-permission", "capabilities", "show", "close",
     )
+    private const val NATIVE_IMAGE_SERVICE: String = "native-image"
+    private const val NATIVE_IMAGE_VERSION: String = "1.0.0"
+    private val NATIVE_IMAGE_OPERATIONS: Set<String> = setOf("decode", "encode-png")
     private val FILES_OPERATIONS: Set<String> = setOf(
         "open-workspace", "open-file", "open-directory", "read-file", "write-file",
         "truncate-file", "list-directory", "metadata", "copy-file", "move-file",
@@ -551,6 +555,28 @@ public object KWebElectronManifestValidator {
                     )
                 }
             }
+            if (channel.adapter == KWebElectronAdapterKind.NATIVE_IMAGE_OPERATION) {
+                val operation = channel.operationId
+                val policy = channel.policy
+                val types = when (operation) {
+                    "decode" -> "ImageDecodeRequest" to "ImageResponse"
+                    "encode-png" -> "ImageEncodeRequest" to "ImageEncodedResponse"
+                    else -> null
+                }
+                if (channel.name.substringBefore('.').lowercase() != "nativeimage" ||
+                    channel.serviceId != NATIVE_IMAGE_SERVICE || channel.serviceVersion != NATIVE_IMAGE_VERSION ||
+                    operation == null || operation !in NATIVE_IMAGE_OPERATIONS || policy == null ||
+                    types == null || channel.requestType != types.first || channel.responseType != types.second ||
+                    policy.rendererGrant != "native.native-image.$operation" ||
+                    policy.requiresUserGesture || policy.requiresOsConsent
+                ) {
+                    invalid(
+                        KWebElectronMigrationErrorCode.MAPPING_UNRESOLVED,
+                        "channel" to channel.name,
+                        message = "The native image adapter must bind one published image operation and its exact policy.",
+                    )
+                }
+            }
         }
 
         manifest.preloadMethods.forEachIndexed { index, method ->
@@ -613,6 +639,15 @@ public object KWebElectronManifestValidator {
                     KWebElectronMigrationErrorCode.MAPPING_UNRESOLVED,
                     "method" to method.name,
                     message = "A notifications preload method must use a named request type and Promise response.",
+                )
+            }
+            if (method.adapter == KWebElectronAdapterKind.NATIVE_IMAGE_OPERATION &&
+                (!IDENTIFIER.matches(method.parameterType) || !method.returnType.startsWith("Promise<"))
+            ) {
+                invalid(
+                    KWebElectronMigrationErrorCode.MAPPING_UNRESOLVED,
+                    "method" to method.name,
+                    message = "A native image preload method must use a named request type and Promise response.",
                 )
             }
         }

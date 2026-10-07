@@ -4,6 +4,9 @@ import org.gradle.api.tasks.testing.Test
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Locale
+import org.gradle.api.tasks.bundling.Zip
+import java.util.zip.ZipFile
+import java.security.MessageDigest
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -26,6 +29,7 @@ kotlin {
         }
         jvmMain.dependencies { implementation(libs.kotlinx.coroutines.core) }
         jvmTest.dependencies {
+            implementation(libs.kotlinx.serialization.json)
             implementation(kotlin("test-junit5"))
             runtimeOnly(libs.junit.platform.launcher)
             implementation(libs.kotlinx.coroutines.core)
@@ -75,8 +79,18 @@ val nativeLibrary = providers.systemProperty("os.name").map { operatingSystem ->
     }
     nativeBuildDirectory.get().dir("contract").file(fileName).asFile
 }
-val nativeTestExecutable = providers.systemProperty("os.name").map { operatingSystem ->
-    if (operatingSystem.lowercase(Locale.ROOT).startsWith("windows")) "kweb_image_tests.exe" else "kweb_image_tests"
+val imageTarget = providers.provider {
+    val operatingSystem = System.getProperty("os.name").lowercase(Locale.ROOT)
+    val architecture = System.getProperty("os.arch").lowercase(Locale.ROOT)
+    val target = when {
+        operatingSystem.startsWith("mac") && architecture in setOf("arm64", "aarch64") -> "macos-arm64"
+        operatingSystem.startsWith("windows") && architecture in setOf("amd64", "x86_64") -> "windows-x64"
+        operatingSystem.startsWith("linux") && architecture in setOf("amd64", "x86_64") -> "linux-x64"
+        else -> throw GradleException("The native image provider is not published for $operatingSystem/$architecture.")
+    }
+    val requested = providers.gradleProperty("kwebTarget").orNull
+    if (requested != null && requested != target) throw GradleException("The image target $requested does not match this host ($target).")
+    target
 }
 val nativeArchitecture = providers.systemProperty("os.arch").map { architecture ->
     when (architecture.lowercase(Locale.ROOT)) {
@@ -107,7 +121,10 @@ val buildNative = tasks.register<Exec>("buildNative") {
 val nativeTest = tasks.register<Exec>("nativeTest") {
     group = "verification"
     dependsOn(buildNative)
-    commandLine(nativeBuildDirectory.get().dir("contract").file(nativeTestExecutable.get()).asFile.absolutePath)
+    val report = layout.buildDirectory.file("reports/image-native-tests.xml").get().asFile
+    doFirst { report.parentFile.mkdirs() }
+    commandLine("ctest", "--test-dir", nativeBuildDirectory.get().asFile.absolutePath,
+        "--output-on-failure", "--output-junit", report.absolutePath)
 }
 tasks.named("check") { dependsOn(nativeTest) }
 
@@ -129,7 +146,46 @@ val nativeIntegrationTest = tasks.register<JavaExec>("nativeImageIntegrationTest
     jvmArgs("--enable-native-access=ALL-UNNAMED")
     systemProperty("kweb.image.native.library.path", nativeLibrary.get().absolutePath)
     systemProperty("kweb.image.integration.root", layout.buildDirectory.dir("reports/image-integration").get().asFile.absolutePath)
-    systemProperty("kweb.image.target", providers.gradleProperty("kwebTarget").orElse("macos-arm64").get())
-    systemProperty("kweb.image.repository.root", rootProject.layout.projectDirectory.asFile.absolutePath)
+    systemProperty("kweb.image.target", imageTarget.get())
 }
 tasks.named("check") { dependsOn(nativeIntegrationTest) }
+
+val nativeImageRuntimeZip = tasks.register<Zip>("nativeImageRuntimeZip") {
+    group = "distribution"
+    description = "Packages only the declared image provider and its versioned C ABI header."
+    dependsOn(buildNative)
+    archiveFileName.set("kweb-service-image-1.0.0-${imageTarget.get()}.zip")
+    destinationDirectory.set(layout.buildDirectory.dir("distributions"))
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+    from(nativeLibrary) { into("native/${imageTarget.get()}") }
+    from(nativeProjectDirectory.file("include/kweb_image.h")) { into("include") }
+}
+val verifyNativeImagePackage = tasks.register("verifyNativeImagePackage") {
+    group = "verification"
+    description = "Verifies exact native image package contents and retains its digest."
+    dependsOn(nativeImageRuntimeZip)
+    val archive = nativeImageRuntimeZip.flatMap { it.archiveFile }
+    val library = nativeLibrary.get()
+    val target = imageTarget.get()
+    val report = layout.buildDirectory.file("reports/image-integration/native-image-package.json").get().asFile
+    inputs.file(archive)
+    inputs.file(library)
+    outputs.file(report)
+    doLast {
+        val packageFile = archive.get().asFile
+        val libraryEntry = "native/$target/${library.name}"
+        ZipFile(packageFile).use { zip ->
+            val names = zip.entries().asSequence().filterNot { it.isDirectory }.map { it.name }.toSet()
+            check(names == setOf(libraryEntry, "include/kweb_image.h")) { "Unexpected files in the native image package." }
+            check(zip.getInputStream(zip.getEntry(libraryEntry)).readBytes().contentEquals(library.readBytes())) {
+                "The packaged image library does not match the tested provider."
+            }
+            check(zip.getInputStream(zip.getEntry("include/kweb_image.h")).bufferedReader().readText().contains("kweb_image_abi_version"))
+        }
+        val digest = MessageDigest.getInstance("SHA-256").digest(packageFile.readBytes()).joinToString("") { "%02x".format(it) }
+        report.parentFile.mkdirs()
+        report.writeText("""{"schemaVersion":1,"target":"$target","archive":"${packageFile.name}","sha256":"$digest","nativeLibrary":"${library.name}","exactContents":true}""" + "\n")
+    }
+}
+tasks.named("check") { dependsOn(verifyNativeImagePackage) }

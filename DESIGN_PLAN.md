@@ -2580,6 +2580,43 @@ three-target evidence, and final acceptance review:
    Windows/macOS/Linux evidence pass and the RFC matrix records every row before
    the focused squash PR is merged.
 
+### PR #70 repair: native image lifecycle and truthful acceptance evidence
+
+Complete the existing RFC 0027 objective in the same PR. Hosted run
+`37492837039` fails on Linux after unloading/reloading GdkPixbuf, and on
+Windows/macOS while hashing the not-yet-written provider report. Preserve and
+finish the related worktree changes; do not replace those failures with
+synthetic compatibility or provider results.
+
+Acceptance criteria, recorded before the repair implementation:
+
+- E70.1 (A5/A6): keep the loaded native provider resident for the process lifetime,
+  while each service releases its handles. Reopening providers, concurrent owner
+  and handle close, the 256-handle ceiling, and use after close must pass real
+  C ABI/FFM tests on Windows x64, macOS arm64, and Linux x64.
+- E70.2 (A1/A2/A3/A4): finish the bounded codec corrections, including the reviewed
+  6,000,000-pixel ceiling, strict malformed/EXIF handling, immutable resources,
+  metadata validation, and deterministic PNG tests. Generate report values from
+  successful assertions and observed provider/codec results, after creating the
+  report directory; never read a report before writing it.
+- E70.3 (A7/A8/A9): finish the declared image migration adapter, generated preload,
+  inventory blockers, and real CEF fixture. Use the migration fixture's actual
+  compatibility report in aggregation; it must contain the native-image service
+  and named decode/encode policies exercised by that fixture.
+- E70.4 (A10/U1): verify native packaging and generated TypeScript, regression-test
+  aggregation, run fresh complete hosted verification on all three targets,
+  import the exact hosted evidence, and pass strict governance. Review the full
+  PR diff and update every applicable acceptance row without inventing results.
+
+Readiness review: Codex, separate pass by the same contributor, 2026-10-07,
+base revision `5bf0b88` and RFC contract `2026-10-07.1`. The actual CI stack traces,
+FFM ownership, codec allocations, generated-adapter pipeline, and hosted evidence
+flow were inspected. GdkPixbuf registers process-global types and therefore its
+library must outlive individual owners. The original report hashes its own
+nonexistent output and claims unexecuted checks. Existing codec/lifecycle edits
+remain unverified until the acceptance runs above. Decision: **READY** for this
+repair; supported-state acceptance remains pending fresh evidence.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.

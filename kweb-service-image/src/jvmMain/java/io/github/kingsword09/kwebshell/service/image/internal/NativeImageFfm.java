@@ -6,11 +6,13 @@ import java.lang.foreign.GroupLayout;
 import java.lang.foreign.MemoryLayout;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
-import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static java.lang.foreign.ValueLayout.ADDRESS;
 import static java.lang.foreign.ValueLayout.JAVA_INT;
@@ -24,6 +26,10 @@ public final class NativeImageFfm implements AutoCloseable {
     public static final int STATUS_ABI_MISMATCH = 2;
     public static final int STATUS_NATIVE_UNAVAILABLE = 3;
     public static final int STATUS_NATIVE_FAILED = 4;
+    public static final int STATUS_HANDLE_LIMIT = 5;
+    public static final int STATUS_OUTCOME_UNKNOWN = 6;
+    public static final int MAX_NATIVE_HANDLES = 256;
+    private static final long MAX_PIXELS = 6_000_000L;
     private static final GroupLayout RGBA = MemoryLayout.structLayout(
         JAVA_INT.withName("struct_size"),
         JAVA_INT.withName("abi_version"),
@@ -33,22 +39,28 @@ public final class NativeImageFfm implements AutoCloseable {
         JAVA_LONG.withName("size")
     );
 
-    private final Arena arena;
+    // GdkPixbuf registers process-global GTypes whose callbacks require its DSO
+    // to remain loaded. Owners release images, never the provider library.
+    private static final ConcurrentHashMap<Path, SymbolLookup> LIBRARIES = new ConcurrentHashMap<>();
     private final MethodHandle create;
     private final MethodHandle release;
     private final MethodHandle liveCount;
     private final MethodHandle statusName;
     private final String provider;
+    // All provider calls and handle state transitions use this object's monitor.
+    // NativeHandle never takes its own monitor, which avoids owner/handle lock inversion.
+    private final Set<NativeHandle> handles = new HashSet<>();
+    private NativeFailure closeFailure;
+    private boolean closing;
+    private boolean closed;
 
     private NativeImageFfm(
-        Arena arena,
         MethodHandle create,
         MethodHandle release,
         MethodHandle liveCount,
         MethodHandle statusName,
         String provider
     ) {
-        this.arena = arena;
         this.create = create;
         this.release = release;
         this.liveCount = liveCount;
@@ -62,9 +74,10 @@ public final class NativeImageFfm implements AutoCloseable {
             !Files.isRegularFile(requestedPath)) {
             throw new IllegalArgumentException("The image native library must be an absolute regular file.");
         }
-        final Arena arena = Arena.ofShared();
         try {
-            final SymbolLookup lookup = SymbolLookup.libraryLookup(requestedPath.toRealPath(), arena);
+            final SymbolLookup lookup = LIBRARIES.computeIfAbsent(
+                requestedPath.toRealPath(), path -> SymbolLookup.libraryLookup(path, Arena.global())
+            );
             final MethodHandle abi = downcall(lookup, "kweb_image_abi_version", FunctionDescriptor.of(JAVA_INT));
             if ((int) abi.invokeExact() != ABI_VERSION) {
                 throw new IllegalStateException("KWebNativeImage ABI version mismatch.");
@@ -76,7 +89,6 @@ public final class NativeImageFfm implements AutoCloseable {
                 lookup, "kweb_image_provider_id", FunctionDescriptor.of(ADDRESS)
             );
             return new NativeImageFfm(
-                arena,
                 downcall(lookup, "kweb_image_create", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS)),
                 downcall(lookup, "kweb_image_release", FunctionDescriptor.of(JAVA_INT, JAVA_LONG)),
                 downcall(lookup, "kweb_image_live_count", FunctionDescriptor.of(JAVA_INT, ADDRESS)),
@@ -84,7 +96,6 @@ public final class NativeImageFfm implements AutoCloseable {
                 readCString((MemorySegment) providerId.invokeExact())
             );
         } catch (Throwable error) {
-            arena.close();
             if (error instanceof RuntimeException runtime) throw runtime;
             throw new IllegalStateException("KWebNativeImage native ABI could not be bound.", error);
         }
@@ -94,8 +105,16 @@ public final class NativeImageFfm implements AutoCloseable {
         return provider;
     }
 
-    public NativeHandle create(byte[] rgba, int width, int height) {
+    public synchronized NativeHandle create(byte[] rgba, int width, int height) {
+        requireOpen();
         Objects.requireNonNull(rgba, "rgba");
+        if (width <= 0 || height <= 0 || width > 16_384 || height > 16_384 ||
+            (long) width * height > MAX_PIXELS || (long) width * height * 4 != rgba.length) {
+            throw new NativeFailure(STATUS_INVALID_ARGUMENT, "invalid-argument");
+        }
+        if (handles.size() >= MAX_NATIVE_HANDLES) {
+            throw new NativeFailure(STATUS_HANDLE_LIMIT, "handle-limit");
+        }
         try (Arena callArena = Arena.ofConfined()) {
             final MemorySegment bytes = callArena.allocate(Math.max(1, rgba.length), 1);
             if (rgba.length != 0) bytes.copyFrom(MemorySegment.ofArray(rgba));
@@ -109,7 +128,19 @@ public final class NativeImageFfm implements AutoCloseable {
             final MemorySegment output = callArena.allocate(JAVA_LONG);
             final int status = (int) create.invokeExact(input, output);
             if (status != STATUS_OK) throw failure(status);
-            return new NativeHandle(output.get(JAVA_LONG, 0));
+            final long value = output.get(JAVA_LONG, 0);
+            if (value == 0) throw new NativeFailure(STATUS_NATIVE_FAILED, "native-create-returned-zero-handle");
+            try {
+                final NativeHandle handle = new NativeHandle(value);
+                handles.add(handle);
+                return handle;
+            } catch (Throwable registrationError) {
+                final int cleanup = (int) release.invokeExact(value);
+                if (cleanup != STATUS_OK) {
+                    throw new NativeFailure(STATUS_OUTCOME_UNKNOWN, "native-registration-cleanup-failed", registrationError);
+                }
+                throw registrationError;
+            }
         } catch (NativeFailure error) {
             throw error;
         } catch (Throwable error) {
@@ -117,7 +148,8 @@ public final class NativeImageFfm implements AutoCloseable {
         }
     }
 
-    public int liveCount() {
+    public synchronized int liveCount() {
+        requireOpen();
         try (Arena callArena = Arena.ofConfined()) {
             final MemorySegment output = callArena.allocate(JAVA_INT);
             final int status = (int) liveCount.invokeExact(output);
@@ -131,38 +163,49 @@ public final class NativeImageFfm implements AutoCloseable {
     }
 
     @Override
-    public void close() {
-        arena.close();
+    public synchronized void close() {
+        if (closed) return;
+        if (closeFailure != null) throw closeFailure;
+        closing = true;
+        NativeFailure failure = null;
+        for (NativeHandle handle : Set.copyOf(handles)) {
+            try {
+                release(handle);
+            } catch (NativeFailure error) {
+                if (failure == null) failure = error;
+            }
+        }
+        if (failure != null) {
+            closeFailure = failure;
+            throw failure;
+        }
+        closed = true;
     }
 
     public final class NativeHandle implements AutoCloseable {
         private final long value;
         private boolean closed;
+        private NativeFailure releaseFailure;
 
         private NativeHandle(long value) {
             this.value = value;
         }
 
         public long value() {
-            return value;
+            synchronized (NativeImageFfm.this) {
+                return value;
+            }
         }
 
-        public synchronized boolean isClosed() {
-            return closed;
+        public boolean isClosed() {
+            synchronized (NativeImageFfm.this) {
+                return closed;
+            }
         }
 
         @Override
-        public synchronized void close() {
-            if (closed) return;
-            try {
-                final int status = (int) release.invokeExact(value);
-                if (status != STATUS_OK) throw failure(status);
-                closed = true;
-            } catch (NativeFailure error) {
-                throw error;
-            } catch (Throwable error) {
-                throw new NativeFailure(STATUS_NATIVE_FAILED, "native-release-failed", error);
-            }
+        public void close() {
+            NativeImageFfm.this.release(this);
         }
     }
 
@@ -190,6 +233,28 @@ public final class NativeImageFfm implements AutoCloseable {
             return new NativeFailure(status, name);
         } catch (Throwable error) {
             return new NativeFailure(status, "native-status-" + status, error);
+        }
+    }
+
+    private void requireOpen() {
+        if (closing || closed) throw new IllegalStateException("KWebNativeImage native provider is closed.");
+    }
+
+    private synchronized void release(NativeHandle handle) {
+        if (handle.closed) return;
+        if (handle.releaseFailure != null) throw handle.releaseFailure;
+        if (closed) throw new IllegalStateException("KWebNativeImage native provider is closed.");
+        try {
+            final int status = (int) release.invokeExact(handle.value);
+            if (status != STATUS_OK) throw failure(status);
+            handle.closed = true;
+            handles.remove(handle);
+        } catch (NativeFailure error) {
+            handle.releaseFailure = error;
+            throw error;
+        } catch (Throwable error) {
+            handle.releaseFailure = new NativeFailure(STATUS_OUTCOME_UNKNOWN, "native-release-failed", error);
+            throw handle.releaseFailure;
         }
     }
 

@@ -86,6 +86,10 @@ export interface NotificationShowRequest { id: string; tag?: string | null; titl
 export interface NotificationShowResponse { id: string; outcome: string; replacedId: string | null; sequence: string; }
 export interface NotificationCloseRequest { id: string; }
 export interface NotificationCloseResponse { id: string; sequence: string; }
+export interface ImageDecodeRequest { sourceKind: string; format: string; payload: string; resourceId?: string | null; sha256?: string | null; intent: string; }
+export interface ImageResponse { width: number; height: number; alphaMode: string; colorSpace: string; intent: string; pngBase64: string; }
+export interface ImageEncodeRequest { width: number; height: number; alphaMode: string; colorSpace: string; intent: string; pngBase64: string; }
+export interface ImageEncodedResponse { format: string; pngBase64: string; }
 
 export interface KWebBridgeCallOptions {
   readonly signal?: AbortSignal;
@@ -97,6 +101,8 @@ export interface DesktopApi {
   closeClipboardPayload(request: ClipboardClosePayloadRequest, options?: KWebBridgeCallOptions): Promise<ClipboardClosePayloadResponse>;
   closeHandle(request: FilesCloseHandleRequest, options?: KWebBridgeCallOptions): Promise<FilesCloseHandleResponse>;
   closeNotification(request: NotificationCloseRequest, options?: KWebBridgeCallOptions): Promise<NotificationCloseResponse>;
+  decodeImage(request: ImageDecodeRequest, options?: KWebBridgeCallOptions): Promise<ImageResponse>;
+  encodeImagePng(request: ImageEncodeRequest, options?: KWebBridgeCallOptions): Promise<ImageEncodedResponse>;
   getNotificationCapabilities(request: NotificationScopeRequest, options?: KWebBridgeCallOptions): Promise<NotificationCapabilitiesResponse>;
   getPath(name: ElectronPathName, options?: KWebBridgeCallOptions): Promise<string>;
   listDirectory(request: FilesListDirectoryRequest, options?: KWebBridgeCallOptions): Promise<FilesListDirectoryResponse>;
@@ -167,6 +173,11 @@ export function installDesktopPreload(): void {
     throw new KWebElectronMigrationError("migration.shell-bridge.missing", "ShellBridge is required by this migration facade.");
   }
   const shellClient = shellBridge.createClient();
+  const imageBridge = window.ImageBridge;
+  if (!imageBridge || typeof imageBridge.createClient !== "function") {
+    throw new KWebElectronMigrationError("migration.image-bridge.missing", "ImageBridge is required by this migration facade.");
+  }
+  const imageClient = imageBridge.createClient();
   const notificationsBridge = window.NotificationsBridge;
   if (!notificationsBridge || typeof notificationsBridge.createClient !== "function") {
     throw new KWebElectronMigrationError("migration.notifications-bridge.missing", "NotificationsBridge is required by this migration facade.");
@@ -180,6 +191,8 @@ export function installDesktopPreload(): void {
     closeClipboardPayload: (request: ClipboardClosePayloadRequest, options?: KWebBridgeCallOptions) => clipboardClient.closePayload(request, options) as Promise<ClipboardClosePayloadResponse>,
     closeHandle: (request: FilesCloseHandleRequest, options?: KWebBridgeCallOptions) => filesClient.closeHandle(request, options) as Promise<FilesCloseHandleResponse>,
     closeNotification: (request: NotificationCloseRequest, options?: KWebBridgeCallOptions) => notificationsClient.close(request, options) as Promise<NotificationCloseResponse>,
+    decodeImage: (request: ImageDecodeRequest, options?: KWebBridgeCallOptions) => imageClient.decode(request, options) as Promise<ImageResponse>,
+    encodeImagePng: (request: ImageEncodeRequest, options?: KWebBridgeCallOptions) => imageClient.encodePng(request, options) as Promise<ImageEncodedResponse>,
     getNotificationCapabilities: (request: NotificationScopeRequest, options?: KWebBridgeCallOptions) => notificationsClient.capabilities(request, options) as Promise<NotificationCapabilitiesResponse>,
     getPath: (name: ElectronPathName, options?: KWebBridgeCallOptions) => {
       const kind = pathKinds[name];
@@ -226,6 +239,9 @@ declare global {
     };
     ShellBridge: {
       createClient(): { openExternal(request: ShellExternalUriRequest, options?: KWebBridgeCallOptions): Promise<ShellActionResponse>; openResource(request: ShellResourceRequest, options?: KWebBridgeCallOptions): Promise<ShellActionResponse>; revealResource(request: ShellResourceRequest, options?: KWebBridgeCallOptions): Promise<ShellActionResponse>; trashResource(request: ShellResourceRequest, options?: KWebBridgeCallOptions): Promise<ShellActionResponse> };
+    };
+    ImageBridge: {
+      createClient(): { decode(request: ImageDecodeRequest, options?: KWebBridgeCallOptions): Promise<ImageResponse>; encodePng(request: ImageEncodeRequest, options?: KWebBridgeCallOptions): Promise<ImageEncodedResponse> };
     };
     NotificationsBridge: {
       createClient(): { close(request: NotificationCloseRequest, options?: KWebBridgeCallOptions): Promise<NotificationCloseResponse>; capabilities(request: NotificationScopeRequest, options?: KWebBridgeCallOptions): Promise<NotificationCapabilitiesResponse>; show(request: NotificationShowRequest, options?: KWebBridgeCallOptions): Promise<NotificationShowResponse> };

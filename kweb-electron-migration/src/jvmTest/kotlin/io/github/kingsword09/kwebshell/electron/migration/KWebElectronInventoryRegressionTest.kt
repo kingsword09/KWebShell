@@ -42,6 +42,17 @@ class KWebElectronInventoryRegressionTest {
         }
     }
 
+    @Test fun imageConstructionExportsMutationAndUnknownCallsRemainExplicitRewriteBlockers() {
+        for (operation in listOf("createFromBuffer(bytes)", "createFromDataURL(url)", "createFromPath(path)", "custom(bytes)")) {
+            val report = scan("import { nativeImage as image } from 'electron'; image.$operation;")
+            assertTrue(report.blockingFindings.any { it.matrixId == "native-image" && it.detail?.contains(operation.substringBefore('(')) == true }, report.toString())
+        }
+        for (operation in listOf("toPNG()", "toJPEG(90)", "resize({width:2})", "isEmpty()", "getNativeHandle()", "custom()")) {
+            val report = scan("import { nativeImage } from 'electron'; const image = nativeImage.createFromBuffer(bytes); image.$operation;")
+            assertTrue(report.blockingFindings.any { it.matrixId == "native-image" && it.detail?.endsWith(operation.substringBefore('(')) == true }, report.toString())
+        }
+    }
+
     @Test fun staticRequireWithWhitespaceIsNotDynamic() {
         assertTrue(scan("require( 'react');").findings.none { it.kind == KWebElectronInventoryFindingKind.DYNAMIC_EXECUTION })
     }

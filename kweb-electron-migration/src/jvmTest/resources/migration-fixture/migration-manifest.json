@@ -324,6 +324,38 @@
         "requiresUserGesture": false,
         "requiresOsConsent": true
       }
+    },
+    {
+      "name": "nativeImage.decode",
+      "schemaVersion": 2,
+      "requestType": "ImageDecodeRequest",
+      "responseType": "ImageResponse",
+      "serviceId": "native-image",
+      "serviceVersion": "1.0.0",
+      "operationId": "decode",
+      "status": "ADAPTER",
+      "adapter": "NATIVE_IMAGE_OPERATION",
+      "policy": {
+        "rendererGrant": "native.native-image.decode",
+        "requiresUserGesture": false,
+        "requiresOsConsent": false
+      }
+    },
+    {
+      "name": "nativeImage.encodePng",
+      "schemaVersion": 2,
+      "requestType": "ImageEncodeRequest",
+      "responseType": "ImageEncodedResponse",
+      "serviceId": "native-image",
+      "serviceVersion": "1.0.0",
+      "operationId": "encode-png",
+      "status": "ADAPTER",
+      "adapter": "NATIVE_IMAGE_OPERATION",
+      "policy": {
+        "rendererGrant": "native.native-image.encode-png",
+        "requiresUserGesture": false,
+        "requiresOsConsent": false
+      }
     }
   ],
   "preloadMethods": [
@@ -497,6 +529,24 @@
       "returnType": "Promise<NotificationCloseResponse>",
       "status": "ADAPTER",
       "adapter": "NOTIFICATIONS_OPERATION"
+    },
+    {
+      "name": "decodeImage",
+      "channel": "nativeImage.decode",
+      "parameterName": "request",
+      "parameterType": "ImageDecodeRequest",
+      "returnType": "Promise<ImageResponse>",
+      "status": "ADAPTER",
+      "adapter": "NATIVE_IMAGE_OPERATION"
+    },
+    {
+      "name": "encodeImagePng",
+      "channel": "nativeImage.encodePng",
+      "parameterName": "request",
+      "parameterType": "ImageEncodeRequest",
+      "returnType": "Promise<ImageEncodedResponse>",
+      "status": "ADAPTER",
+      "adapter": "NATIVE_IMAGE_OPERATION"
     }
   ],
   "streams": [
@@ -548,6 +598,10 @@
     },
     {
       "id": "notifications",
+      "version": "1.0.0"
+    },
+    {
+      "id": "native-image",
       "version": "1.0.0"
     }
   ],

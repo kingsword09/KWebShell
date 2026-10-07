@@ -35,6 +35,8 @@ for target in macos-arm64 windows-x64 linux-x64; do
   fi
 done
 
+python3 .github/scripts/validate_image_evidence.py --downloaded "$downloaded"
+
 windows_msix_proof="build/rfc-evidence/windows-msix-proof.zip"
 python3 .github/scripts/retain_windows_msix_evidence.py \
   --downloaded "$downloaded" --output "$windows_msix_proof" \
@@ -95,6 +97,17 @@ record() {
   fi
   if [ "$rfc" = "0027" ]; then
     arguments="$arguments --service native-image --matrix-row native-image --from-compatibility-report $extra_file"
+    for image_spec in \
+      "migration-image|migration-image-evidence.json|electron-migration" \
+      "image-package|native-image-package.json|image-integration" \
+      "image-runtime|kweb-service-image-1.0.0-${target}.zip|image-integration" \
+      "image-native-tests|image-native-tests.xml|image-integration" \
+      "image-codec-tests|TEST-io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest.xml|image-integration" \
+      "image-contract-tests|TEST-io.github.kingsword09.kwebshell.service.image.KWebImageContractTest.xml|image-integration"; do
+      IFS='|' read -r image_key image_name image_family <<< "$image_spec"
+      image_file=$(find "$downloaded" -type f -name "$image_name" -path "*${image_family}-${target}-*" | head -1)
+      arguments="$arguments --artifact $image_key=$image_file"
+    done
   fi
   ./gradlew --no-daemon :kweb-rfc-governance:rfcEvidenceRecord \
     -PrfcEvidenceArguments="$arguments"
@@ -117,7 +130,7 @@ for target in macos-arm64 windows-x64 linux-x64; do
     "0013|files.hosted|files|files-evidence.json|engine-integration|migration-files|compatibility.json|electron-migration"
     "0014|clipboard.hosted|clipboard|clipboard-evidence.json|clipboard|migration-clipboard|migration-clipboard-evidence.json|electron-migration"
     "0015|shell.hosted|shell|migration-shell-evidence.json|electron-migration|migration-shell|compatibility.json|electron-migration"
-    "0027|image.hosted|native-image|native-image-evidence.json|image-integration|compatibility|compatibility.json|image-integration"
+    "0027|image.hosted|native-image|native-image-evidence.json|image-integration|compatibility|compatibility.json|electron-migration"
     "0007|window-controls.hosted|window-controls-report|window-controls-report.json|provider-lifecycle"
   )
   count=0

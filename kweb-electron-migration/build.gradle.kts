@@ -40,6 +40,7 @@ kotlin {
             implementation(project(":kweb-service-clipboard"))
             implementation(project(":kweb-service-shell"))
             implementation(project(":kweb-service-notifications"))
+            implementation(project(":kweb-service-image"))
             implementation(project(":kweb-example-support"))
             implementation(libs.compose.ui.desktop)
             implementation(libs.kotlinx.coroutines.core)
@@ -247,6 +248,18 @@ val notificationsNativeLibrary = operatingSystem.map { name ->
 val notificationsBridgeJavascript = rootProject.layout.projectDirectory.file(
     "kweb-service-notifications/build/generated/kwebBridge/notifications/NotificationsBridgeBridge.js",
 )
+val imageNativeLibrary = operatingSystem.map { name ->
+    val fileName = when {
+        name.lowercase(Locale.ROOT).startsWith("windows") -> "kwebshell_image.dll"
+        name.lowercase(Locale.ROOT).startsWith("mac") -> "libkwebshell_image.dylib"
+        name.lowercase(Locale.ROOT).startsWith("linux") -> "libkwebshell_image.so"
+        else -> throw GradleException("Unsupported desktop operating system '$name'.")
+    }
+    rootProject.layout.projectDirectory.file("kweb-service-image/build/native/contract/$fileName").asFile
+}
+val imageBridgeJavascript = rootProject.layout.projectDirectory.file(
+    "kweb-service-image/build/generated/kwebBridge/image/ImageBridgeBridge.js",
+)
 val migrationIntegrationRoot = layout.buildDirectory.dir("migration-integration")
 val migrationIntegrationReport = compatibilityOutput
 val macNotificationActionFixtureSource = rootProject.layout.projectDirectory.file(
@@ -282,6 +295,8 @@ val migrationIntegrationJavaOptions = providers.provider {
         "-Dkweb.migration.files.bridge.javascript=${filesBridgeJavascript.asFile.absolutePath}",
         "-Dkweb.migration.shell.bridge.javascript=${shellBridgeJavascript.asFile.absolutePath}",
         "-Dkweb.migration.clipboard.bridge.javascript=${clipboardBridgeJavascript.asFile.absolutePath}",
+        "-Dkweb.image.native.library.path=${imageNativeLibrary.get().absolutePath}",
+        "-Dkweb.migration.image.bridge.javascript=${imageBridgeJavascript.asFile.absolutePath}",
         "-Dkweb.notifications.native.library.path=${notificationsNativeLibrary.get().absolutePath}",
         "-Dkweb.migration.notification.action.helper=${macNotificationActionFixture.get().asFile.absolutePath}",
         "-Dkweb.migration.notification.action.helper.windows=${windowsNotificationActionFixture.asFile.absolutePath}",
@@ -379,6 +394,8 @@ val electronMigrationIntegrationTest = tasks.register<Exec>("electronMigrationIn
         ":kweb-service-shell:generateShellBridge",
         ":kweb-service-clipboard:buildNative",
         ":kweb-service-clipboard:generateClipboardBridge",
+        ":kweb-service-image:nativeTest",
+        ":kweb-service-image:generateImageBridge",
         ":kweb-service-notifications:nativeTest",
         ":kweb-service-notifications:generateNotificationsBridge",
     )
@@ -404,6 +421,8 @@ val electronMigrationIntegrationTest = tasks.register<Exec>("electronMigrationIn
     inputs.file(clipboardNativeLibrary)
     inputs.file(notificationsBridgeJavascript)
     inputs.file(notificationsNativeLibrary)
+    inputs.file(imageNativeLibrary)
+    inputs.file(imageBridgeJavascript)
     inputs.file(servicesNativeLibrary)
     inputs.file(generatedDirectory.get().file("KWebElectronPreload.js"))
     inputs.file(migrationIntegrationReport)

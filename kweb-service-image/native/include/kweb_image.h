@@ -16,7 +16,11 @@ typedef enum kweb_image_status {
   KWEB_IMAGE_STATUS_ABI_MISMATCH = 2,
   KWEB_IMAGE_STATUS_NATIVE_UNAVAILABLE = 3,
   KWEB_IMAGE_STATUS_NATIVE_FAILED = 4,
+  KWEB_IMAGE_STATUS_HANDLE_LIMIT = 5,
+  KWEB_IMAGE_STATUS_OUTCOME_UNKNOWN = 6,
 } kweb_image_status;
+
+#define KWEB_IMAGE_MAX_NATIVE_HANDLES 256U
 
 typedef struct kweb_image_rgba {
   uint32_t struct_size;
@@ -24,7 +28,7 @@ typedef struct kweb_image_rgba {
   uint32_t width;
   uint32_t height;
   const uint8_t *bytes;
-  size_t size;
+  uint64_t size;
 } kweb_image_rgba;
 
 #ifdef __cplusplus

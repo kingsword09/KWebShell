@@ -47,7 +47,7 @@ public fun KWebNativeImage.bridgeDispatcher(
                     parseIntent(request.intent),
                     png,
                 ),
-            ).let { EncodedResponse(it.format.mimeType, Base64.getEncoder().encodeToString(it.bytes)) }
+            ).let { EncodedResponse(it.format.mimeType, encodeBase64(it.bytes)) }
         }
         },
     )
@@ -69,6 +69,8 @@ private suspend fun <T> KWebNativeImage.dispatch(
         block()
     } catch (error: CancellationException) {
         throw error
+    } catch (error: KWebBridgeException) {
+        throw error
     } catch (error: KWebException) {
         throw KWebBridgeException(error.code, error.message ?: "The image operation failed.", error)
     } catch (error: Throwable) {
@@ -77,10 +79,10 @@ private suspend fun <T> KWebNativeImage.dispatch(
 }
 
 private fun decodeBase64(payload: String): ByteArray = try {
-    if (payload.length > ((KWEB_IMAGE_MAX_ENCODED_BYTES + 2) / 3) * 4) {
-        throw invalidBridge("The image payload exceeds the encoded transport bound.")
+    if (payload.length > ((KWEB_IMAGE_MAX_BRIDGE_BYTES + 2) / 3) * 4) {
+        throw KWebBridgeException(KWebImageErrorCode.PAYLOAD_TOO_LARGE, "The image payload exceeds the 512 KiB bridge bound.")
     }
-    Base64.getDecoder().decode(payload)
+    Base64.getDecoder().decode(payload).also { requireBridgeBound(it) }
 } catch (_: IllegalArgumentException) {
     throw invalidBridge("The image payload is not valid base64.")
 }
@@ -100,10 +102,21 @@ private fun KWebImage.toResponse(): ImageResponse = ImageResponse(
     alphaMode.name,
     colorSpace.name,
     intent.name,
-    Base64.getEncoder().encodeToString(png.bytes),
+    encodeBase64(png.bytes),
 )
 
 private fun invalidBridge(message: String): KWebBridgeException = KWebBridgeException(
     KWebImageErrorCode.PAYLOAD_INVALID,
     message,
 )
+
+private fun requireBridgeBound(bytes: ByteArray) {
+    if (bytes.size > KWEB_IMAGE_MAX_BRIDGE_BYTES) {
+        throw KWebBridgeException(KWebImageErrorCode.PAYLOAD_TOO_LARGE, "The image payload exceeds the 512 KiB bridge bound.")
+    }
+}
+
+private fun encodeBase64(bytes: ByteArray): String {
+    requireBridgeBound(bytes)
+    return Base64.getEncoder().encodeToString(bytes)
+}

@@ -10,12 +10,12 @@ void FreePixels(guchar *pixels, gpointer) { g_free(pixels); }
 
 namespace kwebshell::image {
 
-const char *ProviderId() { return "linux.GdkPixbuf"; }
+const char *ProviderId() noexcept { return "linux.GdkPixbuf"; }
 
-uint32_t CreateNative(const kweb_image_rgba &input, void **value) {
+uint32_t CreateNative(const kweb_image_rgba &input, void **value) noexcept {
   if (value == nullptr) return KWEB_IMAGE_STATUS_INVALID_ARGUMENT;
   *value = nullptr;
-  auto *pixels = static_cast<guchar *>(g_malloc(input.size));
+  auto *pixels = static_cast<guchar *>(g_try_malloc(input.size));
   if (pixels == nullptr) return KWEB_IMAGE_STATUS_NATIVE_FAILED;
   std::memcpy(pixels, input.bytes, input.size);
   GdkPixbuf *pixbuf = gdk_pixbuf_new_from_data(
@@ -30,7 +30,7 @@ uint32_t CreateNative(const kweb_image_rgba &input, void **value) {
   return KWEB_IMAGE_STATUS_OK;
 }
 
-uint32_t ReleaseNative(void *value) {
+uint32_t ReleaseNative(void *value) noexcept {
   if (value == nullptr) return KWEB_IMAGE_STATUS_INVALID_ARGUMENT;
   g_object_unref(static_cast<GObject *>(value));
   return KWEB_IMAGE_STATUS_OK;

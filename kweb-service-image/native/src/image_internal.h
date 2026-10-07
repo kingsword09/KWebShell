@@ -7,9 +7,9 @@
 
 namespace kwebshell::image {
 
-uint32_t CreateNative(const kweb_image_rgba &input, void **value);
-uint32_t ReleaseNative(void *value);
-const char *ProviderId();
+uint32_t CreateNative(const kweb_image_rgba &input, void **value) noexcept;
+uint32_t ReleaseNative(void *value) noexcept;
+const char *ProviderId() noexcept;
 
 }  // namespace kwebshell::image
 

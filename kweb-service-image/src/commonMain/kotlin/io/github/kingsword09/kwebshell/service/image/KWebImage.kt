@@ -33,15 +33,15 @@ public class KWebImageEncoded(
     public val format: KWebImageFormat,
     bytes: ByteArray,
 ) {
-    private val byteSnapshot = bytes.copyOf()
-    public val bytes: ByteArray get() = byteSnapshot.copyOf()
-
     init {
-        if (byteSnapshot.isEmpty()) invalid(KWebImageErrorCode.PAYLOAD_INVALID, "Image bytes cannot be empty.")
-        if (byteSnapshot.size > KWEB_IMAGE_MAX_ENCODED_BYTES) {
+        if (bytes.isEmpty()) invalid(KWebImageErrorCode.PAYLOAD_INVALID, "Image bytes cannot be empty.")
+        if (bytes.size > KWEB_IMAGE_MAX_ENCODED_BYTES) {
             invalid(KWebImageErrorCode.PAYLOAD_TOO_LARGE, "The encoded image exceeds the 16 MiB bound.")
         }
     }
+
+    private val byteSnapshot = bytes.copyOf()
+    public val bytes: ByteArray get() = byteSnapshot.copyOf()
 
     override fun equals(other: Any?): Boolean =
         other is KWebImageEncoded && format == other.format && byteSnapshot.contentEquals(other.byteSnapshot)
@@ -247,13 +247,16 @@ public object KWebImageErrorCode {
     public const val CANCELLED: String = "image.cancelled"
     public const val ALPHA_MODE_UNSUPPORTED: String = "image.alpha-mode-unsupported"
     public const val VARIANT_INVALID: String = "image.variant-invalid"
+    public const val HANDLE_LIMIT: String = "image.handle-limit"
 }
 
+public const val KWEB_IMAGE_MAX_BRIDGE_BYTES: Int = 512 * 1024
 public const val KWEB_IMAGE_MAX_ENCODED_BYTES: Int = 16 * 1024 * 1024
 public const val KWEB_IMAGE_MAX_DECODED_BYTES: Long = 256L * 1024L * 1024L
-public const val KWEB_IMAGE_MAX_PIXELS: Long = 64L * 1024L * 1024L
+public const val KWEB_IMAGE_MAX_PIXELS: Long = 6_000_000L
 public const val KWEB_IMAGE_MAX_DIMENSION: Int = 16_384
 public const val KWEB_IMAGE_MAX_VARIANTS: Int = 16
+public const val KWEB_IMAGE_MAX_NATIVE_HANDLES: Int = 256
 
 internal val SHA256_PATTERN = Regex("[0-9a-f]{64}")
 

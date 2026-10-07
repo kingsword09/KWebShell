@@ -8,17 +8,17 @@
 
 namespace kwebshell::image {
 
-const char *ProviderId() { return "macos.CoreGraphics.CGImage"; }
+const char *ProviderId() noexcept { return "macos.CoreGraphics.CGImage"; }
 
-uint32_t CreateNative(const kweb_image_rgba &input, void **value) {
+uint32_t CreateNative(const kweb_image_rgba &input, void **value) noexcept {
   if (value == nullptr) return KWEB_IMAGE_STATUS_INVALID_ARGUMENT;
   *value = nullptr;
   CFDataRef data = CFDataCreate(kCFAllocatorDefault, input.bytes, static_cast<CFIndex>(input.size));
   if (data == nullptr) return KWEB_IMAGE_STATUS_NATIVE_FAILED;
   CGDataProviderRef provider = CGDataProviderCreateWithCFData(data);
-  CGColorSpaceRef color_space = CGColorSpaceCreateDeviceRGB();
+  CGColorSpaceRef color_space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
   const CGBitmapInfo bitmap_info = static_cast<CGBitmapInfo>(kCGImageAlphaLast) |
-      static_cast<CGBitmapInfo>(kCGBitmapByteOrderDefault);
+      static_cast<CGBitmapInfo>(kCGBitmapByteOrder32Big);
   CGImageRef image = provider == nullptr || color_space == nullptr
       ? nullptr
       : CGImageCreate(input.width, input.height, 8, 32, input.width * 4,
@@ -32,7 +32,7 @@ uint32_t CreateNative(const kweb_image_rgba &input, void **value) {
   return KWEB_IMAGE_STATUS_OK;
 }
 
-uint32_t ReleaseNative(void *value) {
+uint32_t ReleaseNative(void *value) noexcept {
   if (value == nullptr) return KWEB_IMAGE_STATUS_INVALID_ARGUMENT;
   CGImageRelease(static_cast<CGImageRef>(value));
   return KWEB_IMAGE_STATUS_OK;

@@ -7,9 +7,9 @@
 
 namespace kwebshell::image {
 
-const char *ProviderId() { return "windows.Win32.HBITMAP"; }
+const char *ProviderId() noexcept { return "windows.Win32.HBITMAP"; }
 
-uint32_t CreateNative(const kweb_image_rgba &input, void **value) {
+uint32_t CreateNative(const kweb_image_rgba &input, void **value) noexcept {
   if (value == nullptr) return KWEB_IMAGE_STATUS_INVALID_ARGUMENT;
   *value = nullptr;
   BITMAPINFO info{};
@@ -36,7 +36,7 @@ uint32_t CreateNative(const kweb_image_rgba &input, void **value) {
   return KWEB_IMAGE_STATUS_OK;
 }
 
-uint32_t ReleaseNative(void *value) {
+uint32_t ReleaseNative(void *value) noexcept {
   if (value == nullptr || !DeleteObject(static_cast<HBITMAP>(value))) {
     return KWEB_IMAGE_STATUS_INVALID_ARGUMENT;
   }

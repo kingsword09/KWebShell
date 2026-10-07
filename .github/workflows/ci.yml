@@ -291,7 +291,11 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: image-integration-${{ matrix.target }}-${{ github.sha }}
-          path: kweb-service-image/build/reports/image-integration/
+          path: |
+            kweb-service-image/build/reports/image-integration/
+            kweb-service-image/build/reports/image-native-tests.xml
+            kweb-service-image/build/test-results/jvmTest/*.xml
+            kweb-service-image/build/distributions/*.zip
           if-no-files-found: error
           retention-days: 14
 

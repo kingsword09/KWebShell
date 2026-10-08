@@ -321,9 +321,27 @@ unchanged 97 recorded artifact digests and the preserved Windows report bytes.
 All 35 local script tests, strict governance, full original-objective diff check
 and follow-up diff check pass. W72.1-W72.3: **PASS**; this closes P5.6's discovered
 formatting gap without rewriting historical evidence or the earlier finding.
-The final record-only follow-up changes no attribute/test/native bytes; run its
-strict documentation gate before squash. Full RFC 0005 remains `Implementing`
-and broader contract/acceptance remains `BLOCKED`.
+The final record-only follow-up changes no attribute/test/native bytes. PR #72
+was squash-merged as `62ca0b6b1d2e2386f6ecdfe1a891715d3a801343`, matching
+current `main`; its commit used `[skip ci]`, and `gh pr checks 72` reported no
+checks. The following review closes that missing documentation gate without
+repeating the native matrix.
+
+### Final documentation gate for PR #72
+
+- Reviewed baseline: squash result `62ca0b6b1d2e2386f6ecdfe1a891715d3a801343`,
+  with topic branch `rfc-evidence-json-line-endings` deleted.
+- Local verification on that exact `main` tree: `git diff --check cfc048d 62ca0b6`;
+  `python3 -m unittest discover -s .github/scripts/tests -p 'test_*.py' -v`
+  (35 passed); and `./gradlew --no-daemon
+  :kweb-rfc-governance:rfcGovernanceCheck` (passed).
+- W72.1/W72.2 remain `PASS` from the reviewed #72 diff and retained-byte checks.
+- W72.3 hosted documentation gate on this record-only follow-up: `NOT_RUN` until
+  the Documentation workflow passes for its final PR revision. The PR diff is
+  limited to this review record; no evidence bytes, attributes, tests, runtime
+  contracts or native code change.
+- Full RFC 0005 remains `Implementing`; broader contract/acceptance remains
+  `BLOCKED`.
 
 [manifest-model]: ../../kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronMigrationContract.kt
 [manifest-tests]: ../../kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronManifestTest.kt

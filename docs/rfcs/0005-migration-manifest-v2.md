@@ -313,6 +313,18 @@ hosted documentation gate is still `NOT_RUN`. No evidence file or manifest was
 edited. Full final acceptance waits for that gate rather than treating local
 success as a hosted result.
 
+Metadata-correction final acceptance: Codex, separate same-contributor pass,
+2026-10-08, reviewed implementation `fd3fe42d1b55b17d145e3bf6b6c73eb4b90a1060`.
+Hosted documentation/governance run `37746280328` passed at that revision.
+Reviewed the complete three-file diff, scoped attribute, four actual-Git tests,
+unchanged 97 recorded artifact digests and the preserved Windows report bytes.
+All 35 local script tests, strict governance, full original-objective diff check
+and follow-up diff check pass. W72.1-W72.3: **PASS**; this closes P5.6's discovered
+formatting gap without rewriting historical evidence or the earlier finding.
+The final record-only follow-up changes no attribute/test/native bytes; run its
+strict documentation gate before squash. Full RFC 0005 remains `Implementing`
+and broader contract/acceptance remains `BLOCKED`.
+
 [manifest-model]: ../../kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronMigrationContract.kt
 [manifest-tests]: ../../kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronManifestTest.kt
 [inventory-tests]: ../../kweb-electron-migration/src/jvmTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronInventoryRegressionTest.kt

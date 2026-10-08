@@ -321,9 +321,33 @@ unchanged 97 recorded artifact digests and the preserved Windows report bytes.
 All 35 local script tests, strict governance, full original-objective diff check
 and follow-up diff check pass. W72.1-W72.3: **PASS**; this closes P5.6's discovered
 formatting gap without rewriting historical evidence or the earlier finding.
-The final record-only follow-up changes no attribute/test/native bytes; run its
-strict documentation gate before squash. Full RFC 0005 remains `Implementing`
-and broader contract/acceptance remains `BLOCKED`.
+The final record-only follow-up changes no attribute/test/native bytes. PR #72
+was squash-merged as `62ca0b6b1d2e2386f6ecdfe1a891715d3a801343`, matching
+current `main`; its commit used `[skip ci]`, and `gh pr checks 72` reported no
+checks. The following review closes that missing documentation gate without
+repeating the native matrix.
+
+### Final documentation gate for PR #72
+
+- Reviewed baseline: squash result `62ca0b6b1d2e2386f6ecdfe1a891715d3a801343`,
+  with topic branch `rfc-evidence-json-line-endings` deleted.
+- Local verification on that exact `main` tree: `git diff --check cfc048d 62ca0b6`;
+  `python3 -m unittest discover -s .github/scripts/tests -p 'test_*.py' -v`
+  (35 passed); and `./gradlew --no-daemon
+  :kweb-rfc-governance:rfcGovernanceCheck` (passed).
+- W72.1/W72.2 remain `PASS` from the reviewed #72 diff and retained-byte checks.
+- W72.3 hosted documentation gate: **PASS**. Documentation workflow run
+  `37753338921` passed in 41 seconds on PR #73 head
+  `85b846e7b9024c8aa08b7f47a90a202331f43b44`. The final PR-head run must also
+  pass before squash; the only follow-up change is this review result, which
+  does not alter the check or any executable contract.
+- Reviewer: Codex, separate same-contributor final review pass, 2026-10-08.
+  The complete PR diff is this review record; no evidence bytes, attributes,
+  tests, runtime contracts or native code change.
+- Final decision: **PASS** for W72.1-W72.3, subject to the final PR-head
+  Documentation workflow remaining green.
+- Full RFC 0005 remains `Implementing`; broader contract/acceptance remains
+  `BLOCKED`.
 
 [manifest-model]: ../../kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronMigrationContract.kt
 [manifest-tests]: ../../kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronManifestTest.kt

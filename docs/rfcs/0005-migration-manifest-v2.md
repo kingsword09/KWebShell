@@ -271,6 +271,60 @@ of the downloaded CEF artifact or substitute hosted runtime acceptance.
 [p5-evidence]: evidence/artifacts/0005/3a84e07250fd12f738ce371648a423aafc2fd635
 [p5-manifest]: evidence/manifest.json
 
+### Post-merge formatting finding and focused correction
+
+On 2026-10-08, main revision `74561bc` passed migration JVM tests and strict
+governance, but `git diff cfc048d 74561bc --check` reported the retained Windows
+MSIX JSON report's CRLF as trailing whitespace. The pre-merge diff check covered
+tracked modifications, not the then-untracked imported artifacts. The initial
+P5.6 complete-diff formatting claim was therefore incomplete; this finding is
+recorded rather than retrospectively hidden. P5.1-P5.5 runtime/byte evidence and
+all native verification remain valid.
+
+The focused follow-up under the existing design-plan P5.6 objective must:
+
+- W72.1: preserve every imported artifact byte/digest; do not rewrite Windows
+  JSON line endings or update its recorded checksum to mask normalization.
+- W72.2: recognize CRLF only for retained `docs/rfcs/evidence/artifacts/**/*.json`
+  using a path-scoped Git whitespace attribute, retaining real trailing-space
+  failures and the normal whitespace rules outside retained evidence.
+- W72.3: exercise actual Git diff/staging operations and the real retained
+  Windows report; pass full historical-objective and follow-up diff checks,
+  script unit tests, strict governance and the documentation review gate.
+
+Readiness review: Codex, separate same-contributor pass, 2026-10-08, base
+`74561bc` and W72.1-W72.3 above; `READY` for this repository-metadata repair.
+The existing XML attribute already establishes exact-byte CRLF retention; JSON
+needs the same scoped rule. No service/API/provider, native artifact or bound
+runtime contract changes, so repeating the CEF matrix is `NOT_APPLICABLE`.
+Required verification is actual Git behavior, raw-byte checks, existing script
+tests and strict governance. Final follow-up acceptance is `NOT_RUN` until those
+checks and the complete diff review pass.
+
+Follow-up implementation review: Codex, separate same-contributor pass,
+2026-10-08, base `74561bc` plus the three-file attribute/test/review patch.
+The JSON-only retained-evidence rule changes whitespace reporting, not stored
+bytes or normal JSON rules. Four real-Git tests prove scoped CRLF acceptance,
+continued rejection of actual trailing spaces, exact staging bytes and the
+recorded digest of the real Windows MSIX report. All 35 script tests, local
+strict governance, `git diff cfc048d 74561bc --check` with the scoped attribute,
+and the complete follow-up diff check pass. W72.1/W72.2 are `PASS`; W72.3's
+hosted documentation gate is still `NOT_RUN`. No evidence file or manifest was
+edited. Full final acceptance waits for that gate rather than treating local
+success as a hosted result.
+
+Metadata-correction final acceptance: Codex, separate same-contributor pass,
+2026-10-08, reviewed implementation `fd3fe42d1b55b17d145e3bf6b6c73eb4b90a1060`.
+Hosted documentation/governance run `37746280328` passed at that revision.
+Reviewed the complete three-file diff, scoped attribute, four actual-Git tests,
+unchanged 97 recorded artifact digests and the preserved Windows report bytes.
+All 35 local script tests, strict governance, full original-objective diff check
+and follow-up diff check pass. W72.1-W72.3: **PASS**; this closes P5.6's discovered
+formatting gap without rewriting historical evidence or the earlier finding.
+The final record-only follow-up changes no attribute/test/native bytes; run its
+strict documentation gate before squash. Full RFC 0005 remains `Implementing`
+and broader contract/acceptance remains `BLOCKED`.
+
 [manifest-model]: ../../kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronMigrationContract.kt
 [manifest-tests]: ../../kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronManifestTest.kt
 [inventory-tests]: ../../kweb-electron-migration/src/jvmTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronInventoryRegressionTest.kt

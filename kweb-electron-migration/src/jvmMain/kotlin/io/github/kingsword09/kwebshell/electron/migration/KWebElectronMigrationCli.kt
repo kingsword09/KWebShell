@@ -46,7 +46,7 @@ public object KWebElectronMigrationCli {
                 val jsonText = Files.readString(inputPath)
                 val migrated = KWebElectronManifestMigrator.migrate(jsonText, arguments[3])
                 writeJson(migrated, outputPath)
-                println("Electron migration manifest migrated to v2.")
+                print("Electron migration manifest migrated to v2.\n")
             }
             "merge-reports" -> {
                 require(arguments.size >= 4) { "Usage: merge-reports <output.json> <report1.json> <report2.json> [report3.json ...]" }

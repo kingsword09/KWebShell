@@ -424,6 +424,29 @@ isolation while another process mutates the files.
   C1, C2, C4 and full A1.2/A4.2/A5.2/U1 coverage; this review does not approve
   or publish those capabilities.
 
+#### Hosted implementation finding (2026-10-08)
+
+- Run `37755970685` tested head `54d061475a9887d60d30e858e9ea516c77ca7b35`.
+- Linux x64 passed the full hosted verification job. Windows x64 failed P6.1:
+  `KWebElectronMigrationCliTest.migrateCommandWritesDeterministicV2WithoutChangingInput`
+  at the exact stdout assertion. The CLI used `println`, which emits the host
+  line separator; the approved command contract requires LF bytes on every
+  target. The follow-up writes an explicit `\n`; the migration JVM suite passes
+  locally after this correction. Windows hosted verification remains required.
+- macOS arm64 failed the existing
+  `:kweb-service-window-controls:windowControlsIntegrationTest` at
+  `maximized-fullscreen`, reporting that the Compose window did not reach the
+  requested state in time. No file in that provider or test changed in this
+  PR. This remains a required platform blocker until a later complete hosted
+  run passes; it is not excluded from P6.5.
+- The failed Windows/macOS verification prevented `rfc-evidence` and strict
+  governance from running. P6.7 remains `BLOCKED`; no hosted evidence was
+  imported or inferred from the Linux-only pass.
+- Reviewer: Codex, separate same-contributor review pass, 2026-10-08. The
+  failure review inspected the actual Windows failing test symbol, macOS
+  runtime exception and complete changed-file scope. The explicit-LF fix is
+  limited to the P6 success message and preserves the pre-reviewed contract.
+
 [manifest-model]: ../../kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronMigrationContract.kt
 [manifest-tests]: ../../kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronManifestTest.kt
 [inventory-tests]: ../../kweb-electron-migration/src/jvmTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronInventoryRegressionTest.kt

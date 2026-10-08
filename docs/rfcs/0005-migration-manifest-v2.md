@@ -194,12 +194,12 @@ of the downloaded CEF artifact or substitute hosted runtime acceptance.
 
 | ID / source clause | Observable requirement | Normal, negative and boundary scenarios | Planned verification / required targets | Implementation and test references | Retained evidence / tested revision | Result / review rationale |
 |---|---|---|---|---|---|---|
-| P5.1 / C3, A4.1 | All regular application inputs and every nested lockfile participate in the declared independent digests. | Binary/extensionless/config changes; nested lock variants; add/remove/rename; empty tree. | JVM filesystem and report tests; Windows x64, macOS arm64, Linux x64. | Planned `KWebElectronFiles`, scanner and report builder tests. | Pending hosted JVM XML and existing runtime/package artifacts. | NOT_RUN |
-| P5.2 / C3, A4.1 | Links and special files cannot disappear from an included input tree or escape it. | File/directory/root/dangling links, unsupported-format link, typed failures. | JVM filesystem tests; all three targets; FIFO negative case on POSIX targets. | Planned filesystem boundary tests. | Pending actual target test results. | NOT_RUN |
-| P5.3 / C3, A3.1 | Input ordering, absolute checkout location and excluded dependencies do not change digests; path framing is unambiguous. | Reversed creation order, relocated roots, excluded subtree mutations, control-character paths where OS allows. | JVM byte/path assertions; all three targets. | Planned filesystem determinism tests. | Pending actual target test results. | NOT_RUN |
-| P5.4 / C3, A4.1, A5.1 | Stale inventory fails closed for non-code inputs; fresh inventory can restore readiness without ignoring changes. | Asset/config byte edits, addition/removal/rename; independently stale lockfiles; rescan. | Actual scanner/report and CLI exit/output tests; all three targets. | Planned provenance regression tests. | Pending hosted tests and CLI output assertions. | NOT_RUN |
-| P5.5 / U1 | Existing native runtime, generated adapters, packaging and strict evidence gates remain valid. | Existing real CEF migration fixture, all advertised native providers and package checks. | Full hosted CI matrix and imported evidence; all three targets. | Existing CI/runtime/packaging suites; no native API change. | Pending fresh hosted artifact import. | NOT_RUN |
-| P5.6 / U1 | Breaking digest semantics and the limited repair scope are explicit; no incomplete RFC support is published. | Review full diff, docs, unchanged RFC status and broader blocked rows. | Separate contract and final acceptance review, `git diff --check`, governance. | This amendment, design-plan objective and tool README. | Pending final reviewed revision. | NOT_RUN |
+| P5.1 / C3, A4.1 | All regular application inputs and every nested lockfile participate in the declared independent digests. | Binary/extensionless/config changes; nested lock variants; add/remove/rename; empty tree. | JVM filesystem and report tests; Windows x64, macOS arm64, Linux x64. | [Filesystem tests][p5-files]: `everyRegularInputIsBoundIndependentlyOfParsedExtensions`, `everyNestedLockVariantHasAnIndependentDigest`, `fileRootsAreRejectedAndMissingOrEmptyTreesHaveTheEmptyDigest`; [report tests][report-tests]: `nonCodeAdditionRenameModificationAndRemovalInvalidateInventory`; `applicationInputs` shared by scanner/report. | [Three-target XML][p5-evidence], hosted run 37738042619 / tested merge 3a84e072; code revision 224a339. | PASS: real byte and path changes affect the required digest independently. |
+| P5.2 / C3, A4.1 | Links and special files cannot disappear from an included input tree or escape it. | File/directory/root/dangling links, unsupported-format link, typed failures. | JVM filesystem tests; all three targets; FIFO negative case on POSIX targets. | [Filesystem tests][p5-files]: `linksAreRejectedRegardlessOfTargetKindOrSourceExtension`, `filesystemReadFailureIsTypedAndCannotReturnPartialEntries`, `fifoIsRejectedBeforeReadingOnPosixTargets`; [report tests][report-tests]: `generatedAndApplicationLinksCannotPublishReadyReports`; no-follow visitor and root inspection. | Same [three-target XML][p5-evidence], 16 test cases per target with no skipped tests. | PASS: actual OS-created links fail in scanner/report/filesystem paths. POSIX FIFO creation is NOT_APPLICABLE on Windows, reviewed below. |
+| P5.3 / C3, A3.1 | Input ordering, absolute checkout location and excluded dependencies do not change digests; path framing is unambiguous. | Reversed creation order, relocated roots, excluded subtree mutations, control-character paths where OS allows. | JVM byte/path assertions; all three targets. | [Filesystem tests][p5-files]: `relocationAndCreationOrderPreserveDigestsButPathsAndBytesMatter`, `excludedDirectorySubtreesAreNotTraversedOrBound`, `ambiguousPathFramingIsRejectedRatherThanNormalized`; sorted POSIX-relative entries. | Same [three-target XML][p5-evidence] at tested merge 3a84e072. | PASS: exact bytes/path names matter; excluded links are not traversed. Windows rejects control-character path construction; POSIX rejects included names during traversal. |
+| P5.4 / C3, A4.1, A5.1 | Stale inventory fails closed for non-code inputs; fresh inventory can restore readiness without ignoring changes. | Asset/config byte edits, addition/removal/rename; independently stale lockfiles; rescan. | Actual scanner/report and CLI exit/output tests; all three targets. | [Report tests][report-tests]: `nonCodeAdditionRenameModificationAndRemovalInvalidateInventory`, `lockfileAndNonRendererSourceChangesInvalidateInventory`, `actualReportCliRetainsBlockedOutputAndExitsTwoForAssetChanges`; source and lock digest mismatch findings. | Same [three-target XML][p5-evidence]; actual child JVM CLI output/exit assertions, not mocked commands. | PASS: stale assets yield retained BLOCKED JSON and exit 2; a fresh inventory restores readiness. |
+| P5.5 / U1 | Existing native runtime, generated adapters, packaging and strict evidence gates remain valid. | Existing real CEF migration fixture, all advertised native providers and package checks. | Full hosted CI matrix and imported evidence; all three targets. | `.github/workflows/ci.yml` runtimeCheck, evidence recorder and strict checked-in governance; generated TypeScript/JavaScript and real CEF migration fixture. | Run 37738042619: all three verify jobs, recorder and strict governance PASS; [manifest][p5-manifest] imports 48 actual records from tested merge 3a84e072. | PASS: required native/package/runtime evidence imported byte-for-byte and strict local `:kweb-rfc-governance:check` passes. |
+| P5.6 / U1 | Breaking digest semantics and the limited repair scope are explicit; no incomplete RFC support is published. | Review full diff, docs, unchanged RFC status and broader blocked rows. | Separate contract and final acceptance review, `git diff --check`, governance. | This amendment, design-plan objective, tool README and final review below; public schemas/adapters unchanged. | Reviewed code 224a339 / identical tested merge tree; follow-up changes are only this review and actual evidence import. | PASS for this focused repair; full RFC remains Implementing and BLOCKED. |
 
 ### Focused readiness review
 
@@ -216,6 +216,60 @@ of the downloaded CEF artifact or substitute hosted runtime acceptance.
   proved by the required hosted tests. No new native runtime claim is made.
 - Decision: `READY` for this complete input-provenance repair only. C1, C2, C4
   and full-RFC acceptance remain blocking; no retrospective approval is invented.
+
+### Focused final acceptance review
+
+- Date: 2026-10-08; reviewer: Codex, a separate same-contributor final review
+  pass, not independent-person approval.
+- Code revision: `224a33917c5ebf7e367c0e0100d56f2d2901bf1f`. The actual hosted
+  pull-request merge revision is
+  `3a84e07250fd12f738ce371648a423aafc2fd635`; both Git tree IDs are
+  `b30de0b526890c886f13bc8070fea79f6a3f4d30`. This was checked by fetching
+  `refs/pull/71/merge`, not inferred from a green badge.
+- Reviewed the complete nine-file implementation diff and all 103 newly retained
+  artifacts: 97 files referenced by the 48 freshly recorded support records,
+  plus the six focused JVM XML files. The imported manifest and artifact bytes
+  match hosted run `37738042619`; historical evidence remains unchanged. The
+  recorder still creates no RFC 0005 or RFC 0016 support records.
+- All three targets ran 61 migration JVM tests without failure/error/skip. The
+  retained focused suites contain nine filesystem and seven report tests per
+  target. P5.1-P5.4 map to the exact named normal/negative/boundary cases in the
+  matrix; the CLI test checks the specific stale-source reason, saved BLOCKED
+  JSON, original renderer policy and exit 2.
+- P5.2 applicability: POSIX FIFO creation is `NOT_APPLICABLE` on the declared
+  Windows filesystem target, not a successful native FIFO simulation. Windows
+  still runs file/directory/root/dangling link and read-failure tests. For P5.3,
+  Windows path construction itself rejects control characters; macOS/Linux
+  create those names and prove typed traversal rejection. Neither branch skips
+  a test or weakens digest-framing safety.
+- Universal completion applicability: no common service API, native ABI,
+  platform provider, permission/gesture rule or renderer adapter is added. New
+  lifecycle/stream/cancellation/native-layout obligations are therefore
+  `NOT_APPLICABLE` to this offline tooling repair; existing contracts are
+  regression-tested by the real three-target runtime/CEF/package matrix. The
+  parser's existing 60-second bound and owner/process behavior are unchanged.
+  Filesystem confused-deputy/link escape, omitted inputs, stale evidence and
+  digest-record injection are covered by P5.1-P5.4. Snapshot isolation against
+  concurrently mutated inputs is explicitly not claimed.
+- P5.5: hosted Windows/macOS/Linux runtime, native, unit and packaging jobs,
+  evidence recording and strict checked-in governance all passed. Local real
+  macOS CEF migration, native image/notification tests and verification of the
+  503-entry host runtime payload also passed. Post-import local strict governance
+  passes with zero findings. Metadata READY is not full-RFC acceptance.
+- P5.6: inspected the RFC, design plan, tool README, test additions, traversal,
+  scanner/report integration, and XML-retention workflow change. Breaking digest
+  regeneration is documented with no dual behavior. Follow-up differences are
+  documentation/review and byte-exact evidence only; none changes the executable
+  contract or its test proof. Retained compatibility reports are snapshots of
+  the tested revision, not reusable reports for subsequently changed metadata;
+  packaging must regenerate its report against current inputs.
+- Decision: **PASS for P5.1-P5.6 and the focused PR #71 objective**. C1/C2/C4
+  and the broader full-application RFC acceptance remain **BLOCKED**. No full
+  RFC status promotion or retrospective full-RFC approval is made.
+
+[p5-files]: ../../kweb-electron-migration/src/jvmTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronFilesTest.kt
+[p5-evidence]: evidence/artifacts/0005/3a84e07250fd12f738ce371648a423aafc2fd635
+[p5-manifest]: evidence/manifest.json
 
 [manifest-model]: ../../kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronMigrationContract.kt
 [manifest-tests]: ../../kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronManifestTest.kt

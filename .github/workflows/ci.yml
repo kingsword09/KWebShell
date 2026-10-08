@@ -274,6 +274,7 @@ jobs:
           path: |
             kweb-electron-migration/build/reports/electron-migration/
             kweb-electron-migration/build/migration-integration/
+            kweb-electron-migration/build/test-results/jvmTest/*.xml
           if-no-files-found: error
           retention-days: 14
 

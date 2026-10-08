@@ -29,6 +29,13 @@ public class KWebElectronInventoryScanner public constructor(
 ) {
     public fun scan(root: Path, manifest: KWebElectronManifest? = null): KWebElectronInventoryReport {
         val normalized = root.toAbsolutePath().normalize()
+        if (Files.isSymbolicLink(normalized)) {
+            throw KWebElectronMigrationException(
+                KWebElectronMigrationErrorCode.INVENTORY_BLOCKED,
+                "Migration input roots must not be symbolic links.",
+                details = mapOf("path" to normalized.toString()),
+            )
+        }
         if (!Files.isDirectory(normalized)) fail("The inventory root must be a directory.")
         manifest?.let(KWebElectronManifestValidator::validate)
         val sources = KWebElectronFiles.sources(normalized)
@@ -44,7 +51,7 @@ public class KWebElectronInventoryScanner public constructor(
             root = normalized.toString(),
             filesScanned = sources.size,
             findings = findings.distinct().sortedWith(compareBy<KWebElectronInventoryFinding> { it.path }.thenBy { it.line }.thenBy { it.column }.thenBy { it.kind.name }.thenBy { it.expression }),
-            sourceSha256 = KWebElectronFiles.digestEntries(sources),
+            sourceSha256 = KWebElectronFiles.digestEntries(KWebElectronFiles.applicationInputs(normalized)),
             lockfileSha256 = KWebElectronFiles.digestEntries(KWebElectronFiles.lockfiles(normalized)),
         )
     }

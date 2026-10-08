@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="KWebElectronReportRegressionTest[jvm]" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-10-08T06:44:58.535Z" hostname="runnervmmprz5" time="3.446">
+  <properties/>
+  <testcase name="blockedMergeWritesReportAndExitsTwo()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronReportRegressionTest" time="0.596"/>
+  <testcase name="nonCodeAdditionRenameModificationAndRemovalInvalidateInventory()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronReportRegressionTest" time="0.93"/>
+  <testcase name="unsupportedDeclarationsBlockReportsEvenWithPreviouslyGeneratedFacade()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronReportRegressionTest" time="0.302"/>
+  <testcase name="generatedAndApplicationLinksCannotPublishReadyReports()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronReportRegressionTest" time="0.256"/>
+  <testcase name="actualReportCliRetainsBlockedOutputAndExitsTwoForAssetChanges()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronReportRegressionTest" time="0.694"/>
+  <testcase name="lockfileAndNonRendererSourceChangesInvalidateInventory()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronReportRegressionTest" time="0.375"/>
+  <testcase name="aggregatePreservesEntryPoliciesAndIsOrderIndependent()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronReportRegressionTest" time="0.291"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

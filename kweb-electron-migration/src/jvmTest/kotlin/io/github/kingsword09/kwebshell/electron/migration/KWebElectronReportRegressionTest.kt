@@ -6,6 +6,7 @@ import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
@@ -49,6 +50,76 @@ class KWebElectronReportRegressionTest {
         val report = build(root, generated, blocked, inventory)
         assertFalse(report.migrationReady)
         assertTrue(report.blockedReasons.any { it.startsWith("manifest-dependency:") })
+    }
+
+    @Test fun nonCodeAdditionRenameModificationAndRemovalInvalidateInventory() = fixture { root, generated, manifest, inventory ->
+        assertTrue(build(root, generated, manifest, inventory).migrationReady)
+        val asset = root.resolve("asset.bin")
+        Files.write(asset, byteArrayOf(0, -1, 42))
+        val added = build(root, generated, manifest, inventory)
+        assertEquals(listOf("inventory-source-digest-mismatch"), added.blockedReasons)
+        assertEquals(inventory.lockfileSha256, added.lockfileSha256)
+        val fresh = KWebElectronInventoryScanner().scan(root, manifest)
+        assertEquals(inventory.filesScanned, fresh.filesScanned)
+        assertTrue(build(root, generated, manifest, fresh).migrationReady)
+        Files.write(asset, byteArrayOf(0, -1, 43))
+        assertEquals(listOf("inventory-source-digest-mismatch"), build(root, generated, manifest, fresh).blockedReasons)
+        Files.write(asset, byteArrayOf(0, -1, 42))
+        Files.move(asset, root.resolve("asset-renamed.bin"))
+        assertEquals(listOf("inventory-source-digest-mismatch"), build(root, generated, manifest, fresh).blockedReasons)
+        Files.delete(root.resolve("asset-renamed.bin"))
+        assertEquals(listOf("inventory-source-digest-mismatch"), build(root, generated, manifest, fresh).blockedReasons)
+        assertTrue(build(root, generated, manifest, inventory).migrationReady)
+        root.resolve("config.json").writeText("{\"feature\":true}")
+        assertEquals(listOf("inventory-source-digest-mismatch"), build(root, generated, manifest, inventory).blockedReasons)
+    }
+
+    @Test fun actualReportCliRetainsBlockedOutputAndExitsTwoForAssetChanges() = fixture { root, generated, manifest, inventory ->
+        val inventoryPath = generated.parent.resolve("inventory.json")
+        inventoryPath.writeText(KWebElectronMigrationJson.format.encodeToString(inventory))
+        root.resolve("LICENSE").writeText("changed non-code input")
+        val output = generated.parent.resolve("report.json")
+        val java = Path.of(System.getProperty("java.home"), "bin", if (System.getProperty("os.name").startsWith("Windows")) "java.exe" else "java")
+        val process = ProcessBuilder(
+            java.toString(),
+            "-Dkweb.migration.runtime.manifest=${Path.of("runtime/cef-runtime.json").toAbsolutePath()}",
+            "-Dkweb.migration.rfc.evidence=${Path.of("docs/rfcs/evidence/manifest.json").toAbsolutePath()}",
+            "-Dkweb.migration.rfc.catalog=${Path.of("docs/rfcs").toAbsolutePath()}",
+            "-Dkweb.migration.target=macos-arm64",
+            "-cp", System.getProperty("java.class.path"), KWebElectronMigrationCli::class.java.name,
+            "report", root.resolve("migration-manifest.json").toString(), generated.toString(), inventoryPath.toString(), output.toString(),
+        ).redirectErrorStream(true).start()
+        val transcript = process.inputStream.bufferedReader().readText()
+        assertEquals(2, process.waitFor(), transcript)
+        assertTrue(transcript.contains(KWebElectronMigrationErrorCode.INVENTORY_BLOCKED), transcript)
+        val retained = KWebElectronMigrationJson.format.decodeFromString<KWebElectronCompatibilityReport>(Files.readString(output))
+        assertFalse(retained.migrationReady)
+        assertEquals(listOf("inventory-source-digest-mismatch"), retained.blockedReasons)
+        assertEquals(manifest.rendererOrigin, retained.rendererOrigin)
+    }
+
+    @Test fun generatedAndApplicationLinksCannotPublishReadyReports() = fixture { root, generated, manifest, inventory ->
+        val generatedLink = generated.parent.resolve("generated-link")
+        Files.createSymbolicLink(generatedLink, generated)
+        try {
+            assertEquals(KWebElectronMigrationErrorCode.INVENTORY_BLOCKED, assertFailsWith<KWebElectronMigrationException> {
+                build(root, generatedLink, manifest, inventory)
+            }.code)
+        } finally {
+            Files.delete(generatedLink)
+        }
+        val applicationLink = root.resolve("unparsed-resource.bin")
+        Files.createSymbolicLink(applicationLink, generated.resolve("KWebElectronPreload.js"))
+        try {
+            assertEquals(KWebElectronMigrationErrorCode.INVENTORY_BLOCKED, assertFailsWith<KWebElectronMigrationException> {
+                build(root, generated, manifest, inventory)
+            }.code)
+            assertEquals(KWebElectronMigrationErrorCode.INVENTORY_BLOCKED, assertFailsWith<KWebElectronMigrationException> {
+                KWebElectronInventoryScanner().scan(root, manifest)
+            }.code)
+        } finally {
+            Files.delete(applicationLink)
+        }
     }
 
     @Test fun aggregatePreservesEntryPoliciesAndIsOrderIndependent() = fixture { root, generated, manifest, inventory ->

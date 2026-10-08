@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="KWebElectronFilesTest[jvm]" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-10-08T06:53:04.457Z" hostname="runnervmdlhio" time="0.116">
+  <properties/>
+  <testcase name="filesystemReadFailureIsTypedAndCannotReturnPartialEntries()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronFilesTest" time="0.006"/>
+  <testcase name="relocationAndCreationOrderPreserveDigestsButPathsAndBytesMatter()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronFilesTest" time="0.014"/>
+  <testcase name="fifoIsRejectedBeforeReadingOnPosixTargets()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronFilesTest" time="0.003"/>
+  <testcase name="everyNestedLockVariantHasAnIndependentDigest()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronFilesTest" time="0.044"/>
+  <testcase name="everyRegularInputIsBoundIndependentlyOfParsedExtensions()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronFilesTest" time="0.013"/>
+  <testcase name="fileRootsAreRejectedAndMissingOrEmptyTreesHaveTheEmptyDigest()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronFilesTest" time="0.004"/>
+  <testcase name="linksAreRejectedRegardlessOfTargetKindOrSourceExtension()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronFilesTest" time="0.016"/>
+  <testcase name="excludedDirectorySubtreesAreNotTraversedOrBound()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronFilesTest" time="0.01"/>
+  <testcase name="ambiguousPathFramingIsRejectedRatherThanNormalized()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronFilesTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

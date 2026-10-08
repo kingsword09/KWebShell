@@ -137,7 +137,25 @@ re-exports, aliases, calls, and preload object exports. All external packages
 without a published migration mapping are blocked; this includes native addons.
 Vue/Svelte source and binary addons are explicitly unclassified/blocked. Comments
 and string contents are never interpreted as executable calls. Inventory binds
-source and lockfile digests; reports reject an inventory after either changes.
+all regular application inputs and nested lockfiles in independent digests;
+reports reject an inventory after either changes. Input provenance is not limited
+to parsed code: configuration, package metadata, the manifest, extensionless
+resources and binary assets are included. Only the directory subtrees named
+`node_modules`, `.git`, and `.gradle` are excluded at any depth. They are never
+traversed. Included symbolic links (including directory and dangling links),
+special files, and control-character paths fail with
+`migration.inventory.blocked`; read failures cannot produce a partial READY
+inventory. Root symlinks are also rejected. Keep generated files and reports
+outside the application tree and hold inputs unchanged during collection.
+
+Breaking change (2026-10-08): existing schema-v2 inventories/reports must be
+regenerated because `sourceSha256` now covers all non-lockfile inputs, rather
+than only the parser's source extensions. No old-digest compatibility mode is
+provided. Hashing a resource is not AST classification or a runtime capability
+claim. Source paths use sorted relative POSIX names; bytes, including line
+endings, are hashed without normalization. CEF/runtime and RFC digests bind
+declared metadata; strict governance and real runtime evidence remain separate
+packaging requirements.
 
 The standalone command is:
 

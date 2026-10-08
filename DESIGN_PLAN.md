@@ -2550,6 +2550,20 @@ RFC 0016 records from an Accepted catalog; the unchanged strict checker rejected
 them. The existing evidence schema permits support records only for Implemented
 RFCs. This repair preserves that contract and the pending notification scope.
 
+### RFC 0005 focused objective: complete application input provenance
+
+Repair the existing inventory/report input-boundary guarantee as one complete
+objective, without publishing the unresolved full-application manifest contract.
+The 2026-10-08 RFC 0005 focused amendment defines inputs, exclusions, exact byte
+digests, typed filesystem failures, trust boundary and breaking regeneration.
+Acceptance IDs P5.1-P5.6 are maintained in that RFC's focused matrix: all regular
+assets/configuration and nested locks are bound; links/special files and unsafe
+path framing fail; relocation/order/excluded-tree changes are invariant; real
+scanner/report/CLI tests reject stale inputs; the three-target runtime/package
+matrix and evidence refresh pass; final review retains the full RFC's blocked
+state. Readiness review: Codex, separate same-contributor pass, 2026-10-08,
+base `cfc048d` and that amendment; `READY` for this repair only.
+
 ### RFC 0027 implementation objective: bounded native image and icon values
 
 RFC 0027 is the independent image value boundary required by menus, tray,

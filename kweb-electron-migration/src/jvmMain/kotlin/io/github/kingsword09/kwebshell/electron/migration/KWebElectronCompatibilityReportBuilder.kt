@@ -4,7 +4,6 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
-import java.util.stream.Collectors
 
 public class KWebElectronCompatibilityReportBuilder public constructor() {
     public fun build(
@@ -65,10 +64,11 @@ public class KWebElectronCompatibilityReportBuilder public constructor() {
             KWebElectronMigrationJson.format.encodeToString(KWebElectronCapabilityMatrix.document()),
         )
         val manifestDigest = digestBytes(Files.readAllBytes(normalizedManifest))
-        val sourcesDigest = KWebElectronFiles.digestEntries(KWebElectronFiles.sources(manifestRoot))
+        val sourcesDigest = KWebElectronFiles.digestEntries(KWebElectronFiles.applicationInputs(manifestRoot))
         val locksDigest = KWebElectronFiles.digestEntries(KWebElectronFiles.lockfiles(manifestRoot))
         val evidenceBytes = Files.readAllBytes(provenance.rfcEvidenceManifest)
-        val catalogEntries = KWebElectronFiles.entries(provenance.rfcCatalog) { it.parent == provenance.rfcCatalog && it.fileName.toString().matches(Regex("[0-9]{4}-.*\\.md")) }
+        val catalogRoot = provenance.rfcCatalog.toAbsolutePath().normalize()
+        val catalogEntries = KWebElectronFiles.entries(catalogRoot) { it.parent == catalogRoot && it.fileName.toString().matches(Regex("[0-9]{4}-.*\\.md")) }
         if (catalogEntries.isEmpty()) throw KWebElectronMigrationException(KWebElectronMigrationErrorCode.INVENTORY_BLOCKED, "The RFC catalog is missing.")
         val declarationBlockers = KWebElectronManifestValidator.blockingReasons(manifest)
         val expectedOutput = if (declarationBlockers.isEmpty()) KWebElectronPreloadGenerator().generate(manifest).let { sources ->
@@ -170,13 +170,10 @@ public class KWebElectronCompatibilityReportBuilder public constructor() {
 
     private fun digestTree(root: Path): String {
         val normalized = root.toAbsolutePath().normalize()
-        if (!Files.isDirectory(normalized)) return EMPTY_TREE_DIGEST
+        val files = KWebElectronFiles.entries(normalized) { true }
         val digest = MessageDigest.getInstance("SHA-256")
-        val files = Files.walk(normalized).use { stream ->
-            stream.filter(Files::isRegularFile).sorted().collect(Collectors.toList())
-        }
-        files.forEach { file ->
-            val relative = normalized.relativize(file).toString().replace(file.fileSystem.getSeparator(), "/")
+        files.keys.forEach { relative ->
+            val file = normalized.resolve(relative)
             digest.update(relative.toByteArray(StandardCharsets.UTF_8))
             digest.update(0)
             Files.newInputStream(file).use { input ->

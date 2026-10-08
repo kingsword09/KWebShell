@@ -146,6 +146,77 @@ Track subsequent implementation and proof in the same matrix and one focused PR
 per complete objective. Do not replace these decisions with PASS merely because
 the metadata checker reports READY.
 
+## Focused input-provenance objective (2026-10-08)
+
+This is an independently complete repair of the existing report/inventory
+guarantee under C3 and A4.1, not implementation of the unresolved application
+model under C1/C2/C4. It publishes no new service, manifest concept or adapter.
+The full RFC remains `Implementing` and `NOT_READY` for that broader scope.
+
+### Contract amendment
+
+`sourceSha256` binds every regular application-root file, including the manifest,
+nested package metadata, configuration, extensionless resources and binary
+assets, except lockfiles and the explicitly excluded directory subtrees named
+`node_modules`, `.git`, and `.gradle`. Exclusions apply at any depth and are not
+traversed. `lockfileSha256` independently binds every nested lockfile named
+`package-lock.json`, `npm-shrinkwrap.json`, `pnpm-lock.yaml`, `yarn.lock`,
+`bun.lock`, or `bun.lockb`. AST parsing and `filesScanned` still describe only the
+existing supported source-format corpus; hashing an asset is not classifying
+its contents as executable or granting it a migration mapping.
+
+Entries are sorted by exact relative POSIX path. Each entry binds its path and
+the SHA-256 of its unmodified bytes using the existing NUL/newline framing.
+Included path components containing control characters are rejected, so a path
+cannot inject a digest record. Ordering and absolute checkout location do not
+affect the source/lockfile digests; line endings and all other file bytes do.
+
+Included file, directory, dangling and root symbolic links, and non-regular
+files are rejected with `migration.inventory.blocked` before parsing or READY
+publication. No link is followed and no alternate root is selected. A missing
+inventory root remains `migration.parser.unavailable`; a missing renderer or
+generated tree remains an empty digest plus the existing blocking report
+findings. Read/walk failures become typed `migration.inventory.blocked` errors
+with the affected root and original cause, not an incomplete successful scan.
+The trusted build must keep inputs unchanged during collection; this offline
+tool does not claim filesystem snapshot isolation against concurrent mutation.
+
+Any included file addition, removal, rename or byte change invalidates the
+previous inventory. The report recomputes both trees and retains BLOCKED output
+with `inventory-source-digest-mismatch` and/or
+`inventory-lockfile-digest-mismatch`. Previously emitted schema-v2 digests must
+be regenerated; there is no legacy-digest recognition or dual hashing. Keep
+generated/report outputs outside the application input tree to avoid binding
+the tool's own outputs. Runtime and RFC fields bind declared metadata, not proof
+of the downloaded CEF artifact or substitute hosted runtime acceptance.
+
+### Focused acceptance matrix
+
+| ID / source clause | Observable requirement | Normal, negative and boundary scenarios | Planned verification / required targets | Implementation and test references | Retained evidence / tested revision | Result / review rationale |
+|---|---|---|---|---|---|---|
+| P5.1 / C3, A4.1 | All regular application inputs and every nested lockfile participate in the declared independent digests. | Binary/extensionless/config changes; nested lock variants; add/remove/rename; empty tree. | JVM filesystem and report tests; Windows x64, macOS arm64, Linux x64. | Planned `KWebElectronFiles`, scanner and report builder tests. | Pending hosted JVM XML and existing runtime/package artifacts. | NOT_RUN |
+| P5.2 / C3, A4.1 | Links and special files cannot disappear from an included input tree or escape it. | File/directory/root/dangling links, unsupported-format link, typed failures. | JVM filesystem tests; all three targets; FIFO negative case on POSIX targets. | Planned filesystem boundary tests. | Pending actual target test results. | NOT_RUN |
+| P5.3 / C3, A3.1 | Input ordering, absolute checkout location and excluded dependencies do not change digests; path framing is unambiguous. | Reversed creation order, relocated roots, excluded subtree mutations, control-character paths where OS allows. | JVM byte/path assertions; all three targets. | Planned filesystem determinism tests. | Pending actual target test results. | NOT_RUN |
+| P5.4 / C3, A4.1, A5.1 | Stale inventory fails closed for non-code inputs; fresh inventory can restore readiness without ignoring changes. | Asset/config byte edits, addition/removal/rename; independently stale lockfiles; rescan. | Actual scanner/report and CLI exit/output tests; all three targets. | Planned provenance regression tests. | Pending hosted tests and CLI output assertions. | NOT_RUN |
+| P5.5 / U1 | Existing native runtime, generated adapters, packaging and strict evidence gates remain valid. | Existing real CEF migration fixture, all advertised native providers and package checks. | Full hosted CI matrix and imported evidence; all three targets. | Existing CI/runtime/packaging suites; no native API change. | Pending fresh hosted artifact import. | NOT_RUN |
+| P5.6 / U1 | Breaking digest semantics and the limited repair scope are explicit; no incomplete RFC support is published. | Review full diff, docs, unchanged RFC status and broader blocked rows. | Separate contract and final acceptance review, `git diff --check`, governance. | This amendment, design-plan objective and tool README. | Pending final reviewed revision. | NOT_RUN |
+
+### Focused readiness review
+
+- Date: 2026-10-08; reviewer: Codex, separate same-contributor review pass.
+- Revision: base `cfc048d` plus the contract amendment and P5.1-P5.6 above,
+  before dependent code changes.
+- Findings: the extension allowlist omitted non-code application inputs;
+  `Files.walk` did not descend directory links but also did not reject them;
+  dangling links were filtered out before validation. The amended traversal and
+  digest contract settles these observable cases without needing the unresolved
+  application-process/preload-event model.
+- Feasibility: JDK 25 filesystem traversal, byte hashing and link inspection are
+  existing JVM tooling mechanisms; target-specific link/FIFO behavior must be
+  proved by the required hosted tests. No new native runtime claim is made.
+- Decision: `READY` for this complete input-provenance repair only. C1, C2, C4
+  and full-RFC acceptance remain blocking; no retrospective approval is invented.
+
 [manifest-model]: ../../kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronMigrationContract.kt
 [manifest-tests]: ../../kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronManifestTest.kt
 [inventory-tests]: ../../kweb-electron-migration/src/jvmTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronInventoryRegressionTest.kt

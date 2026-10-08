@@ -192,6 +192,8 @@ public object KWebElectronMigrationErrorCode {
     public const val PACKAGING_INVALID: String = "migration.packaging.invalid"
     public const val PACKAGING_NON_CANONICAL: String = "migration.packaging.non-canonical"
     public const val LIFECYCLE_INVALID: String = "migration.lifecycle.invalid"
+    public const val COMMAND_INVALID_ARGUMENTS: String = "migration.command.invalid-arguments"
+    public const val MANIFEST_INPUT_OUTPUT_CONFLICT: String = "migration.manifest.input-output-conflict"
 }
 
 public object KWebElectronMigrationJson {

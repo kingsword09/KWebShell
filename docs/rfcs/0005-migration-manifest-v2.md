@@ -349,6 +349,78 @@ repeating the native matrix.
 - Full RFC 0005 remains `Implementing`; broader contract/acceptance remains
   `BLOCKED`.
 
+### Focused v1 migration CLI objective (2026-10-08)
+
+This is a separately publishable conformance objective for Acceptance A2.2. It
+completes the existing standalone `migrate` command against the already-defined
+v1 and v2 manifest schemas. It does not claim readiness for the unresolved
+full-application model, source-corpus inventory, or full RFC 0005.
+
+#### Contract
+
+The command is
+`migrate <input-v1.json> <output-v2.json> <exact-renderer-origin>`. The input is
+UTF-8 strict JSON with `schemaVersion: 1` and only channel `schemaVersion: 1`;
+the origin must pass the existing v2 exact-origin validator. Runtime manifest
+decoding continues to accept v2 only. The CLI does not silently upgrade input
+during `manifest`, `generate`, `inventory`, or `report` commands.
+
+Success writes the canonical compact v2 JSON plus one LF. It preserves the v1
+application, import, channel, method, stream, and service declarations; changes
+the manifest and channel revisions to 2; writes the exact supplied renderer
+origin; and supplies the migrator's declared persistent `default` Profile and
+single `main` window. It creates missing output parent directories. Identical
+input bytes and origin produce identical output bytes on each target. Success
+returns exit 0, prints exactly `Electron migration manifest migrated to v2.`
+followed by LF, and writes nothing to stderr.
+
+For this command, invalid argument count returns exit 2 with one JSON error
+object on stderr (`code`, `message`, `details`) and no stdout. Its stable code
+is `migration.command.invalid-arguments`. Invalid source JSON, unsupported
+manifest/channel revisions, and invalid origins use their existing typed
+manifest error codes. Validation completes before output creation or mutation;
+an existing destination is unchanged on failure. Input and output paths that
+resolve to the same normalized path are rejected with
+`migration.manifest.input-output-conflict`; the input is never rewritten in
+place. This contract does not claim crash-atomic writes or filesystem snapshot
+isolation while another process mutates the files.
+
+#### Focused acceptance matrix
+
+| ID / source clause | Observable requirement | Normal, negative and boundary scenarios | Planned verification / required targets | Implementation and test references | Retained evidence / tested revision | Result / review rationale |
+|---|---|---|---|---|---|---|
+| P6.1 / A2.2 | The actual child-JVM `migrate` command publishes the complete canonical v2 result and returns the specified success output. | Valid v1 fixture; verify preserved fields, exact origin, v2 channel revisions, default Profile/window, stdout, empty stderr and exit 0; create a missing output parent. | `:kweb-electron-migration:jvmTest`; hosted macOS arm64, Windows x64, Linux x64. | Add subprocess coverage to [CLI tests][cli-tests]; command implementation in `KWebElectronMigrationCli`. | `NOT_RUN` until hosted verification. | `NOT_RUN` |
+| P6.2 / A2.2 | Invalid arguments and migration inputs fail with the specified error envelope and never partially publish output. | Missing/extra arguments; malformed JSON; unknown manifest/channel revision; invalid exact origin; pre-existing output sentinel remains byte-identical. | Actual CLI subprocess tests and common manifest decoder test; all three hosted targets. | [CLI tests][cli-tests], [manifest tests][manifest-tests]. | `NOT_RUN` until hosted verification. | `NOT_RUN` |
+| P6.3 / A2.2 | Migration output is deterministic and runtime decoding does not accept v1. | Run the same migration twice to different files and compare bytes; pass v1 directly to the runtime decoder. | JVM CLI subprocess plus common contract tests; all three hosted targets. | [CLI tests][cli-tests], [manifest tests][manifest-tests]. | `NOT_RUN` until hosted verification. | `NOT_RUN` |
+| P6.4 / A2.2 | The migrate command cannot overwrite its input through identical normalized paths. | Same input/output path; verify the original bytes remain unchanged and a typed error exits 2. | Actual CLI subprocess test; all three hosted targets. | [CLI tests][cli-tests]; new `migration.manifest.input-output-conflict` error. | `NOT_RUN` until hosted verification. | `NOT_RUN` |
+| P6.5 / A2.2, U1 | The focused tooling change is documented and verified on every hosted desktop target without claiming full RFC support. | Inspect complete PR diff, verify migration JVM tests and existing integration/package gates on every target, confirm full RFC remains `Implementing`. | Full CI runtime matrix, Documentation workflow, final code/document review; all three targets. | RFC/tool README/design plan and `.github/workflows/ci.yml`. | `NOT_RUN` until the final PR revision and hosted artifacts are reviewed. | `NOT_RUN` |
+| P6.6 / U1 applicability | Native service, CEF ABI, renderer bridge, platform-provider, permission and browser-runtime behavior are outside this offline CLI objective. | Review the complete diff for native/runtime/renderer changes; any such change invalidates this exclusion. | Explicit code review of the complete PR diff; same three targets for P6.1-P6.5. | No native or browser source changes are planned. | `NOT_RUN` until final review. | `NOT_RUN` |
+| P6.7 / evidence lifecycle | The PR refreshes every evidence record invalidated by its design-plan/RFC contract edits from real hosted artifacts, then restores strict governance without manual digest edits. | Hosted native/runtime verification on every target; evidence aggregation refreshes the stale contracts and their backed matrix rows; strict checked-in governance passes against imported bytes. | `.github/workflows/ci.yml` verify, `rfc-evidence`, and governance jobs; macOS arm64, Windows x64, Linux x64. | `docs/rfcs/evidence/contracts.json`, `.github/scripts/aggregate-rfc-evidence.sh`, and the generated evidence manifest/artifacts. | Local pre-refresh report: 33 findings, including stale RFCs 0006, 0007, 0008, 0009, 0012, 0027, 0030 and their unbacked rows; hosted refresh `NOT_RUN`. | `NOT_RUN` until fresh hosted records and strict governance pass. |
+
+#### Focused readiness review
+
+- Date: 2026-10-08; reviewer: Codex, separate same-contributor review pass.
+- Reviewed revision: base `1345184` plus this P6 contract, before implementation.
+- Findings: the v1/v2 schemas, channel-version relationship, origin validator,
+  migration defaults and strict v2 runtime decoder are already explicit in the
+  common contract. The existing command invokes the same migrator but has no
+  subprocess success-path proof, uses a generic argument error, and permits an
+  input/output path collision. P6 fixes those specific gaps without depending
+  on unresolved full-application schema or source-corpus decisions.
+- Evidence lifecycle: `DESIGN_PLAN.md` is bound by RFCs 0006-0009, 0012, 0027,
+  and 0030. This planning edit makes their current three-target evidence stale
+  until the implementation PR's hosted aggregation imports fresh artifacts;
+  the local pre-refresh governance report also lists the matrix rows those
+  records back as unbacked. The same PR must refresh them through CI and pass
+  strict governance. No evidence digest may be edited manually.
+- Feasibility: the existing JVM CLI test already launches the real command in a
+  child Java process; the same mechanism covers success and failure on all
+  hosted targets. No native or CEF feasibility probe is required for this
+  offline command objective.
+- Decision: `READY` for P6.1-P6.7 only. Full RFC 0005 remains `NOT_READY` for
+  C1, C2, C4 and full A1.2/A4.2/A5.2/U1 coverage; this review does not approve
+  or publish those capabilities.
+
 [manifest-model]: ../../kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronMigrationContract.kt
 [manifest-tests]: ../../kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronManifestTest.kt
 [inventory-tests]: ../../kweb-electron-migration/src/jvmTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronInventoryRegressionTest.kt

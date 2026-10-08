@@ -2564,6 +2564,20 @@ matrix and evidence refresh pass; final review retains the full RFC's blocked
 state. Readiness review: Codex, separate same-contributor pass, 2026-10-08,
 base `cfc048d` and that amendment; `READY` for this repair only.
 
+### RFC 0005 focused objective: standalone v1 migration CLI conformance
+
+Complete the real child-process success and failure paths for
+`migrate <input-v1.json> <output-v2.json> <exact-renderer-origin>` without
+claiming completion of the full RFC. Acceptance IDs P6.1-P6.7 are defined in
+[RFC 0005](docs/rfcs/0005-migration-manifest-v2.md#focused-v1-migration-cli-objective-2026-10-08):
+canonical v2 output and exact success result; typed exit-2 failures with no
+partial output; deterministic repeated output and v2-only runtime decoding;
+input/output collision rejection; three-target verification and documentation;
+a reviewed `NOT_APPLICABLE` decision for native/browser behavior; and fresh
+hosted RFC evidence aggregation for records invalidated by the plan/RFC edits.
+The readiness review is `READY` for P6 only; full RFC 0005 remains `NOT_READY`
+for its broader application model and source-corpus acceptance.
+
 ### RFC 0027 implementation objective: bounded native image and icon values
 
 RFC 0027 is the independent image value boundary required by menus, tray,

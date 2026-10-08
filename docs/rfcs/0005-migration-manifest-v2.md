@@ -336,10 +336,16 @@ repeating the native matrix.
   (35 passed); and `./gradlew --no-daemon
   :kweb-rfc-governance:rfcGovernanceCheck` (passed).
 - W72.1/W72.2 remain `PASS` from the reviewed #72 diff and retained-byte checks.
-- W72.3 hosted documentation gate on this record-only follow-up: `NOT_RUN` until
-  the Documentation workflow passes for its final PR revision. The PR diff is
-  limited to this review record; no evidence bytes, attributes, tests, runtime
-  contracts or native code change.
+- W72.3 hosted documentation gate: **PASS**. Documentation workflow run
+  `37753338921` passed in 41 seconds on PR #73 head
+  `85b846e7b9024c8aa08b7f47a90a202331f43b44`. The final PR-head run must also
+  pass before squash; the only follow-up change is this review result, which
+  does not alter the check or any executable contract.
+- Reviewer: Codex, separate same-contributor final review pass, 2026-10-08.
+  The complete PR diff is this review record; no evidence bytes, attributes,
+  tests, runtime contracts or native code change.
+- Final decision: **PASS** for W72.1-W72.3, subject to the final PR-head
+  Documentation workflow remaining green.
 - Full RFC 0005 remains `Implementing`; broader contract/acceptance remains
   `BLOCKED`.
 

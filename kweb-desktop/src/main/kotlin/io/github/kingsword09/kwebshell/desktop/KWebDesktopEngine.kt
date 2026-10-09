@@ -353,6 +353,10 @@ internal class KWebDesktopProfile(
         downloadStream.awaitSubscriber()
     }
 
+    internal suspend fun awaitContextMenuSubscriber() {
+        contextMenuStream.awaitSubscriber()
+    }
+
     override suspend fun openPage(
         host: KWebPageHost,
         initialUrl: String,

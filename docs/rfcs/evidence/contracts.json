@@ -470,6 +470,35 @@
       ]
     },
     {
+      "rfcId": "0017",
+      "paths": [
+        "build.gradle.kts",
+        "docs/kmp-native-services-and-electron-migration.md",
+        "docs/rfcs/0017-native-menus.md",
+        "docs/rfcs/evidence/contracts.json",
+        "kweb-bridge-codegen/src",
+        "kweb-bridge/src",
+        "kweb-cef-native/include/kwebshell/native/base_abi.h",
+        "kweb-cef-native/include/kwebshell/native/engine_abi.h",
+        "kweb-cef-native/resources/engine_exports_linux.map",
+        "kweb-cef-native/resources/engine_exports_mac.txt",
+        "kweb-cef-native/src",
+        "kweb-cef-native/tests/engine_abi_header_c_test.c",
+        "kweb-cef-native/tests/verify_engine_exports.cmake",
+        "kweb-core/src/commonMain/kotlin/io/github/kingsword09/kwebshell/core/KWebContextMenuContract.kt",
+        "kweb-core/src/commonMain/kotlin/io/github/kingsword09/kwebshell/core/KWebPageContract.kt",
+        "kweb-desktop/src/main",
+        "kweb-desktop/src/test",
+        "kweb-electron-migration/src",
+        "kweb-rfc-governance/src/main/kotlin/io/github/kingsword09/kwebshell/rfc/KWebRfcServiceCatalog.kt",
+        "kweb-service-menus/README.md",
+        "kweb-service-menus/build.gradle.kts",
+        "kweb-service-menus/native",
+        "kweb-service-menus/src",
+        "settings.gradle.kts"
+      ]
+    },
+    {
       "rfcId": "0027",
       "paths": [
         ".github/scripts/aggregate-rfc-evidence.sh",

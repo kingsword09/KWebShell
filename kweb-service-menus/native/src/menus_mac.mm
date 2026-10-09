@@ -299,7 +299,8 @@ kweb_menus_status NativeSetApplicationMenu(State &state, const Tree *tree) {
   return built ? KWEB_MENUS_STATUS_OK : KWEB_MENUS_STATUS_NATIVE_FAILED;
 }
 
-kweb_menus_status NativeSetWindowMenu(State &, const std::string &, uint64_t, const Tree *tree) {
+kweb_menus_status NativeSetWindowMenu(State &, const std::string &, uint64_t, kweb_menus_owner_kind,
+                                     const Tree *tree) {
   if (tree == nullptr) return KWEB_MENUS_STATUS_OK;
   return KWEB_MENUS_STATUS_TARGET_UNSUPPORTED;
 }

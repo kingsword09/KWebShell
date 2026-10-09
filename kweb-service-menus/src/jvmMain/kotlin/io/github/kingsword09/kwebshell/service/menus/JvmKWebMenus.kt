@@ -89,13 +89,28 @@ public class JvmKWebMenusSession internal constructor(
 
     private var capabilitiesCache: KWebMenuCapabilities? = null
     private var closeFailure: KWebException? = null
+    private var applicationTree: KWebMenuTree? = null
+    private var applicationFlat: MenuFfm.FlatTree? = null
 
     private class PageAnchor(val window: KWebMenuWindowBinding, val offsetX: Int, val offsetY: Int)
 
-    /** Registers one Compose window; the menu bar attaches to its native handle. */
+    /**
+     * Registers one Compose window; the menu bar attaches to its native handle.
+     * A provider without an application-level bar receives the current
+     * application tree for the new window as well.
+     */
     public fun registerWindow(binding: KWebMenuWindowBinding) {
         requireOpen()
         if (windows.none { it.windowId == binding.windowId }) windows.add(binding)
+        val tree = applicationTree ?: return
+        if (supportsApplicationBar()) return
+        val flat = applicationFlat ?: return
+        translate("register-window") {
+            onEdtSync {
+                native.setWindowMenu(binding.windowId.value, binding.window.windowHandle, MenuFfm.OWNER_APPLICATION, flat)
+            }
+        }
+        treeVersions[KWebMenuOwner.Application.identifier + ":" + tree.menuId.value] = tree.version
     }
 
     public fun unregisterWindow(windowId: KWebMenuWindowId) {
@@ -132,15 +147,62 @@ public class JvmKWebMenusSession internal constructor(
         return capabilities
     }
 
-    override suspend fun setApplicationMenu(tree: KWebMenuTree?): KWebMenuTreeResult =
-        applyTree(KWebMenuOwner.Application, tree)
+    override suspend fun setApplicationMenu(tree: KWebMenuTree?): KWebMenuTreeResult {
+        requireOpen()
+        val capabilities = capabilities()
+        val owner = KWebMenuOwner.Application
+        val flat = tree?.let { prepare(it, owner) }
+        if (capabilities.supports(KWebMenuCapability.APPLICATION_MENU)) {
+            translate("set-application-menu") { onEdtSync { native.setApplicationMenu(flat) } }
+        } else if (capabilities.supports(KWebMenuCapability.WINDOW_MENU)) {
+            // Win32 or a desktop-hosted menu bar: the application menu is the
+            // same tree installed on every declared window.
+            if (windows.isEmpty()) {
+                throw failure(
+                    KWebMenuErrorCode.TARGET_UNSUPPORTED,
+                    "set-application-menu",
+                    mapOf("reason" to "window-required", "provider" to capabilities.providerId),
+                )
+            }
+            windows.forEach { binding ->
+                translate("set-application-menu") {
+                    onEdtSync {
+                        native.setWindowMenu(
+                            binding.windowId.value,
+                            binding.window.windowHandle,
+                            MenuFfm.OWNER_APPLICATION,
+                            flat,
+                        )
+                    }
+                }
+            }
+        } else {
+            throw failure(
+                KWebMenuErrorCode.TARGET_UNSUPPORTED,
+                "set-application-menu",
+                mapOf("provider" to capabilities.providerId),
+            )
+        }
+        applicationTree = tree
+        applicationFlat = flat
+        if (tree != null) {
+            treeVersions[owner.identifier + ":" + tree.menuId.value] = tree.version
+        }
+        return KWebMenuTreeResult(
+            owner,
+            tree?.menuId ?: KWebMenuId("menus.cleared"),
+            tree?.version ?: 0L,
+            flat?.items?.count { it.kind != MenuFfm.KIND_SEPARATOR } ?: 0,
+            0u,
+        )
+    }
 
     override suspend fun setWindowMenu(windowId: KWebMenuWindowId, tree: KWebMenuTree?): KWebMenuTreeResult {
         requireOpen()
         val binding = windows.singleOrNull { it.windowId == windowId }
             ?: throw failure(KWebMenuErrorCode.WINDOW_UNKNOWN, "set-window-menu", mapOf("window" to windowId.value))
         val owner = KWebMenuOwner.Window(windowId)
-        if (tree != null && !capabilitiesSync().supports(KWebMenuCapability.WINDOW_MENU)) {
+        if (tree != null && !capabilities().supports(KWebMenuCapability.WINDOW_MENU)) {
             throw failure(
                 KWebMenuErrorCode.TARGET_UNSUPPORTED,
                 "set-window-menu",
@@ -148,7 +210,9 @@ public class JvmKWebMenusSession internal constructor(
             )
         }
         val flat = tree?.let { prepare(it, owner) }
-        translate("set-window-menu") { onEdtSync { native.setWindowMenu(windowId.value, binding.window.windowHandle, flat) } }
+        translate("set-window-menu") {
+            onEdtSync { native.setWindowMenu(windowId.value, binding.window.windowHandle, MenuFfm.OWNER_WINDOW, flat) }
+        }
         treeVersions[owner.identifier + ":" + (tree?.menuId?.value ?: "")] = tree?.version ?: 0L
         return KWebMenuTreeResult(owner, tree?.menuId ?: KWebMenuId("menus.cleared"), tree?.version ?: 0L,
             flat?.items?.count { it.kind != MenuFfm.KIND_SEPARATOR } ?: 0, 0u)
@@ -243,20 +307,6 @@ public class JvmKWebMenusSession internal constructor(
             mutableLifecycle.value = if (failure == null) KWebLifecycleState.CLOSED else KWebLifecycleState.FAILED
         }
         closeFailure?.let { throw it }
-    }
-
-    private suspend fun applyTree(owner: KWebMenuOwner, tree: KWebMenuTree?): KWebMenuTreeResult {
-        requireOpen()
-        val flat = tree?.let { prepare(it, owner) }
-        translate("set-application-menu") { onEdtSync { native.setApplicationMenu(flat) } }
-        if (tree != null) treeVersions[owner.identifier + ":" + tree.menuId.value] = tree.version
-        return KWebMenuTreeResult(
-            owner,
-            tree?.menuId ?: KWebMenuId("menus.cleared"),
-            tree?.version ?: 0L,
-            flat?.items?.count { it.kind != MenuFfm.KIND_SEPARATOR } ?: 0,
-            0u,
-        )
     }
 
     /** Validates one tree against the provider capabilities and flattens it. */
@@ -359,7 +409,9 @@ public class JvmKWebMenusSession internal constructor(
         }
     }
 
-    private suspend fun capabilitiesSync(): KWebMenuCapabilities = capabilities()
+    /** True when the provider owns an application-level menu bar. */
+    private fun supportsApplicationBar(): Boolean =
+        capabilitiesCache?.supports(KWebMenuCapability.APPLICATION_MENU) == true
 
     private fun windowOrigin(binding: KWebMenuWindowBinding): Pair<Int, Int> {
         val location = binding.window.locationOnScreen
@@ -452,6 +504,9 @@ public object JvmKWebMenus {
         }
         failure?.let { throw it }
         val created = requireNotNull(session)
+        // The provider capabilities are stable for the session, so they are
+        // resolved once before any window registration can need them.
+        runBlocking { created.capabilities() }
         windows.forEach { created.registerWindow(it) }
         return created
     }

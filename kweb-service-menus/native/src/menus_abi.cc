@@ -510,8 +510,12 @@ kweb_menus_status KWEB_MENUS_CALL kweb_menus_set_application_menu(uint64_t handl
 
 kweb_menus_status KWEB_MENUS_CALL kweb_menus_set_window_menu(uint64_t handle, kweb_menus_string window_id,
                                                              uint64_t native_window,
+                                                             kweb_menus_owner_kind owner_kind,
                                                              const kweb_menus_tree *tree) {
   if (handle != 1) return KWEB_MENUS_STATUS_INVALID_ARGUMENT;
+  if (owner_kind != KWEB_MENUS_OWNER_APPLICATION && owner_kind != KWEB_MENUS_OWNER_WINDOW) {
+    return KWEB_MENUS_STATUS_INVALID_ARGUMENT;
+  }
   std::string id;
   if (!kwebshell::menus::ReadString(window_id, KWEB_MENUS_MAX_ID, &id) || !IsAsciiIdentifier(id)) {
     return KWEB_MENUS_STATUS_INVALID_ARGUMENT;
@@ -524,8 +528,8 @@ kweb_menus_status KWEB_MENUS_CALL kweb_menus_set_window_menu(uint64_t handle, kw
   if (tree != nullptr && existing != g_state.window_menus.end() && parsed.version <= existing->second.version) {
     return KWEB_MENUS_STATUS_VERSION_STALE;
   }
-  const kweb_menus_status status =
-      kwebshell::menus::NativeSetWindowMenu(g_state, id, native_window, tree == nullptr ? nullptr : &parsed);
+  const kweb_menus_status status = kwebshell::menus::NativeSetWindowMenu(
+      g_state, id, native_window, owner_kind, tree == nullptr ? nullptr : &parsed);
   if (status != KWEB_MENUS_STATUS_OK) return status;
   if (tree == nullptr) {
     g_state.window_menus.erase(id);

@@ -98,7 +98,7 @@ kweb_menus_status NativeOpen(State &state);
 kweb_menus_status NativeCapabilities(State &state, kweb_menus_capabilities_result *result);
 kweb_menus_status NativeSetApplicationMenu(State &state, const Tree *tree);
 kweb_menus_status NativeSetWindowMenu(State &state, const std::string &window_id, uint64_t native_window,
-                                     const Tree *tree);
+                                     kweb_menus_owner_kind owner_kind, const Tree *tree);
 kweb_menus_status NativeShowPopup(State &state, const Tree &tree, kweb_menus_owner_kind owner_kind,
                                   const std::string &owner_id, kweb_menus_popup_source source,
                                   int32_t screen_x, int32_t screen_y, uint64_t native_window,

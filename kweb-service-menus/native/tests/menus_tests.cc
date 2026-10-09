@@ -121,9 +121,17 @@ void TestLifecycle() {
   capabilities.struct_size = sizeof(capabilities);
   capabilities.abi_version = KWEB_MENUS_ABI_VERSION;
   KWEB_CHECK(kweb_menus_capabilities(handle, &capabilities) == KWEB_MENUS_STATUS_OK);
-  KWEB_CHECK((capabilities.flags & KWEB_MENUS_CAP_APPLICATION_MENU) != 0);
   KWEB_CHECK((capabilities.flags & KWEB_MENUS_CAP_SUBMENUS) != 0);
+  KWEB_CHECK((capabilities.flags & KWEB_MENUS_CAP_POPUP_POSITIONING) != 0);
+  // A provider that hosts menus in the desktop's shell also owns an
+  // application-level menu; the reverse is not required.
+  if ((capabilities.flags & KWEB_MENUS_CAP_GLOBAL_MENU_HOST) != 0) {
+    KWEB_CHECK((capabilities.flags & KWEB_MENUS_CAP_APPLICATION_MENU) != 0);
+  }
+#if defined(__APPLE__)
+  KWEB_CHECK((capabilities.flags & KWEB_MENUS_CAP_APPLICATION_MENU) != 0);
   KWEB_CHECK((capabilities.native_roles & (1ull << (KWEB_MENUS_ROLE_ABOUT - 1))) != 0);
+#endif
   kweb_menus_event event{};
   event.struct_size = sizeof(event);
   event.abi_version = KWEB_MENUS_ABI_VERSION;
@@ -199,6 +207,10 @@ void TestApplicationMenuVersions() {
   uint64_t handle = 0;
   kweb_menus_configuration configuration = Configuration();
   KWEB_CHECK(kweb_menus_open(&configuration, &handle) == KWEB_MENUS_STATUS_OK);
+  kweb_menus_capabilities_result capabilities{};
+  capabilities.struct_size = sizeof(capabilities);
+  capabilities.abi_version = KWEB_MENUS_ABI_VERSION;
+  KWEB_CHECK(kweb_menus_capabilities(handle, &capabilities) == KWEB_MENUS_STATUS_OK);
 
   Fixture first;
   kweb_menus_item submenu = first.Base("file", "File");
@@ -208,6 +220,13 @@ void TestApplicationMenuVersions() {
   first.Command("file.open", "Open");
   first.Checkbox("file.autosave", "Autosave", true);
   kweb_menus_tree first_tree = first.Build();
+  if ((capabilities.flags & KWEB_MENUS_CAP_APPLICATION_MENU) == 0) {
+    // A provider without an application-level bar rejects the call typed and
+    // leaves the window menu path to the service fan-out.
+    KWEB_CHECK(kweb_menus_set_application_menu(handle, &first_tree) == KWEB_MENUS_STATUS_TARGET_UNSUPPORTED);
+    KWEB_CHECK(kweb_menus_close(handle) == KWEB_MENUS_STATUS_OK);
+    return;
+  }
   KWEB_CHECK(kweb_menus_set_application_menu(handle, &first_tree) == KWEB_MENUS_STATUS_OK);
   KWEB_CHECK(kweb_menus_set_application_menu(handle, &first_tree) == KWEB_MENUS_STATUS_VERSION_STALE);
 
@@ -232,12 +251,15 @@ void TestWindowMenuBoundary() {
   Fixture fixture;
   fixture.Command("view.reload", "Reload");
   kweb_menus_tree tree = fixture.Build();
-  const kweb_menus_status status = kweb_menus_set_window_menu(handle, fixture.Text("main-window"), 42, &tree);
+  const kweb_menus_status status = kweb_menus_set_window_menu(
+      handle, fixture.Text("main-window"), 42, KWEB_MENUS_OWNER_WINDOW, &tree);
   const kweb_menus_status clearing =
-      kweb_menus_set_window_menu(handle, fixture.Text("main-window"), 42, nullptr);
+      kweb_menus_set_window_menu(handle, fixture.Text("main-window"), 42, KWEB_MENUS_OWNER_WINDOW, nullptr);
+  KWEB_CHECK(kweb_menus_set_window_menu(handle, fixture.Text("main-window"), 42,
+                                        KWEB_MENUS_OWNER_PAGE, nullptr) == KWEB_MENUS_STATUS_INVALID_ARGUMENT);
   KWEB_CHECK(status == KWEB_MENUS_STATUS_TARGET_UNSUPPORTED || status == KWEB_MENUS_STATUS_OK);
   KWEB_CHECK(clearing == KWEB_MENUS_STATUS_OK);
-  KWEB_CHECK(kweb_menus_set_window_menu(handle, fixture.Text("1nvalid"), 42, nullptr) ==
+  KWEB_CHECK(kweb_menus_set_window_menu(handle, fixture.Text("1nvalid"), 42, KWEB_MENUS_OWNER_WINDOW, nullptr) ==
              KWEB_MENUS_STATUS_INVALID_ARGUMENT);
   KWEB_CHECK(kweb_menus_close(handle) == KWEB_MENUS_STATUS_OK);
 }
@@ -300,9 +322,11 @@ void TestRejectedPresentationQueuesNoEvent() {
   kweb_menus_configuration configuration = Configuration();
   KWEB_CHECK(kweb_menus_open(&configuration, &handle) == KWEB_MENUS_STATUS_OK);
   Fixture fixture;
+  fixture.menu_id = "page.menu";
   fixture.Command("file.open", "Open");
   kweb_menus_tree tree = fixture.Build();
-  KWEB_CHECK(kweb_menus_set_application_menu(handle, &tree) == KWEB_MENUS_STATUS_OK);
+  KWEB_CHECK(kweb_menus_declare_page_menu(handle, fixture.Text("page-token"), &tree) ==
+             KWEB_MENUS_STATUS_OK);
 
   kweb_menus_popup_result result{};
   result.struct_size = sizeof(result);

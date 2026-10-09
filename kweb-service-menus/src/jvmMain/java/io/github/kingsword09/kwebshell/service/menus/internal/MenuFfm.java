@@ -310,7 +310,7 @@ public final class MenuFfm implements AutoCloseable {
                 downcall(lookup, "kweb_menus_capabilities", FunctionDescriptor.of(JAVA_INT, JAVA_LONG, ADDRESS)),
                 downcall(lookup, "kweb_menus_set_application_menu", FunctionDescriptor.of(JAVA_INT, JAVA_LONG, ADDRESS)),
                 downcall(lookup, "kweb_menus_set_window_menu",
-                    FunctionDescriptor.of(JAVA_INT, JAVA_LONG, STRING_LAYOUT, JAVA_LONG, ADDRESS)),
+                    FunctionDescriptor.of(JAVA_INT, JAVA_LONG, STRING_LAYOUT, JAVA_LONG, JAVA_INT, ADDRESS)),
                 downcall(lookup, "kweb_menus_declare_page_menu",
                     FunctionDescriptor.of(JAVA_INT, JAVA_LONG, STRING_LAYOUT, ADDRESS)),
                 downcall(lookup, "kweb_menus_clear_page_menu",
@@ -373,12 +373,12 @@ public final class MenuFfm implements AutoCloseable {
         }
     }
 
-    public void setWindowMenu(String windowId, long nativeWindow, FlatTree tree) {
+    public void setWindowMenu(String windowId, long nativeWindow, int ownerKind, FlatTree tree) {
         requireOpen();
         try (Arena arena = Arena.ofConfined()) {
             final MemorySegment window = writeBareString(arena, windowId);
             final MemorySegment nativeTree = tree == null ? MemorySegment.NULL : writeTree(arena, tree);
-            final int status = (int) setWindowMenu.invokeExact(1L, window, nativeWindow, nativeTree);
+            final int status = (int) setWindowMenu.invokeExact(1L, window, nativeWindow, ownerKind, nativeTree);
             if (status != 0) throw nativeFailure("set-window-menu", status);
         } catch (RuntimeException error) {
             throw error;

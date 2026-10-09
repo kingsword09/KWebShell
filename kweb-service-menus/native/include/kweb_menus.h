@@ -361,9 +361,12 @@ kweb_menus_capabilities(uint64_t handle, kweb_menus_capabilities_result *result)
 KWEB_MENUS_EXPORT kweb_menus_status KWEB_MENUS_CALL
 kweb_menus_set_application_menu(uint64_t handle, const kweb_menus_tree *tree);
 
+/* `owner_kind` is APPLICATION or WINDOW and decides the reported invocation
+ * source: providers without an application-level menu bar implement the
+ * application menu as that tree attached to each declared window. */
 KWEB_MENUS_EXPORT kweb_menus_status KWEB_MENUS_CALL
 kweb_menus_set_window_menu(uint64_t handle, kweb_menus_string window_id, uint64_t native_window,
-                           const kweb_menus_tree *tree);
+                           kweb_menus_owner_kind owner_kind, const kweb_menus_tree *tree);
 
 KWEB_MENUS_EXPORT kweb_menus_status KWEB_MENUS_CALL
 kweb_menus_declare_page_menu(uint64_t handle, kweb_menus_string page_token, const kweb_menus_tree *tree);

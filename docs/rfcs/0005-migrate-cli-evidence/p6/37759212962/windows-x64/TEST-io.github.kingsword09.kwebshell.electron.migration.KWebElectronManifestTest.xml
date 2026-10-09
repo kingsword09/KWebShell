@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="KWebElectronManifestTest[jvm]" tests="12" skipped="0" failures="0" errors="0" timestamp="2026-10-08T10:09:31.905Z" hostname="runnervmdlhio" time="0.031">
+  <properties/>
+  <testcase name="unpinnedOrInvalidElectronFixtureMajorFails()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronManifestTest" time="0.005"/>
+  <testcase name="unknownFieldsAreRejectedBeforeValidation()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronManifestTest" time="0.004"/>
+  <testcase name="unsupportedNewDeclarationsCannotGenerateReadyFacade()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronManifestTest" time="0.003"/>
+  <testcase name="unsafeRendererPathIsRejected()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronManifestTest" time="0.001"/>
+  <testcase name="windowDeclarationsMapToTypedRfc0007Controls()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronManifestTest" time="0.004"/>
+  <testcase name="childKioskDeclarationsAreRejected()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronManifestTest" time="0.001"/>
+  <testcase name="invalidV2ReferencesAndDependencyKindsFail()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronManifestTest" time="0.002"/>
+  <testcase name="adapterCannotLieAboutItsServiceContract()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronManifestTest" time="0.001"/>
+  <testcase name="v1ManifestMigratesDeterministicallyToV2()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronManifestTest" time="0.003"/>
+  <testcase name="matrixImportsMustUseElectronModuleAndDeclaredStatus()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronManifestTest" time="0.001"/>
+  <testcase name="strictManifestAcceptsThePublishedAppPathsAdapter()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronManifestTest" time="0.0"/>
+  <testcase name="undeclaredChannelsAndIncompatibleRevisionsFail()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronManifestTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

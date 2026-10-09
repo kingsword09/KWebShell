@@ -33,13 +33,20 @@ public object KWebElectronMigrationCli {
     private fun run(arguments: Array<String>) {
         when (arguments.firstOrNull()) {
             "migrate" -> {
-                require(arguments.size == 4) { "Usage: migrate <input-manifest.json> <output-manifest.json> <renderer-origin>" }
+                if (arguments.size != 4) {
+                    throw KWebElectronMigrationException(
+                        code = KWebElectronMigrationErrorCode.COMMAND_INVALID_ARGUMENTS,
+                        details = mapOf("command" to "migrate"),
+                        message = "Usage: migrate <input-manifest.json> <output-manifest.json> <renderer-origin>",
+                    )
+                }
                 val inputPath = Path.of(arguments[1]).toAbsolutePath().normalize()
                 val outputPath = Path.of(arguments[2]).toAbsolutePath().normalize()
+                requireDistinctMigrationPaths(inputPath, outputPath)
                 val jsonText = Files.readString(inputPath)
                 val migrated = KWebElectronManifestMigrator.migrate(jsonText, arguments[3])
                 writeJson(migrated, outputPath)
-                println("Electron migration manifest migrated to v2.")
+                print("Electron migration manifest migrated to v2.\n")
             }
             "merge-reports" -> {
                 require(arguments.size >= 4) { "Usage: merge-reports <output.json> <report1.json> <report2.json> [report3.json ...]" }
@@ -112,6 +119,17 @@ public object KWebElectronMigrationCli {
 
     private fun loadManifest(path: Path): KWebElectronManifest =
         KWebElectronMigrationJson.decode(Files.readString(path))
+
+    private fun requireDistinctMigrationPaths(input: Path, output: Path) {
+        val samePath = input == output ||
+            (Files.exists(input) && Files.exists(output) && Files.isSameFile(input, output))
+        if (samePath) {
+            throw KWebElectronMigrationException(
+                code = KWebElectronMigrationErrorCode.MANIFEST_INPUT_OUTPUT_CONFLICT,
+                message = "The v1 input manifest and v2 output manifest must be different files.",
+            )
+        }
+    }
 
     private inline fun <reified T> readJson(path: Path): T =
         KWebElectronMigrationJson.format.decodeFromString(Files.readString(path))

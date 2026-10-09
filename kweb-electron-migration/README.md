@@ -163,9 +163,25 @@ The standalone command is:
 migrate <v1-manifest.json> <v2-manifest.json> <exact-renderer-origin>
 ```
 
-It rejects unknown v1 channel revisions before upgrading. Runtime decoding
-accepts only v2. The output explicitly declares the migrated primary window and
-`profiles/default` storage; review these declarations before building the host.
+It accepts only a strict v1 manifest whose channels are also v1 and rejects
+unknown revisions before writing output. It emits canonical compact v2 JSON
+with one trailing LF, creates missing output directories, and leaves the input
+unchanged. The output declares the exact supplied renderer origin, migrated
+primary window, and persistent `profiles/default` storage; review these
+declarations before building the host. Repeating a migration with the same
+input bytes and origin produces identical output bytes.
+
+`migrate` rejects identical normalized input/output paths with
+`migration.manifest.input-output-conflict`. Invalid argument count returns exit
+2 with `migration.command.invalid-arguments`; migration failures return exit 2
+with a JSON `{code, message, details}` object on stderr. Argument, source,
+revision, and origin validation happens before output mutation, so those
+failures leave an existing destination unchanged. A filesystem write failure
+can leave a partial destination; crash-atomic output is not promised. Success
+returns exit 0 with the confirmation line on stdout and empty stderr. Runtime
+manifest decoding accepts v2 only; use the standalone `migrate` command for v1
+instead of expecting `manifest`, `generate`, `inventory`, or `report` to upgrade
+it implicitly.
 
 ## Report provenance and aggregation
 

@@ -110,6 +110,10 @@ class KWebElectronManifestTest {
         """.trimIndent()
         val migrated = KWebElectronManifestMigrator.migrate(v1, "app://fixture")
         assertEquals(KWebElectronMigrationJson.encode(migrated), KWebElectronMigrationJson.encode(KWebElectronManifestMigrator.migrate(v1, "app://fixture")))
+        val runtimeFailure = assertFailsWith<KWebElectronMigrationException> {
+            KWebElectronMigrationJson.decode(v1)
+        }
+        assertEquals(KWebElectronMigrationErrorCode.MANIFEST_INVALID_JSON, runtimeFailure.code)
         val badRevision = v1.replace("\"schemaVersion\":1,\"requestType\"", "\"schemaVersion\":999,\"requestType\"")
         assertFailsWith<KWebElectronMigrationException> { KWebElectronManifestMigrator.migrate(badRevision, "app://fixture") }
         assertEquals(2, migrated.schemaVersion)

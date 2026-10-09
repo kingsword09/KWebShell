@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="KWebElectronMigrationCliTest[jvm]" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-10-08T10:09:31.936Z" hostname="runnervmdlhio" time="3.033">
+  <properties/>
+  <testcase name="migrateCommandWritesDeterministicV2WithoutChangingInput()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronMigrationCliTest" time="0.501"/>
+  <testcase name="migrateCommandReturnsTypedErrorsBeforeChangingDestination()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronMigrationCliTest" time="1.672"/>
+  <testcase name="blockingInventoryExitsWithStructuredJsonError()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronMigrationCliTest" time="0.596"/>
+  <testcase name="migrateCommandRejectsInputOutputCollisionWithoutModifyingInput()[jvm]" classname="io.github.kingsword09.kwebshell.electron.migration.KWebElectronMigrationCliTest" time="0.263"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

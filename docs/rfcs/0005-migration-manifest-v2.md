@@ -349,6 +349,119 @@ repeating the native matrix.
 - Full RFC 0005 remains `Implementing`; broader contract/acceptance remains
   `BLOCKED`.
 
+### Focused v1 migration CLI objective (2026-10-08)
+
+This is a separately publishable conformance objective for Acceptance A2.2. It
+completes the existing standalone `migrate` command against the already-defined
+v1 and v2 manifest schemas. It does not claim readiness for the unresolved
+full-application model, source-corpus inventory, or full RFC 0005.
+
+#### Contract
+
+The command is
+`migrate <input-v1.json> <output-v2.json> <exact-renderer-origin>`. The input is
+UTF-8 strict JSON with `schemaVersion: 1` and only channel `schemaVersion: 1`;
+the origin must pass the existing v2 exact-origin validator. Runtime manifest
+decoding continues to accept v2 only. The CLI does not silently upgrade input
+during `manifest`, `generate`, `inventory`, or `report` commands.
+
+Success writes the canonical compact v2 JSON plus one LF. It preserves the v1
+application, import, channel, method, stream, and service declarations; changes
+the manifest and channel revisions to 2; writes the exact supplied renderer
+origin; and supplies the migrator's declared persistent `default` Profile and
+single `main` window. It creates missing output parent directories. Identical
+input bytes and origin produce identical output bytes on each target. Success
+returns exit 0, prints exactly `Electron migration manifest migrated to v2.`
+followed by LF, and writes nothing to stderr.
+
+For this command, invalid argument count returns exit 2 with one JSON error
+object on stderr (`code`, `message`, `details`) and no stdout. Its stable code
+is `migration.command.invalid-arguments`. Invalid source JSON, unsupported
+manifest/channel revisions, and invalid origins use their existing typed
+manifest error codes. Argument, source, revision and origin validation
+completes before output creation or mutation; an existing destination remains
+unchanged when one of those checks fails. After validation succeeds, a
+filesystem write failure is reported but may leave a partial destination.
+Input and output paths that resolve to the same normalized path are rejected with
+`migration.manifest.input-output-conflict`; the input is never rewritten in
+place. This contract does not claim crash-atomic writes or filesystem snapshot
+isolation while another process mutates the files.
+
+#### Focused acceptance matrix
+
+| ID / source clause | Observable requirement | Normal, negative and boundary scenarios | Planned verification / required targets | Implementation and test references | Retained evidence / tested revision | Result / review rationale |
+|---|---|---|---|---|---|---|
+| P6.1 / A2.2 | The actual child-JVM `migrate` command publishes the complete canonical v2 result and exact success output. | Valid v1 fixture; verify preserved fields, exact origin, v2 channel revisions, default Profile/window, stdout, empty stderr, exit 0, and a newly created output parent. | `:kweb-electron-migration:jvmTest`; macOS arm64, Windows x64, Linux x64. | [CLI test][cli-tests] `migrateCommandWritesDeterministicV2WithoutChangingInput`; `KWebElectronMigrationCli`. | CI run [37759212962](https://github.com/kingsword09/KWebShell/actions/runs/37759212962), source revision `105cb8d8813c8aec8d16ec3e46a29829b9572d82`: 4 CLI tests per target, 0 failures/errors/skips. Retained [Windows][p6-win-cli-evidence], [macOS][p6-mac-cli-evidence], and [Linux][p6-linux-cli-evidence] JUnit XML; original hosted artifacts [11543150839](https://github.com/kingsword09/KWebShell/actions/runs/37759212962/artifacts/11543150839), [11542362828](https://github.com/kingsword09/KWebShell/actions/runs/37759212962/artifacts/11542362828), [11542217251](https://github.com/kingsword09/KWebShell/actions/runs/37759212962/artifacts/11542217251). PR code head: `4a2f4ef3179384d2d3e06ad71dea3cc50be41a4f`. | `PASS`; output fields/bytes, streams and exit code matched the contract on all three targets. |
+| P6.2 / A2.2 | Invalid arguments and migration inputs fail with the typed JSON envelope before changing the destination. | Missing/extra arguments; malformed JSON; unknown manifest/channel revision; invalid exact origin; preserve a pre-existing output sentinel byte-for-byte. | Actual CLI subprocess and common manifest decoder tests; all three hosted targets. | [CLI test][cli-tests] `migrateCommandReturnsTypedErrorsBeforeChangingDestination`; [manifest test][manifest-tests] `v1ManifestMigratesDeterministicallyToV2`. | Same three retained CLI reports and hosted artifacts as P6.1. The CLI suites report 4 tests and the manifest suites 12 tests per target, all with 0 failures/errors/skips; run `37759212962`, revision `105cb8d8813c8aec8d16ec3e46a29829b9572d82`. Retained [Windows][p6-win-manifest-evidence], [macOS][p6-mac-manifest-evidence], and [Linux][p6-linux-manifest-evidence] manifest XML. | `PASS`; invalid requests returned the declared codes and exit 2, wrote no stdout, and left destinations unchanged. |
+| P6.3 / A2.2 | Migration output is deterministic and runtime decoding does not accept v1. | Migrate identical input twice to separate files and compare bytes; pass v1 directly to the runtime decoder. | JVM CLI subprocess and common contract tests; all three hosted targets. | [CLI test][cli-tests] `migrateCommandWritesDeterministicV2WithoutChangingInput`; [manifest test][manifest-tests] `v1ManifestMigratesDeterministicallyToV2`. | Three retained CLI and manifest reports linked under P6.1-P6.2; all 4 CLI and 12 manifest tests passed on each target in run `37759212962`, tested revision `105cb8d8813c8aec8d16ec3e46a29829b9572d82`. | `PASS`; repeated bytes were identical, and the runtime decoder rejected v1. |
+| P6.4 / A2.2 | The migrate command cannot overwrite its input through identical normalized paths. | Same input/output path; verify the original bytes remain unchanged and a typed error exits 2. | Actual CLI subprocess test; all three hosted targets. | [CLI test][cli-tests] `migrateCommandRejectsInputOutputCollisionWithoutModifyingInput`; `migration.manifest.input-output-conflict`. | Three retained CLI reports and hosted artifacts linked under P6.1; 4 tests per target, 0 failures/errors/skips in run `37759212962`, tested revision `105cb8d8813c8aec8d16ec3e46a29829b9572d82`. | `PASS`; the alias was rejected with exit 2 and input bytes remained unchanged. |
+| P6.5 / A2.2, U1 | The focused tooling change is documented and verified on every hosted desktop target without claiming full RFC support. | Review the complete PR diff; verify migration tests and existing runtime, integration and package gates on every target; confirm full RFC remains `Implementing`. | Full CI runtime matrix, Documentation workflow, final code/document review; all three targets. | Migration README, RFC/design plan, CI verification, local `jvmTest`, TypeScript/JavaScript generation checks, governance `contractTest`, and `git diff --check`. | CI run `37759212962`: Linux job `113251241018`, macOS job `113251241219`, and Windows job `113251241844` passed runtime/native/unit/package verification. Documentation run `37759213109`, job `113251240626`, passed. Local focused tasks passed. Local aggregate module `check` could not configure CEF because this host has no extracted CEF (`-PcefRoot`); hosted runtime/package gates passed. | `PASS`; all three hosted targets and documentation governance passed; full RFC 0005 remains `Implementing` and `NOT_READY`. |
+| P6.6 / U1 applicability | Native service, CEF ABI, renderer bridge, platform-provider, permission and browser-runtime behavior are outside this offline CLI objective. | Review the complete PR diff, including evidence refresh and retained test artifacts, for native/runtime/renderer changes. | Explicit code/document review; P6.1-P6.5 platform checks remain required. | No native, browser, renderer, service, permission or CEF source changed; exclusion is grounded in the standalone file-migration command's scope. | Reviewed complete PR diff at implementation head `4a2f4ef3179384d2d3e06ad71dea3cc50be41a4f`, including six retained target JUnit reports and 97 imported RFC evidence artifacts; final review recorded below. | `NOT_APPLICABLE` for native/browser behavior; no promised platform behavior is excluded. |
+| P6.7 / evidence lifecycle | The PR refreshes every evidence record invalidated by its design-plan/RFC contract edits from hosted artifacts and restores strict governance without manual digest edits. | Hosted native/runtime verification on every target; aggregate and import fresh contract-bound records/artifacts; pass strict checked-in governance against those bytes. | CI verification, evidence aggregation, and strict governance; macOS arm64, Windows x64, Linux x64. | `docs/rfcs/evidence/contracts.json`, `.github/scripts/aggregate-rfc-evidence.sh`, [`manifest.json`](evidence/manifest.json), and [`artifacts/`](evidence/artifacts/). | Run `37759212962`, aggregator job `113261114170`, source revision `105cb8d8813c8aec8d16ec3e46a29829b9572d82`; strict-governance job `113264621600` passed. Imported manifest SHA-256 `689b3d95a691cd6de24a6d3841e3942daf5ac3204ab7123beba78234f59b6c45`: 48 records and 97 referenced artifact files, all byte/digest checks passed. It refreshes RFCs 0006-0009, 0012, 0027 and 0030. | `PASS`; manifest and all 986 retained artifact files were imported from the actual hosted artifacts, historical files remain, and no digests were edited manually. |
+
+#### Focused readiness review
+
+- Date: 2026-10-08; reviewer: Codex, separate same-contributor review pass.
+- Reviewed revision: contract-only commit
+  `aad138deed2eca9083ad561fc5e2304b4f68a05b`, before implementation.
+- Findings: the v1/v2 schemas, channel-version relationship, origin validator,
+  migration defaults and strict v2 runtime decoder are already explicit in the
+  common contract. The existing command invokes the same migrator but has no
+  subprocess success-path proof, uses a generic argument error, and permits an
+  input/output path collision. P6 fixes those specific gaps without depending
+  on unresolved full-application schema or source-corpus decisions.
+- Evidence lifecycle: `DESIGN_PLAN.md` is bound by RFCs 0006-0009, 0012, 0027,
+  and 0030. This planning edit makes their current three-target evidence stale
+  until the implementation PR's hosted aggregation imports fresh artifacts;
+  the local pre-refresh governance report also lists the matrix rows those
+  records back as unbacked. The same PR must refresh them through CI and pass
+  strict governance. No evidence digest may be edited manually.
+- Feasibility: the existing JVM CLI test already launches the real command in a
+  child Java process; the same mechanism covers success and failure on all
+  hosted targets. No native or CEF feasibility probe is required for this
+  offline command objective.
+- Decision: `READY` for P6.1-P6.7 only. Full RFC 0005 remains `NOT_READY` for
+  C1, C2, C4 and full A1.2/A4.2/A5.2/U1 coverage; this review does not approve
+  or publish those capabilities.
+
+#### First hosted implementation finding (2026-10-08)
+
+- Run `37755970685` tested head `54d061475a9887d60d30e858e9ea516c77ca7b35`.
+- Linux x64 passed the full hosted verification job. Windows x64 failed P6.1:
+  `KWebElectronMigrationCliTest.migrateCommandWritesDeterministicV2WithoutChangingInput`
+  at the exact stdout assertion. The CLI used `println`, which emits the host
+  line separator; the approved command contract requires LF bytes on every
+  target. The follow-up writes an explicit `\n`; the migration JVM suite passes
+  locally after this correction. Windows hosted verification remains required.
+- macOS arm64 failed the existing
+  `:kweb-service-window-controls:windowControlsIntegrationTest` at
+  `maximized-fullscreen`, reporting that the Compose window did not reach the
+  requested state in time. No file in that provider or test changed in this
+  PR. This remains a required platform blocker until a later complete hosted
+  run passes; it is not excluded from P6.5.
+- The failed Windows/macOS verification prevented `rfc-evidence` and strict
+  governance from running in that first attempt. No hosted evidence was
+  imported or inferred from the Linux-only pass.
+- Reviewer: Codex, separate same-contributor review pass, 2026-10-08. The
+  failure review inspected the actual Windows failing test symbol, macOS
+  runtime exception and complete changed-file scope. The explicit-LF fix is
+  limited to the P6 success message and preserves the pre-reviewed contract.
+
+#### Corrected hosted run and focused final acceptance review
+
+- Corrected CI run: [`37759212962`](https://github.com/kingsword09/KWebShell/actions/runs/37759212962), PR code head `4a2f4ef3179384d2d3e06ad71dea3cc50be41a4f`, hosted PR merge revision `105cb8d8813c8aec8d16ec3e46a29829b9572d82`. Linux x64, macOS arm64, and Windows x64 runtime/native/unit/package jobs all passed. Documentation/governance run [`37759213109`](https://github.com/kingsword09/KWebShell/actions/runs/37759213109) passed.
+- Corrected target JUnit reports show 4 CLI tests and 12 manifest tests per target, with no failures, errors, or skips. The reports are retained under [`0005-migrate-cli-evidence/p6/37759212962/`](0005-migrate-cli-evidence/p6/37759212962/); their exact bytes were copied from the hosted `electron-migration-*` artifacts and checked against the downloads.
+- Evidence aggregation job `113261114170` and strict checked-in evidence job `113264621600` passed. The fresh manifest and artifact tree were downloaded from run `37759212962`; all 48 records and 97 referenced artifact digests were checked before import. The initial `DESIGN_PLAN.md` edit's 33 local governance findings and unbacked rows are resolved by the imported records.
+- Initial reviewer: Codex, separate same-contributor review pass, 2026-10-08. Reviewed implementation head `4a2f4ef3179384d2d3e06ad71dea3cc50be41a4f`, hosted artifacts, negative assertions and scope. The subsequent complete staged-diff check on 2026-10-09 found that the new Windows CLI evidence directory is outside the retained-XML whitespace attribute. P6 runtime results and exact artifact bytes remain valid, but final P6.5 formatting acceptance is `BLOCKED` until the scoped correction and checks below pass. Full RFC 0005 remains `Implementing` and `NOT_READY` for its unresolved broader contract and source corpus.
+
+#### Retained CLI evidence formatting correction
+
+- Readiness review: Codex, separate same-contributor pass, 2026-10-09, code head `4a2f4ef3179384d2d3e06ad71dea3cc50be41a4f` plus the staged hosted import. Decision: `READY` for this P6.5 completion correction. No executable migration, native or browser contract changes.
+- Acceptance: preserve all six target JUnit files and every historical/native evidence byte; scope CRLF acceptance to `docs/rfcs/0005-migrate-cli-evidence/**/*.xml`; continue rejecting ordinary XML CRLF and actual trailing spaces in retained XML; prove byte-exact staging with actual Git operations. The existing Windows digest test must inspect the current index so newly imported evidence is verifiable before commit rather than requiring its path to exist in `HEAD`.
+- Required checks: attribute/script unit tests, complete staged and PR-base diff checks, migration JVM/TypeScript/JavaScript tests, strict local governance, and green final PR-head hosted gates. A final row-by-row review must cover the attribute/test correction and imported artifacts before squash; the earlier green implementation run alone is insufficient.
+- Correction review: Codex, separate same-contributor pass, 2026-10-09. Inspected the complete staged/import and PR-base diff, the path-scoped attribute and all seven attribute tests. All 38 script tests pass, including real Git checks of both Windows XML files, ordinary-XML rejection, trailing-space rejection and exact staging. Migration JVM, TypeScript/JavaScript and strict governance checks pass (`READY`, zero findings); complete staged and PR-base whitespace checks pass. All four imported ZIPs pass archive integrity checks. The six target JUnit reports match hosted bytes, all 97 referenced artifact hashes match, all 986 imported artifact files match the download, and all 889 historical files remain byte-exact.
+- Row-by-row decision: P6.1 success/defaults, P6.2 typed failures, P6.3 determinism/v2-only decoding, P6.4 collision prevention, P6.5 documentation/platform/formatting completion, and P6.7 hosted evidence lifecycle are `PASS` against the retained run and correction checks. P6.6 remains reviewed `NOT_APPLICABLE` for native/browser behavior only. The correction changes no executable migration/runtime contract or evidence identity, so the retained three-target proof remains valid. Final integration is gated on green checks for the final PR head; record its exact revision and gate results in the PR before squash. This review does not promote full RFC 0005.
+
 [manifest-model]: ../../kweb-electron-migration/src/commonMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronMigrationContract.kt
 [manifest-tests]: ../../kweb-electron-migration/src/commonTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronManifestTest.kt
 [inventory-tests]: ../../kweb-electron-migration/src/jvmTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronInventoryRegressionTest.kt
@@ -359,4 +472,10 @@ repeating the native matrix.
 [report-tests]: ../../kweb-electron-migration/src/jvmTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronReportRegressionTest.kt
 [builder-tests]: ../../kweb-electron-migration/src/jvmTest/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronCompatibilityReportBuilderTest.kt
 [report-builder]: ../../kweb-electron-migration/src/jvmMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronCompatibilityReportBuilder.kt
+[p6-win-cli-evidence]: 0005-migrate-cli-evidence/p6/37759212962/windows-x64/TEST-io.github.kingsword09.kwebshell.electron.migration.KWebElectronMigrationCliTest.xml
+[p6-mac-cli-evidence]: 0005-migrate-cli-evidence/p6/37759212962/macos-arm64/TEST-io.github.kingsword09.kwebshell.electron.migration.KWebElectronMigrationCliTest.xml
+[p6-linux-cli-evidence]: 0005-migrate-cli-evidence/p6/37759212962/linux-x64/TEST-io.github.kingsword09.kwebshell.electron.migration.KWebElectronMigrationCliTest.xml
+[p6-win-manifest-evidence]: 0005-migrate-cli-evidence/p6/37759212962/windows-x64/TEST-io.github.kingsword09.kwebshell.electron.migration.KWebElectronManifestTest.xml
+[p6-mac-manifest-evidence]: 0005-migrate-cli-evidence/p6/37759212962/macos-arm64/TEST-io.github.kingsword09.kwebshell.electron.migration.KWebElectronManifestTest.xml
+[p6-linux-manifest-evidence]: 0005-migrate-cli-evidence/p6/37759212962/linux-x64/TEST-io.github.kingsword09.kwebshell.electron.migration.KWebElectronManifestTest.xml
 [tool-readme]: ../../kweb-electron-migration/README.md

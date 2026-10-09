@@ -90,6 +90,8 @@ export interface ImageDecodeRequest { sourceKind: string; format: string; payloa
 export interface ImageResponse { width: number; height: number; alphaMode: string; colorSpace: string; intent: string; pngBase64: string; }
 export interface ImageEncodeRequest { width: number; height: number; alphaMode: string; colorSpace: string; intent: string; pngBase64: string; }
 export interface ImageEncodedResponse { format: string; pngBase64: string; }
+export interface MenusPopupRequest { menuId: string; x: number; y: number; }
+export interface MenusPopupResponse { popupId: string; treeVersion: number; }
 
 export interface KWebBridgeCallOptions {
   readonly signal?: AbortSignal;
@@ -110,6 +112,7 @@ export interface DesktopApi {
   openFile(request: FilesOpenFileRequest, options?: KWebBridgeCallOptions): Promise<FilesHandleDescriptor>;
   openResource(request: ShellResourceRequest, options?: KWebBridgeCallOptions): Promise<ShellActionResponse>;
   openWorkspace(request: FilesWorkspaceRequest, options?: KWebBridgeCallOptions): Promise<FilesHandleDescriptor>;
+  popup(request: MenusPopupRequest, options?: KWebBridgeCallOptions): Promise<MenusPopupResponse>;
   readClipboard(request: ClipboardReadRequest, options?: KWebBridgeCallOptions): Promise<ClipboardReadResponse>;
   readClipboardPayload(request: ClipboardReadPayloadRequest, options?: KWebBridgeCallOptions): Promise<ClipboardReadPayloadResponse>;
   readFile(request: FilesReadFileRequest, options?: KWebBridgeCallOptions): Promise<FilesReadFileResponse>;
@@ -151,6 +154,9 @@ declare global {
     };
     NotificationsBridge: {
       createClient(): { close(request: NotificationCloseRequest, options?: KWebBridgeCallOptions): Promise<NotificationCloseResponse>; capabilities(request: NotificationScopeRequest, options?: KWebBridgeCallOptions): Promise<NotificationCapabilitiesResponse>; show(request: NotificationShowRequest, options?: KWebBridgeCallOptions): Promise<NotificationShowResponse> };
+    };
+    MenusBridge: {
+      createClient(): { showDeclaredPopup(request: MenusPopupRequest, options?: KWebBridgeCallOptions): Promise<MenusPopupResponse> };
     };
     KWebApplicationStreamsBridge: {
       createClient(): { openDownloadProgress(request: DownloadRequest, options?: KWebElectronStreamOptions): KWebElectronStream<ProgressChunk> };

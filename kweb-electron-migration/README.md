@@ -114,6 +114,23 @@ signal to `ImageBridge`. Input and output are each limited to 512 KiB of encoded
 bytes. Direct Electron calls remain inventory blockers until the application
 rewrites them to these declared typed channels.
 
+RFC 0017 classifies Electron `Menu`/`MenuItem` templates as a bounded rewrite to
+`KWebMenus` and the generated `MenusBridge`. Immutable typed command trees map to
+declared menu operations, and the renderer facade can only pop up a menu the host
+already declared:
+
+| Electron use | Required rewrite |
+|---|---|
+| `Menu.buildFromTemplate`, `Menu.setApplicationMenu` | Build an immutable typed command tree and apply it through the host `KWebMenus` contract with `MENU_OPERATION`. |
+| `Menu.getApplicationMenu`, `menu.popup` | Present a declared menu ID through the single renderer channel `menus.showDeclaredPopup`. |
+| `MenuItem` role/submenu/type/icon/accelerator | Declared role, submenu, kind, package-resource icon and typed accelerator values. |
+| custom `click` closures, unknown roles, unrepresentable accelerator strings, `Menu` object identity/mutation, renderer `remote`/IPC template construction | Blocked; no function serialization or object-identity emulation is generated. |
+
+The generated facade forwards the bounded declared-menu popup request, response,
+timeout and abort signal to `MenusBridge`. It never accepts a native template or a
+function. Direct Electron menu calls remain inventory blockers until the
+application rewrites them to the declared typed channel.
+
 ## Manifest v2 and inventory prerequisites
 
 Manifest v2 requires an exact `rendererOrigin`, an explicit `rendererProfile`,

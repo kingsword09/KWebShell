@@ -1,4 +1,4 @@
-#include "menus_platform.h"
+#include "menus_linux_internal.h"
 
 #if !defined(__linux__)
 #error "The Linux menus provider must only be compiled on Linux."
@@ -19,21 +19,7 @@
 
 namespace {
 
-/**
- * GTK is not thread-safe, so one dedicated thread owns the display connection
- * and its own GMainContext. Every ABI call hands one block to that thread and
- * waits, which keeps menu work independent from the host's event loop.
- */
-struct LinuxState {
-  std::thread thread;
-  GMainContext *context = nullptr;
-  GMainLoop *loop = nullptr;
-  std::mutex mutex;
-  std::condition_variable ready;
-  bool started = false;
-  bool available = false;
-  bool stopping = false;
-};
+using KWebMenusLinuxState = ::KWebMenusLinuxState;
 
 struct PopupSelection {
   std::map<GtkWidget *, std::string> commands;
@@ -175,7 +161,7 @@ void OnSelectionDone(GtkMenuShell *, gpointer user_data) {
 }
 
 /** Hands one block to the GTK thread and waits until it has run. */
-bool RunOnGtkThread(LinuxState &state, const std::function<void()> &block) {
+bool RunOnGtkThread(KWebMenusLinuxState &state, const std::function<void()> &block) {
   {
     std::lock_guard<std::mutex> lock(state.mutex);
     if (!state.started || state.stopping || state.context == nullptr) return false;
@@ -210,27 +196,40 @@ bool RunOnGtkThread(LinuxState &state, const std::function<void()> &block) {
 
 namespace kwebshell::menus {
 
+namespace linux_provider {
+
+/** The process-wide ABI state the desktop menu object handlers report to. */
+State *CurrentState() {
+  return g_state;
+}
+
+}  // namespace linux_provider
+
 const char *ProviderId() {
   return "menus.linux.gtk";
 }
 
 kweb_menus_status NativeOpen(State &state) {
-  auto linux_state = std::make_unique<LinuxState>();
+  auto linux_state = std::make_unique<KWebMenusLinuxState>();
   std::unique_lock<std::mutex> lock(linux_state->mutex);
   linux_state->thread = std::thread([linux_state = linux_state.get()] {
     GMainContext *context = g_main_context_new();
     g_main_context_push_thread_default(context);
     GMainLoop *loop = g_main_loop_new(context, FALSE);
     const gboolean available = gtk_init_check(nullptr, nullptr) == TRUE;
+    GDBusConnection *connection =
+        available ? g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, nullptr) : nullptr;
     {
       std::lock_guard<std::mutex> guard(linux_state->mutex);
       linux_state->context = context;
       linux_state->loop = loop;
+      linux_state->connection = connection;
       linux_state->available = available;
       linux_state->started = true;
     }
     linux_state->ready.notify_all();
     if (available) g_main_loop_run(loop);
+    if (connection != nullptr) g_object_unref(connection);
     g_main_loop_unref(loop);
     g_main_context_pop_thread_default(context);
     g_main_context_unref(context);
@@ -247,11 +246,20 @@ kweb_menus_status NativeOpen(State &state) {
   return KWEB_MENUS_STATUS_OK;
 }
 
-kweb_menus_status NativeCapabilities(State &, kweb_menus_capabilities_result *result) {
+kweb_menus_status NativeCapabilities(State &state, kweb_menus_capabilities_result *result) {
+  auto *linux_state = static_cast<KWebMenusLinuxState *>(state.platform);
   result->flags = KWEB_MENUS_CAP_PAGE_MENU | KWEB_MENUS_CAP_SUBMENUS | KWEB_MENUS_CAP_CHECKBOX_ITEMS |
                   KWEB_MENUS_CAP_RADIO_ITEMS | KWEB_MENUS_CAP_ITEM_ICONS | KWEB_MENUS_CAP_MNEMONICS |
                   KWEB_MENUS_CAP_ACCELERATOR_DISPLAY | KWEB_MENUS_CAP_POPUP_POSITIONING;
   result->native_roles = 0;
+  if (linux_state == nullptr) return KWEB_MENUS_STATUS_OK;
+  // The application bar is the window tree published to the desktop's menu
+  // host; without that host the capability is not advertised at all.
+  bool host_present = false;
+  RunOnGtkThread(*linux_state, [&] { host_present = linux_provider::DesktopMenuHostPresent(*linux_state); });
+  if (host_present) {
+    result->flags |= KWEB_MENUS_CAP_WINDOW_MENU | KWEB_MENUS_CAP_GLOBAL_MENU_HOST;
+  }
   return KWEB_MENUS_STATUS_OK;
 }
 
@@ -262,17 +270,26 @@ kweb_menus_status NativeSetApplicationMenu(State &, const Tree *tree) {
   return KWEB_MENUS_STATUS_TARGET_UNSUPPORTED;
 }
 
-kweb_menus_status NativeSetWindowMenu(State &, const std::string &, uint64_t, kweb_menus_owner_kind,
-                                     const Tree *tree) {
-  if (tree == nullptr) return KWEB_MENUS_STATUS_OK;
-  return KWEB_MENUS_STATUS_TARGET_UNSUPPORTED;
+kweb_menus_status NativeSetWindowMenu(State &state, const std::string &window_id, uint64_t native_window,
+                                     kweb_menus_owner_kind owner_kind, const Tree *tree) {
+  auto *linux_state = static_cast<KWebMenusLinuxState *>(state.platform);
+  if (linux_state == nullptr) return KWEB_MENUS_STATUS_NATIVE_UNAVAILABLE;
+  kweb_menus_status status = KWEB_MENUS_STATUS_NATIVE_FAILED;
+  RunOnGtkThread(*linux_state, [&] {
+    if (tree == nullptr) {
+      status = linux_provider::ClearDesktopMenu(*linux_state, window_id);
+      return;
+    }
+    status = linux_provider::RegisterDesktopMenu(*linux_state, window_id, native_window, owner_kind, *tree);
+  });
+  return status;
 }
 
 kweb_menus_status NativeShowPopup(State &state, const Tree &tree, kweb_menus_owner_kind owner_kind,
                                   const std::string &owner_id, kweb_menus_popup_source, int32_t screen_x,
                                   int32_t screen_y, uint64_t native_window, const std::string &popup_id,
                                   kweb_menus_popup_result *result) {
-  auto *linux_state = static_cast<LinuxState *>(state.platform);
+  auto *linux_state = static_cast<KWebMenusLinuxState *>(state.platform);
   if (linux_state == nullptr) return KWEB_MENUS_STATUS_NATIVE_UNAVAILABLE;
   PopupSelection selection;
   bool presented = false;
@@ -307,7 +324,7 @@ kweb_menus_status NativeShowPopup(State &state, const Tree &tree, kweb_menus_own
 }
 
 kweb_menus_status NativeClose(State &state) {
-  auto *linux_state = static_cast<LinuxState *>(state.platform);
+  auto *linux_state = static_cast<KWebMenusLinuxState *>(state.platform);
   if (linux_state != nullptr) {
     std::function<void()> stop = [linux_state] {
       if (linux_state->loop != nullptr) g_main_loop_quit(linux_state->loop);

@@ -297,6 +297,15 @@ bool ParseTree(const kweb_menus_tree &source, Tree *output) {
     return false;
   }
   if (HasDuplicateCommandsOrAccelerators(parsed)) return false;
+  // Providers build native menus from the root block, so the same structural
+  // scan records each top-level item index.
+  size_t cursor = 0;
+  for (uint32_t root = 0; root < root_count; ++root) {
+    parsed.roots.push_back(cursor);
+    size_t end = 0;
+    if (!BlockEnd(source.items, source.item_count, cursor, 1u, &end)) return false;
+    cursor = end;
+  }
   parsed.actionable_count = walk.actionable;
   *output = std::move(parsed);
   return true;

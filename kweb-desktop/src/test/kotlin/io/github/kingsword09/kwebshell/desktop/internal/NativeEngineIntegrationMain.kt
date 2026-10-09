@@ -1076,7 +1076,8 @@ private fun runContextMenuIntegration() {
 private class ContextMenuFixture : AutoCloseable {
     private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
     val pageUrl: String = "http://127.0.0.1:${server.address.port}/page"
-    val origin: String = "http://127.0.0.1:${server.address.port}"
+    // The engine publishes the canonical origin form, which keeps the root path.
+    val origin: String = "http://127.0.0.1:${server.address.port}/"
 
     init {
         server.createContext("/page") { exchange ->

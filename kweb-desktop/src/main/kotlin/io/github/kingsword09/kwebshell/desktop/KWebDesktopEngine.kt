@@ -469,11 +469,23 @@ internal class KWebDesktopProfile(
                                 }
                             }
                         } else if (event.type == NativeBrowserEventType.CONTEXT_MENU) {
-                            val request = KWebDesktopContextMenuJson.parse(
-                                event = event,
-                                profileId = name,
-                                pageId = pageId,
-                            )
+                            val request = try {
+                                KWebDesktopContextMenuJson.parse(
+                                    event = event,
+                                    profileId = name,
+                                    pageId = pageId,
+                                )
+                            } catch (error: Throwable) {
+                                // A malformed request must never leave Chromium
+                                // waiting: dismiss deterministically, then fail
+                                // the page with the typed decoding error.
+                                NativeBindings.browserContextMenuRespond(
+                                    event.browser,
+                                    event.requestId,
+                                    KWebDesktopContextMenuJson.decisionPayload(KWebContextMenuDecision.DISMISS),
+                                )
+                                throw error
+                            }
                             val owned = synchronized(lock) {
                                 if (!contextMenuStream.hasSubscriber()) {
                                     false

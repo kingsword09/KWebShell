@@ -90,6 +90,20 @@ void TraceCloseStage(kweb_browser_handle browser, const char *stage) {
   }
 }
 
+// Opt-in diagnostics for the page context-menu chain; enabled with the
+// KWEBSHELL_TRACE_CONTEXT_MENU environment variable.
+void TraceContextMenu(kweb_browser_handle browser, const char *stage,
+                      uint64_t detail = 0) {
+  static const bool enabled =
+      std::getenv("KWEBSHELL_TRACE_CONTEXT_MENU") != nullptr;
+  if (enabled) {
+    std::fprintf(stderr,
+                 "KWEBSHELL_CONTEXT_MENU_TRACE browser=%llu stage=%s detail=%llu\n",
+                 static_cast<unsigned long long>(browser),
+                 stage, static_cast<unsigned long long>(detail));
+  }
+}
+
 // Opt-in diagnostics for the browser creation chain; enabled with the
 // KWEBSHELL_TRACE_CREATE environment variable.
 void TraceCreateStage(kweb_browser_handle browser, const char *stage) {
@@ -413,6 +427,10 @@ public:
   CefRefPtr<CefContextMenuHandler> GetContextMenuHandler() override {
     // Without the explicit configuration flag the engine leaves CEF's default
     // context-menu behavior in place.
+    // The session is still incomplete here, so the trace carries no handle; the
+    // session-side traces identify the browser.
+    TraceContextMenu(0, context_menus_enabled_ ? "handler-requested"
+                                               : "handler-skipped");
     return context_menus_enabled_ ? this : nullptr;
   }
   void OnBeforeContextMenu(CefRefPtr<CefBrowser> browser,
@@ -701,6 +719,10 @@ public:
                       CefRefPtr<CefContextMenuParams> params,
                       CefRefPtr<CefMenuModel> model,
                       CefRefPtr<CefRunContextMenuCallback> callback);
+
+  void TraceContextMenuStage(const char *stage, uint64_t detail = 0) {
+    TraceContextMenu(handle_, stage, detail);
+  }
 
   void OnContextMenuDismissed(CefRefPtr<CefBrowser> browser,
                               CefRefPtr<CefFrame> frame) {
@@ -2826,6 +2848,8 @@ bool BrowserSession::RunContextMenu(CefRefPtr<CefBrowser> browser,
                                     CefRefPtr<CefRunContextMenuCallback> callback) {
   CEF_REQUIRE_UI_THREAD();
   (void)browser;
+  TraceContextMenu(handle_, "run-context-menu",
+                   model != nullptr ? model->GetCount() : 0);
   if (callback == nullptr) return true;
   if (closing_.load(std::memory_order_acquire) ||
       !ready_.load(std::memory_order_acquire)) {
@@ -2855,6 +2879,7 @@ bool BrowserSession::RunContextMenu(CefRefPtr<CefBrowser> browser,
                      params != nullptr ? params->GetSelectionText().ToString() : std::string());
   details->SetString("linkUrl",
                      params != nullptr ? params->GetLinkUrl().ToString() : std::string());
+  details->SetString("url", frame != nullptr ? frame->GetURL().ToString() : std::string());
   details->SetList("items", items);
   auto value = CefValue::Create();
   value->SetDictionary(details);
@@ -2864,6 +2889,7 @@ bool BrowserSession::RunContextMenu(CefRefPtr<CefBrowser> browser,
                                    ? KWEB_CONTEXT_MENU_FRAME_MAIN
                                    : KWEB_CONTEXT_MENU_FRAME_SUBFRAME;
   const std::string url = frame != nullptr ? frame->GetURL().ToString() : std::string();
+  TraceContextMenu(handle_, "emit-request", payload.size());
   Emit(KWEB_BROWSER_EVENT_CONTEXT_MENU, 0, {}, 0, 0, 0, frame_id, frame_scope,
        KWEB_BROWSER_REASON_NONE, request_id, {}, url, {}, payload);
   return true;
@@ -2886,6 +2912,7 @@ kweb_status BrowserSession::RespondToContextMenu(uint64_t request_id, std::strin
     context_menu_requests_.erase(found);
     resolved_context_menu_requests_.insert(request_id);
   }
+  TraceContextMenu(handle_, "respond", request_id);
   if (request.callback == nullptr) return KWEB_STATUS_CONTEXT_MENU_NOT_FOUND;
   if (closing_.load(std::memory_order_acquire)) {
     request.callback->Cancel();
@@ -2977,6 +3004,8 @@ void SessionClient::OnBeforeContextMenu(CefRefPtr<CefBrowser> browser,
                                         CefRefPtr<CefFrame> frame,
                                         CefRefPtr<CefContextMenuParams> params,
                                         CefRefPtr<CefMenuModel> model) {
+  TraceContextMenu(0, "before-context-menu",
+                   model != nullptr ? model->GetCount() : 0);
   // Presentation belongs to the application policy resolved by Kotlin, so the
   // CEF default model is only an input to RunContextMenu.
   (void)browser;

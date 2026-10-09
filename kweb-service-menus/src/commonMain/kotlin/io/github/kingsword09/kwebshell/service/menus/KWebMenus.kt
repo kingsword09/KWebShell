@@ -577,6 +577,8 @@ public object KWebMenuErrorCode {
     public const val ABI_MISMATCH: String = "menus.abi-mismatch"
     public const val OUTCOME_UNKNOWN: String = "menus.outcome-unknown"
     public const val OWNER_CLOSED: String = "menus.owner-closed"
+    public const val PERMISSION_DENIED: String = "menus.permission-denied"
+    public const val CONSENT_REQUIRED: String = "menus.consent-required"
     public const val CANCELLED: String = "menus.cancelled"
 }
 

@@ -83,7 +83,8 @@ public final class FfmBindings {
         int width,
         int height,
         String bridgeOrigin,
-        boolean downloadsEnabled
+        boolean downloadsEnabled,
+        boolean contextMenusEnabled
     ) {
         return FfmBrowserCalls.create(
             engine,
@@ -99,7 +100,8 @@ public final class FfmBindings {
             width,
             height,
             bridgeOrigin,
-            downloadsEnabled
+            downloadsEnabled,
+            contextMenusEnabled
         );
     }
 
@@ -149,6 +151,10 @@ public final class FfmBindings {
 
     public static int browserBridgeFail(long handle, long requestId, String failureJson) {
         return FfmBrowserCalls.bridgeFail(handle, requestId, failureJson);
+    }
+
+    public static int browserContextMenuRespond(long handle, long requestId, String decisionJson) {
+        return FfmBrowserCalls.contextMenuRespond(handle, requestId, decisionJson);
     }
 
     public static int browserSecurityRespond(long handle, long requestId, String decisionJson) {

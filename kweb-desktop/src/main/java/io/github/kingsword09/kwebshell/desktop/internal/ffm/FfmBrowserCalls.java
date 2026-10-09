@@ -24,7 +24,8 @@ final class FfmBrowserCalls {
         int width,
         int height,
         String bridgeOrigin,
-        boolean downloadsEnabled
+        boolean downloadsEnabled,
+        boolean contextMenusEnabled
     ) {
         if (nativeParent == 0 || (bridgeSink == null) != bridgeOrigin.isEmpty()) {
             return encodeFailure(FfmStatus.INVALID_ARGUMENT);
@@ -50,8 +51,11 @@ final class FfmBrowserCalls {
                 );
                 config.set(FfmLayouts.UINT32, offset("abi_version"), FfmAbi.VERSION);
                 config.set(FfmLayouts.UINT64, offset("engine"), engine);
-                config.set(FfmLayouts.UINT32, offset("reserved"),
-                    downloadsEnabled ? 1 : 0);
+                config.set(
+                    FfmLayouts.UINT32,
+                    offset("reserved"),
+                    (downloadsEnabled ? 1 : 0) | (contextMenusEnabled ? 2 : 0)
+                );
                 config.set(FfmLayouts.SIZE_T, offset("native_parent"), nativeParent);
                 config.set(FfmLayouts.INT32, offset("x"), x);
                 config.set(FfmLayouts.INT32, offset("y"), y);
@@ -152,6 +156,10 @@ final class FfmBrowserCalls {
 
     static int bridgeFail(long handle, long requestId, String failure) {
         return invokeUtf8("kweb_browser_bridge_fail", handle, requestId, failure, true);
+    }
+
+    static int contextMenuRespond(long handle, long requestId, String decision) {
+        return invokeUtf8("kweb_browser_context_menu_respond", handle, requestId, decision, true);
     }
 
     static int securityRespond(long handle, long requestId, String decision) {

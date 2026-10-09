@@ -76,6 +76,7 @@ internal enum class NativeBrowserEventType(val value: Int) {
     NETWORK_OBSERVATION_FAILED(24),
     SECURITY_CHALLENGE(25),
     DOWNLOAD(26),
+    CONTEXT_MENU(27),
     ;
 
     companion object {
@@ -212,6 +213,11 @@ internal class NativeBrowser private constructor(
     internal fun respondToSecurityChallenge(requestId: Long, decisionJson: String): Int {
         val handle = requireOpenHandle("respond-security-challenge")
         return NativeBindings.browserSecurityRespond(handle, requestId, decisionJson)
+    }
+
+    internal fun respondToContextMenu(requestId: Long, decisionJson: String): Int {
+        val handle = requireOpenHandle("respond-context-menu")
+        return NativeBindings.browserContextMenuRespond(handle, requestId, decisionJson)
     }
 
     internal fun controlDownload(downloadId: Long, operation: Int): Int {
@@ -1154,6 +1160,7 @@ internal class NativeBrowser private constructor(
             bridgeDispatcher: KWebBridgeDispatcher? = null,
             streamDispatcher: KWebStreamBridgeDispatcher? = null,
             downloadsEnabled: Boolean = false,
+            contextMenusEnabled: Boolean = false,
             listener: (NativeBrowserEvent) -> Unit = {},
         ): NativeBrowser {
             if ((bridgeDispatcher == null) != bridgeOrigin.isEmpty()) {
@@ -1214,6 +1221,7 @@ internal class NativeBrowser private constructor(
                     bridgeOrigin,
                     browser.bridgeSink,
                     downloadsEnabled,
+                    contextMenusEnabled,
                 )
             }
             if (result <= 0L) {

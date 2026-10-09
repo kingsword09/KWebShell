@@ -2,7 +2,7 @@ package io.github.kingsword09.kwebshell.desktop.internal
 
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 
-internal const val NATIVE_ABI_VERSION: Int = 16
+internal const val NATIVE_ABI_VERSION: Int = 17
 
 internal enum class NativeStatus(
     val value: Int,
@@ -95,6 +95,10 @@ internal enum class NativeStatus(
     DOWNLOAD_PROFILE_CLOSING(86, "download-profile-closing"),
     DOWNLOAD_CAPABILITY_MISSING(87, "download-capability-missing"),
     DOWNLOAD_LIMIT_EXCEEDED(88, "download-limit-exceeded"),
+    CONTEXT_MENU_NOT_FOUND(89, "context-menu-not-found"),
+    CONTEXT_MENU_ALREADY_RESOLVED(90, "context-menu-already-resolved"),
+    CONTEXT_MENU_DECISION_INVALID(91, "context-menu-decision-invalid"),
+    CONTEXT_MENU_CLOSING(92, "context-menu-closing"),
     ;
 
     companion object {
@@ -131,6 +135,25 @@ internal fun securityChallengeStatusException(
         code = code,
         details = details + mapOf("operation" to operation, "status" to value.toString()),
         message = "Native security challenge operation '$operation' failed with '$code'.",
+    )
+}
+
+internal fun contextMenuStatusException(
+    operation: String,
+    value: Int,
+    details: Map<String, String> = emptyMap(),
+): KWebNativeException {
+    val code = when (value) {
+        NativeStatus.CONTEXT_MENU_NOT_FOUND.value -> "page.context-menu.not-found"
+        NativeStatus.CONTEXT_MENU_ALREADY_RESOLVED.value -> "page.context-menu.already-resolved"
+        NativeStatus.CONTEXT_MENU_DECISION_INVALID.value -> "page.context-menu.decision-invalid"
+        NativeStatus.CONTEXT_MENU_CLOSING.value -> "page.context-menu.owner-closed"
+        else -> return nativeStatusException(operation, value, details)
+    }
+    return KWebNativeException(
+        code = code,
+        details = details + mapOf("operation" to operation, "status" to value.toString()),
+        message = "Native page context-menu operation '$operation' failed with '$code'.",
     )
 }
 

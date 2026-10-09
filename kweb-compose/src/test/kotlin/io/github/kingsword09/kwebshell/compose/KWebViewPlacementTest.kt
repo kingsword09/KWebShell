@@ -19,6 +19,9 @@ import io.github.kingsword09.kwebshell.core.KWebNativeException
 import io.github.kingsword09.kwebshell.core.KWebSecurityChallenge
 import io.github.kingsword09.kwebshell.core.KWebSecurityChallengeResult
 import io.github.kingsword09.kwebshell.core.KWebSecurityDecision
+import io.github.kingsword09.kwebshell.core.KWebContextMenuDecision
+import io.github.kingsword09.kwebshell.core.KWebContextMenuRequest
+import io.github.kingsword09.kwebshell.core.KWebContextMenuResult
 import io.github.kingsword09.kwebshell.core.KWebDownload
 import io.github.kingsword09.kwebshell.core.KWebRect
 import io.github.kingsword09.kwebshell.core.KWebCookie
@@ -183,6 +186,7 @@ private class RecordingProfile : KWebProfile {
     override val lifecycle = mutableLifecycle
     override val networkEvents = emptyFlow<KWebNetworkRequestEvent>()
     override val securityChallenges = emptyFlow<KWebSecurityChallenge>()
+    override val contextMenus = emptyFlow<KWebContextMenuRequest>()
     override val downloads = emptyFlow<KWebDownload>()
 
     override suspend fun openPage(host: KWebPageHost, initialUrl: String, bounds: KWebRect): KWebPage =
@@ -243,6 +247,11 @@ private class RecordingProfile : KWebProfile {
         details = mapOf("requestId" to requestId.toString()),
         message = "The recording Profile has no live security challenge.",
     )
+
+    override suspend fun respondToContextMenu(
+        requestId: Long,
+        decision: KWebContextMenuDecision,
+    ): KWebContextMenuResult = throw UnsupportedOperationException("The recording profile has no page menu.")
 
     override suspend fun flush(target: KWebPage): KWebProfileFlushResult =
         KWebProfileFlushResult(completedEpochMillis = 0)

@@ -38,6 +38,10 @@ import io.github.kingsword09.kwebshell.core.KWebReloadMode
 import io.github.kingsword09.kwebshell.core.KWebReloadOutcome
 import io.github.kingsword09.kwebshell.core.KWebReloadResult
 import io.github.kingsword09.kwebshell.core.KWebProfile
+import io.github.kingsword09.kwebshell.core.KWebContextMenuDecision
+import io.github.kingsword09.kwebshell.core.KWebContextMenuOutcome
+import io.github.kingsword09.kwebshell.core.KWebContextMenuRequest
+import io.github.kingsword09.kwebshell.core.KWebContextMenuResult
 import io.github.kingsword09.kwebshell.core.KWebSecurityChallenge
 import io.github.kingsword09.kwebshell.core.KWebSecurityChallengeOutcome
 import io.github.kingsword09.kwebshell.core.KWebSecurityChallengeResult
@@ -64,6 +68,7 @@ import io.github.kingsword09.kwebshell.desktop.internal.NativeBindings
 import io.github.kingsword09.kwebshell.desktop.internal.NativeEngine
 import io.github.kingsword09.kwebshell.desktop.internal.NativeEngineConfiguration
 import io.github.kingsword09.kwebshell.desktop.internal.NativeStatus
+import io.github.kingsword09.kwebshell.desktop.internal.contextMenuStatusException
 import io.github.kingsword09.kwebshell.desktop.internal.nativeStatusException
 import io.github.kingsword09.kwebshell.desktop.internal.securityChallengeStatusException
 import kotlinx.coroutines.Dispatchers
@@ -107,6 +112,7 @@ public class KWebDesktopEngine private constructor(
 ) : KWebEngine {
     internal val engineId: String = configuration.engineId
     internal val downloadPolicy: KWebDesktopDownloadPolicy? = configuration.downloadPolicy
+    internal val contextMenusEnabled: Boolean = configuration.contextMenusEnabled
 
     internal val openingProfileCount: Int
         get() = synchronized(lock) { openingProfiles.size }
@@ -317,6 +323,7 @@ internal class KWebDesktopProfile(
     private val mutableLifecycle = MutableStateFlow(KWebLifecycleState.OPEN)
     private val networkEventStream = KWebDesktopNetworkEventStream()
     private val securityChallengeStream = KWebDesktopSecurityChallengeStream()
+    private val contextMenuStream = KWebDesktopContextMenuStream()
     private val downloadStream = KWebDesktopDownloadStream()
     private val pages = linkedSetOf<KWebDesktopPage>()
     private val downloadsById = linkedMapOf<Long, KWebDesktopDownload>()
@@ -326,6 +333,12 @@ internal class KWebDesktopProfile(
     )
     private val pendingSecurityChallenges = linkedMapOf<Long, SecurityChallengeOwner>()
     private val resolvedSecurityChallenges = linkedSetOf<Long>()
+    private data class ContextMenuOwner(
+        val browserHandle: Long,
+        val request: KWebContextMenuRequest,
+    )
+    private val pendingContextMenus = linkedMapOf<Long, ContextMenuOwner>()
+    private val resolvedContextMenus = linkedSetOf<Long>()
     private var closedByEngine = false
     private var activeNetworkOperation: CountDownLatch? = null
 
@@ -333,6 +346,7 @@ internal class KWebDesktopProfile(
     override val lifecycle: StateFlow<KWebLifecycleState> = mutableLifecycle.asStateFlow()
     override val networkEvents: Flow<KWebNetworkRequestEvent> = networkEventStream.events
     override val securityChallenges: Flow<KWebSecurityChallenge> = securityChallengeStream.events
+    override val contextMenus: Flow<KWebContextMenuRequest> = contextMenuStream.flow
     override val downloads: Flow<KWebDownload> = downloadStream.flow
 
     internal suspend fun awaitDownloadSubscriber() {
@@ -388,6 +402,7 @@ internal class KWebDesktopProfile(
                     bridgeDispatcher = bridgeDispatcher,
                     streamDispatcher = streamDispatcher,
                     downloadsEnabled = engine.downloadPolicy != null,
+                    contextMenusEnabled = engine.contextMenusEnabled,
                     listener = listener@{ event ->
                         if (event.type == NativeBrowserEventType.NETWORK_OBSERVATION_FAILED) {
                             val code = event.details.takeIf { it == "network.observation-backpressure" }
@@ -449,6 +464,43 @@ internal class KWebDesktopProfile(
                                     )
                                 }
                             }
+                        } else if (event.type == NativeBrowserEventType.CONTEXT_MENU) {
+                            val request = KWebDesktopContextMenuJson.parse(
+                                event = event,
+                                profileId = name,
+                                pageId = pageId,
+                            )
+                            val owned = synchronized(lock) {
+                                if (!contextMenuStream.hasSubscriber()) {
+                                    false
+                                } else {
+                                    pendingContextMenus[event.requestId] = ContextMenuOwner(
+                                        browserHandle = event.browser,
+                                        request = request,
+                                    )
+                                    true
+                                }
+                            }
+                            if (!owned || !contextMenuStream.publish(request)) {
+                                // No application policy is attached: Chromium's
+                                // own default menu stays the only behavior.
+                                val dismiss = NativeBindings.browserContextMenuRespond(
+                                    event.browser,
+                                    event.requestId,
+                                    KWebDesktopContextMenuJson.decisionPayload(KWebContextMenuDecision.DISMISS),
+                                )
+                                synchronized(lock) {
+                                    pendingContextMenus.remove(event.requestId)
+                                    resolvedContextMenus += event.requestId
+                                }
+                            if (dismiss != NativeStatus.OK.value) {
+                                    throw contextMenuStatusException(
+                                        "context-menu-overflow",
+                                        dismiss,
+                                        mapOf("requestId" to event.requestId.toString()),
+                                    )
+                                }
+                            }
                         } else if (event.type == NativeBrowserEventType.DOWNLOAD) {
                             val update = KWebDesktopDownloadJson.parse(event.details)
                             if (update.id != event.requestId) {
@@ -498,6 +550,79 @@ internal class KWebDesktopProfile(
                 pages += page
                 page.trackTerminalOwnership()
                 page
+            }
+        }
+    }
+
+    override suspend fun respondToContextMenu(
+        requestId: Long,
+        decision: KWebContextMenuDecision,
+    ): KWebContextMenuResult = withContext(Dispatchers.IO) {
+        val owner = synchronized(lock) {
+            if (requestId in resolvedContextMenus) {
+                throw contextMenuStatusException(
+                    "respond-context-menu",
+                    NativeStatus.CONTEXT_MENU_ALREADY_RESOLVED.value,
+                    mapOf("requestId" to requestId.toString()),
+                )
+            }
+            pendingContextMenus[requestId]
+                ?: throw contextMenuStatusException(
+                    "respond-context-menu",
+                    io.github.kingsword09.kwebshell.desktop.internal.NativeStatus.CONTEXT_MENU_NOT_FOUND.value,
+                    mapOf("requestId" to requestId.toString()),
+                )
+        }
+        if (decision is KWebContextMenuDecision.CONTINUE &&
+            owner.request.items.none { it.command == decision.command }
+        ) {
+            throw KWebNativeException(
+                code = "page.context-menu.command-unknown",
+                details = mapOf("requestId" to requestId.toString(), "command" to decision.command),
+                message = "The selected context-menu command is not part of the observed menu.",
+            )
+        }
+        val status = NativeBindings.browserContextMenuRespond(
+            owner.browserHandle,
+            requestId,
+            KWebDesktopContextMenuJson.decisionPayload(decision),
+        )
+        when (status) {
+            io.github.kingsword09.kwebshell.desktop.internal.NativeStatus.OK.value -> {
+                synchronized(lock) {
+                    pendingContextMenus.remove(requestId)
+                    resolvedContextMenus += requestId
+                }
+                KWebContextMenuResult(
+                    requestId,
+                    if (decision is KWebContextMenuDecision.CONTINUE) {
+                        KWebContextMenuOutcome.CONTINUED
+                    } else {
+                        KWebContextMenuOutcome.DISMISSED
+                    },
+                )
+            }
+            io.github.kingsword09.kwebshell.desktop.internal.NativeStatus.CONTEXT_MENU_CLOSING.value -> {
+                synchronized(lock) {
+                    pendingContextMenus.remove(requestId)
+                    resolvedContextMenus += requestId
+                }
+                KWebContextMenuResult(requestId, KWebContextMenuOutcome.OWNER_CLOSED)
+            }
+            else -> {
+                if (status == NativeStatus.CONTEXT_MENU_ALREADY_RESOLVED.value ||
+                    status == NativeStatus.CONTEXT_MENU_NOT_FOUND.value
+                ) {
+                    synchronized(lock) {
+                        pendingContextMenus.remove(requestId)
+                        resolvedContextMenus += requestId
+                    }
+                }
+                throw contextMenuStatusException(
+                    "respond-context-menu",
+                    status,
+                    mapOf("requestId" to requestId.toString()),
+                )
             }
         }
     }
@@ -1618,6 +1743,8 @@ private fun NativeBrowserEvent.toPublicEvent(
             throw IllegalStateException("The Profile security challenge reached the page mapping.")
         NativeBrowserEventType.DOWNLOAD ->
             throw IllegalStateException("The Profile download event reached the page mapping.")
+        NativeBrowserEventType.CONTEXT_MENU ->
+            throw IllegalStateException("The Profile context-menu event reached the page mapping.")
     }
     val flags = buildSet {
         if (this@toPublicEvent.flags and 1 != 0) add(KWebPageEventFlag.LOADING)

@@ -16,6 +16,7 @@ set(expected
   kweb_browser_crash_renderer
   kweb_browser_bridge_respond
   kweb_browser_bridge_fail
+  kweb_browser_context_menu_respond
   kweb_browser_profile_data
   kweb_browser_security_respond
   kweb_browser_download_control

@@ -1,4 +1,5 @@
 _kweb_browser_close
+_kweb_browser_context_menu_respond
 _kweb_browser_create
 _kweb_browser_navigate
 _kweb_browser_reload

@@ -153,6 +153,7 @@ internal object NativeBindings {
         bridgeOrigin: String,
         bridgeSink: NativeBridgeEventSink?,
         downloadsEnabled: Boolean = false,
+        contextMenusEnabled: Boolean = false,
     ): Long = FfmBindings.browserCreate(
         engine,
         FfmCallbacks.BrowserEvent(sink::onNativeBrowserEvent),
@@ -168,6 +169,7 @@ internal object NativeBindings {
         height,
         bridgeOrigin,
         downloadsEnabled,
+        contextMenusEnabled,
     )
 
     internal fun browserCreate(
@@ -228,6 +230,9 @@ internal object NativeBindings {
 
     internal fun browserBridgeFail(handle: Long, requestId: Long, failureJson: String): Int =
         FfmBindings.browserBridgeFail(handle, requestId, failureJson)
+
+    internal fun browserContextMenuRespond(handle: Long, requestId: Long, decisionJson: String): Int =
+        FfmBindings.browserContextMenuRespond(handle, requestId, decisionJson)
 
     internal fun browserSecurityRespond(handle: Long, requestId: Long, decisionJson: String): Int =
         FfmBindings.browserSecurityRespond(handle, requestId, decisionJson)

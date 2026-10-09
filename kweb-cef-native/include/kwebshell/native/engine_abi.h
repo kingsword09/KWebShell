@@ -66,8 +66,20 @@ typedef uint32_t kweb_profile_data_operation_type;
 #define KWEB_BROWSER_EVENT_NETWORK_OBSERVATION_FAILED ((kweb_browser_event_type)24)
 #define KWEB_BROWSER_EVENT_SECURITY_CHALLENGE ((kweb_browser_event_type)25)
 #define KWEB_BROWSER_EVENT_DOWNLOAD ((kweb_browser_event_type)26)
+#define KWEB_BROWSER_EVENT_CONTEXT_MENU ((kweb_browser_event_type)27)
+
+/* Page context-menu decisions. The decision payload is JSON:
+ * {"decision":"continue","commandId":"chromium.copy"} when the application
+ * selected one of the Chromium-provided items, or {"decision":"dismiss"}. */
+#define KWEB_CONTEXT_MENU_DECISION_DISMISS ((uint32_t)1)
+#define KWEB_CONTEXT_MENU_DECISION_CONTINUE ((uint32_t)2)
+#define KWEB_CONTEXT_MENU_FRAME_MAIN ((uint32_t)1)
+#define KWEB_CONTEXT_MENU_FRAME_SUBFRAME ((uint32_t)2)
 
 #define KWEB_BROWSER_CONFIG_DOWNLOADS_ENABLED ((uint32_t)1)
+/* Enables application-owned page context menus. While the flag is absent the
+ * engine leaves CEF's default menu behavior untouched. */
+#define KWEB_BROWSER_CONFIG_CONTEXT_MENUS_ENABLED ((uint32_t)2)
 #define KWEB_DOWNLOAD_CONTROL_CANCEL ((uint32_t)1)
 #define KWEB_DOWNLOAD_CONTROL_PAUSE ((uint32_t)2)
 #define KWEB_DOWNLOAD_CONTROL_RESUME ((uint32_t)3)
@@ -346,6 +358,12 @@ kweb_browser_bridge_fail(kweb_browser_handle browser, uint64_t request_id,
 KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
 kweb_browser_security_respond(kweb_browser_handle browser, uint64_t request_id,
                               const char *decision_utf8, size_t decision_size);
+
+/* Completes one page context-menu request exactly once. The decision payload is
+ * the JSON described with KWEB_CONTEXT_MENU_DECISION_*. */
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
+kweb_browser_context_menu_respond(kweb_browser_handle browser, uint64_t request_id,
+                                  const char *decision_utf8, size_t decision_size);
 
 KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
 kweb_browser_download_control(kweb_browser_handle browser, uint64_t download_id,

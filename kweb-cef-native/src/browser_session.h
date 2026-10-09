@@ -28,6 +28,9 @@ kweb_status RespondToBridgeSession(kweb_browser_handle browser,
                                    uint64_t request_id,
                                    const char *response_utf8,
                                    size_t response_size, bool success);
+kweb_status RespondToContextMenuSession(kweb_browser_handle browser,
+                                        uint64_t request_id,
+                                        const std::string &decision);
 kweb_status RespondToSecurityChallengeSession(kweb_browser_handle browser,
                                               uint64_t request_id,
                                               const std::string& decision);

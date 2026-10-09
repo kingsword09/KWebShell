@@ -11,7 +11,7 @@
 #define KWEB_ABI_CALL
 #endif
 
-#define KWEB_ABI_VERSION ((uint32_t)16)
+#define KWEB_ABI_VERSION ((uint32_t)17)
 
 typedef uint32_t kweb_status;
 
@@ -102,5 +102,9 @@ typedef uint32_t kweb_status;
 #define KWEB_STATUS_DOWNLOAD_PROFILE_CLOSING ((kweb_status)86)
 #define KWEB_STATUS_DOWNLOAD_CAPABILITY_MISSING ((kweb_status)87)
 #define KWEB_STATUS_DOWNLOAD_LIMIT_EXCEEDED ((kweb_status)88)
+#define KWEB_STATUS_CONTEXT_MENU_NOT_FOUND ((kweb_status)89)
+#define KWEB_STATUS_CONTEXT_MENU_ALREADY_RESOLVED ((kweb_status)90)
+#define KWEB_STATUS_CONTEXT_MENU_DECISION_INVALID ((kweb_status)91)
+#define KWEB_STATUS_CONTEXT_MENU_CLOSING ((kweb_status)92)
 
 #endif // KWEBSHELL_NATIVE_BASE_ABI_H_

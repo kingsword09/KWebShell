@@ -7,6 +7,7 @@
 
 #include <gio/gio.h>
 
+#include <condition_variable>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -63,14 +64,6 @@ State *CurrentState();
 
 /** Converts straight RGBA8 into the protocol's network-order ARGB32. */
 std::vector<uint8_t> ArgbaPixmap(const IconVariant &variant);
-
-const GDBusInterfaceVTable *ItemVTable();
-const GDBusInterfaceVTable *MenuVTable();
-GDBusNodeInfo *ItemNodeInfo();
-GDBusNodeInfo *MenuNodeInfo();
-
-/** Presents one item's published properties to a Properties call. */
-GVariant *ItemProperties(KWebTrayLinuxItem &item);
 
 }  // namespace kwebshell::tray::linux_provider
 

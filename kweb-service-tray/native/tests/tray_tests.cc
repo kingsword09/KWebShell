@@ -74,8 +74,19 @@ void TestItemValidation() {
   short_pixels.icon_variants[0].pixels.size = 4;
   KWEB_CHECK(kweb_tray_set_item(handle, &short_pixels, &created) == KWEB_TRAY_STATUS_ICON_INVALID);
 
+  // A provider whose declared host is absent (for example a Linux session
+  // without a status-notifier watcher) rejects items with the typed
+  // unavailable status; validation above still runs because it happens before
+  // provider dispatch, and the platform structure test owns the host path.
   kweb_tray_item_spec valid = fixture.Item("status.item", "KWebShell");
-  KWEB_CHECK(kweb_tray_set_item(handle, &valid, &created) == KWEB_TRAY_STATUS_OK);
+  const kweb_tray_status first_status = kweb_tray_set_item(handle, &valid, &created);
+  if (first_status == KWEB_TRAY_STATUS_NATIVE_UNAVAILABLE) {
+    std::printf("SKIP: the declared tray host is unavailable (status %u).\n",
+                static_cast<unsigned>(first_status));
+    KWEB_CHECK(kweb_tray_close(handle) == KWEB_TRAY_STATUS_OK);
+    return;
+  }
+  KWEB_CHECK(first_status == KWEB_TRAY_STATUS_OK);
   KWEB_CHECK(created == 1u);
   KWEB_CHECK(kweb_tray_set_item(handle, &valid, &created) == KWEB_TRAY_STATUS_OK);
   KWEB_CHECK(created == 0u);
@@ -120,7 +131,13 @@ void TestMenuOwnership() {
   TrayFixture fixture;
   uint32_t created = 0;
   kweb_tray_item_spec item = fixture.Item("status.item");
-  KWEB_CHECK(kweb_tray_set_item(handle, &item, &created) == KWEB_TRAY_STATUS_OK);
+  const kweb_tray_status created_status = kweb_tray_set_item(handle, &item, &created);
+  if (created_status == KWEB_TRAY_STATUS_NATIVE_UNAVAILABLE) {
+    std::printf("SKIP: the declared tray host is unavailable for the menu checks.\n");
+    KWEB_CHECK(kweb_tray_close(handle) == KWEB_TRAY_STATUS_OK);
+    return;
+  }
+  KWEB_CHECK(created_status == KWEB_TRAY_STATUS_OK);
 
   kweb_tray_menu_tree tree = fixture.Menu(
       "tray.menu", 1,

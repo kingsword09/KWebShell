@@ -7,7 +7,6 @@ import io.github.kingsword09.kwebshell.service.menus.KWebMenuRole
 import io.github.kingsword09.kwebshell.service.menus.KWebMenuTree
 import io.github.kingsword09.kwebshell.services.KWebServiceException
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -156,7 +155,7 @@ public fun main() {
         }
     }
     val reportFile = root.resolve("tray-integration.json")
-    Files.writeString(reportFile, (report as JsonObject).toString() + "\n")
+    Files.writeString(reportFile, report.toString() + "\n")
     if (failure != null) {
         System.err.println("The tray integration fixture failed: $reportFile")
         throw failure

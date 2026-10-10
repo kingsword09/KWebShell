@@ -328,7 +328,10 @@ kweb_menus_status NativeOpen(State &state) {
 }
 
 kweb_menus_status NativeCapabilities(State &, kweb_menus_capabilities_result *result) {
-  result->flags = KWEB_MENUS_CAP_APPLICATION_MENU | KWEB_MENUS_CAP_WINDOW_MENU | KWEB_MENUS_CAP_PAGE_MENU |
+  // Win32 has no application-level menu bar: the service installs an
+  // application tree on every declared window instead, so APPLICATION_MENU
+  // stays unadvertised.
+  result->flags = KWEB_MENUS_CAP_WINDOW_MENU | KWEB_MENUS_CAP_PAGE_MENU |
                   KWEB_MENUS_CAP_SUBMENUS | KWEB_MENUS_CAP_CHECKBOX_ITEMS | KWEB_MENUS_CAP_RADIO_ITEMS |
                   KWEB_MENUS_CAP_MNEMONICS | KWEB_MENUS_CAP_ACCELERATOR_DISPLAY |
                   KWEB_MENUS_CAP_ACCELERATOR_ACTIVATION | KWEB_MENUS_CAP_POPUP_POSITIONING;

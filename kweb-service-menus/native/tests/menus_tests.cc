@@ -167,10 +167,12 @@ void TestWindowMenuBoundary() {
       kweb_menus_set_window_menu(handle, fixture.Text("main-window"), 42, KWEB_MENUS_OWNER_WINDOW, nullptr);
   KWEB_CHECK(kweb_menus_set_window_menu(handle, fixture.Text("main-window"), 42,
                                         KWEB_MENUS_OWNER_PAGE, nullptr) == KWEB_MENUS_STATUS_INVALID_ARGUMENT);
-  // A provider without a desktop menu host reports the typed unavailable
+  // The fixture passes a placeholder window handle, so a provider that
+  // validates it reports window-unknown; a provider that owns a bar applies
+  // it, and one without a desktop menu host reports the typed unavailable
   // boundary instead of drawing a hidden in-window bar.
   KWEB_CHECK(status == KWEB_MENUS_STATUS_TARGET_UNSUPPORTED || status == KWEB_MENUS_STATUS_OK ||
-             status == KWEB_MENUS_STATUS_NATIVE_UNAVAILABLE);
+             status == KWEB_MENUS_STATUS_NATIVE_UNAVAILABLE || status == KWEB_MENUS_STATUS_WINDOW_UNKNOWN);
   KWEB_CHECK(clearing == KWEB_MENUS_STATUS_OK);
   KWEB_CHECK(kweb_menus_set_window_menu(handle, fixture.Text("1nvalid"), 42, KWEB_MENUS_OWNER_WINDOW, nullptr) ==
              KWEB_MENUS_STATUS_INVALID_ARGUMENT);

@@ -180,6 +180,13 @@ public interface KWebProfile : AutoCloseable {
     public val securityChallenges: Flow<KWebSecurityChallenge>
     public val downloads: Flow<KWebDownload>
 
+    /**
+     * Page context menus observed on this Profile. Present only while the
+     * engine configuration enables application-owned context menus; without a
+     * subscriber the engine leaves Chromium's own menu untouched.
+     */
+    public val contextMenus: Flow<KWebContextMenuRequest>
+
     public suspend fun openPage(
         host: KWebPageHost,
         initialUrl: String,
@@ -222,6 +229,11 @@ public interface KWebProfile : AutoCloseable {
         requestId: Long,
         decision: KWebSecurityDecision,
     ): KWebSecurityChallengeResult
+
+    public suspend fun respondToContextMenu(
+        requestId: Long,
+        decision: KWebContextMenuDecision,
+    ): KWebContextMenuResult
 
     public suspend fun flush(target: KWebPage): KWebProfileFlushResult
 

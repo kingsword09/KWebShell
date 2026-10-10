@@ -23,7 +23,34 @@ const program = ts.createProgram(sourceNames, options, host);
 const checker = program.getTypeChecker();
 const facts = [];
 const builtin = new Set(builtinModules.map(n => n.replace(/^node:/, '')));
-const electronNames = new Set(['app', 'ipcMain', 'ipcRenderer', 'contextBridge', 'BrowserWindow', 'webContents', 'session', 'protocol']);
+const electronNames = new Set(['app', 'ipcMain', 'ipcRenderer', 'contextBridge', 'BrowserWindow', 'webContents', 'session', 'protocol', 'Menu', 'MenuItem', 'Tray']);
+const electronMenuRoles = new Set([
+  'about', 'services', 'hide', 'hideOthers', 'unhide', 'quit',
+  'close', 'minimize', 'zoom', 'togglefullscreen', 'front',
+  'window', 'help', 'undo', 'redo', 'cut', 'copy', 'paste', 'pasteAndMatchStyle', 'delete', 'selectAll',
+  'reload', 'forceReload', 'toggleDevTools', 'back', 'forward',
+  'startSpeaking', 'stopSpeaking', 'resetZoom', 'zoomIn', 'zoomOut', 'toggleTabBar', 'selectNextTab', 'selectPreviousTab',
+  'showAllTabs', 'mergeAllWindows', 'clearRecentDocuments', 'moveTabToNewWindow', 'windowMenu', 'appMenu',
+  'fileMenu', 'editMenu', 'viewMenu', 'recentDocuments', 'shareMenu',
+]);
+const electronMenuModifiers = new Set([
+  'commandorcontrol', 'cmdorctrl', 'commandorctrl', 'cmdorcontrol', 'command', 'cmd',
+  'control', 'ctrl', 'alt', 'option', 'altgr', 'shift', 'super', 'meta',
+]);
+const electronMenuKeys = new Set([
+  ...'abcdefghijklmnopqrstuvwxyz', ...'0123456789',
+  ...Array.from({ length: 12 }, (_, index) => `f${index + 1}`),
+  'backspace', 'delete', 'insert', 'home', 'end', 'pageup', 'pagedown', 'left', 'right', 'up', 'down',
+  'enter', 'return', 'escape', 'esc', 'tab', 'space', 'plus', 'minus', '=', 'equal',
+  ',', '.', ';', '/', '\\', '[', ']', '\'', '`',
+]);
+function representableMenuAccelerator(value) {
+  const parts = value.split('+').map(part => part.trim().toLowerCase()).filter(Boolean);
+  if (parts.length < 2) return false;
+  const key = parts[parts.length - 1];
+  const modifiers = parts.slice(0, -1);
+  return modifiers.length > 0 && modifiers.every(modifier => electronMenuModifiers.has(modifier)) && electronMenuKeys.has(key);
+}
 function emit(sf, node, kind, expression, extra = {}) {
   const pos = sf.getLineAndCharacterOfPosition(node.getStart(sf));
   facts.push({ path: path.relative(input.root, sf.fileName).split(path.sep).join('/'), line: pos.line + 1, column: pos.character + 1, kind, expression, ...extra });
@@ -79,6 +106,13 @@ function binding(node, seen = new Set()) {
     if (target?.startsWith('electron.nativeImage.create') || target?.startsWith('electron.nativeImage.instance.')) {
       return 'electron.nativeImage.instance';
     }
+    if (target === 'electron.Menu.buildFromTemplate' || target === 'electron.Menu.getApplicationMenu' || target?.startsWith('electron.Menu.instance.')) {
+      return 'electron.Menu.instance';
+    }
+  }
+  if (ts.isNewExpression(node)) {
+    const target = binding(node.expression, seen);
+    if (target === 'electron.Menu') return 'electron.Menu.instance';
   }
   if (!ts.isIdentifier(node)) return null;
   const symbol = checker.getSymbolAtLocation(node);
@@ -111,6 +145,39 @@ function moduleFact(sf, node, module, symbol, reExport = false) {
   else if (module && !module.startsWith('.') && !module.startsWith('/')) emit(sf, node, 'PACKAGE_DEPENDENCY', module);
   else if (module?.endsWith('.node')) emit(sf, node, 'NATIVE_ADDON', module);
 }
+// One Electron menu node property. Recognized hints are recorded so a rewrite
+// boundary is never silently dropped: a function click, an unknown/dynamic role
+// and an accelerator outside the published key/modifier set all stay explicit.
+function menuNodeFacts(sf, node) {
+  for (const property of node.properties) {
+    if (!ts.isPropertyAssignment(property)) continue;
+    const name = ts.isIdentifier(property.name) ? property.name.text : literal(property.name);
+    if (!name) continue;
+    const value = unwrap(property.initializer);
+    if (name === 'click') {
+      const closure = value && (ts.isArrowFunction(value) || ts.isFunctionExpression(value));
+      emit(sf, property.name, 'UNCLASSIFIED', closure ? 'electron.Menu.template.click' : 'electron.Menu.template.click-dynamic', { symbol: 'Menu', operation: closure ? 'electron.Menu.template.click' : 'electron.Menu.template.click-dynamic' });
+    } else if (name === 'role') {
+      const role = literal(value);
+      const known = role !== null && electronMenuRoles.has(role);
+      emit(sf, property.name, 'UNCLASSIFIED', known ? 'electron.Menu.template.role' : 'electron.Menu.template.role-unknown', { symbol: 'Menu', operation: known ? 'electron.Menu.template.role' : 'electron.Menu.template.role-unknown' });
+    } else if (name === 'accelerator') {
+      const accelerator = literal(value);
+      const representable = accelerator !== null && representableMenuAccelerator(accelerator);
+      emit(sf, property.name, 'UNCLASSIFIED', representable ? 'electron.Menu.template.accelerator' : 'electron.Menu.template.accelerator-unsupported', { symbol: 'Menu', operation: representable ? 'electron.Menu.template.accelerator' : 'electron.Menu.template.accelerator-unsupported' });
+    } else if (name === 'submenu' || name === 'type' || name === 'icon') {
+      emit(sf, property.name, 'UNCLASSIFIED', `electron.Menu.template.${name}`, { symbol: 'Menu', operation: `electron.Menu.template.${name}` });
+    }
+  }
+}
+function menuTemplateFacts(sf, node) {
+  const argument = unwrap(node.arguments[0]);
+  const elements = argument && ts.isArrayLiteralExpression(argument) ? argument.elements : (argument ? [argument] : []);
+  for (const element of elements) {
+    const value = unwrap(element);
+    if (value && ts.isObjectLiteralExpression(value)) menuNodeFacts(sf, value);
+  }
+}
 for (const fileName of sourceNames) {
   const sf = program.getSourceFile(fileName);
   for (const diagnostic of program.getSyntacticDiagnostics(sf)) {
@@ -140,6 +207,16 @@ for (const fileName of sourceNames) {
     }
     if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) moduleFact(sf, node, literal(node.moduleReference.expression), '*');
     if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'Function' && !checker.getSymbolAtLocation(node.expression)) emit(sf, node, 'DYNAMIC_EXECUTION', 'new Function(...)');
+    if (ts.isNewExpression(node) && !(ts.isIdentifier(node.expression) && node.expression.text === 'Function' && !checker.getSymbolAtLocation(node.expression))) {
+      const target = binding(node.expression);
+      if (target === 'electron.Menu') {
+        emit(sf, node, 'UNCLASSIFIED', 'electron.Menu', { symbol: 'Menu', operation: 'electron.Menu' });
+      } else if (target === 'electron.MenuItem') {
+        emit(sf, node, 'UNCLASSIFIED', 'electron.MenuItem', { symbol: 'Menu', operation: 'electron.MenuItem' });
+        const options = unwrap(node.arguments?.[0]);
+        if (options && ts.isObjectLiteralExpression(options)) menuNodeFacts(sf, options);
+      }
+    }
     if (ts.isCallExpression(node)) {
       const callee = unwrap(node.expression);
       const globalCall = ts.isIdentifier(callee) && !checker.getSymbolAtLocation(callee);
@@ -166,6 +243,9 @@ for (const fileName of sourceNames) {
         emit(sf, node, 'LIFECYCLE_EVENT', `app.${literal(node.arguments[0]) ?? '<dynamic>'}`, { operation: target });
       } else if (target?.startsWith('electron.nativeImage.')) {
         emit(sf, node, 'UNCLASSIFIED', target, { symbol: 'nativeImage', operation: target });
+      } else if (target?.startsWith('electron.Menu.')) {
+        emit(sf, node, 'UNCLASSIFIED', target, { symbol: 'Menu', operation: target });
+        if (target === 'electron.Menu.buildFromTemplate') menuTemplateFacts(sf, node);
       } else if (target?.startsWith('electron.')) {
         emit(sf, node, 'UNCLASSIFIED', target);
       }

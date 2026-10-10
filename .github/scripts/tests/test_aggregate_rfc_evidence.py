@@ -14,13 +14,14 @@ import unittest
 
 from _msix_fixture import REVISION, create_fixture, write_report
 from _image_fixture import write_image_fixture
+from _menus_fixture import write_menus_fixture
 
 REPOSITORY = Path(__file__).resolve().parents[3]
 SCRIPT = REPOSITORY / ".github/scripts/aggregate-rfc-evidence.sh"
 TARGETS = ("macos-arm64", "windows-x64", "linux-x64")
 IMPLEMENTED = {
     "0001", "0002", "0003", "0004", "0006", "0007", "0008", "0009",
-    "0010", "0011", "0012", "0013", "0014", "0015", "0027", "0030",
+    "0010", "0011", "0012", "0013", "0014", "0015", "0017", "0027", "0030",
 }
 ARTIFACTS = {
     "rfc-governance": ["TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml"],
@@ -30,11 +31,12 @@ ARTIFACTS = {
     "application-lifecycle": ["application-lifecycle-report.json"],
     "clipboard": ["clipboard-evidence.json"],
     "image-integration": ["native-image-evidence.json"],
+    "menus-integration": ["menus-integration.json"],
     "engine-integration": [
         "stream-conformance.json", "application-shutdown.json", "page-lifecycle-evidence.json",
         "renderer-lifecycle-evidence.json", "profile-data-evidence.json", "network-policy-evidence.json",
         "security-challenge-evidence.json", "mtls-probe-evidence.json", "downloads-evidence.json",
-        "files-evidence.json",
+        "files-evidence.json", "context-menu-evidence.json",
     ],
     "electron-migration": [
         "compatibility.json", "migration-clipboard-evidence.json", "migration-shell-evidence.json",
@@ -69,6 +71,7 @@ class AggregationTest(unittest.TestCase):
                     (directory / name).write_text("{}\n")
             self.report(target).write_text(json.dumps(self.valid_report(target)) + "\n")
             write_image_fixture(self.root / "build/rfc-evidence/downloaded", target)
+            write_menus_fixture(self.root / "build/rfc-evidence/downloaded", target)
         self.msix, self.msix_report_path, self.msix_report, _ = create_fixture(
             self.root / "build/rfc-evidence/downloaded/application-package-windows-x64-revision"
         )
@@ -130,7 +133,7 @@ Path(arguments[2]).write_text(json.dumps(manifest))
         result = self.run_script()
         self.assertEqual(0, result.returncode, result.stderr)
         calls = json.loads(self.manifest.read_text())["invocations"]
-        self.assertEqual(48, len(calls))
+        self.assertEqual(3 * len(IMPLEMENTED), len(calls))
         self.assertEqual(
             {(rfc, target) for rfc in IMPLEMENTED for target in TARGETS},
             {(call["rfc"], call["target"]) for call in calls},

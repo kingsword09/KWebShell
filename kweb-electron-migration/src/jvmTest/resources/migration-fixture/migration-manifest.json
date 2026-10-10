@@ -356,6 +356,22 @@
         "requiresUserGesture": false,
         "requiresOsConsent": false
       }
+    },
+    {
+      "name": "menus.showDeclaredPopup",
+      "schemaVersion": 2,
+      "requestType": "MenusPopupRequest",
+      "responseType": "MenusPopupResponse",
+      "serviceId": "menus",
+      "serviceVersion": "1.0.0",
+      "operationId": "show-declared-popup",
+      "status": "ADAPTER",
+      "adapter": "MENU_OPERATION",
+      "policy": {
+        "rendererGrant": "native.menus.show-declared-popup",
+        "requiresUserGesture": true,
+        "requiresOsConsent": false
+      }
     }
   ],
   "preloadMethods": [
@@ -547,6 +563,15 @@
       "returnType": "Promise<ImageEncodedResponse>",
       "status": "ADAPTER",
       "adapter": "NATIVE_IMAGE_OPERATION"
+    },
+    {
+      "name": "popup",
+      "channel": "menus.showDeclaredPopup",
+      "parameterName": "request",
+      "parameterType": "MenusPopupRequest",
+      "returnType": "Promise<MenusPopupResponse>",
+      "status": "ADAPTER",
+      "adapter": "MENU_OPERATION"
     }
   ],
   "streams": [
@@ -602,6 +627,10 @@
     },
     {
       "id": "native-image",
+      "version": "1.0.0"
+    },
+    {
+      "id": "menus",
       "version": "1.0.0"
     }
   ],

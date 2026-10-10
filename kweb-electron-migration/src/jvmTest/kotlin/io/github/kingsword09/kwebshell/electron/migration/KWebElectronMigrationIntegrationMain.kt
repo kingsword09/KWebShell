@@ -1427,6 +1427,7 @@ private class MigrationFixtureServer(
             "<script>$clipboardBridge</script>" +
             "<script>$notificationsBridge</script>" +
             "<script>$imageBridge</script>" +
+            "<script>globalThis.MenusBridge={createClient(){return {showDeclaredPopup(request){return Promise.resolve({popupId:'fixture-popup',treeVersion:1})}}}}</script>" +
             "<script>globalThis.KWebApplicationStreamsBridge={createClient(){return {openDownloadProgress:async function* (request){yield {downloadId:request.downloadId,done:false};yield {downloadId:request.downloadId,done:true}}}}}</script>" +
             "<script>$preload</script>"
         ).toByteArray(StandardCharsets.UTF_8)

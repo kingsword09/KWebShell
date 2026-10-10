@@ -235,6 +235,7 @@ private enum class IntegrationMode(val argument: String) {
     SECURITY_CHALLENGES("security-challenges"),
     SECURITY_CHALLENGES_MTLS("security-challenges-mtls"),
     DOWNLOADS("downloads"),
+    CONTEXT_MENU("context-menu"),
     FILES_WORKSPACE("files-workspace"),
     PAGE_LIFECYCLE("page-lifecycle"),
     RENDERER_CRASH("renderer-crash"),
@@ -273,6 +274,7 @@ fun main(arguments: Array<String>) {
             IntegrationMode.SECURITY_CHALLENGES -> runSecurityChallengeIntegration()
             IntegrationMode.SECURITY_CHALLENGES_MTLS -> runClientCertificateIntegration()
             IntegrationMode.DOWNLOADS -> runDownloadsIntegration()
+            IntegrationMode.CONTEXT_MENU -> runContextMenuIntegration()
             IntegrationMode.FILES_WORKSPACE -> runFilesWorkspaceIntegration()
             IntegrationMode.PAGE_LIFECYCLE -> runPageLifecycleContract()
             IntegrationMode.RENDERER_CRASH -> runRendererCrashLifecycle()
@@ -309,6 +311,7 @@ private fun runCoordinator() {
     runChildAndRequireSuccess(IntegrationMode.SECURITY_CHALLENGES, root.resolve("security-challenges"))
     runChildAndRequireSuccess(IntegrationMode.SECURITY_CHALLENGES_MTLS, root.resolve("security-challenges-mtls"))
     runChildAndRequireSuccess(IntegrationMode.DOWNLOADS, root.resolve("downloads"))
+    runChildAndRequireSuccess(IntegrationMode.CONTEXT_MENU, root.resolve("context-menu"))
     runChildAndRequireSuccess(IntegrationMode.FILES_WORKSPACE, root.resolve("files-workspace"))
     runChildAndRequireSuccess(IntegrationMode.RENDERER_CRASH, root.resolve("renderer-crash"))
 
@@ -939,6 +942,205 @@ private fun runDownloadsIntegration() {
         evidence.toString() + "\n",
         StandardCharsets.UTF_8,
     )
+}
+
+/**
+ * Real-CEF page context-menu round trip: Chromium's own Alloy menu model reaches
+ * Kotlin as one typed request and the application answers exactly once. The
+ * fixture drives a real right-click through CDP and never fakes the menu model.
+ */
+private fun runContextMenuIntegration() {
+    val configured = runtimeConfiguration()
+    val root = requiredPathProperty(INTEGRATION_ROOT_PROPERTY)
+    val fixture = ContextMenuFixture()
+    val engine = KWebDesktop.openEngine(
+        KWebDesktopEngineConfiguration(
+            cefRuntime = configured.cefRuntime,
+            browserSubprocess = configured.browserSubprocess,
+            resources = configured.resources,
+            locales = configured.locales,
+            rootCache = configured.rootCache,
+            log = configured.log,
+            remoteDebuggingPort = configured.remoteDebuggingPort,
+            contextMenusEnabled = true,
+        ),
+    )
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val requests = LinkedBlockingQueue<io.github.kingsword09.kwebshell.core.KWebContextMenuRequest>()
+    var collector: kotlinx.coroutines.Job? = null
+    var profile: io.github.kingsword09.kwebshell.core.KWebProfile? = null
+    var page: io.github.kingsword09.kwebshell.core.KWebPage? = null
+    var surface: ComposeBrowserSurface? = null
+    var requestCount = 0
+    var commandCount = 0
+    var continuedOutcome = ""
+    var dismissedOutcome = ""
+    var duplicateOutcome = ""
+    var probeFailure: Throwable? = null
+    try {
+        kotlinx.coroutines.runBlocking {
+            profile = engine.openProfile("rfc0017-context-menu")
+            val liveProfile = requireNotNull(profile)
+            collector = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                liveProfile.contextMenus.collect { requests.put(it) }
+            }
+            (liveProfile as io.github.kingsword09.kwebshell.desktop.KWebDesktopProfile).awaitContextMenuSubscriber()
+            surface = NativeEngine.onAwtEventDispatchThread { ComposeBrowserSurface.create(900, 640) }
+            page = liveProfile.openPage(
+                KWebDesktop.composeWindowHost(requireNotNull(surface).window),
+                fixture.pageUrl,
+                KWebRect(0, 0, 900, 640),
+            )
+            val cdp = CdpClient(configured.remoteDebuggingPort)
+            cdp.awaitPage(fixture.pageUrl)
+            cdp.command(
+                "Input.dispatchMouseEvent",
+                """{"type":"mousePressed","x":120,"y":14,"button":"right","buttons":2,"clickCount":1}""",
+            )
+            cdp.command(
+                "Input.dispatchMouseEvent",
+                """{"type":"mouseReleased","x":120,"y":14,"button":"right","buttons":0,"clickCount":1}""",
+            )
+            val request = requests.poll(30, TimeUnit.SECONDS)
+                ?: error("The real CEF page context menu was not published.")
+            requestCount += 1
+            require(request.isMainFrame) { "The context menu did not come from the main frame." }
+            require(request.url == fixture.pageUrl) {
+                "The context menu URL '${request.url}' does not match '${fixture.pageUrl}'."
+            }
+            require(request.origin == fixture.origin) {
+                "The context menu origin '${request.origin}' does not match '${fixture.origin}'."
+            }
+            require(request.editable) { "Chromium did not report the editable context." }
+            require(request.x == 120 && request.y == 14) {
+                "The context menu coordinates (${request.x}, ${request.y}) do not match the dispatched event."
+            }
+            val commands = request.items.filterIsInstance<io.github.kingsword09.kwebshell.core.KWebContextMenuItem.Item>()
+                .flatMap { item -> listOf(item) + item.items.filterIsInstance<io.github.kingsword09.kwebshell.core.KWebContextMenuItem.Item>() }
+            require(commands.any { it.command.startsWith("chromium.") }) {
+                "Chromium's own menu commands were not published: ${commands.map { it.command }}"
+            }
+            commandCount = commands.size
+            println("KWEBSHELL_CONTEXT_MENU_PROBE:request")
+
+            val selected = commands.singleOrNull { it.command == "chromium.select-all" }
+                ?: commands.first { it.command.startsWith("chromium.") }
+            val continued = liveProfile.respondToContextMenu(
+                request.requestId,
+                io.github.kingsword09.kwebshell.core.KWebContextMenuDecision.CONTINUE(selected.command),
+            )
+            require(continued.outcome == io.github.kingsword09.kwebshell.core.KWebContextMenuOutcome.CONTINUED) {
+                "The context-menu decision was not continued: $continued"
+            }
+            continuedOutcome = continued.outcome.name
+            require(requests.poll(2, TimeUnit.SECONDS) == null) {
+                "Chromium published a second context-menu request for one interaction."
+            }
+            val duplicate = try {
+                liveProfile.respondToContextMenu(
+                    request.requestId,
+                    io.github.kingsword09.kwebshell.core.KWebContextMenuDecision.DISMISS,
+                )
+                null
+            } catch (error: Throwable) {
+                error
+            }
+            require((duplicate as? io.github.kingsword09.kwebshell.core.KWebNativeException)?.code ==
+                "page.context-menu.already-resolved") {
+                "A second decision on one request was not rejected: $duplicate"
+            }
+            duplicateOutcome = (duplicate as io.github.kingsword09.kwebshell.core.KWebNativeException).code
+            println("KWEBSHELL_CONTEXT_MENU_PROBE:continued-once")
+
+            cdp.command(
+                "Input.dispatchMouseEvent",
+                """{"type":"mousePressed","x":120,"y":14,"button":"right","buttons":2,"clickCount":1}""",
+            )
+            cdp.command(
+                "Input.dispatchMouseEvent",
+                """{"type":"mouseReleased","x":120,"y":14,"button":"right","buttons":0,"clickCount":1}""",
+            )
+            val second = requests.poll(30, TimeUnit.SECONDS)
+                ?: error("The second real CEF page context menu was not published.")
+            requestCount += 1
+            require(second.requestId != request.requestId) {
+                "The engine reused one context-menu request id."
+            }
+            val dismissed = liveProfile.respondToContextMenu(second.requestId, io.github.kingsword09.kwebshell.core.KWebContextMenuDecision.DISMISS)
+            require(dismissed.outcome == io.github.kingsword09.kwebshell.core.KWebContextMenuOutcome.DISMISSED) {
+                "The dismissal decision was not observed: $dismissed"
+            }
+            dismissedOutcome = dismissed.outcome.name
+            println("KWEBSHELL_CONTEXT_MENU_PROBE:dismissed")
+        }
+    } catch (error: Throwable) {
+        probeFailure = error
+        throw error
+    } finally {
+        collector?.cancel()
+        runCatching { page?.close() }
+        runCatching { profile?.close() }
+        runCatching { engine.close() }
+        // The surface owns the AWT window, so it must be disposed on the event
+        // thread before the child JVM can exit.
+        surface?.let { surface -> NativeEngine.onAwtEventDispatchThread { surface.close() } }
+        runCatching { fixture.close() }
+        scope.cancel()
+    }
+    require(NativeBrowser.liveNativeBrowserCount() == 0L)
+    require(NativeEngine.liveNativeEngineCount() == 0L)
+    val evidence = buildJsonObject {
+        put("schemaVersion", 1)
+        put("target", currentTargetId())
+        put("cefRuntime", "stock-cef-151")
+        put("contractRevision", "2026-10-09.1")
+        put("requestCount", requestCount)
+        put("mainFrame", true)
+        put("origin", fixture.origin)
+        put("coordinateX", 120)
+        put("coordinateY", 14)
+        put("editableContext", true)
+        put("commandCount", commandCount)
+        put("continuedOutcome", continuedOutcome)
+        put("duplicateOutcome", duplicateOutcome)
+        put("dismissedOutcome", dismissedOutcome)
+        put("engineAbiVersion", 17)
+        put("menuBodyRetained", false)
+        put("failure", probeFailure?.let { it::class.simpleName } ?: "")
+    }
+    Files.writeString(
+        root.resolve("context-menu-evidence.json"),
+        evidence.toString() + "\n",
+        StandardCharsets.UTF_8,
+    )
+    println("KWebShell RFC0017 page context menu passed: requests=$requestCount, commands=$commandCount.")
+}
+
+/** Serves one editable page for the real context-menu fixture. */
+private class ContextMenuFixture : AutoCloseable {
+    private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    val pageUrl: String = "http://127.0.0.1:${server.address.port}/page"
+    // The engine publishes the canonical origin form, which keeps the root path.
+    val origin: String = "http://127.0.0.1:${server.address.port}/"
+
+    init {
+        server.createContext("/page") { exchange ->
+            val body = (
+                "<html><body style=\"margin:0\">" +
+                    "<input id=\"field\" style=\"position:absolute;left:0;top:0;width:600px;height:28px\" " +
+                    "value=\"KWebShell context menu\">" +
+                    "</body></html>"
+                ).toByteArray(StandardCharsets.UTF_8)
+            exchange.responseHeaders.add("Content-Type", "text/html; charset=utf-8")
+            exchange.sendResponseHeaders(200, body.size.toLong())
+            exchange.responseBody.use { it.write(body) }
+        }
+        server.start()
+    }
+
+    override fun close() {
+        server.stop(0)
+    }
 }
 
 private fun runFilesWorkspaceIntegration() {
@@ -6217,6 +6419,7 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
             mode == IntegrationMode.PAGE_LIFECYCLE ||
             mode == IntegrationMode.RENDERER_CRASH ||
             mode == IntegrationMode.FILES_WORKSPACE ||
+            mode == IntegrationMode.CONTEXT_MENU ||
             mode == IntegrationMode.EXTENSION_LIFECYCLE_CRASH ||
             mode.name.startsWith("EXTENSION_LIFECYCLE_STAGE")
         ) {

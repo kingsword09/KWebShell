@@ -10,9 +10,10 @@ import kotlin.test.assertTrue
 
 class FfmBindingContractTest {
     @Test
-    fun productionInventoryMatchesAbiVersionSixteen() {
-        assertEquals(16, FfmAbi.VERSION)
-        assertEquals(30, FfmAbi.FUNCTIONS.size)
+    fun productionInventoryMatchesAbiVersionSeventeen() {
+        assertEquals(17, FfmAbi.VERSION)
+        assertEquals(31, FfmAbi.FUNCTIONS.size)
+        assertTrue(FfmAbi.FUNCTIONS.any { it.name() == "kweb_browser_context_menu_respond" })
         assertEquals(16, FfmLayouts.STRING_VIEW.byteSize())
         assertEquals(32, FfmLayouts.ENGINE_EVENT.byteSize())
         assertEquals(144, FfmLayouts.ENGINE_CONFIG.byteSize())

@@ -121,6 +121,14 @@ globalThis.ImageBridge = Object.freeze({
     };
   },
 });
+const menuCalls = [];
+globalThis.MenusBridge = Object.freeze({
+  createClient() {
+    return {
+      showDeclaredPopup(request, options) { menuCalls.push({ request, options }); return Promise.resolve({ popupId: "fixture-popup", treeVersion: 1 }); },
+    };
+  },
+});
 eval(source);
 const home = await globalThis.desktop.getPath("home", { timeoutMs: 123 });
 if (home !== "/fixture/home") throw new Error(`Unexpected home result: ${home}`);
@@ -171,5 +179,12 @@ if (image !== imageResult || encodedImage.pngBase64 !== imageResult.pngBase64 ||
     imageCalls[0].request !== imageRequest || imageCalls[1].request !== imageResult ||
     imageCalls.some(call => call.options !== imageOptions) || imageCalls[1].operation !== "encodePng") {
   throw new Error("The generated image adapter did not preserve its named requests, responses and cancellation options.");
+}
+const menuRequest = { menuId: "main-menu", x: 12, y: 24 };
+const menuOptions = { timeoutMs: 345 };
+const menu = await globalThis.desktop.popup(menuRequest, menuOptions);
+if (menu.popupId !== "fixture-popup" || menu.treeVersion !== 1 || menuCalls.length !== 1 ||
+    menuCalls[0].request !== menuRequest || menuCalls[0].options !== menuOptions) {
+  throw new Error("The generated menus adapter did not preserve its declared-menu popup request.");
 }
 console.log("KWebShell generated Electron preload runtime passed.");

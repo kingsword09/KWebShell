@@ -21,6 +21,7 @@ public enum class KWebElectronAdapterKind {
     SHELL_OPERATION,
     NOTIFICATIONS_OPERATION,
     NATIVE_IMAGE_OPERATION,
+    MENU_OPERATION,
     FILES_WATCH_DIRECTORY,
     NAMED_APPLICATION_STREAM,
 }
@@ -335,6 +336,11 @@ public object KWebElectronManifestValidator {
     private const val NATIVE_IMAGE_SERVICE: String = "native-image"
     private const val NATIVE_IMAGE_VERSION: String = "1.0.0"
     private val NATIVE_IMAGE_OPERATIONS: Set<String> = setOf("decode", "encode-png")
+    private const val MENUS_SERVICE: String = "menus"
+    private const val MENUS_VERSION: String = "1.0.0"
+    // RFC 0017 exposes exactly one renderer operation: present a menu the host
+    // already declared. A renderer never submits a native menu template.
+    private val MENUS_OPERATIONS: Set<String> = setOf("show-declared-popup")
     private val FILES_OPERATIONS: Set<String> = setOf(
         "open-workspace", "open-file", "open-directory", "read-file", "write-file",
         "truncate-file", "list-directory", "metadata", "copy-file", "move-file",
@@ -579,6 +585,27 @@ public object KWebElectronManifestValidator {
                     )
                 }
             }
+            if (channel.adapter == KWebElectronAdapterKind.MENU_OPERATION) {
+                val policy = channel.policy
+                val operation = channel.operationId
+                val types = when (operation) {
+                    "show-declared-popup" -> "MenusPopupRequest" to "MenusPopupResponse"
+                    else -> null
+                }
+                if (policy == null || channel.name.substringBefore('.').lowercase() != "menus" ||
+                    channel.serviceId != MENUS_SERVICE || channel.serviceVersion != MENUS_VERSION ||
+                    operation !in MENUS_OPERATIONS ||
+                    types == null || channel.requestType != types.first || channel.responseType != types.second ||
+                    policy.rendererGrant != "native.menus.$operation" ||
+                    !policy.requiresUserGesture || policy.requiresOsConsent
+                ) {
+                    invalid(
+                        KWebElectronMigrationErrorCode.MAPPING_UNRESOLVED,
+                        "channel" to channel.name,
+                        message = "The menus adapter must bind one published menus operation and its exact declared-menu policy.",
+                    )
+                }
+            }
         }
 
         manifest.preloadMethods.forEachIndexed { index, method ->
@@ -650,6 +677,15 @@ public object KWebElectronManifestValidator {
                     KWebElectronMigrationErrorCode.MAPPING_UNRESOLVED,
                     "method" to method.name,
                     message = "A native image preload method must exactly match its channel request and Promise response types.",
+                )
+            }
+            if (method.adapter == KWebElectronAdapterKind.MENU_OPERATION &&
+                (method.parameterType != channel.requestType || method.returnType != "Promise<${channel.responseType}>")
+            ) {
+                invalid(
+                    KWebElectronMigrationErrorCode.MAPPING_UNRESOLVED,
+                    "method" to method.name,
+                    message = "A menus preload method must exactly match its channel request and Promise response types.",
                 )
             }
         }

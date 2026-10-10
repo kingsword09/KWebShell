@@ -24,6 +24,7 @@ class KWebRfcGovernanceCheckerTest {
                     entry.id in RFC_0014_ROWS ||
                     entry.id in RFC_0015_ROWS ||
                     entry.id in RFC_0016_ROWS ||
+                    entry.id in RFC_0017_ROWS ||
                     entry.id in RFC_0027_ROWS
                 ) {
                     entry.copy(status = KWebElectronMappingStatus.UNSUPPORTED, kweb = "")
@@ -55,6 +56,7 @@ class KWebRfcGovernanceCheckerTest {
         val RFC_0014_ROWS: Set<String> = setOf("clipboard")
         val RFC_0015_ROWS: Set<String> = setOf("shell")
         val RFC_0016_ROWS: Set<String> = setOf("notification")
+        val RFC_0017_ROWS: Set<String> = setOf("menu")
         val RFC_0027_ROWS: Set<String> = setOf("native-image")
     }
 
@@ -338,7 +340,8 @@ class KWebRfcGovernanceCheckerTest {
         // rows keep their backing and the unsupported rows stay unsupported.
         assertEquals("prerequisite:KWebDialogs + DialogsBridge", report.matrixRows.single { it.rowId == "dialog" }.backing)
         assertEquals("unsupported", report.matrixRows.single { it.rowId == "clipboard" }.backing)
-        assertEquals("unsupported", report.matrixRows.single { it.rowId == "menu-tray" }.backing)
+        assertEquals("unsupported", report.matrixRows.single { it.rowId == "tray" }.backing)
+        assertEquals("unsupported", report.matrixRows.single { it.rowId == "menu" }.backing)
     }
 
     @Test

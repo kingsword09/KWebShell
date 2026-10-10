@@ -40,6 +40,11 @@ public data class KWebDesktopEngineConfiguration(
     public val log: Path,
     public val remoteDebuggingPort: Int = 0,
     public val downloadPolicy: KWebDesktopDownloadPolicy? = null,
+    /**
+     * Enables application-owned page context menus. While disabled the engine
+     * leaves Chromium's own default menu in place.
+     */
+    public val contextMenusEnabled: Boolean = false,
     public val userGestureIssuer: KWebUserGestureIssuer? = null,
     public val engineId: String = "engine-" + java.util.UUID.randomUUID(),
 )

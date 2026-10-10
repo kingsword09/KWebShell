@@ -90,6 +90,8 @@ export interface ImageDecodeRequest { sourceKind: string; format: string; payloa
 export interface ImageResponse { width: number; height: number; alphaMode: string; colorSpace: string; intent: string; pngBase64: string; }
 export interface ImageEncodeRequest { width: number; height: number; alphaMode: string; colorSpace: string; intent: string; pngBase64: string; }
 export interface ImageEncodedResponse { format: string; pngBase64: string; }
+export interface MenusPopupRequest { menuId: string; x: number; y: number; }
+export interface MenusPopupResponse { popupId: string; treeVersion: number; }
 
 export interface KWebBridgeCallOptions {
   readonly signal?: AbortSignal;
@@ -110,6 +112,7 @@ export interface DesktopApi {
   openFile(request: FilesOpenFileRequest, options?: KWebBridgeCallOptions): Promise<FilesHandleDescriptor>;
   openResource(request: ShellResourceRequest, options?: KWebBridgeCallOptions): Promise<ShellActionResponse>;
   openWorkspace(request: FilesWorkspaceRequest, options?: KWebBridgeCallOptions): Promise<FilesHandleDescriptor>;
+  popup(request: MenusPopupRequest, options?: KWebBridgeCallOptions): Promise<MenusPopupResponse>;
   readClipboard(request: ClipboardReadRequest, options?: KWebBridgeCallOptions): Promise<ClipboardReadResponse>;
   readClipboardPayload(request: ClipboardReadPayloadRequest, options?: KWebBridgeCallOptions): Promise<ClipboardReadPayloadResponse>;
   readFile(request: FilesReadFileRequest, options?: KWebBridgeCallOptions): Promise<FilesReadFileResponse>;
@@ -183,6 +186,11 @@ export function installDesktopPreload(): void {
     throw new KWebElectronMigrationError("migration.notifications-bridge.missing", "NotificationsBridge is required by this migration facade.");
   }
   const notificationsClient = notificationsBridge.createClient();
+  const menusBridge = window.MenusBridge;
+  if (!menusBridge || typeof menusBridge.createClient !== "function") {
+    throw new KWebElectronMigrationError("migration.menus-bridge.missing", "MenusBridge is required by this migration facade.");
+  }
+  const menusClient = menusBridge.createClient();
   const streamBridge = window.KWebApplicationStreamsBridge;
   if (!streamBridge || typeof streamBridge.createClient !== "function") throw new KWebElectronMigrationError("migration.stream-bridge.missing", "KWebApplicationStreamsBridge is required by this migration facade.");
   const bridgeStreams = streamBridge.createClient();
@@ -206,6 +214,7 @@ export function installDesktopPreload(): void {
     openFile: (request: FilesOpenFileRequest, options?: KWebBridgeCallOptions) => filesClient.openFile(request, options) as Promise<FilesHandleDescriptor>,
     openResource: (request: ShellResourceRequest, options?: KWebBridgeCallOptions) => shellClient.openResource(request, options) as Promise<ShellActionResponse>,
     openWorkspace: (request: FilesWorkspaceRequest, options?: KWebBridgeCallOptions) => filesClient.openWorkspace(request, options) as Promise<FilesHandleDescriptor>,
+    popup: (request: MenusPopupRequest, options?: KWebBridgeCallOptions) => menusClient.showDeclaredPopup(request, options) as Promise<MenusPopupResponse>,
     readClipboard: (request: ClipboardReadRequest, options?: KWebBridgeCallOptions) => clipboardClient.read(request, options) as Promise<ClipboardReadResponse>,
     readClipboardPayload: (request: ClipboardReadPayloadRequest, options?: KWebBridgeCallOptions) => clipboardClient.readPayload(request, options) as Promise<ClipboardReadPayloadResponse>,
     readFile: (request: FilesReadFileRequest, options?: KWebBridgeCallOptions) => filesClient.readFile(request, options) as Promise<FilesReadFileResponse>,
@@ -245,6 +254,9 @@ declare global {
     };
     NotificationsBridge: {
       createClient(): { close(request: NotificationCloseRequest, options?: KWebBridgeCallOptions): Promise<NotificationCloseResponse>; capabilities(request: NotificationScopeRequest, options?: KWebBridgeCallOptions): Promise<NotificationCapabilitiesResponse>; show(request: NotificationShowRequest, options?: KWebBridgeCallOptions): Promise<NotificationShowResponse> };
+    };
+    MenusBridge: {
+      createClient(): { showDeclaredPopup(request: MenusPopupRequest, options?: KWebBridgeCallOptions): Promise<MenusPopupResponse> };
     };
     KWebApplicationStreamsBridge: {
       createClient(): { openDownloadProgress(request: DownloadRequest, options?: KWebElectronStreamOptions): KWebElectronStream<ProgressChunk> };

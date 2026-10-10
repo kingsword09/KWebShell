@@ -1023,6 +1023,23 @@ kweb_status KWEB_ABI_CALL kweb_browser_security_respond(
   });
 }
 
+kweb_status KWEB_ABI_CALL kweb_browser_context_menu_respond(
+    kweb_browser_handle browser, uint64_t request_id,
+    const char *decision_utf8, size_t decision_size) {
+  if (request_id == 0 || decision_utf8 == nullptr || decision_size == 0) {
+    return KWEB_STATUS_CONTEXT_MENU_DECISION_INVALID;
+  }
+  if (decision_size > 64 * 1024 ||
+      !kwebshell::IsValidUtf8(decision_utf8, decision_size)) {
+    return decision_size > 64 * 1024 ? KWEB_STATUS_TEXT_TOO_LARGE
+                                     : KWEB_STATUS_INVALID_TEXT_ENCODING;
+  }
+  return kwebshell::GuardStatus([&] {
+    return kwebshell::RespondToContextMenuSession(
+        browser, request_id, std::string(decision_utf8, decision_size));
+  });
+}
+
 kweb_status KWEB_ABI_CALL kweb_browser_download_control(
     kweb_browser_handle browser, uint64_t download_id, uint32_t operation) {
   if (download_id == 0 || operation < KWEB_DOWNLOAD_CONTROL_CANCEL ||

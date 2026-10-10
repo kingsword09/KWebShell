@@ -90,6 +90,20 @@ void TraceCloseStage(kweb_browser_handle browser, const char *stage) {
   }
 }
 
+// Opt-in diagnostics for the page context-menu chain; enabled with the
+// KWEBSHELL_TRACE_CONTEXT_MENU environment variable.
+void TraceContextMenu(kweb_browser_handle browser, const char *stage,
+                      uint64_t detail = 0) {
+  static const bool enabled =
+      std::getenv("KWEBSHELL_TRACE_CONTEXT_MENU") != nullptr;
+  if (enabled) {
+    std::fprintf(stderr,
+                 "KWEBSHELL_CONTEXT_MENU_TRACE browser=%llu stage=%s detail=%llu\n",
+                 static_cast<unsigned long long>(browser),
+                 stage, static_cast<unsigned long long>(detail));
+  }
+}
+
 // Opt-in diagnostics for the browser creation chain; enabled with the
 // KWEBSHELL_TRACE_CREATE environment variable.
 void TraceCreateStage(kweb_browser_handle browser, const char *stage) {
@@ -339,6 +353,8 @@ public:
   kweb_status CrashRenderer(kweb_browser_handle handle);
   kweb_status BridgeRespond(kweb_browser_handle handle, uint64_t request_id,
                             std::string response, bool success);
+  kweb_status ContextMenuRespond(kweb_browser_handle handle, uint64_t request_id,
+                                 std::string decision);
   kweb_status SecurityRespond(kweb_browser_handle handle, uint64_t request_id,
                               std::string decision);
   kweb_status DownloadControl(kweb_browser_handle handle, uint64_t download_id,
@@ -392,10 +408,13 @@ class SessionClient final : public CefClient,
                             public CefLifeSpanHandler,
                             public CefLoadHandler,
                             public CefDownloadHandler,
+                            public CefContextMenuHandler,
                             public CefRequestHandler {
 public:
-  explicit SessionClient(std::weak_ptr<BrowserSession> session)
-      : session_(std::move(session)) {}
+  SessionClient(std::weak_ptr<BrowserSession> session,
+                bool context_menus_enabled)
+      : session_(std::move(session)),
+        context_menus_enabled_(context_menus_enabled) {}
   ~SessionClient() override;
 
   CefRefPtr<CefDisplayHandler> GetDisplayHandler() override { return this; }
@@ -405,6 +424,30 @@ public:
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
   CefRefPtr<CefLoadHandler> GetLoadHandler() override { return this; }
   CefRefPtr<CefDownloadHandler> GetDownloadHandler() override { return this; }
+  CefRefPtr<CefContextMenuHandler> GetContextMenuHandler() override {
+    // Without the explicit configuration flag the engine leaves CEF's default
+    // context-menu behavior in place.
+    // The session is still incomplete here, so the trace carries no handle; the
+    // session-side traces identify the browser.
+    TraceContextMenu(0, context_menus_enabled_ ? "handler-requested"
+                                               : "handler-skipped");
+    return context_menus_enabled_ ? this : nullptr;
+  }
+  void OnBeforeContextMenu(CefRefPtr<CefBrowser> browser,
+                           CefRefPtr<CefFrame> frame,
+                           CefRefPtr<CefContextMenuParams> params,
+                           CefRefPtr<CefMenuModel> model) override;
+  bool RunContextMenu(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+                      CefRefPtr<CefContextMenuParams> params,
+                      CefRefPtr<CefMenuModel> model,
+                      CefRefPtr<CefRunContextMenuCallback> callback) override;
+  bool OnContextMenuCommand(CefRefPtr<CefBrowser> browser,
+                            CefRefPtr<CefFrame> frame,
+                            CefRefPtr<CefContextMenuParams> params,
+                            int command_id,
+                            EventFlags event_flags) override;
+  void OnContextMenuDismissed(CefRefPtr<CefBrowser> browser,
+                              CefRefPtr<CefFrame> frame) override;
   bool CanDownload(CefRefPtr<CefBrowser> browser, const CefString &url,
                    const CefString &request_method) override;
   CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
@@ -480,6 +523,7 @@ public:
 
 private:
   const std::weak_ptr<BrowserSession> session_;
+  const bool context_menus_enabled_;
   IMPLEMENT_REFCOUNTING(SessionClient);
 };
 
@@ -608,7 +652,8 @@ public:
                  kweb_bridge_event_callback bridge_callback,
                  void *bridge_user_data,
                  kweb_profile_data_event_callback profile_data_callback,
-                 void *profile_data_user_data, bool downloads_enabled)
+                 void *profile_data_user_data, bool downloads_enabled,
+                 bool context_menus_enabled)
       : engine_(engine), handle_(handle), native_parent_(native_parent), x_(x),
         y_(y), width_(width), height_(height),
         profile_path_(std::move(profile_path)),
@@ -617,7 +662,8 @@ public:
         bridge_callback_(bridge_callback), bridge_user_data_(bridge_user_data),
         profile_data_callback_(profile_data_callback),
         profile_data_user_data_(profile_data_user_data),
-        downloads_enabled_(downloads_enabled) {}
+        downloads_enabled_(downloads_enabled),
+        context_menus_enabled_(context_menus_enabled) {}
 
   kweb_status Start() {
     TraceCreateStage(handle_, "start-requested");
@@ -660,6 +706,47 @@ public:
     return security_registry_ &&
            security_registry_->OnSelectClientCertificate(
                browser, is_proxy, host, port, certificates, callback);
+  }
+
+  struct ContextMenuRequest {
+    uint64_t id = 0;
+    CefRefPtr<CefRunContextMenuCallback> callback;
+    std::map<std::string, int32_t> command_ids;
+  };
+
+  bool RunContextMenu(CefRefPtr<CefBrowser> browser,
+                      CefRefPtr<CefFrame> frame,
+                      CefRefPtr<CefContextMenuParams> params,
+                      CefRefPtr<CefMenuModel> model,
+                      CefRefPtr<CefRunContextMenuCallback> callback);
+
+  void TraceContextMenuStage(const char *stage, uint64_t detail = 0) {
+    TraceContextMenu(handle_, stage, detail);
+  }
+
+  void OnContextMenuDismissed(CefRefPtr<CefBrowser> browser,
+                              CefRefPtr<CefFrame> frame) {
+    (void)browser;
+    (void)frame;
+    CancelContextMenuRequests();
+  }
+
+  kweb_status RespondToContextMenu(uint64_t request_id, std::string decision);
+
+  /** Cancels every pending request exactly once; used on close and dismissal. */
+  void CancelContextMenuRequests() {
+    std::vector<ContextMenuRequest> pending;
+    {
+      std::lock_guard lock(context_menu_mutex_);
+      for (auto& entry : context_menu_requests_) {
+        resolved_context_menu_requests_.insert(entry.first);
+        pending.push_back(std::move(entry.second));
+      }
+      context_menu_requests_.clear();
+    }
+    for (auto& request : pending) {
+      if (request.callback != nullptr) request.callback->Cancel();
+    }
   }
 
   kweb_status RespondToSecurityChallenge(uint64_t request_id,
@@ -1404,7 +1491,7 @@ public:
       return;
     }
     TraceCreateStage(handle_, "surface-created");
-    client_ = new SessionClient(weak_from_this());
+    client_ = new SessionClient(weak_from_this(), context_menus_enabled_);
     CefWindowInfo window_info;
     window_info.SetAsChild(surface_->parent_handle(),
                            CefRect(0, 0, width_, height_));
@@ -2393,6 +2480,7 @@ private:
     closing_.store(true, std::memory_order_release);
     ready_.store(false, std::memory_order_release);
     CancelDownloads();
+    CancelContextMenuRequests();
     if (security_registry_) {
       security_registry_->Close();
     }
@@ -2594,6 +2682,7 @@ private:
   const kweb_profile_data_event_callback profile_data_callback_;
   void *const profile_data_user_data_;
   const bool downloads_enabled_;
+  const bool context_menus_enabled_;
   std::mutex download_mutex_;
   std::map<uint32_t, DownloadRecord> download_records_;
   uint32_t next_download_id_ = 0;
@@ -2601,6 +2690,10 @@ private:
   CefRefPtr<SessionClient> client_;
   CefRefPtr<CefRequestContext> request_context_;
   std::shared_ptr<SecurityChallengeRegistry> security_registry_;
+  std::mutex context_menu_mutex_;
+  std::map<uint64_t, ContextMenuRequest> context_menu_requests_;
+  std::set<uint64_t> resolved_context_menu_requests_;
+  uint64_t next_context_menu_request_id_ = 0;
   std::weak_ptr<ProfileContextEntry> pending_profile_context_;
   CefRefPtr<CefBrowser> browser_;
   CefRefPtr<DevToolsClient> devtools_client_;
@@ -2646,6 +2739,204 @@ private:
   bool flush_started_ = false;
   bool flush_completed_ = false;
 };
+
+namespace {
+
+/// Stable virtual command name for one Chromium menu command. Unknown ids use a
+/// deterministic name so the application can still round-trip them.
+std::string ChromiumCommandName(int command_id) {
+  switch (command_id) {
+    case MENU_ID_BACK: return "chromium.back";
+    case MENU_ID_FORWARD: return "chromium.forward";
+    case MENU_ID_RELOAD: return "chromium.reload";
+    case MENU_ID_RELOAD_NOCACHE: return "chromium.reload-nocache";
+    case MENU_ID_STOPLOAD: return "chromium.stop-load";
+    case MENU_ID_UNDO: return "chromium.undo";
+    case MENU_ID_REDO: return "chromium.redo";
+    case MENU_ID_CUT: return "chromium.cut";
+    case MENU_ID_COPY: return "chromium.copy";
+    case MENU_ID_PASTE: return "chromium.paste";
+    case MENU_ID_PASTE_MATCH_STYLE: return "chromium.paste-and-match-style";
+    case MENU_ID_DELETE: return "chromium.delete";
+    case MENU_ID_SELECT_ALL: return "chromium.select-all";
+    case MENU_ID_FIND: return "chromium.find";
+    case MENU_ID_PRINT: return "chromium.print";
+    case MENU_ID_VIEW_SOURCE: return "chromium.view-source";
+    case MENU_ID_SPELLCHECK_SUGGESTION_0: return "chromium.spellcheck-suggestion-0";
+    case MENU_ID_SPELLCHECK_SUGGESTION_1: return "chromium.spellcheck-suggestion-1";
+    case MENU_ID_SPELLCHECK_SUGGESTION_2: return "chromium.spellcheck-suggestion-2";
+    case MENU_ID_SPELLCHECK_SUGGESTION_3: return "chromium.spellcheck-suggestion-3";
+    case MENU_ID_SPELLCHECK_SUGGESTION_4: return "chromium.spellcheck-suggestion-4";
+    case MENU_ID_NO_SPELLING_SUGGESTIONS: return "chromium.no-spelling-suggestions";
+    case MENU_ID_ADD_TO_DICTIONARY: return "chromium.add-to-dictionary";
+    default: return "chromium.id." + std::to_string(command_id);
+  }
+}
+
+const char *ChromiumMenuItemKind(cef_menu_item_type_t type) {
+  switch (type) {
+    case MENUITEMTYPE_COMMAND: return "command";
+    case MENUITEMTYPE_CHECK: return "checkbox";
+    case MENUITEMTYPE_RADIO: return "radio";
+    case MENUITEMTYPE_SEPARATOR: return "separator";
+    case MENUITEMTYPE_SUBMENU: return "submenu";
+    default: return "none";
+  }
+}
+
+/// Serializes one CEF menu model into the published request item list.
+CefRefPtr<CefListValue> BuildContextMenuItems(CefRefPtr<CefMenuModel> model,
+                                              std::map<std::string, int32_t> &command_ids) {
+  auto items = CefListValue::Create();
+  if (model == nullptr) return items;
+  const size_t count = model->GetCount();
+  for (size_t index = 0; index < count; ++index) {
+    const cef_menu_item_type_t type = model->GetTypeAt(index);
+    auto item = CefDictionaryValue::Create();
+    item->SetString("kind", ChromiumMenuItemKind(type));
+    item->SetBool("enabled", model->IsEnabledAt(index));
+    item->SetBool("checked", model->IsCheckedAt(index));
+    if (type != MENUITEMTYPE_SEPARATOR && type != MENUITEMTYPE_NONE) {
+      const int command_id = model->GetCommandIdAt(index);
+      const std::string command = ChromiumCommandName(command_id);
+      item->SetString("command", command);
+      item->SetInt("commandId", command_id);
+      item->SetString("label", model->GetLabelAt(index).ToString());
+      if (type == MENUITEMTYPE_SUBMENU) {
+        item->SetList("items", BuildContextMenuItems(model->GetSubMenuAt(index), command_ids));
+      } else {
+        command_ids[command] = command_id;
+      }
+    }
+    items->SetDictionary(index, item);
+  }
+  return items;
+}
+
+struct ParsedContextMenuDecision {
+  bool dismiss = false;
+  std::string command;
+};
+
+std::optional<ParsedContextMenuDecision> ParseContextMenuDecision(const std::string &payload) {
+  if (payload.empty() || payload.size() > 64 * 1024 ||
+      !IsValidUtf8(payload.data(), payload.size())) {
+    return std::nullopt;
+  }
+  auto value = CefParseJSON(payload, JSON_PARSER_RFC);
+  if (!value || value->GetType() != VTYPE_DICTIONARY) return std::nullopt;
+  auto dictionary = value->GetDictionary();
+  if (!dictionary || dictionary->GetType("decision") != VTYPE_STRING) return std::nullopt;
+  const std::string decision = dictionary->GetString("decision").ToString();
+  if (decision == "dismiss") return ParsedContextMenuDecision{true, {}};
+  if (decision != "continue" || dictionary->GetType("commandId") != VTYPE_STRING) {
+    return std::nullopt;
+  }
+  const std::string command = dictionary->GetString("commandId").ToString();
+  if (command.empty() || command.size() > 128) return std::nullopt;
+  ParsedContextMenuDecision parsed;
+  parsed.command = command;
+  return parsed;
+}
+
+}  // namespace
+
+bool BrowserSession::RunContextMenu(CefRefPtr<CefBrowser> browser,
+                                    CefRefPtr<CefFrame> frame,
+                                    CefRefPtr<CefContextMenuParams> params,
+                                    CefRefPtr<CefMenuModel> model,
+                                    CefRefPtr<CefRunContextMenuCallback> callback) {
+  CEF_REQUIRE_UI_THREAD();
+  (void)browser;
+  TraceContextMenu(handle_, "run-context-menu",
+                   model != nullptr ? model->GetCount() : 0);
+  if (callback == nullptr) return true;
+  if (closing_.load(std::memory_order_acquire) ||
+      !ready_.load(std::memory_order_acquire)) {
+    callback->Cancel();
+    return true;
+  }
+  auto command_ids = std::make_shared<std::map<std::string, int32_t>>();
+  auto items = BuildContextMenuItems(model, *command_ids);
+  uint64_t request_id = 0;
+  {
+    std::lock_guard lock(context_menu_mutex_);
+    next_context_menu_request_id_ += 1;
+    request_id = next_context_menu_request_id_;
+    ContextMenuRequest request;
+    request.id = request_id;
+    request.callback = callback;
+    request.command_ids = *command_ids;
+    context_menu_requests_[request_id] = std::move(request);
+  }
+  auto details = CefDictionaryValue::Create();
+  details->SetInt("version", 1);
+  details->SetInt("requestId", static_cast<int>(request_id));
+  details->SetInt("x", params != nullptr ? params->GetXCoord() : 0);
+  details->SetInt("y", params != nullptr ? params->GetYCoord() : 0);
+  details->SetBool("editable", params != nullptr && params->IsEditable());
+  details->SetString("selection",
+                     params != nullptr ? params->GetSelectionText().ToString() : std::string());
+  details->SetString("linkUrl",
+                     params != nullptr ? params->GetLinkUrl().ToString() : std::string());
+  details->SetString("url", frame != nullptr ? frame->GetURL().ToString() : std::string());
+  details->SetList("items", items);
+  auto value = CefValue::Create();
+  value->SetDictionary(details);
+  const std::string payload = CefWriteJSON(value, JSON_WRITER_DEFAULT).ToString();
+  const std::string frame_id = frame != nullptr ? frame->GetIdentifier().ToString() : std::string();
+  const uint32_t frame_scope = (frame != nullptr && frame->IsMain())
+                                   ? KWEB_CONTEXT_MENU_FRAME_MAIN
+                                   : KWEB_CONTEXT_MENU_FRAME_SUBFRAME;
+  const std::string url = frame != nullptr ? frame->GetURL().ToString() : std::string();
+  TraceContextMenu(handle_, "emit-request", payload.size());
+  Emit(KWEB_BROWSER_EVENT_CONTEXT_MENU, 0, {}, 0, 0, 0, frame_id, frame_scope,
+       KWEB_BROWSER_REASON_NONE, request_id, {}, url, {}, payload);
+  return true;
+}
+
+kweb_status BrowserSession::RespondToContextMenu(uint64_t request_id, std::string decision) {
+  if (request_id == 0) return KWEB_STATUS_CONTEXT_MENU_DECISION_INVALID;
+  auto parsed = ParseContextMenuDecision(decision);
+  if (!parsed) return KWEB_STATUS_CONTEXT_MENU_DECISION_INVALID;
+  ContextMenuRequest request;
+  {
+    std::lock_guard lock(context_menu_mutex_);
+    const auto found = context_menu_requests_.find(request_id);
+    if (found == context_menu_requests_.end()) {
+      return resolved_context_menu_requests_.contains(request_id)
+                 ? KWEB_STATUS_CONTEXT_MENU_ALREADY_RESOLVED
+                 : KWEB_STATUS_CONTEXT_MENU_NOT_FOUND;
+    }
+    request = std::move(found->second);
+    context_menu_requests_.erase(found);
+    resolved_context_menu_requests_.insert(request_id);
+  }
+  TraceContextMenu(handle_, "respond", request_id);
+  if (request.callback == nullptr) return KWEB_STATUS_CONTEXT_MENU_NOT_FOUND;
+  if (closing_.load(std::memory_order_acquire)) {
+    request.callback->Cancel();
+    return KWEB_STATUS_CONTEXT_MENU_CLOSING;
+  }
+  if (parsed->dismiss) {
+    request.callback->Cancel();
+    return KWEB_STATUS_OK;
+  }
+  const auto mapped = request.command_ids.find(parsed->command);
+  if (mapped == request.command_ids.end()) {
+    request.callback->Cancel();
+    return KWEB_STATUS_CONTEXT_MENU_DECISION_INVALID;
+  }
+  const int command_id = mapped->second;
+  if (!CefPostTask(TID_UI, base::BindOnce(
+                               [](CefRefPtr<CefRunContextMenuCallback> callback, int id) {
+                                 callback->Continue(id, EVENTFLAG_NONE);
+                               },
+                               request.callback, command_id))) {
+    return KWEB_STATUS_CALLBACK_FAILED;
+  }
+  return KWEB_STATUS_OK;
+}
 
 SessionClient::~SessionClient() {
   CEF_REQUIRE_UI_THREAD();
@@ -2707,6 +2998,54 @@ bool SessionClient::OnBeforeDownload(
                                      callback);
   }
   return false;
+}
+
+void SessionClient::OnBeforeContextMenu(CefRefPtr<CefBrowser> browser,
+                                        CefRefPtr<CefFrame> frame,
+                                        CefRefPtr<CefContextMenuParams> params,
+                                        CefRefPtr<CefMenuModel> model) {
+  TraceContextMenu(0, "before-context-menu",
+                   model != nullptr ? model->GetCount() : 0);
+  // Presentation belongs to the application policy resolved by Kotlin, so the
+  // CEF default model is only an input to RunContextMenu.
+  (void)browser;
+  (void)frame;
+  (void)params;
+  (void)model;
+}
+
+bool SessionClient::RunContextMenu(CefRefPtr<CefBrowser> browser,
+                                   CefRefPtr<CefFrame> frame,
+                                   CefRefPtr<CefContextMenuParams> params,
+                                   CefRefPtr<CefMenuModel> model,
+                                   CefRefPtr<CefRunContextMenuCallback> callback) {
+  if (auto session = session_.lock()) {
+    return session->RunContextMenu(browser, frame, params, model, callback);
+  }
+  callback->Cancel();
+  return true;
+}
+
+bool SessionClient::OnContextMenuCommand(CefRefPtr<CefBrowser> browser,
+                                         CefRefPtr<CefFrame> frame,
+                                         CefRefPtr<CefContextMenuParams> params,
+                                         int command_id,
+                                         EventFlags event_flags) {
+  (void)browser;
+  (void)frame;
+  (void)params;
+  (void)command_id;
+  (void)event_flags;
+  // Returning false lets Chromium's default dispatcher execute the command the
+  // application selected through KWEB_CONTEXT_MENU_DECISION_CONTINUE.
+  return false;
+}
+
+void SessionClient::OnContextMenuDismissed(CefRefPtr<CefBrowser> browser,
+                                           CefRefPtr<CefFrame> frame) {
+  if (auto session = session_.lock()) {
+    session->OnContextMenuDismissed(browser, frame);
+  }
 }
 
 void SessionClient::OnDownloadUpdated(
@@ -3056,7 +3395,8 @@ kweb_status SessionRegistry::Create(const kweb_browser_config *config,
   if (config->callback == nullptr || config->native_parent == 0) {
     return KWEB_STATUS_INVALID_ARGUMENT;
   }
-  if ((config->reserved & ~KWEB_BROWSER_CONFIG_DOWNLOADS_ENABLED) != 0) {
+  if ((config->reserved & ~(KWEB_BROWSER_CONFIG_DOWNLOADS_ENABLED |
+                            KWEB_BROWSER_CONFIG_CONTEXT_MENUS_ENABLED)) != 0) {
     return KWEB_STATUS_INVALID_ARGUMENT;
   }
   const bool bridge_enabled = config->bridge_callback != nullptr;
@@ -3108,7 +3448,8 @@ kweb_status SessionRegistry::Create(const kweb_browser_config *config,
         config->user_data, std::move(bridge_origin), config->bridge_callback,
         config->bridge_user_data, config->profile_data_callback,
         config->profile_data_user_data,
-        (config->reserved & KWEB_BROWSER_CONFIG_DOWNLOADS_ENABLED) != 0);
+        (config->reserved & KWEB_BROWSER_CONFIG_DOWNLOADS_ENABLED) != 0,
+        (config->reserved & KWEB_BROWSER_CONFIG_CONTEXT_MENUS_ENABLED) != 0);
     sessions_.emplace(handle, session);
   }
   const kweb_status start_status = session->Start();
@@ -3389,6 +3730,14 @@ kweb_status SessionRegistry::BridgeRespond(kweb_browser_handle handle,
                  : KWEB_STATUS_INVALID_HANDLE;
 }
 
+kweb_status SessionRegistry::ContextMenuRespond(kweb_browser_handle handle,
+                                               uint64_t request_id,
+                                               std::string decision) {
+  auto session = Lookup(handle);
+  return session ? session->RespondToContextMenu(request_id, std::move(decision))
+                 : KWEB_STATUS_INVALID_HANDLE;
+}
+
 kweb_status SessionRegistry::SecurityRespond(kweb_browser_handle handle,
                                              uint64_t request_id,
                                              std::string decision) {
@@ -3493,6 +3842,14 @@ kweb_status RespondToBridgeSession(kweb_browser_handle browser,
   return GuardStatus([&] {
     return Registry().BridgeRespond(
         browser, request_id, std::string(response_utf8, response_size), success);
+  });
+}
+
+kweb_status RespondToContextMenuSession(kweb_browser_handle browser,
+                                        uint64_t request_id,
+                                        const std::string &decision) {
+  return GuardStatus([&] {
+    return Registry().ContextMenuRespond(browser, request_id, decision);
   });
 }
 

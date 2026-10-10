@@ -1,0 +1,25 @@
+{
+  "namespace": "MenusBridge",
+  "kotlinPackage": "io.github.kingsword09.kwebshell.service.menus.generated",
+  "version": 1,
+  "types": [
+    {
+      "name": "ShowDeclaredPopupRequest",
+      "fields": [
+        { "name": "menuId", "type": "string" },
+        { "name": "x", "type": "double" },
+        { "name": "y", "type": "double" }
+      ]
+    },
+    {
+      "name": "ShowDeclaredPopupResponse",
+      "fields": [
+        { "name": "popupId", "type": "string" },
+        { "name": "treeVersion", "type": "int32" }
+      ]
+    }
+  ],
+  "methods": [
+    { "name": "showDeclaredPopup", "request": "ShowDeclaredPopupRequest", "response": "ShowDeclaredPopupResponse" }
+  ]
+}

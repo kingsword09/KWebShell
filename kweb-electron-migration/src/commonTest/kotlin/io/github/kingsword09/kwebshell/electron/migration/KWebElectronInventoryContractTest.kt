@@ -100,6 +100,42 @@ class KWebElectronInventoryContractTest {
         }
     }
 
+    @Test
+    fun scannerClassifiesMenuTemplatesAndBlocksClosuresUnknownRolesAndPopups() {
+        val root = Files.createTempDirectory("kweb-electron-menu")
+        try {
+            root.resolve("menu.ts").writeText(
+                """
+                import { Menu, MenuItem } from "electron";
+                const menu = Menu.buildFromTemplate([
+                  { label: "Open", accelerator: "CommandOrControl+O", click: () => open() },
+                  { label: "Mystery", role: "frobnicate" },
+                  { label: "Faster", accelerator: "CommandOrControl+F13" },
+                  { type: "separator" },
+                ]);
+                Menu.setApplicationMenu(menu);
+                const current = Menu.getApplicationMenu();
+                current.popup({ x: 4, y: 8 });
+                const item = new MenuItem({ label: "Item", role: "copy" });
+                """.trimIndent(),
+            )
+            val findings = KWebElectronInventoryScanner().scan(root).findings
+            assertTrue(findings.any { it.matrixId == "menu" && it.detail == "electron.Menu.buildFromTemplate" && it.blocking }, findings.toString())
+            assertTrue(findings.any { it.matrixId == "menu" && it.detail == "electron.Menu.setApplicationMenu" && it.blocking }, findings.toString())
+            assertTrue(findings.any { it.matrixId == "menu" && it.detail == "electron.Menu.instance.popup" && it.blocking }, findings.toString())
+            assertTrue(findings.any { it.matrixId == "menu" && it.detail == "electron.Menu.template.click" && it.blocking }, findings.toString())
+            assertTrue(findings.any { it.matrixId == "menu" && it.detail == "electron.Menu.template.role" && it.blocking }, findings.toString())
+            assertTrue(findings.any { it.matrixId == "menu" && it.detail == "electron.Menu.template.role-unknown" && it.blocking }, findings.toString())
+            assertTrue(findings.any { it.matrixId == "menu" && it.detail == "electron.Menu.template.accelerator" && it.blocking }, findings.toString())
+            assertTrue(findings.any { it.matrixId == "menu" && it.detail == "electron.Menu.template.accelerator-unsupported" && it.blocking }, findings.toString())
+            assertTrue(findings.any { it.matrixId == "menu" && it.detail == "electron.Menu.template.type" && it.blocking }, findings.toString())
+            assertTrue(findings.none { it.matrixId == "menu" && !it.blocking }, findings.toString())
+            assertTrue(findings.none { it.matrixId == "menu-tray" }, findings.toString())
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
     private fun manifest(): KWebElectronManifest = KWebElectronMigrationJson.decode(
         """
         {

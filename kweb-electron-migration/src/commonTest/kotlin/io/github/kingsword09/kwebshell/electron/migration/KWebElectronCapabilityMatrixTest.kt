@@ -97,6 +97,17 @@ class KWebElectronCapabilityMatrixTest {
             KWebElectronCapabilityMatrix.find("node-fs")?.status,
         )
         assertEquals("KWebFiles + FilesBridge", KWebElectronCapabilityMatrix.find("node-fs")?.kweb)
+        assertEquals(
+            KWebElectronMappingStatus.REWRITE,
+            KWebElectronCapabilityMatrix.find("menu")?.status,
+        )
+        assertEquals("KWebMenus + MenusBridge", KWebElectronCapabilityMatrix.find("menu")?.kweb)
+        assertEquals(
+            KWebElectronMappingStatus.UNSUPPORTED,
+            KWebElectronCapabilityMatrix.find("tray")?.status,
+        )
+        assertEquals("", KWebElectronCapabilityMatrix.find("tray")?.kweb)
+        assertEquals(null, KWebElectronCapabilityMatrix.find("menu-tray"))
         assertTrue(KWebElectronCapabilityMatrix.entries.size >= 18)
     }
 }

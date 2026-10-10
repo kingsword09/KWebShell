@@ -2652,6 +2652,36 @@ nonexistent output and claims unexecuted checks. Existing codec/lifecycle edits
 remain unverified until the acceptance runs above. Decision: **READY** for this
 repair; supported-state acceptance remains pending fresh evidence.
 
+### RFC 0017 implementation objective: typed native menus and the page context menu
+
+RFC 0017 publishes one application-scoped menu service and connects it to the
+real Chromium page context menu without a second menu model. The objective is
+complete only when the same PR lands the typed contract, the three providers,
+the engine round trip, the renderer surface, the migration mapping, real
+three-target evidence, documentation, and the final acceptance review:
+
+1. `kweb-service-menus` publishes immutable versioned command trees with bounded
+   identifiers, labels, mnemonics, roles, accelerators, RFC 0027 icons, toggle
+   state, owners, declared page menus, anchored popups, ordered events, declared
+   capabilities, and typed errors.
+2. Exactly one provider per target: AppKit main menu with native roles, Win32
+   window menu bars with subclassed `WM_COMMAND` routing and accelerator
+   activation, and GTK3 popups plus the session-bus desktop menu host. A
+   capability that a platform cannot express fails typed instead of being
+   dropped.
+3. The engine publishes Chromium's own Alloy menu model as virtual commands
+   behind `KWEB_BROWSER_EVENT_CONTEXT_MENU` (ABI v17) and completes each modal
+   request exactly once through `kweb_browser_context_menu_respond`, only while
+   `KWEB_BROWSER_CONFIG_CONTEXT_MENUS_ENABLED` is declared.
+4. The renderer operation presents only a predeclared menu id under exact
+   origin, main frame, grant, and gesture policy.
+5. The Electron `Menu`/`MenuItem` mapping rewrites templates to the typed model
+   and keeps click closures, unknown roles, and object identity as explicit
+   blockers.
+6. Common, JVM, native, CEF, migration, packaging, and hosted Windows, macOS,
+   and Linux evidence pass, and every acceptance row is decided before the
+   focused squash pull request is merged.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.

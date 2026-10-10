@@ -18,6 +18,9 @@
   const notificationsBridge = globalThis.NotificationsBridge;
   if (!notificationsBridge || typeof notificationsBridge.createClient !== "function") throw new Error("NotificationsBridge is required by this migration facade.");
   const notificationsClient = notificationsBridge.createClient();
+  const menusBridge = globalThis.MenusBridge;
+  if (!menusBridge || typeof menusBridge.createClient !== "function") throw new Error("MenusBridge is required by this migration facade.");
+  const menusClient = menusBridge.createClient();
   class KWebElectronMigrationError extends Error {
     constructor(code, message) {
       super(message);
@@ -66,6 +69,7 @@
     openFile: (request, options) => filesClient.openFile(request, options),
     openResource: (request, options) => shellClient.openResource(request, options),
     openWorkspace: (request, options) => filesClient.openWorkspace(request, options),
+    popup: (request, options) => menusClient.showDeclaredPopup(request, options),
     readClipboard: (request, options) => clipboardClient.read(request, options),
     readClipboardPayload: (request, options) => clipboardClient.readPayload(request, options),
     readFile: (request, options) => filesClient.readFile(request, options),

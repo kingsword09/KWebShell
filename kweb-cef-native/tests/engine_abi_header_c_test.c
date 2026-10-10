@@ -7,8 +7,18 @@
 
 _Static_assert(KWEB_INVALID_ENGINE_HANDLE == 0,
                "the invalid engine handle must remain zero");
-_Static_assert(KWEB_ABI_VERSION == 16,
-               "download controls require ABI version 16");
+_Static_assert(KWEB_ABI_VERSION == 17,
+               "page context menus require ABI version 17");
+_Static_assert(KWEB_STATUS_CONTEXT_MENU_NOT_FOUND == 89,
+               "the context-menu not-found status is ABI-stable");
+_Static_assert(KWEB_STATUS_CONTEXT_MENU_ALREADY_RESOLVED == 90,
+               "the context-menu already-resolved status is ABI-stable");
+_Static_assert(KWEB_STATUS_CONTEXT_MENU_DECISION_INVALID == 91,
+               "the context-menu decision-invalid status is ABI-stable");
+_Static_assert(KWEB_STATUS_CONTEXT_MENU_CLOSING == 92,
+               "the context-menu closing status is ABI-stable");
+_Static_assert(KWEB_BROWSER_EVENT_CONTEXT_MENU == 27,
+               "the context-menu browser event type is ABI-stable");
 _Static_assert(KWEB_STATUS_PROFILE_CONTEXT_INITIALIZATION_FAILED == 70,
                "the Profile context initialization status is ABI-stable");
 _Static_assert(sizeof(kweb_engine_config) == 144,

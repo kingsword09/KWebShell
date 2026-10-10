@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)"
+	tests="1"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname=""
+	time="0"
+	timestamp="2026-10-10T16:27:05"
+	>
+	<testcase name="kweb_menus_tests" classname="kweb_menus_tests" time="0.0255739" status="run">
+		<properties>
+			<property name="cmake_labels" value="abi;menus;native"/>
+		</properties>
+		<system-out>
+(kweb_menus_tests:26422): dbind-WARNING **: 16:27:05.136: AT-SPI: Error retrieving accessibility bus address: org.freedesktop.DBus.Error.ServiceUnknown: The name org.a11y.Bus was not provided by any .service files
+kweb menus native checks passed.
+</system-out>
+	</testcase>
+</testsuite>

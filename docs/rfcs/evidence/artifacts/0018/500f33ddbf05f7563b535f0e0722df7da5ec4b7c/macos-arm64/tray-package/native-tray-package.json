@@ -1,0 +1,1 @@
+{"schemaVersion":1,"target":"macos-arm64","archive":"kweb-service-tray-1.0.0-macos-arm64.zip","sha256":"82738be781e06afaa23684492954c60ee227d45715a476c6f13141071ebdd879","nativeLibrary":"libkwebshell_tray.dylib","exactContents":true}

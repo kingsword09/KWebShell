@@ -51,6 +51,15 @@ function representableMenuAccelerator(value) {
   const modifiers = parts.slice(0, -1);
   return modifiers.length > 0 && modifiers.every(modifier => electronMenuModifiers.has(modifier)) && electronMenuKeys.has(key);
 }
+// Electron Tray events. A listener for any other custom or dynamic event name
+// cannot map to a declared tray event and stays an explicit rewrite blocker.
+const electronTrayEvents = new Set([
+  'click', 'right-click', 'double-click',
+  'balloon-show', 'balloon-click', 'balloon-closed',
+  'drop', 'drop-files', 'drop-text',
+  'drag-enter', 'drag-leave', 'drag-end',
+  'mouse-up', 'mouse-down', 'mouse-enter', 'mouse-leave', 'mouse-move',
+]);
 function emit(sf, node, kind, expression, extra = {}) {
   const pos = sf.getLineAndCharacterOfPosition(node.getStart(sf));
   facts.push({ path: path.relative(input.root, sf.fileName).split(path.sep).join('/'), line: pos.line + 1, column: pos.character + 1, kind, expression, ...extra });
@@ -113,6 +122,7 @@ function binding(node, seen = new Set()) {
   if (ts.isNewExpression(node)) {
     const target = binding(node.expression, seen);
     if (target === 'electron.Menu') return 'electron.Menu.instance';
+    if (target === 'electron.Tray') return 'electron.Tray.instance';
   }
   if (!ts.isIdentifier(node)) return null;
   const symbol = checker.getSymbolAtLocation(node);
@@ -215,6 +225,8 @@ for (const fileName of sourceNames) {
         emit(sf, node, 'UNCLASSIFIED', 'electron.MenuItem', { symbol: 'Menu', operation: 'electron.MenuItem' });
         const options = unwrap(node.arguments?.[0]);
         if (options && ts.isObjectLiteralExpression(options)) menuNodeFacts(sf, options);
+      } else if (target === 'electron.Tray') {
+        emit(sf, node, 'UNCLASSIFIED', 'electron.Tray', { symbol: 'Tray', operation: 'electron.Tray' });
       }
     }
     if (ts.isCallExpression(node)) {
@@ -246,6 +258,15 @@ for (const fileName of sourceNames) {
       } else if (target?.startsWith('electron.Menu.')) {
         emit(sf, node, 'UNCLASSIFIED', target, { symbol: 'Menu', operation: target });
         if (target === 'electron.Menu.buildFromTemplate') menuTemplateFacts(sf, node);
+      } else if (target?.startsWith('electron.Tray.')) {
+        if (target === 'electron.Tray.instance.on') {
+          const event = literal(node.arguments[0]);
+          const known = event !== null && electronTrayEvents.has(event);
+          const operation = known ? 'electron.Tray.instance.on' : 'electron.Tray.instance.on-unknown';
+          emit(sf, node, 'UNCLASSIFIED', operation, { symbol: 'Tray', operation });
+        } else {
+          emit(sf, node, 'UNCLASSIFIED', target, { symbol: 'Tray', operation: target });
+        }
       } else if (target?.startsWith('electron.')) {
         emit(sf, node, 'UNCLASSIFIED', target);
       }

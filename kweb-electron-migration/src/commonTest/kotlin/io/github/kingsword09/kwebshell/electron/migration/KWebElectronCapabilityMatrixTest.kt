@@ -103,10 +103,10 @@ class KWebElectronCapabilityMatrixTest {
         )
         assertEquals("KWebMenus + MenusBridge", KWebElectronCapabilityMatrix.find("menu")?.kweb)
         assertEquals(
-            KWebElectronMappingStatus.UNSUPPORTED,
+            KWebElectronMappingStatus.REWRITE,
             KWebElectronCapabilityMatrix.find("tray")?.status,
         )
-        assertEquals("", KWebElectronCapabilityMatrix.find("tray")?.kweb)
+        assertEquals("KWebTrays", KWebElectronCapabilityMatrix.find("tray")?.kweb)
         assertEquals(null, KWebElectronCapabilityMatrix.find("menu-tray"))
         assertTrue(KWebElectronCapabilityMatrix.entries.size >= 18)
     }

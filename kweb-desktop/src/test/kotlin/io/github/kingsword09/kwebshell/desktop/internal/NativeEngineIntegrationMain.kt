@@ -1066,7 +1066,9 @@ private fun runContextMenuIntegration() {
         runCatching { page?.close() }
         runCatching { profile?.close() }
         runCatching { engine.close() }
-        runCatching { surface?.close() }
+        // The surface owns the AWT window, so it must be disposed on the event
+        // thread before the child JVM can exit.
+        surface?.let { surface -> NativeEngine.onAwtEventDispatchThread { surface.close() } }
         runCatching { fixture.close() }
         scope.cancel()
     }
@@ -6375,6 +6377,7 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
             mode == IntegrationMode.PAGE_LIFECYCLE ||
             mode == IntegrationMode.RENDERER_CRASH ||
             mode == IntegrationMode.FILES_WORKSPACE ||
+            mode == IntegrationMode.CONTEXT_MENU ||
             mode == IntegrationMode.EXTENSION_LIFECYCLE_CRASH ||
             mode.name.startsWith("EXTENSION_LIFECYCLE_STAGE")
         ) {

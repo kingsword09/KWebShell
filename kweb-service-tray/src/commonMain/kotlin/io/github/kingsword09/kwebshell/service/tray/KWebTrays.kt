@@ -274,6 +274,7 @@ public object KWebTrayErrorCode {
 public const val KWEB_TRAY_MAX_ITEMS: Int = 4
 public const val KWEB_TRAY_MAX_ICON_VARIANTS: Int = 8
 public const val KWEB_TRAY_MAX_ICON_SCALE: Int = 8
+public const val KWEB_TRAY_MAX_ICON_DIMENSION: Int = 256
 public const val KWEB_TRAY_MAX_TOOLTIP_BYTES: Int = 64
 public const val KWEB_TRAY_EVENT_REPLAY: Int = 64
 public const val KWEB_TRAY_MIN_POSITION: Int = -32768

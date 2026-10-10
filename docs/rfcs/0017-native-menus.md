@@ -228,8 +228,14 @@ CEF/Chromium identity changes; a stale record is never support.
   header test) and two fixture defects (the coordinator's CDP port whitelist and
   the AWT surface disposal); all are fixed in this PR and the matrix re-ran
   green.
-- Decision: `PASS` — the capability is published only when the aggregation
-  imports the three records and strict governance passes at this revision.
+- Evidence import: the aggregation job of the final matrix run
+  (`38032851635`) recorded 51 records, including the three RFC 0017 records, and
+  its in-job strict governance check passed; the same manifest and retained
+  artifacts are imported byte-for-byte into this pull request, where
+  `:kweb-rfc-governance:check` reports READY with zero findings across 42 RFCs
+  (evidence digest `2a83201a507df050b9030be63b6d2a9789858639f24c9652e8127b93f4268020`).
+- Decision: `PASS` — every applicable requirement is verified by the code,
+  tests, and retained hosted evidence at this revision.
 
 ## Non-goals
 

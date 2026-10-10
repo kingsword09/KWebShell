@@ -114,7 +114,6 @@ id fails `tray.item-unknown`.
 Icon variants are selected per platform: AppKit expresses every variant as an
 image representation, while Win32 and the status-notifier `IconPixmap` select
 the highest declared scale that does not exceed the platform scale, falling back
-
 to scale 1. The capability report states which behavior applies.
 
 ### Evidence lifecycle

@@ -55,7 +55,7 @@ def write_image_fixture(root, target):
         },
     })
     compatibility = write(migration, "compatibility.json", {
-        "target": target, "migrationStatus": "READY", "serviceContractVersions": {"native-image": "1.0.0"},
+        "target": target, "migrationStatus": "READY", "serviceContractVersions": {"native-image": "1.0.0", "menus": "1.0.0"},
         "policies": {f"channel:nativeImage.{method}": {"rendererGrant": f"native.native-image.{operation}", "requiresUserGesture": False, "requiresOsConsent": False}
                      for method, operation in (("decode", "decode"), ("encodePng", "encode-png"))},
     })

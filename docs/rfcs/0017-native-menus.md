@@ -218,8 +218,11 @@ CEF/Chromium identity changes; a stale record is never support.
   and verifying the three records; no requirement is excluded.
 - Hosted references: matrix run `38011722529` (macOS arm64 job
   `114093006787`, Linux x64 job `114093006920`, Windows x64 job
-  `114093006928`), strict governance run of the same pull request, and the
-  aggregation job's `rfc-evidence-manifest` artifact.
+  `114093006928`) and the re-run of the final revision (macOS arm64 job
+  `114149504998`, Linux x64 job `114149504941`, Windows x64 job
+  `114149504879`, all green); strict governance runs in the same pull request
+  and the aggregation job's `rfc-evidence-manifest` artifact carries the three
+  records.
 - Findings and dispositions: the run exposed three version pins that must move
   with ABI v17 (the desktop FFM contract test, the interop probe, and the C
   header test) and two fixture defects (the coordinator's CDP port whitelist and

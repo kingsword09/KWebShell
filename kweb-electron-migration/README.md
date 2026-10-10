@@ -144,7 +144,9 @@ generated channel is introduced; the mapping is entirely host code:
 | arbitrary image paths | Package-resource image variants only; no path or URL loading. |
 
 Direct Electron tray calls remain inventory blockers until the application
-rewrites them to the host `KWebTrays` contract.
+rewrites them to the host `KWebTrays` contract. The migration fixture manifest
+declares `tray` `1.0.0` in `requiredServices`, so the generated host checklist
+and the compatibility report bind the service contract the application installs.
 
 ## Manifest v2 and inventory prerequisites
 

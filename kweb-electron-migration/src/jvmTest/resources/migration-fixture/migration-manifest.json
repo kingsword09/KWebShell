@@ -632,6 +632,10 @@
     {
       "id": "menus",
       "version": "1.0.0"
+    },
+    {
+      "id": "tray",
+      "version": "1.0.0"
     }
   ],
   "windows": [

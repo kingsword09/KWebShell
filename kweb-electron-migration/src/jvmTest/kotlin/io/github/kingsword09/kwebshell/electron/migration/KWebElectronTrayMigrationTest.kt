@@ -29,10 +29,15 @@ class KWebElectronTrayMigrationTest {
             "kweb-electron-migration/src/jvmTest/resources/migration-fixture/migration-manifest.json",
         )))
         val sources = KWebElectronPreloadGenerator().generate(fixture)
-        listOf(sources.typescript, sources.declarations, sources.javascript, sources.checklist).forEach { generated ->
+        // A tray is host-only: the generated renderer facade never constructs,
+        // mutates, or observes a tray item.
+        listOf(sources.typescript, sources.declarations, sources.javascript).forEach { generated ->
             assertTrue(!generated.contains("Tray"), generated)
             assertTrue(!generated.contains("tray"), generated)
         }
+        // The host checklist declares the service the application installs; that
+        // is a host requirement, not a renderer surface.
+        assertTrue(sources.checklist.contains("- [ ] Install `tray` (version `1.0.0`)"), sources.checklist)
     }
 
     @Test

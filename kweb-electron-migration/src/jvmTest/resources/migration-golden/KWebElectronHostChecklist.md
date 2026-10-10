@@ -12,6 +12,7 @@ Renderer origin: `app://migration-fixture`; profile: `default`.
 - [ ] Install `native-image` (version `1.0.0`)
 - [ ] Install `notifications` (version `1.0.0`)
 - [ ] Install `shell` (version `1.0.0`)
+- [ ] Install `tray` (version `1.0.0`)
 
 ## 2. Window & Hierarchy Definitions
 - [ ] Window `main`: "KWebShell Migration Fixture" [Main] (Profile: `default`)

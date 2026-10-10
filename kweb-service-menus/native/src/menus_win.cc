@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <cwctype>
 #include <map>
 #include <memory>
@@ -44,6 +45,16 @@ struct WindowsState {
 };
 
 kwebshell::menus::State *g_state = nullptr;
+
+/**
+ * Reports one native failure stage with its Win32 error code. The message
+ * carries no user content, so a hosted failure stays diagnosable without
+ * retaining menu data.
+ */
+void TraceWin32Failure(const char *stage) {
+  std::fprintf(stderr, "KWEBSHELL_MENUS_FAILURE stage=%s error=%lu\n", stage,
+               static_cast<unsigned long>(::GetLastError()));
+}
 
 std::wstring Widen(const std::string &value) {
   if (value.empty()) return std::wstring();
@@ -368,7 +379,10 @@ kweb_menus_status NativeSetWindowMenu(State &state, const std::string &window_id
     entry = existing->second.get();
   }
   HMENU menu = BuildMenu(*entry, *tree, false);
-  if (menu == nullptr) return KWEB_MENUS_STATUS_NATIVE_FAILED;
+  if (menu == nullptr) {
+    TraceWin32Failure("build-menu");
+    return KWEB_MENUS_STATUS_NATIVE_FAILED;
+  }
   if (entry->menu != nullptr) {
     SetMenu(entry->window, nullptr);
     DestroyMenu(entry->menu);
@@ -379,6 +393,7 @@ kweb_menus_status NativeSetWindowMenu(State &state, const std::string &window_id
   entry->tree_version = tree->version;
   if (!entry->subclassed) {
     if (!SetWindowSubclass(window, MenuSubclassProc, kSubclassId, reinterpret_cast<DWORD_PTR>(entry))) {
+      TraceWin32Failure("set-window-subclass");
       DestroyMenu(menu);
       entry->menu = nullptr;
       return KWEB_MENUS_STATUS_NATIVE_FAILED;
@@ -386,6 +401,7 @@ kweb_menus_status NativeSetWindowMenu(State &state, const std::string &window_id
     entry->subclassed = true;
   }
   if (!SetMenu(window, menu)) {
+    TraceWin32Failure("set-menu");
     DestroyMenu(menu);
     entry->menu = nullptr;
     return KWEB_MENUS_STATUS_NATIVE_FAILED;
@@ -405,7 +421,10 @@ kweb_menus_status NativeShowPopup(State &state, const Tree &tree, kweb_menus_own
   scratch.owner_kind = owner_kind;
   scratch.tree_version = tree.version;
   HMENU menu = BuildMenu(scratch, tree, true);
-  if (menu == nullptr) return KWEB_MENUS_STATUS_NATIVE_FAILED;
+  if (menu == nullptr) {
+    TraceWin32Failure("build-popup-menu");
+    return KWEB_MENUS_STATUS_NATIVE_FAILED;
+  }
   HWND window = reinterpret_cast<HWND>(static_cast<uintptr_t>(native_window));
   if (window == nullptr || !IsWindow(window)) {
     DestroyMenu(menu);

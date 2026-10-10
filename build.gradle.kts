@@ -29,6 +29,7 @@ tasks.register("runtimeCheck") {
     dependsOn(":kweb-service-image:check")
     dependsOn(":kweb-service-menus:check")
     dependsOn(":kweb-service-tray:check")
+    dependsOn(":kweb-service-system-preferences:check")
     dependsOn(":kweb-electron-migration:check")
     dependsOn(":kweb-rfc-governance:contractTest")
     dependsOn(":kweb-bridge:check")

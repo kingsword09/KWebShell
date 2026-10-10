@@ -499,6 +499,22 @@
       ]
     },
     {
+      "rfcId": "0018",
+      "paths": [
+        "build.gradle.kts",
+        "docs/rfcs/0018-tray-status-item.md",
+        "docs/rfcs/evidence/contracts.json",
+        "kweb-electron-migration/src",
+        "kweb-rfc-governance/build.gradle.kts",
+        "kweb-rfc-governance/src/main/kotlin/io/github/kingsword09/kwebshell/rfc/KWebRfcServiceCatalog.kt",
+        "kweb-service-tray/README.md",
+        "kweb-service-tray/build.gradle.kts",
+        "kweb-service-tray/native",
+        "kweb-service-tray/src",
+        "settings.gradle.kts"
+      ]
+    },
+    {
       "rfcId": "0027",
       "paths": [
         ".github/scripts/aggregate-rfc-evidence.sh",

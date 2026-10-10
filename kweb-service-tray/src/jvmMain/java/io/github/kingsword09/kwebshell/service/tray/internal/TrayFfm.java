@@ -155,7 +155,8 @@ public final class TrayFfm implements AutoCloseable {
         sequenceLayout(MAX_ID + 1, JAVA_BYTE).withName("item_id"),
         sequenceLayout(MAX_ID + 1, JAVA_BYTE).withName("menu_id"),
         sequenceLayout(MAX_ID + 1, JAVA_BYTE).withName("command_id"),
-        sequenceLayout(96, JAVA_BYTE).withName("code")
+        sequenceLayout(96, JAVA_BYTE).withName("code"),
+        MemoryLayout.paddingLayout(5)
     );
 
     private static final ConcurrentHashMap<Path, SymbolLookup> LIBRARIES = new ConcurrentHashMap<>();

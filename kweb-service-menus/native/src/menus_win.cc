@@ -5,7 +5,6 @@
 #endif
 
 #include <windows.h>
-#include <commctrl.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -19,12 +18,12 @@
 namespace {
 
 constexpr UINT kFirstCommandId = 1000;
-constexpr UINT_PTR kSubclassId = 0x4b57534d;  // 'KWSM'
 
 struct WindowEntry {
   std::string window_id;
   HWND window = nullptr;
   HMENU menu = nullptr;
+  WNDPROC previous_proc = nullptr;
   kweb_menus_owner_kind owner_kind = KWEB_MENUS_OWNER_WINDOW;
   uint64_t tree_version = 0;
   bool subclassed = false;
@@ -278,8 +277,8 @@ void ReportCommand(WindowEntry &entry, const std::string &command) {
       entry.owner_kind, entry.window_id, command, entry.tree_version);
 }
 
-LRESULT CALLBACK MenuSubclassProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam, UINT_PTR, DWORD_PTR ref) {
-  auto *entry = reinterpret_cast<WindowEntry *>(ref);
+LRESULT CALLBACK MenuWindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+  WindowEntry *entry = reinterpret_cast<WindowEntry *>(GetWindowLongPtrW(window, GWLP_USERDATA));
   if (entry != nullptr && g_state != nullptr) {
     if (message == WM_COMMAND && HIWORD(wparam) == 0) {
       const auto found = entry->command_by_id.find(LOWORD(wparam));
@@ -298,16 +297,27 @@ LRESULT CALLBACK MenuSubclassProc(HWND window, UINT message, WPARAM wparam, LPAR
       }
     }
     if (message == WM_NCDESTROY) {
-      RemoveWindowSubclass(window, MenuSubclassProc, kSubclassId);
       entry->subclassed = false;
+      entry->previous_proc = nullptr;
+      SetWindowLongPtrW(window, GWLP_USERDATA, 0);
     }
   }
-  return DefSubclassProc(window, message, wparam, lparam);
+  if (entry != nullptr && entry->previous_proc != nullptr) {
+    return CallWindowProcW(entry->previous_proc, window, message, wparam, lparam);
+  }
+  return DefWindowProcW(window, message, wparam, lparam);
 }
 
 void DestroyEntryMenu(WindowEntry &entry) {
   if (entry.window != nullptr && IsWindow(entry.window) && entry.subclassed) {
     SetMenu(entry.window, nullptr);
+  }
+  if (entry.window != nullptr && IsWindow(entry.window) && entry.subclassed &&
+      entry.previous_proc != nullptr) {
+    SetWindowLongPtrW(entry.window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(entry.previous_proc));
+    SetWindowLongPtrW(entry.window, GWLP_USERDATA, 0);
+    entry.subclassed = false;
+    entry.previous_proc = nullptr;
   }
   if (entry.menu != nullptr) {
     DestroyMenu(entry.menu);
@@ -392,12 +402,17 @@ kweb_menus_status NativeSetWindowMenu(State &state, const std::string &window_id
   entry->owner_kind = owner_kind;
   entry->tree_version = tree->version;
   if (!entry->subclassed) {
-    if (!SetWindowSubclass(window, MenuSubclassProc, kSubclassId, reinterpret_cast<DWORD_PTR>(entry))) {
-      TraceWin32Failure("set-window-subclass");
+    SetLastError(0);
+    const LONG_PTR previous = SetWindowLongPtrW(
+        window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(MenuWindowProc));
+    if (previous == 0 && GetLastError() != 0) {
+      TraceWin32Failure("subclass-window");
       DestroyMenu(menu);
       entry->menu = nullptr;
       return KWEB_MENUS_STATUS_NATIVE_FAILED;
     }
+    entry->previous_proc = reinterpret_cast<WNDPROC>(previous);
+    SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(entry));
     entry->subclassed = true;
   }
   if (!SetMenu(window, menu)) {
@@ -416,6 +431,10 @@ kweb_menus_status NativeShowPopup(State &state, const Tree &tree, kweb_menus_own
                                   kweb_menus_popup_result *result) {
   WindowsState *windows = StateOf(state);
   if (windows == nullptr) return KWEB_MENUS_STATUS_NATIVE_UNAVAILABLE;
+  HWND window = reinterpret_cast<HWND>(static_cast<uintptr_t>(native_window));
+  if (window == nullptr || !IsWindow(window)) return KWEB_MENUS_STATUS_WINDOW_UNKNOWN;
+  // The caller thread tracks the popup and receives the chosen command from
+  // TrackPopupMenuEx, so popup commands never depend on WM_COMMAND routing.
   WindowEntry scratch;
   scratch.window_id = owner_id;
   scratch.owner_kind = owner_kind;
@@ -424,11 +443,6 @@ kweb_menus_status NativeShowPopup(State &state, const Tree &tree, kweb_menus_own
   if (menu == nullptr) {
     TraceWin32Failure("build-popup-menu");
     return KWEB_MENUS_STATUS_NATIVE_FAILED;
-  }
-  HWND window = reinterpret_cast<HWND>(static_cast<uintptr_t>(native_window));
-  if (window == nullptr || !IsWindow(window)) {
-    DestroyMenu(menu);
-    return KWEB_MENUS_STATUS_WINDOW_UNKNOWN;
   }
   if (GetForegroundWindow() != window) SetForegroundWindow(window);
   const UINT selected = TrackPopupMenuEx(

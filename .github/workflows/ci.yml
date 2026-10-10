@@ -313,6 +313,19 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Upload native tray evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: tray-integration-${{ matrix.target }}-${{ github.sha }}
+          path: |
+            kweb-service-tray/build/reports/tray-integration/
+            kweb-service-tray/build/reports/tray-native-tests.xml
+            kweb-service-tray/build/test-results/jvmTest/*.xml
+            kweb-service-tray/build/distributions/*.zip
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload application package evidence
         if: always()
         uses: actions/upload-artifact@v6
@@ -429,7 +442,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p build/rfc-evidence/downloaded
-          for family in rfc-governance provider-lifecycle native-dialogs engine-integration electron-migration clipboard image-integration menus-integration application-package windows-launcher-smoke application-lifecycle; do
+          for family in rfc-governance provider-lifecycle native-dialogs engine-integration electron-migration clipboard image-integration menus-integration tray-integration application-package windows-launcher-smoke application-lifecycle; do
             gh run download "$GITHUB_RUN_ID" \
               --repo "$GITHUB_REPOSITORY" \
               --pattern "$family-*-${{ github.sha }}" \

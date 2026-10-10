@@ -466,11 +466,8 @@ kweb_menus_status NativeClose(State &state) {
   if (windows == nullptr) return KWEB_MENUS_STATUS_OK;
   for (auto &pair : windows->windows) {
     WindowEntry &entry = *pair.second;
+    // DestroyEntryMenu also restores the original window procedure.
     DestroyEntryMenu(entry);
-    if (entry.window != nullptr && IsWindow(entry.window) && entry.subclassed) {
-      RemoveWindowSubclass(entry.window, MenuSubclassProc, kSubclassId);
-      entry.subclassed = false;
-    }
   }
   windows->windows.clear();
   state.platform = nullptr;

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="KWebMenusContractTest[jvm]" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-10-10T16:34:11.911Z" hostname="runnervmtn0fv" time="0.029">
+  <properties/>
+  <testcase name="identifiersAreBoundedAndStable()[jvm]" classname="io.github.kingsword09.kwebshell.service.menus.KWebMenusContractTest" time="0.001"/>
+  <testcase name="treesRejectDuplicateCommandsAcceleratorsAndMisplacedSeparators()[jvm]" classname="io.github.kingsword09.kwebshell.service.menus.KWebMenusContractTest" time="0.005"/>
+  <testcase name="acceleratorsRequireDistinctBoundedModifiers()[jvm]" classname="io.github.kingsword09.kwebshell.service.menus.KWebMenusContractTest" time="0.001"/>
+  <testcase name="popupAnchorsAreBoundedAndSourced()[jvm]" classname="io.github.kingsword09.kwebshell.service.menus.KWebMenusContractTest" time="0.001"/>
+  <testcase name="nestingAndNodeCeilingsAreBounded()[jvm]" classname="io.github.kingsword09.kwebshell.service.menus.KWebMenusContractTest" time="0.01"/>
+  <testcase name="descriptorPublishesOneRendererOperationAndEveryTarget()[jvm]" classname="io.github.kingsword09.kwebshell.service.menus.KWebMenusContractTest" time="0.001"/>
+  <testcase name="toggleItemsCarryCheckedStateAndKinds()[jvm]" classname="io.github.kingsword09.kwebshell.service.menus.KWebMenusContractTest" time="0.002"/>
+  <testcase name="labelsMnemonicsAndIconsAreValidatedBeforeDispatch()[jvm]" classname="io.github.kingsword09.kwebshell.service.menus.KWebMenusContractTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

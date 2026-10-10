@@ -131,6 +131,23 @@ timeout and abort signal to `MenusBridge`. It never accepts a native template or
 function. Direct Electron menu calls remain inventory blockers until the
 application rewrites them to the declared typed channel.
 
+RFC 0018 classifies Electron `Tray` as a host-only rewrite to `KWebTrays`. A
+renderer never owns or constructs a tray item, so no renderer adapter or
+generated channel is introduced; the mapping is entirely host code:
+
+| Electron use | Required rewrite |
+|---|---|
+| `new Tray(icon)`, `Tray` object identity/mutation | Host code creates one declared immutable item through `KWebTrays`; renderer construction and object identity remain blocked. |
+| `setImage`, `setToolTip`, `setTitle`, `setIgnoreDoubleClickEvents` | Declared icon variant, tooltip, and title with a typed activation policy. |
+| `setContextMenu`, `popUpContextMenu` | The versioned RFC 0017 menu tree owned by the item; no renderer template or `Function` is accepted. |
+| `on(event)`, balloon methods | The ordered `KWebTrays` event flow; unknown Tray event methods stay explicit blockers. |
+| arbitrary image paths | Package-resource image variants only; no path or URL loading. |
+
+Direct Electron tray calls remain inventory blockers until the application
+rewrites them to the host `KWebTrays` contract. The migration fixture manifest
+declares `tray` `1.0.0` in `requiredServices`, so the generated host checklist
+and the compatibility report bind the service contract the application installs.
+
 ## Manifest v2 and inventory prerequisites
 
 Manifest v2 requires an exact `rendererOrigin`, an explicit `rendererProfile`,

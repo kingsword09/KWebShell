@@ -1,0 +1,1 @@
+{"schemaVersion":1,"target":"macos-arm64","archive":"kweb-service-image-1.0.0-macos-arm64.zip","sha256":"4bd54ccd55e717573d143a4621e1602fd647070695646db3d95d672dc882e90a","nativeLibrary":"libkwebshell_image.dylib","exactContents":true}

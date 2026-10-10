@@ -2682,6 +2682,34 @@ three-target evidence, documentation, and the final acceptance review:
    and Linux evidence pass, and every acceptance row is decided before the
    focused squash pull request is merged.
 
+### RFC 0018 implementation objective: tray and status items
+
+RFC 0018 publishes one application-scoped tray service for Windows
+notification-area icons, macOS status items, and Linux status notifier items. The
+objective is complete only when the same PR lands the typed contract, the three
+providers, the renderer-absent policy, the migration mapping, real three-target
+evidence, documentation, and the final acceptance review:
+
+1. `kweb-service-tray` publishes bounded items with RFC 0027 icon variants,
+   tooltips, declared activations, one versioned RFC 0017 menu subset per live
+   item, bounded ordered events, declared capabilities, and typed errors. The
+   service exposes no renderer operation: a tray item belongs to the
+   application.
+2. Exactly one provider per target: Win32 `Shell_NotifyIcon` with
+   `NOTIFYICON_VERSION_4` callbacks, `TaskbarCreated` recovery, and
+   `TrackPopupMenuEx` menus; AppKit `NSStatusItem` on the main queue; and the
+   session-bus `org.kde.StatusNotifierItem` contract with its
+   `com.canonical.dbusmenu` object, one bus connection per item, and explicit
+   watcher loss and reconnect behaviour.
+3. Bounds report the real platform availability, and Linux reports the typed
+   unavailable boundary because the protocol publishes no geometry.
+4. The Electron `Tray` mapping rewrites declared operations and keeps unknown
+   event methods, renderer-owned construction, and object identity as explicit
+   blockers.
+5. Common, JVM, native, packaging, migration, and hosted Windows, macOS, and
+   Linux evidence pass, and every acceptance row is decided before the focused
+   squash pull request is merged.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.

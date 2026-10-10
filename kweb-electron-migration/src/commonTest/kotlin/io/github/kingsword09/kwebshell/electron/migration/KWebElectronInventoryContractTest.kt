@@ -136,6 +136,50 @@ class KWebElectronInventoryContractTest {
         }
     }
 
+    @Test
+    fun scannerClassifiesTrayConstructionAndBlocksUnknownEventsAndRendererItems() {
+        val root = Files.createTempDirectory("kweb-electron-tray")
+        try {
+            root.resolve("tray.ts").writeText(
+                """
+                import { Menu, Tray } from "electron";
+                const tray = new Tray(icon);
+                tray.setImage(icon);
+                tray.setToolTip("Tooltip");
+                tray.setContextMenu(Menu.buildFromTemplate([{ label: "Quit", click: () => quit() }]));
+                tray.on("click", () => toggle());
+                tray.on("frobnicate", () => custom());
+                tray.popUpContextMenu(menu, { x: 1, y: 2 });
+                tray.setTitle("Battery");
+                tray.setIgnoreDoubleClickEvents(true);
+                tray.displayBalloon({ title: "Balloon" });
+                tray.destroy();
+                """.trimIndent(),
+            )
+            val findings = KWebElectronInventoryScanner().scan(root).findings
+            assertTrue(findings.any { it.matrixId == "tray" && it.detail == "electron.Tray" && it.blocking }, findings.toString())
+            listOf(
+                "electron.Tray.instance.setImage",
+                "electron.Tray.instance.setToolTip",
+                "electron.Tray.instance.setContextMenu",
+                "electron.Tray.instance.on",
+                "electron.Tray.instance.popUpContextMenu",
+                "electron.Tray.instance.setTitle",
+                "electron.Tray.instance.setIgnoreDoubleClickEvents",
+                "electron.Tray.instance.displayBalloon",
+                "electron.Tray.instance.destroy",
+            ).forEach { operation ->
+                assertTrue(findings.any { it.matrixId == "tray" && it.detail == operation && it.blocking }, findings.toString())
+            }
+            assertTrue(findings.any { it.matrixId == "tray" && it.detail == "electron.Tray.instance.on-unknown" && it.blocking }, findings.toString())
+            assertTrue(findings.any { it.matrixId == "menu" && it.detail == "electron.Menu.template.click" && it.blocking }, findings.toString())
+            assertTrue(findings.none { it.matrixId == "tray" && !it.blocking }, findings.toString())
+            assertTrue(findings.none { it.matrixId == "menu-tray" }, findings.toString())
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
     private fun manifest(): KWebElectronManifest = KWebElectronMigrationJson.decode(
         """
         {

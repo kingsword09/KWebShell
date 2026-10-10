@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "recordsSha256": "2a83201a507df050b9030be63b6d2a9789858639f24c9652e8127b93f4268020",
+  "recordsSha256": "8828432911133c7576fb8cd8395403adaf367293f6c3f05636285c4dfdeba997",
   "records": [
     {
       "rfcId": "0001",
@@ -15,19 +15,19 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "4dd40752ca1da819df5207769a8f1a8ea2679043e0a3035372255e53156d8523",
+      "contractSha256": "614cb943e1cce54b9d0d019307a029329c222826b56de8916bce8d74581b27f6",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "governance-contract-tests",
-          "path": "docs/rfcs/evidence/artifacts/0001/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/governance-contract-tests/TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml",
-          "sha256": "678760f7b25aac0a2ba6233a1d990d4144ee6c7e493823432e5ce5a2191743cc"
+          "path": "docs/rfcs/evidence/artifacts/0001/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/governance-contract-tests/TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml",
+          "sha256": "9c74f2dacff19d1a308ec335f246f99969a6e66208d1a4393a1bce875eabd5d9"
         }
       ]
     },
@@ -44,19 +44,19 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "4dd40752ca1da819df5207769a8f1a8ea2679043e0a3035372255e53156d8523",
+      "contractSha256": "614cb943e1cce54b9d0d019307a029329c222826b56de8916bce8d74581b27f6",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "governance-contract-tests",
-          "path": "docs/rfcs/evidence/artifacts/0001/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/governance-contract-tests/TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml",
-          "sha256": "1dd5ca05af5908d7bae42f70d1b3dc7e7b873a180e474c393f5136fd69e3dd83"
+          "path": "docs/rfcs/evidence/artifacts/0001/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/governance-contract-tests/TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml",
+          "sha256": "b3ad148744dc79426a5463155e79af8fd9ab379c6c2e82aaaf2ebec47f5aeeff"
         }
       ]
     },
@@ -73,19 +73,19 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "4dd40752ca1da819df5207769a8f1a8ea2679043e0a3035372255e53156d8523",
+      "contractSha256": "614cb943e1cce54b9d0d019307a029329c222826b56de8916bce8d74581b27f6",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "governance-contract-tests",
-          "path": "docs/rfcs/evidence/artifacts/0001/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/governance-contract-tests/TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml",
-          "sha256": "bc8670496abeba722bca63721b1ba4d422c97af107863f5702dca03a3c37374b"
+          "path": "docs/rfcs/evidence/artifacts/0001/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/governance-contract-tests/TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml",
+          "sha256": "b3386c5bbb9692efa1b2654393ce02c0e2d471c7350a5246c54fcbd4dc849662"
         }
       ]
     },
@@ -102,10 +102,10 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
       "contractSha256": "12468f14efb785c726b5021d268b65eadf6bf696d82e8591d654b34d072ee830",
       "compatibilityStatus": "READY",
@@ -113,7 +113,7 @@
       "artifacts": [
         {
           "name": "provider-lifecycle-report",
-          "path": "docs/rfcs/evidence/artifacts/0002/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/provider-lifecycle-report/provider-lifecycle-report.json",
+          "path": "docs/rfcs/evidence/artifacts/0002/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/provider-lifecycle-report/provider-lifecycle-report.json",
           "sha256": "ba26d6081db4c695e59aadb4aa621e3dcfa628e7f9876d69ac6b8ee9c63fd9ac"
         }
       ]
@@ -131,10 +131,10 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
       "contractSha256": "12468f14efb785c726b5021d268b65eadf6bf696d82e8591d654b34d072ee830",
       "compatibilityStatus": "READY",
@@ -142,7 +142,7 @@
       "artifacts": [
         {
           "name": "provider-lifecycle-report",
-          "path": "docs/rfcs/evidence/artifacts/0002/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/provider-lifecycle-report/provider-lifecycle-report.json",
+          "path": "docs/rfcs/evidence/artifacts/0002/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/provider-lifecycle-report/provider-lifecycle-report.json",
           "sha256": "dcf7d703ff4565b744f52dcd5deb684bc20e40a1df4284f3bd3d17d4fdcd273a"
         }
       ]
@@ -160,10 +160,10 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
       "contractSha256": "12468f14efb785c726b5021d268b65eadf6bf696d82e8591d654b34d072ee830",
       "compatibilityStatus": "READY",
@@ -171,7 +171,7 @@
       "artifacts": [
         {
           "name": "provider-lifecycle-report",
-          "path": "docs/rfcs/evidence/artifacts/0002/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/provider-lifecycle-report/provider-lifecycle-report.json",
+          "path": "docs/rfcs/evidence/artifacts/0002/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/provider-lifecycle-report/provider-lifecycle-report.json",
           "sha256": "55f5be5a1ed489ecb7fbd35c3101a6b39378a946e96ab037fc89e3a093cc746e"
         }
       ]
@@ -189,10 +189,10 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
       "contractSha256": "207a529f2e6aaa4ef3403e7f6b7eb4d9568f007a6337294de026c80f2841644d",
       "compatibilityStatus": "READY",
@@ -200,7 +200,7 @@
       "artifacts": [
         {
           "name": "dialogs-consent",
-          "path": "docs/rfcs/evidence/artifacts/0003/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/dialogs-consent/consent-status.json",
+          "path": "docs/rfcs/evidence/artifacts/0003/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/dialogs-consent/consent-status.json",
           "sha256": "ba76980e7197e763f4baf1071cd04c20060ef39a234c6eb73f7a8df8d72ba87f"
         }
       ]
@@ -218,10 +218,10 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
       "contractSha256": "207a529f2e6aaa4ef3403e7f6b7eb4d9568f007a6337294de026c80f2841644d",
       "compatibilityStatus": "READY",
@@ -229,7 +229,7 @@
       "artifacts": [
         {
           "name": "dialogs-consent",
-          "path": "docs/rfcs/evidence/artifacts/0003/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/dialogs-consent/consent-status.json",
+          "path": "docs/rfcs/evidence/artifacts/0003/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/dialogs-consent/consent-status.json",
           "sha256": "6945def4111675c49dde077fcf40b1f9152a85948f09f2bf80e99fe689ee0abb"
         }
       ]
@@ -247,10 +247,10 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
       "contractSha256": "207a529f2e6aaa4ef3403e7f6b7eb4d9568f007a6337294de026c80f2841644d",
       "compatibilityStatus": "READY",
@@ -258,7 +258,7 @@
       "artifacts": [
         {
           "name": "dialogs-consent",
-          "path": "docs/rfcs/evidence/artifacts/0003/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/dialogs-consent/consent-status.json",
+          "path": "docs/rfcs/evidence/artifacts/0003/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/dialogs-consent/consent-status.json",
           "sha256": "1e88cf8ed359df69871ccff73f9c9a35b4c6f0089ffc76390ca94b018f95e66e"
         }
       ]
@@ -276,19 +276,19 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "c3409751a399ec28d42921486971528f79854b53888c10a1058e0f04c9c854bf",
+      "contractSha256": "2e90b8f818955a9fd1a0c4840e219a4017c02cb97f729144dd5efbdeb9430d1d",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "stream-conformance",
-          "path": "docs/rfcs/evidence/artifacts/0004/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/stream-conformance/stream-conformance.json",
-          "sha256": "abf71e85242b577b1957f5bfdb78fe87eabb92a9c97b303d34eb1327260b4bbf"
+          "path": "docs/rfcs/evidence/artifacts/0004/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/stream-conformance/stream-conformance.json",
+          "sha256": "4b4e18b38e209490730cbe2604763a6ff1987a2c818c0af278803b6e8f5307d5"
         }
       ]
     },
@@ -305,19 +305,19 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "c3409751a399ec28d42921486971528f79854b53888c10a1058e0f04c9c854bf",
+      "contractSha256": "2e90b8f818955a9fd1a0c4840e219a4017c02cb97f729144dd5efbdeb9430d1d",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "stream-conformance",
-          "path": "docs/rfcs/evidence/artifacts/0004/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/stream-conformance/stream-conformance.json",
-          "sha256": "23c5123ea9e39dcc1722b4af023db9f51a39f3c914ce7e1317f7fad7c563e5c3"
+          "path": "docs/rfcs/evidence/artifacts/0004/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/stream-conformance/stream-conformance.json",
+          "sha256": "d9da3895dbbc5aef754d67d293db7d9f6cff2a5f7b11717484fb5ef520b32d6c"
         }
       ]
     },
@@ -334,19 +334,19 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "c3409751a399ec28d42921486971528f79854b53888c10a1058e0f04c9c854bf",
+      "contractSha256": "2e90b8f818955a9fd1a0c4840e219a4017c02cb97f729144dd5efbdeb9430d1d",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "stream-conformance",
-          "path": "docs/rfcs/evidence/artifacts/0004/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/stream-conformance/stream-conformance.json",
-          "sha256": "a690527b2fcda39b4970858af4bf34382c87c7d9e87b3c79aff145f8429c9a75"
+          "path": "docs/rfcs/evidence/artifacts/0004/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/stream-conformance/stream-conformance.json",
+          "sha256": "8a6fef9ef55bda0e75a00e2e8e99aa9450ba7101e6f96643a9184cf29f0c1c7f"
         }
       ]
     },
@@ -363,23 +363,23 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "99b70d5333afb58c7fc5ea58adee2d733baa5737ac904907016417ccf1ab308f",
+      "contractSha256": "5f4532d15829b9173de30184a9fb354a60a72d9e2684f849d47897b45be89df2",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "application-lifecycle",
-          "path": "docs/rfcs/evidence/artifacts/0006/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/application-lifecycle/application-lifecycle-report.json",
-          "sha256": "1d334f0efae395ca0f52b4e7a0d178b1f583cdbfe9ffb208404121393fe82d95"
+          "path": "docs/rfcs/evidence/artifacts/0006/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/application-lifecycle/application-lifecycle-report.json",
+          "sha256": "b3b4a5f18ecbcd1514cfec7df8960674a874af57ba76ecb84b07d35bf28a9b33"
         },
         {
           "name": "application-shutdown",
-          "path": "docs/rfcs/evidence/artifacts/0006/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/application-shutdown/application-shutdown.json",
+          "path": "docs/rfcs/evidence/artifacts/0006/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/application-shutdown/application-shutdown.json",
           "sha256": "2f0a39c566c3345c40f8edb36425728a4d36932df1cccda045561281d5ca0a53"
         }
       ]
@@ -397,23 +397,23 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "99b70d5333afb58c7fc5ea58adee2d733baa5737ac904907016417ccf1ab308f",
+      "contractSha256": "5f4532d15829b9173de30184a9fb354a60a72d9e2684f849d47897b45be89df2",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "application-lifecycle",
-          "path": "docs/rfcs/evidence/artifacts/0006/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/application-lifecycle/application-lifecycle-report.json",
-          "sha256": "04b21fb664248d258306d634c710609987ea93f093c6e0fc8a41573a84723331"
+          "path": "docs/rfcs/evidence/artifacts/0006/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/application-lifecycle/application-lifecycle-report.json",
+          "sha256": "6584354ef23fc66836035a43ae9b16aafa7e454d8f8fb7ad7f539e6ae5bcdbc0"
         },
         {
           "name": "application-shutdown",
-          "path": "docs/rfcs/evidence/artifacts/0006/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/application-shutdown/application-shutdown.json",
+          "path": "docs/rfcs/evidence/artifacts/0006/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/application-shutdown/application-shutdown.json",
           "sha256": "325cb6b922315cf438af5f4d7745d31c16ab8b61b5613c15d2e8c4ccb1f17c40"
         }
       ]
@@ -431,23 +431,23 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "99b70d5333afb58c7fc5ea58adee2d733baa5737ac904907016417ccf1ab308f",
+      "contractSha256": "5f4532d15829b9173de30184a9fb354a60a72d9e2684f849d47897b45be89df2",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "application-lifecycle",
-          "path": "docs/rfcs/evidence/artifacts/0006/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/application-lifecycle/application-lifecycle-report.json",
-          "sha256": "13ee3e04f0d6e0e401ce3b916b45e54cffc9a146aaad9c231282d3fb10a4c119"
+          "path": "docs/rfcs/evidence/artifacts/0006/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/application-lifecycle/application-lifecycle-report.json",
+          "sha256": "32d309667c3ebdcfeb5e3a75fbc9582259303357620ff441ea71ddea431416c5"
         },
         {
           "name": "application-shutdown",
-          "path": "docs/rfcs/evidence/artifacts/0006/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/application-shutdown/application-shutdown.json",
+          "path": "docs/rfcs/evidence/artifacts/0006/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/application-shutdown/application-shutdown.json",
           "sha256": "41b6e0745ae47c28818e13dcd417a7b6c41b36878741e70d12271af9221e86ec"
         }
       ]
@@ -465,19 +465,19 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "3200995e86a84f1050e6578b0e63abeb38d47ccd1bf03af2168b89d9a16f8dc6",
+      "contractSha256": "af85e402909f7700649d83824f39ed0be2ee510d852a7d9a742af0d53e008e32",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "window-controls-report",
-          "path": "docs/rfcs/evidence/artifacts/0007/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/window-controls-report/window-controls-report.json",
-          "sha256": "cca7bd7d641ff9d6ea4f632dfce02aaa175ea12a0b8435ec08846a3a6232fcc6"
+          "path": "docs/rfcs/evidence/artifacts/0007/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/window-controls-report/window-controls-report.json",
+          "sha256": "309851d6c26c6329cf25e9791c987c7224a53e67ec87a05214bd8d649af913d8"
         }
       ]
     },
@@ -494,18 +494,18 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "3200995e86a84f1050e6578b0e63abeb38d47ccd1bf03af2168b89d9a16f8dc6",
+      "contractSha256": "af85e402909f7700649d83824f39ed0be2ee510d852a7d9a742af0d53e008e32",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "window-controls-report",
-          "path": "docs/rfcs/evidence/artifacts/0007/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/window-controls-report/window-controls-report.json",
+          "path": "docs/rfcs/evidence/artifacts/0007/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/window-controls-report/window-controls-report.json",
           "sha256": "38f62fd2fe362660fddbf7205075294da842edd9daeb1c5c71768e206c754b16"
         }
       ]
@@ -523,18 +523,18 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "3200995e86a84f1050e6578b0e63abeb38d47ccd1bf03af2168b89d9a16f8dc6",
+      "contractSha256": "af85e402909f7700649d83824f39ed0be2ee510d852a7d9a742af0d53e008e32",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "window-controls-report",
-          "path": "docs/rfcs/evidence/artifacts/0007/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/window-controls-report/window-controls-report.json",
+          "path": "docs/rfcs/evidence/artifacts/0007/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/window-controls-report/window-controls-report.json",
           "sha256": "796e147647eb5ab01a734c93f0a6093456e73d40f40fb9d1b8640365f2f85c2f"
         }
       ]
@@ -552,12 +552,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "3932fdc6b0491f27d6fad4be50958af8c7df2f02e5f9113c472ed327831dafc3",
+      "contractSha256": "df1c44d63d8e6e5c3e0ecef9a79ce22599227b1013b0ba34b5869aeb71606d58",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "web-contents-reload",
@@ -568,13 +568,13 @@
       "artifacts": [
         {
           "name": "page-lifecycle",
-          "path": "docs/rfcs/evidence/artifacts/0008/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/page-lifecycle/page-lifecycle-evidence.json",
-          "sha256": "5b78fd7e2c39464d64508f02ca089495653799a7dd304332abe634e051d49ed9"
+          "path": "docs/rfcs/evidence/artifacts/0008/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/page-lifecycle/page-lifecycle-evidence.json",
+          "sha256": "ecf5ee7864154ce2f7c387b7670cd7a45f030eb40194fe5d3ff598638e6c6528"
         },
         {
           "name": "renderer-lifecycle",
-          "path": "docs/rfcs/evidence/artifacts/0008/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/renderer-lifecycle/renderer-lifecycle-evidence.json",
-          "sha256": "dfff2ad7c6962a5b86d9ac9011095f7ac62fd172aaf677db3298cfb9d7c41487"
+          "path": "docs/rfcs/evidence/artifacts/0008/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/renderer-lifecycle/renderer-lifecycle-evidence.json",
+          "sha256": "038579520c378c6d432c25ffd0b4d01287338e6fbb575d3227c0366b23f8671c"
         }
       ]
     },
@@ -591,12 +591,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "3932fdc6b0491f27d6fad4be50958af8c7df2f02e5f9113c472ed327831dafc3",
+      "contractSha256": "df1c44d63d8e6e5c3e0ecef9a79ce22599227b1013b0ba34b5869aeb71606d58",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "web-contents-reload",
@@ -607,13 +607,13 @@
       "artifacts": [
         {
           "name": "page-lifecycle",
-          "path": "docs/rfcs/evidence/artifacts/0008/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/page-lifecycle/page-lifecycle-evidence.json",
-          "sha256": "7390f65050fe9e2b9de39407c1a105d22fbb0c0635b6f3e729fdc269f821e95a"
+          "path": "docs/rfcs/evidence/artifacts/0008/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/page-lifecycle/page-lifecycle-evidence.json",
+          "sha256": "8b6faeee297f37155d9869cae495d848367b679ba8e52e3814ce1290b28aabc5"
         },
         {
           "name": "renderer-lifecycle",
-          "path": "docs/rfcs/evidence/artifacts/0008/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/renderer-lifecycle/renderer-lifecycle-evidence.json",
-          "sha256": "6cd634e7d4d45d10938981b5589fb41b332500b25366cef98ba68988eafeaf1b"
+          "path": "docs/rfcs/evidence/artifacts/0008/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/renderer-lifecycle/renderer-lifecycle-evidence.json",
+          "sha256": "7b8f344823944292a51db50fb97f3964d3e6df2a7f61244c2786b0f8a439b851"
         }
       ]
     },
@@ -630,12 +630,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "3932fdc6b0491f27d6fad4be50958af8c7df2f02e5f9113c472ed327831dafc3",
+      "contractSha256": "df1c44d63d8e6e5c3e0ecef9a79ce22599227b1013b0ba34b5869aeb71606d58",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "web-contents-reload",
@@ -646,13 +646,13 @@
       "artifacts": [
         {
           "name": "page-lifecycle",
-          "path": "docs/rfcs/evidence/artifacts/0008/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/page-lifecycle/page-lifecycle-evidence.json",
-          "sha256": "3756aa51dd6007f9d74dae47f2fb4922281a1279b36d1de413f2a7dfa6da0476"
+          "path": "docs/rfcs/evidence/artifacts/0008/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/page-lifecycle/page-lifecycle-evidence.json",
+          "sha256": "855da4d2b5862faf227b3e622d58787b6ab43fc4de352b0f548679d8b20373a2"
         },
         {
           "name": "renderer-lifecycle",
-          "path": "docs/rfcs/evidence/artifacts/0008/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/renderer-lifecycle/renderer-lifecycle-evidence.json",
-          "sha256": "e2d4ca59a2bb361a4d90571e12dc8465fde25c2549accd0ed7a8a8e1e4cf40f0"
+          "path": "docs/rfcs/evidence/artifacts/0008/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/renderer-lifecycle/renderer-lifecycle-evidence.json",
+          "sha256": "50e9c1d002ad40b48a1f5a5af86ce465e7090aee79f28fe1e461dac4c7621707"
         }
       ]
     },
@@ -669,12 +669,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "db137f56711ea1ba9be84b21594c73cb3cc95834d58c2ea2b9288e4cc480d608",
+      "contractSha256": "02dcaf797facf7b1f74531d2621185191640eb121c085d9082bb07e0b8150648",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "session-cookies",
@@ -687,8 +687,8 @@
       "artifacts": [
         {
           "name": "profile-data",
-          "path": "docs/rfcs/evidence/artifacts/0009/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/profile-data/profile-data-evidence.json",
-          "sha256": "63eb1abcfccd3e8da25d1e193dbd8c4d44ee79af8abc6e485646f8b222bee302"
+          "path": "docs/rfcs/evidence/artifacts/0009/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/profile-data/profile-data-evidence.json",
+          "sha256": "aac0c10cafeabffefc202c571b00e27b873e5fa85ea84b394fdf5fc26060b0a6"
         }
       ]
     },
@@ -705,12 +705,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "db137f56711ea1ba9be84b21594c73cb3cc95834d58c2ea2b9288e4cc480d608",
+      "contractSha256": "02dcaf797facf7b1f74531d2621185191640eb121c085d9082bb07e0b8150648",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "session-cookies",
@@ -723,8 +723,8 @@
       "artifacts": [
         {
           "name": "profile-data",
-          "path": "docs/rfcs/evidence/artifacts/0009/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/profile-data/profile-data-evidence.json",
-          "sha256": "fcde690bc427d2a64f68c9792b43d41c8acbb3ad0093d361c94fddd13fb2fcff"
+          "path": "docs/rfcs/evidence/artifacts/0009/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/profile-data/profile-data-evidence.json",
+          "sha256": "69e6d2ce33463a24414564882cda4ad7468ebe1ea45a4cdb10e34bbd72c1f647"
         }
       ]
     },
@@ -741,12 +741,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "db137f56711ea1ba9be84b21594c73cb3cc95834d58c2ea2b9288e4cc480d608",
+      "contractSha256": "02dcaf797facf7b1f74531d2621185191640eb121c085d9082bb07e0b8150648",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "session-cookies",
@@ -759,8 +759,8 @@
       "artifacts": [
         {
           "name": "profile-data",
-          "path": "docs/rfcs/evidence/artifacts/0009/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/profile-data/profile-data-evidence.json",
-          "sha256": "e222af18d572f65b5e1194854e405776adc9f975423c76db47e20788e5996b8e"
+          "path": "docs/rfcs/evidence/artifacts/0009/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/profile-data/profile-data-evidence.json",
+          "sha256": "2c31eab0a93ba726e1c72c3b90d2cbaa0d6dd77866e652d3fe6fff995f2731d2"
         }
       ]
     },
@@ -777,12 +777,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "33e423d20025be2344c1f2fc8a43d18cc4446b31389efddfcb61c248cdedba39",
+      "contractSha256": "e1bc865b2dc71bb9678b4278d1653d422588b1796be5f2594d3151fd624d272f",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "session-web-request"
@@ -790,7 +790,7 @@
       "artifacts": [
         {
           "name": "network-policy",
-          "path": "docs/rfcs/evidence/artifacts/0010/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/network-policy/network-policy-evidence.json",
+          "path": "docs/rfcs/evidence/artifacts/0010/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/network-policy/network-policy-evidence.json",
           "sha256": "be0018f30708342b8a8af658dc4a044117b72a1b3581384c408901bac9f4e8b2"
         }
       ]
@@ -808,12 +808,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "33e423d20025be2344c1f2fc8a43d18cc4446b31389efddfcb61c248cdedba39",
+      "contractSha256": "e1bc865b2dc71bb9678b4278d1653d422588b1796be5f2594d3151fd624d272f",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "session-web-request"
@@ -821,7 +821,7 @@
       "artifacts": [
         {
           "name": "network-policy",
-          "path": "docs/rfcs/evidence/artifacts/0010/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/network-policy/network-policy-evidence.json",
+          "path": "docs/rfcs/evidence/artifacts/0010/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/network-policy/network-policy-evidence.json",
           "sha256": "ccdc940e6e9b16f3bc9df43f4073065815d9d261b21f8627afe2c4fdd5c2b854"
         }
       ]
@@ -839,12 +839,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "33e423d20025be2344c1f2fc8a43d18cc4446b31389efddfcb61c248cdedba39",
+      "contractSha256": "e1bc865b2dc71bb9678b4278d1653d422588b1796be5f2594d3151fd624d272f",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "session-web-request"
@@ -852,7 +852,7 @@
       "artifacts": [
         {
           "name": "network-policy",
-          "path": "docs/rfcs/evidence/artifacts/0010/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/network-policy/network-policy-evidence.json",
+          "path": "docs/rfcs/evidence/artifacts/0010/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/network-policy/network-policy-evidence.json",
           "sha256": "84e438d095cafd52c9367a92bd881ba9bef4d78645bab537fed7e44a67035bc9"
         }
       ]
@@ -870,12 +870,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "b0e6a85b307bcfc3d2e1b903429ead07ea4d700ff3e2f8a7e568a59934e7b293",
+      "contractSha256": "f9d68bd788c9f7ce1b81121922acf1eb9e94f7ab0105396f5c88e9543922417a",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "certificate-error",
@@ -884,13 +884,13 @@
       "artifacts": [
         {
           "name": "mtls-probe",
-          "path": "docs/rfcs/evidence/artifacts/0011/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/mtls-probe/mtls-probe-evidence.json",
-          "sha256": "e6552ff223019d95dda33813941c8145bd6eaff920cfe7f2b1d0bea50f10b4df"
+          "path": "docs/rfcs/evidence/artifacts/0011/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/mtls-probe/mtls-probe-evidence.json",
+          "sha256": "f2b1eafc547ad7b1680556c9bb862f9f05d7a9dab77a15948eec13d7799a983e"
         },
         {
           "name": "security-challenge",
-          "path": "docs/rfcs/evidence/artifacts/0011/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/security-challenge/security-challenge-evidence.json",
-          "sha256": "ca7368931405c34d2779b4ae557f1a417a5ac0fe99d01fc4cd335475fc5a50d4"
+          "path": "docs/rfcs/evidence/artifacts/0011/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/security-challenge/security-challenge-evidence.json",
+          "sha256": "c8402f0517f53d780ec7453709964992973ef6291db8936eab166e0f3e50b795"
         }
       ]
     },
@@ -907,12 +907,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "b0e6a85b307bcfc3d2e1b903429ead07ea4d700ff3e2f8a7e568a59934e7b293",
+      "contractSha256": "f9d68bd788c9f7ce1b81121922acf1eb9e94f7ab0105396f5c88e9543922417a",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "certificate-error",
@@ -921,13 +921,13 @@
       "artifacts": [
         {
           "name": "mtls-probe",
-          "path": "docs/rfcs/evidence/artifacts/0011/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/mtls-probe/mtls-probe-evidence.json",
-          "sha256": "09150bdca7309490840eb8f89838ba3a44f7436464e68d33dd2fda5a6398a7c6"
+          "path": "docs/rfcs/evidence/artifacts/0011/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/mtls-probe/mtls-probe-evidence.json",
+          "sha256": "de5fb6237aa67b680ded957aaf018e1a09fee70cd41818c5b9dc4e0be5711ebf"
         },
         {
           "name": "security-challenge",
-          "path": "docs/rfcs/evidence/artifacts/0011/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/security-challenge/security-challenge-evidence.json",
-          "sha256": "2a387fb72c0e8f93cba5e7d127921fc1bc880d6dac22cae054808595fd6c16f2"
+          "path": "docs/rfcs/evidence/artifacts/0011/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/security-challenge/security-challenge-evidence.json",
+          "sha256": "f93ea209068d012275d6b59c42709152c8160c58e68b50022383a4ecb361d7eb"
         }
       ]
     },
@@ -944,12 +944,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "b0e6a85b307bcfc3d2e1b903429ead07ea4d700ff3e2f8a7e568a59934e7b293",
+      "contractSha256": "f9d68bd788c9f7ce1b81121922acf1eb9e94f7ab0105396f5c88e9543922417a",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "certificate-error",
@@ -958,13 +958,13 @@
       "artifacts": [
         {
           "name": "mtls-probe",
-          "path": "docs/rfcs/evidence/artifacts/0011/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/mtls-probe/mtls-probe-evidence.json",
-          "sha256": "2c74d5b0e8d97f21ec7e8ffe2612b1b4ae4ccbcec52b13cf59ea8a9cdd1547f8"
+          "path": "docs/rfcs/evidence/artifacts/0011/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/mtls-probe/mtls-probe-evidence.json",
+          "sha256": "eeb995a12113589db7f1c0a46d52212ebab52db505e3c771c6f49bb065f9ab63"
         },
         {
           "name": "security-challenge",
-          "path": "docs/rfcs/evidence/artifacts/0011/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/security-challenge/security-challenge-evidence.json",
-          "sha256": "09fe4dd2ac8828278afb4025dcce598932385ee3be4c6f9201f9e5b10637c88f"
+          "path": "docs/rfcs/evidence/artifacts/0011/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/security-challenge/security-challenge-evidence.json",
+          "sha256": "e41870316599725288127ab080ca9a7789dc06e2f7d89594776f6ed3cceb1960"
         }
       ]
     },
@@ -981,12 +981,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "edff705ffd794a1744c52200e073dd12b821b757e42c9651f79e8c1c6d780fc0",
+      "contractSha256": "1c2f089cae871b741332863ecd64886480f398db66f3217b9cbf8f9284d2b59d",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "downloads"
@@ -994,7 +994,7 @@
       "artifacts": [
         {
           "name": "downloads",
-          "path": "docs/rfcs/evidence/artifacts/0012/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/downloads/downloads-evidence.json",
+          "path": "docs/rfcs/evidence/artifacts/0012/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/downloads/downloads-evidence.json",
           "sha256": "31d9f3c02fabfee90c027bb167a89ffcd3683d15dfdb71338fbaa103740d5e7d"
         }
       ]
@@ -1012,12 +1012,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "edff705ffd794a1744c52200e073dd12b821b757e42c9651f79e8c1c6d780fc0",
+      "contractSha256": "1c2f089cae871b741332863ecd64886480f398db66f3217b9cbf8f9284d2b59d",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "downloads"
@@ -1025,8 +1025,8 @@
       "artifacts": [
         {
           "name": "downloads",
-          "path": "docs/rfcs/evidence/artifacts/0012/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/downloads/downloads-evidence.json",
-          "sha256": "e8f466836fd332f23e91b7951e8e39b727da5fdb704bfea045233399f49db428"
+          "path": "docs/rfcs/evidence/artifacts/0012/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/downloads/downloads-evidence.json",
+          "sha256": "bdd8b6e4c9671701006c9a89a0abc8323686a298fdd4c66e78a2cfe6a32c9736"
         }
       ]
     },
@@ -1043,12 +1043,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "edff705ffd794a1744c52200e073dd12b821b757e42c9651f79e8c1c6d780fc0",
+      "contractSha256": "1c2f089cae871b741332863ecd64886480f398db66f3217b9cbf8f9284d2b59d",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "downloads"
@@ -1056,8 +1056,8 @@
       "artifacts": [
         {
           "name": "downloads",
-          "path": "docs/rfcs/evidence/artifacts/0012/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/downloads/downloads-evidence.json",
-          "sha256": "1b0e43691586979ac2145c7dc38e209abeb18e7b0905f73a17cd57c3d466373c"
+          "path": "docs/rfcs/evidence/artifacts/0012/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/downloads/downloads-evidence.json",
+          "sha256": "978cbafae6fdca39c5d915359f5d852f4e775f9ef3bc61b6ffe5a0ffcdd78948"
         }
       ]
     },
@@ -1074,12 +1074,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "8104dce1a84f83a9176938a5532da76aa768d8fcfed01e9249c54b879be77e78",
+      "contractSha256": "35bdb315cfd11ad1e1b9e402ba9a4d5dc69d4eddd94156a6cbb153608b858705",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "node-fs"
@@ -1087,13 +1087,13 @@
       "artifacts": [
         {
           "name": "files",
-          "path": "docs/rfcs/evidence/artifacts/0013/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/files/files-evidence.json",
+          "path": "docs/rfcs/evidence/artifacts/0013/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/files/files-evidence.json",
           "sha256": "9b23a449248e1c3ba905e2ca72a311c54531e037ebfe9ee365a87e6721c868cd"
         },
         {
           "name": "migration-files",
-          "path": "docs/rfcs/evidence/artifacts/0013/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/migration-files/compatibility.json",
-          "sha256": "0ab23538c62a90f83a3a4981f0792fa43b0154323523f3afd55400bd73770ec9"
+          "path": "docs/rfcs/evidence/artifacts/0013/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/migration-files/compatibility.json",
+          "sha256": "e79156de8fe3ef70a27ddca06104fcebe9334a2e2899965d2faed67ee705b86a"
         }
       ]
     },
@@ -1110,12 +1110,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "8104dce1a84f83a9176938a5532da76aa768d8fcfed01e9249c54b879be77e78",
+      "contractSha256": "35bdb315cfd11ad1e1b9e402ba9a4d5dc69d4eddd94156a6cbb153608b858705",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "node-fs"
@@ -1123,13 +1123,13 @@
       "artifacts": [
         {
           "name": "files",
-          "path": "docs/rfcs/evidence/artifacts/0013/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/files/files-evidence.json",
+          "path": "docs/rfcs/evidence/artifacts/0013/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/files/files-evidence.json",
           "sha256": "9c9d3997e0cd4cbc4f077ec9b87a4f8c74ba47063d523f7141a8231db0b4b3dd"
         },
         {
           "name": "migration-files",
-          "path": "docs/rfcs/evidence/artifacts/0013/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/migration-files/compatibility.json",
-          "sha256": "db8bc3bd2d9c464bd522e9ed638fc7e624e66888160f68b2400e5f07bc59432a"
+          "path": "docs/rfcs/evidence/artifacts/0013/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/migration-files/compatibility.json",
+          "sha256": "64374b83ce19815ea634da18c0d0816b9dc012353b7a918d7f5da3e0123ce12b"
         }
       ]
     },
@@ -1146,12 +1146,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "8104dce1a84f83a9176938a5532da76aa768d8fcfed01e9249c54b879be77e78",
+      "contractSha256": "35bdb315cfd11ad1e1b9e402ba9a4d5dc69d4eddd94156a6cbb153608b858705",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "node-fs"
@@ -1159,13 +1159,13 @@
       "artifacts": [
         {
           "name": "files",
-          "path": "docs/rfcs/evidence/artifacts/0013/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/files/files-evidence.json",
+          "path": "docs/rfcs/evidence/artifacts/0013/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/files/files-evidence.json",
           "sha256": "c46c03a92f3f34335cc1095c2ffd5e847edb9f3c17014fa049cf93175ea5e08b"
         },
         {
           "name": "migration-files",
-          "path": "docs/rfcs/evidence/artifacts/0013/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/migration-files/compatibility.json",
-          "sha256": "786cbc4fd09bba97efc3056151caa6c8d9f24ddd9b66507cb6dea278f30ab55c"
+          "path": "docs/rfcs/evidence/artifacts/0013/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/migration-files/compatibility.json",
+          "sha256": "a1d7d21cdc19918ff416ab45b4b239646a8dede72430d6b57a86e7c5e7010e24"
         }
       ]
     },
@@ -1182,12 +1182,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "e7c1acd38698a6320707c7d8a6a68bb738140a56f04201f60b104d9f788192d6",
+      "contractSha256": "c1491a6b7f1def6b7600c13b20e0a5e1f76d02a319ae676f092fcc24d90ad77b",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "clipboard"
@@ -1195,17 +1195,17 @@
       "artifacts": [
         {
           "name": "clipboard",
-          "path": "docs/rfcs/evidence/artifacts/0014/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/clipboard/clipboard-evidence.json",
+          "path": "docs/rfcs/evidence/artifacts/0014/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/clipboard/clipboard-evidence.json",
           "sha256": "3a7af1ae3257cfa279632dee6565d66643944e351fba5184466fea213ae3d7aa"
         },
         {
           "name": "compatibility-report",
-          "path": "docs/rfcs/evidence/artifacts/0014/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/compatibility-report/compatibility.json",
-          "sha256": "0ab23538c62a90f83a3a4981f0792fa43b0154323523f3afd55400bd73770ec9"
+          "path": "docs/rfcs/evidence/artifacts/0014/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/compatibility-report/compatibility.json",
+          "sha256": "e79156de8fe3ef70a27ddca06104fcebe9334a2e2899965d2faed67ee705b86a"
         },
         {
           "name": "migration-clipboard",
-          "path": "docs/rfcs/evidence/artifacts/0014/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/migration-clipboard/migration-clipboard-evidence.json",
+          "path": "docs/rfcs/evidence/artifacts/0014/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/migration-clipboard/migration-clipboard-evidence.json",
           "sha256": "5c685a2732f433a918e7b80caec73b373e4301d194ee0ffb4e81e96dd30380fd"
         }
       ]
@@ -1223,12 +1223,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "e7c1acd38698a6320707c7d8a6a68bb738140a56f04201f60b104d9f788192d6",
+      "contractSha256": "c1491a6b7f1def6b7600c13b20e0a5e1f76d02a319ae676f092fcc24d90ad77b",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "clipboard"
@@ -1236,17 +1236,17 @@
       "artifacts": [
         {
           "name": "clipboard",
-          "path": "docs/rfcs/evidence/artifacts/0014/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/clipboard/clipboard-evidence.json",
+          "path": "docs/rfcs/evidence/artifacts/0014/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/clipboard/clipboard-evidence.json",
           "sha256": "afaac4f54871b89389f65211be5700943227b2d54c0d39178c1da422c0966894"
         },
         {
           "name": "compatibility-report",
-          "path": "docs/rfcs/evidence/artifacts/0014/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/compatibility-report/compatibility.json",
-          "sha256": "db8bc3bd2d9c464bd522e9ed638fc7e624e66888160f68b2400e5f07bc59432a"
+          "path": "docs/rfcs/evidence/artifacts/0014/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/compatibility-report/compatibility.json",
+          "sha256": "64374b83ce19815ea634da18c0d0816b9dc012353b7a918d7f5da3e0123ce12b"
         },
         {
           "name": "migration-clipboard",
-          "path": "docs/rfcs/evidence/artifacts/0014/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/migration-clipboard/migration-clipboard-evidence.json",
+          "path": "docs/rfcs/evidence/artifacts/0014/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/migration-clipboard/migration-clipboard-evidence.json",
           "sha256": "47ac6c92f6a974ced723e5b9b4bae0f266d9197f6d3d416f50fc138b433d7dfd"
         }
       ]
@@ -1264,12 +1264,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "e7c1acd38698a6320707c7d8a6a68bb738140a56f04201f60b104d9f788192d6",
+      "contractSha256": "c1491a6b7f1def6b7600c13b20e0a5e1f76d02a319ae676f092fcc24d90ad77b",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "clipboard"
@@ -1277,17 +1277,17 @@
       "artifacts": [
         {
           "name": "clipboard",
-          "path": "docs/rfcs/evidence/artifacts/0014/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/clipboard/clipboard-evidence.json",
+          "path": "docs/rfcs/evidence/artifacts/0014/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/clipboard/clipboard-evidence.json",
           "sha256": "9cafb8ebaac7ec2645d15d6b8f4b9fc66d57fced489e9f2b823290d5c5efe79b"
         },
         {
           "name": "compatibility-report",
-          "path": "docs/rfcs/evidence/artifacts/0014/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/compatibility-report/compatibility.json",
-          "sha256": "786cbc4fd09bba97efc3056151caa6c8d9f24ddd9b66507cb6dea278f30ab55c"
+          "path": "docs/rfcs/evidence/artifacts/0014/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/compatibility-report/compatibility.json",
+          "sha256": "a1d7d21cdc19918ff416ab45b4b239646a8dede72430d6b57a86e7c5e7010e24"
         },
         {
           "name": "migration-clipboard",
-          "path": "docs/rfcs/evidence/artifacts/0014/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/migration-clipboard/migration-clipboard-evidence.json",
+          "path": "docs/rfcs/evidence/artifacts/0014/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/migration-clipboard/migration-clipboard-evidence.json",
           "sha256": "78095d67103f3d4b01b8d5b3412a946fa535b2a5f4d2d4dedf347db4f06adb83"
         }
       ]
@@ -1305,12 +1305,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "59a1afebfb2ab63f4a33da1f9a811857ec0e64b892d5f2bf448d122e3c5c97d6",
+      "contractSha256": "6fa96da678dc32ddf0ff2e02b5ed868236a71d830d77d328aeb52349f3226a5b",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "shell"
@@ -1318,17 +1318,17 @@
       "artifacts": [
         {
           "name": "compatibility-report",
-          "path": "docs/rfcs/evidence/artifacts/0015/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/compatibility-report/compatibility.json",
-          "sha256": "0ab23538c62a90f83a3a4981f0792fa43b0154323523f3afd55400bd73770ec9"
+          "path": "docs/rfcs/evidence/artifacts/0015/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/compatibility-report/compatibility.json",
+          "sha256": "e79156de8fe3ef70a27ddca06104fcebe9334a2e2899965d2faed67ee705b86a"
         },
         {
           "name": "migration-shell",
-          "path": "docs/rfcs/evidence/artifacts/0015/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/migration-shell/compatibility.json",
-          "sha256": "0ab23538c62a90f83a3a4981f0792fa43b0154323523f3afd55400bd73770ec9"
+          "path": "docs/rfcs/evidence/artifacts/0015/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/migration-shell/compatibility.json",
+          "sha256": "e79156de8fe3ef70a27ddca06104fcebe9334a2e2899965d2faed67ee705b86a"
         },
         {
           "name": "shell",
-          "path": "docs/rfcs/evidence/artifacts/0015/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/shell/migration-shell-evidence.json",
+          "path": "docs/rfcs/evidence/artifacts/0015/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/shell/migration-shell-evidence.json",
           "sha256": "7430c374248d9c3331a4d92caa19f40ccd460f125531474d39bbe35bfe327ee4"
         }
       ]
@@ -1346,12 +1346,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "59a1afebfb2ab63f4a33da1f9a811857ec0e64b892d5f2bf448d122e3c5c97d6",
+      "contractSha256": "6fa96da678dc32ddf0ff2e02b5ed868236a71d830d77d328aeb52349f3226a5b",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "shell"
@@ -1359,17 +1359,17 @@
       "artifacts": [
         {
           "name": "compatibility-report",
-          "path": "docs/rfcs/evidence/artifacts/0015/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/compatibility-report/compatibility.json",
-          "sha256": "db8bc3bd2d9c464bd522e9ed638fc7e624e66888160f68b2400e5f07bc59432a"
+          "path": "docs/rfcs/evidence/artifacts/0015/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/compatibility-report/compatibility.json",
+          "sha256": "64374b83ce19815ea634da18c0d0816b9dc012353b7a918d7f5da3e0123ce12b"
         },
         {
           "name": "migration-shell",
-          "path": "docs/rfcs/evidence/artifacts/0015/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/migration-shell/compatibility.json",
-          "sha256": "db8bc3bd2d9c464bd522e9ed638fc7e624e66888160f68b2400e5f07bc59432a"
+          "path": "docs/rfcs/evidence/artifacts/0015/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/migration-shell/compatibility.json",
+          "sha256": "64374b83ce19815ea634da18c0d0816b9dc012353b7a918d7f5da3e0123ce12b"
         },
         {
           "name": "shell",
-          "path": "docs/rfcs/evidence/artifacts/0015/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/shell/migration-shell-evidence.json",
+          "path": "docs/rfcs/evidence/artifacts/0015/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/shell/migration-shell-evidence.json",
           "sha256": "29b1478ee42a9abd46dcff790df489828171e98682471687d245f83eb2e84d11"
         }
       ]
@@ -1387,12 +1387,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "59a1afebfb2ab63f4a33da1f9a811857ec0e64b892d5f2bf448d122e3c5c97d6",
+      "contractSha256": "6fa96da678dc32ddf0ff2e02b5ed868236a71d830d77d328aeb52349f3226a5b",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "shell"
@@ -1400,17 +1400,17 @@
       "artifacts": [
         {
           "name": "compatibility-report",
-          "path": "docs/rfcs/evidence/artifacts/0015/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/compatibility-report/compatibility.json",
-          "sha256": "786cbc4fd09bba97efc3056151caa6c8d9f24ddd9b66507cb6dea278f30ab55c"
+          "path": "docs/rfcs/evidence/artifacts/0015/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/compatibility-report/compatibility.json",
+          "sha256": "a1d7d21cdc19918ff416ab45b4b239646a8dede72430d6b57a86e7c5e7010e24"
         },
         {
           "name": "migration-shell",
-          "path": "docs/rfcs/evidence/artifacts/0015/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/migration-shell/compatibility.json",
-          "sha256": "786cbc4fd09bba97efc3056151caa6c8d9f24ddd9b66507cb6dea278f30ab55c"
+          "path": "docs/rfcs/evidence/artifacts/0015/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/migration-shell/compatibility.json",
+          "sha256": "a1d7d21cdc19918ff416ab45b4b239646a8dede72430d6b57a86e7c5e7010e24"
         },
         {
           "name": "shell",
-          "path": "docs/rfcs/evidence/artifacts/0015/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/shell/migration-shell-evidence.json",
+          "path": "docs/rfcs/evidence/artifacts/0015/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/shell/migration-shell-evidence.json",
           "sha256": "d08ad17f56d273f50589fbf97e7c602445b5038d0e07b167d10b7b441468ec72"
         }
       ]
@@ -1428,12 +1428,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "a600c5b2289900a19336bab1386c4a3f414fa85065714af4c45bf906ebba8e83",
+      "contractSha256": "ba705f2089dd5d09b2cfb091c6b633d44b618c984078acac65fdac55d9f970d7",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "menu"
@@ -1441,47 +1441,47 @@
       "artifacts": [
         {
           "name": "compatibility",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/compatibility/compatibility.json",
-          "sha256": "0ab23538c62a90f83a3a4981f0792fa43b0154323523f3afd55400bd73770ec9"
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/compatibility/compatibility.json",
+          "sha256": "e79156de8fe3ef70a27ddca06104fcebe9334a2e2899965d2faed67ee705b86a"
         },
         {
           "name": "compatibility-report",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/compatibility-report/compatibility.json",
-          "sha256": "0ab23538c62a90f83a3a4981f0792fa43b0154323523f3afd55400bd73770ec9"
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/compatibility-report/compatibility.json",
+          "sha256": "e79156de8fe3ef70a27ddca06104fcebe9334a2e2899965d2faed67ee705b86a"
         },
         {
           "name": "context-menu",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/context-menu/context-menu-evidence.json",
-          "sha256": "55a3480494ee9689b9eceff27a9b33739bfcd29891d3c39b992c5d10ce3838d3"
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/context-menu/context-menu-evidence.json",
+          "sha256": "9407b6869eb159beb9f6087bc2e40569610922544ea15b2fbef57eb6ba2024e5"
         },
         {
           "name": "menus-bridge-tests",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/menus-bridge-tests/TEST-io.github.kingsword09.kwebshell.service.menus.KWebMenusBridgeTest.xml",
-          "sha256": "6212539b6be39976a6b84f2c090efba82d4440965dc81af3fa4111b15d59735a"
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/menus-bridge-tests/TEST-io.github.kingsword09.kwebshell.service.menus.KWebMenusBridgeTest.xml",
+          "sha256": "2e13add6f1b220d9c3b77dc9ffbc82675dff18c5b04f91f0ede2cbdbb68c30ed"
         },
         {
           "name": "menus-contract-tests",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/menus-contract-tests/TEST-io.github.kingsword09.kwebshell.service.menus.KWebMenusContractTest.xml",
-          "sha256": "82ec31c75630b9936e447020ce1ba6e00a3d76f686304310de7ca55e546280bf"
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/menus-contract-tests/TEST-io.github.kingsword09.kwebshell.service.menus.KWebMenusContractTest.xml",
+          "sha256": "dac8d0db8726ca6dfea90244be3f9ccf78b9d533af5cd740cc95cc8e0b812eb7"
         },
         {
           "name": "menus-integration",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/menus-integration/menus-integration.json",
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/menus-integration/menus-integration.json",
           "sha256": "1d7974b58d5c8196937b539ca0eb78aa26f8722b146cd3858d642a526a28de5b"
         },
         {
           "name": "menus-native-tests",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/menus-native-tests/menus-native-tests.xml",
-          "sha256": "a873b02572047e5bee2d458f7c9cc758497e8b46472d321af64f98db44433698"
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/menus-native-tests/menus-native-tests.xml",
+          "sha256": "95e32554d974d9815e6bb29ff833f8746a400d5b343875399475e009762cb0dc"
         },
         {
           "name": "menus-package",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/menus-package/native-menus-package.json",
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/menus-package/native-menus-package.json",
           "sha256": "ef5c651e7ec66635fe53c506db510523bda29f193bee1b64d0b610f07f9e57db"
         },
         {
           "name": "menus-runtime",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/menus-runtime/kweb-service-menus-1.0.0-linux-x64.zip",
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/menus-runtime/kweb-service-menus-1.0.0-linux-x64.zip",
           "sha256": "5cbf1bb7af97cf8b9a1083c3216f22d34d86ce7b4396bc9535d63204ea83c14a"
         }
       ]
@@ -1499,12 +1499,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "a600c5b2289900a19336bab1386c4a3f414fa85065714af4c45bf906ebba8e83",
+      "contractSha256": "ba705f2089dd5d09b2cfb091c6b633d44b618c984078acac65fdac55d9f970d7",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "menu"
@@ -1512,47 +1512,47 @@
       "artifacts": [
         {
           "name": "compatibility",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/compatibility/compatibility.json",
-          "sha256": "db8bc3bd2d9c464bd522e9ed638fc7e624e66888160f68b2400e5f07bc59432a"
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/compatibility/compatibility.json",
+          "sha256": "64374b83ce19815ea634da18c0d0816b9dc012353b7a918d7f5da3e0123ce12b"
         },
         {
           "name": "compatibility-report",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/compatibility-report/compatibility.json",
-          "sha256": "db8bc3bd2d9c464bd522e9ed638fc7e624e66888160f68b2400e5f07bc59432a"
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/compatibility-report/compatibility.json",
+          "sha256": "64374b83ce19815ea634da18c0d0816b9dc012353b7a918d7f5da3e0123ce12b"
         },
         {
           "name": "context-menu",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/context-menu/context-menu-evidence.json",
-          "sha256": "f3e887647d367861e9e4be96c0b25a29ca01acc8daf875b68b1fcc339aeb5ab8"
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/context-menu/context-menu-evidence.json",
+          "sha256": "91dd76e80d6378ef5489badbe09850fd85668eb0134be6f92d17324e05afb948"
         },
         {
           "name": "menus-bridge-tests",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/menus-bridge-tests/TEST-io.github.kingsword09.kwebshell.service.menus.KWebMenusBridgeTest.xml",
-          "sha256": "a8e96addec7bfc8c55fc7ad1e66e8aca7514f81e1b4afff8ceb0e9e9998c1e9f"
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/menus-bridge-tests/TEST-io.github.kingsword09.kwebshell.service.menus.KWebMenusBridgeTest.xml",
+          "sha256": "98563dbb45282c9582df59c6fb3bdcdc9b64065d7a2b9a16af45e3e6d6f28088"
         },
         {
           "name": "menus-contract-tests",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/menus-contract-tests/TEST-io.github.kingsword09.kwebshell.service.menus.KWebMenusContractTest.xml",
-          "sha256": "35050c81e517ad6897157f570f4fb1bb4cd7cb1b751cd52cbb63a9def4150342"
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/menus-contract-tests/TEST-io.github.kingsword09.kwebshell.service.menus.KWebMenusContractTest.xml",
+          "sha256": "ef082fe75b5f27aa502ec86d3c5c7840468da49a5acb020674dd1892cd955cf8"
         },
         {
           "name": "menus-integration",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/menus-integration/menus-integration.json",
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/menus-integration/menus-integration.json",
           "sha256": "8a97abf1c7e04ebcaf9d7b9b9e0bf1854a6a0bb5875440c44d51d087041bff26"
         },
         {
           "name": "menus-native-tests",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/menus-native-tests/menus-native-tests.xml",
-          "sha256": "423ce8abd88dd212df6b3ef157676b32bb50b47a03b419c6da3b9dd62c8158f9"
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/menus-native-tests/menus-native-tests.xml",
+          "sha256": "8e09c4e44294de5d7d6ad342a3e2e0ed1226a643f388739055dcaab6183c00f7"
         },
         {
           "name": "menus-package",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/menus-package/native-menus-package.json",
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/menus-package/native-menus-package.json",
           "sha256": "01303d84b60265d3e74c9a3faf3de687629374e9ff5c802f307e01dcf7296872"
         },
         {
           "name": "menus-runtime",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/menus-runtime/kweb-service-menus-1.0.0-macos-arm64.zip",
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/menus-runtime/kweb-service-menus-1.0.0-macos-arm64.zip",
           "sha256": "9b7fe0c227e89ae7bf59e43e1b74ae6048583ddaf05ac76df545439b8fda8c3e"
         }
       ]
@@ -1570,12 +1570,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "a600c5b2289900a19336bab1386c4a3f414fa85065714af4c45bf906ebba8e83",
+      "contractSha256": "ba705f2089dd5d09b2cfb091c6b633d44b618c984078acac65fdac55d9f970d7",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "menu"
@@ -1583,48 +1583,231 @@
       "artifacts": [
         {
           "name": "compatibility",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/compatibility/compatibility.json",
-          "sha256": "786cbc4fd09bba97efc3056151caa6c8d9f24ddd9b66507cb6dea278f30ab55c"
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/compatibility/compatibility.json",
+          "sha256": "a1d7d21cdc19918ff416ab45b4b239646a8dede72430d6b57a86e7c5e7010e24"
         },
         {
           "name": "compatibility-report",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/compatibility-report/compatibility.json",
-          "sha256": "786cbc4fd09bba97efc3056151caa6c8d9f24ddd9b66507cb6dea278f30ab55c"
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/compatibility-report/compatibility.json",
+          "sha256": "a1d7d21cdc19918ff416ab45b4b239646a8dede72430d6b57a86e7c5e7010e24"
         },
         {
           "name": "context-menu",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/context-menu/context-menu-evidence.json",
-          "sha256": "acd2c3a30f699f49ad6f1426824724abdfb6b6b8dbcef163e0a7b86fde3660c4"
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/context-menu/context-menu-evidence.json",
+          "sha256": "4e731c65423ea369b827cc31c96c66b79e9b278a642547a53419554e45b08278"
         },
         {
           "name": "menus-bridge-tests",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/menus-bridge-tests/TEST-io.github.kingsword09.kwebshell.service.menus.KWebMenusBridgeTest.xml",
-          "sha256": "78d1384a5afa93171dc8f23bb4844cabb83a193fea3842e7405e0c889c57bff5"
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/menus-bridge-tests/TEST-io.github.kingsword09.kwebshell.service.menus.KWebMenusBridgeTest.xml",
+          "sha256": "27af3c9892d1cd35d2d6d568276d50d55d75c77acca3ea9f0bc01b51fbdeefd7"
         },
         {
           "name": "menus-contract-tests",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/menus-contract-tests/TEST-io.github.kingsword09.kwebshell.service.menus.KWebMenusContractTest.xml",
-          "sha256": "655b6936acabc188634ea6e8f3bfd3f0093a5bc0636babe286b677f49d60c003"
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/menus-contract-tests/TEST-io.github.kingsword09.kwebshell.service.menus.KWebMenusContractTest.xml",
+          "sha256": "2b1465cc9e0b8de02fc20d5130a8ea0f8724367c160493516a0387e03dfb8ef0"
         },
         {
           "name": "menus-integration",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/menus-integration/menus-integration.json",
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/menus-integration/menus-integration.json",
           "sha256": "f377acb1b79a18b0f8bc0c58c0ec7989afb1045b33d24b81828cf02404c0459b"
         },
         {
           "name": "menus-native-tests",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/menus-native-tests/menus-native-tests.xml",
-          "sha256": "daa36c496316a813b001a19ca2f447f3d5ff796ab3d79d9e79b447dd9b23ab37"
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/menus-native-tests/menus-native-tests.xml",
+          "sha256": "2a3c25f6296aa873348ef1d9a18ae82ee0438b97c8ed91e57ed0131e80b52cde"
         },
         {
           "name": "menus-package",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/menus-package/native-menus-package.json",
-          "sha256": "432c0a7a5087debb98811bb7aa32a04fc27d376cb6fa54c4f186b2f6b7ee590a"
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/menus-package/native-menus-package.json",
+          "sha256": "9910eca44575cc1a7a4e1a6fc86d46213c26e97ccd6fb4902a1c3151d5984069"
         },
         {
           "name": "menus-runtime",
-          "path": "docs/rfcs/evidence/artifacts/0017/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/menus-runtime/kweb-service-menus-1.0.0-windows-x64.zip",
-          "sha256": "4a9e58799608bd71155c873456b73a7fe8d355f621df7d1dba5acccd747ab56e"
+          "path": "docs/rfcs/evidence/artifacts/0017/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/menus-runtime/kweb-service-menus-1.0.0-windows-x64.zip",
+          "sha256": "52915c024fde70d540e48fabf139305d001cf0923c7c315d3670a9cf9b720441"
+        }
+      ]
+    },
+    {
+      "rfcId": "0018",
+      "rfcStatus": "Implemented",
+      "serviceId": "tray",
+      "serviceVersion": "1.0.0",
+      "schemaVersion": 2,
+      "providerId": "tray.hosted",
+      "target": "linux-x64",
+      "cefVersion": "151.3.16+gbe1e15d+chromium-151.0.7922.109",
+      "chromiumVersion": "151.0.7922.109",
+      "electronFixtureMajor": 44,
+      "run": {
+        "repository": "kingsword09/KWebShell",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
+        "runAttempt": 1,
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
+      },
+      "contractSha256": "fc9f38632a72a3838657c8072dc84ea244ed9b1718c3775be555495d697b5d07",
+      "compatibilityStatus": "READY",
+      "matrixRowIds": [
+        "tray"
+      ],
+      "artifacts": [
+        {
+          "name": "compatibility",
+          "path": "docs/rfcs/evidence/artifacts/0018/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/compatibility/compatibility.json",
+          "sha256": "e79156de8fe3ef70a27ddca06104fcebe9334a2e2899965d2faed67ee705b86a"
+        },
+        {
+          "name": "compatibility-report",
+          "path": "docs/rfcs/evidence/artifacts/0018/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/compatibility-report/compatibility.json",
+          "sha256": "e79156de8fe3ef70a27ddca06104fcebe9334a2e2899965d2faed67ee705b86a"
+        },
+        {
+          "name": "tray-contract-tests",
+          "path": "docs/rfcs/evidence/artifacts/0018/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/tray-contract-tests/TEST-io.github.kingsword09.kwebshell.service.tray.KWebTraysContractTest.xml",
+          "sha256": "fbe059f50d8e0248045974b0e9e155260f07752a3177f165e669983770241ddb"
+        },
+        {
+          "name": "tray-integration",
+          "path": "docs/rfcs/evidence/artifacts/0018/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/tray-integration/tray-integration.json",
+          "sha256": "f80bb2de6145a471b79dc224907fe23f20a7e7d66c5026201593d0d3d8dc370a"
+        },
+        {
+          "name": "tray-native-tests",
+          "path": "docs/rfcs/evidence/artifacts/0018/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/tray-native-tests/tray-native-tests.xml",
+          "sha256": "4470e0ae76f7ae34e9b5a4e0a356eae4d777c27683c2bb59c411d07ce23ff9ea"
+        },
+        {
+          "name": "tray-package",
+          "path": "docs/rfcs/evidence/artifacts/0018/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/tray-package/native-tray-package.json",
+          "sha256": "a41f27fa4b67382581c7906f894c7fe8a806fe5960bad3d1f92bede19b79b45e"
+        },
+        {
+          "name": "tray-runtime",
+          "path": "docs/rfcs/evidence/artifacts/0018/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/tray-runtime/kweb-service-tray-1.0.0-linux-x64.zip",
+          "sha256": "da0fbcaaf69e11f3e91afefeff8db9f9881a7f235f14a17ccb6e899215e64f7a"
+        }
+      ]
+    },
+    {
+      "rfcId": "0018",
+      "rfcStatus": "Implemented",
+      "serviceId": "tray",
+      "serviceVersion": "1.0.0",
+      "schemaVersion": 2,
+      "providerId": "tray.hosted",
+      "target": "macos-arm64",
+      "cefVersion": "151.3.16+gbe1e15d+chromium-151.0.7922.109",
+      "chromiumVersion": "151.0.7922.109",
+      "electronFixtureMajor": 44,
+      "run": {
+        "repository": "kingsword09/KWebShell",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
+        "runAttempt": 1,
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
+      },
+      "contractSha256": "fc9f38632a72a3838657c8072dc84ea244ed9b1718c3775be555495d697b5d07",
+      "compatibilityStatus": "READY",
+      "matrixRowIds": [
+        "tray"
+      ],
+      "artifacts": [
+        {
+          "name": "compatibility",
+          "path": "docs/rfcs/evidence/artifacts/0018/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/compatibility/compatibility.json",
+          "sha256": "64374b83ce19815ea634da18c0d0816b9dc012353b7a918d7f5da3e0123ce12b"
+        },
+        {
+          "name": "compatibility-report",
+          "path": "docs/rfcs/evidence/artifacts/0018/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/compatibility-report/compatibility.json",
+          "sha256": "64374b83ce19815ea634da18c0d0816b9dc012353b7a918d7f5da3e0123ce12b"
+        },
+        {
+          "name": "tray-contract-tests",
+          "path": "docs/rfcs/evidence/artifacts/0018/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/tray-contract-tests/TEST-io.github.kingsword09.kwebshell.service.tray.KWebTraysContractTest.xml",
+          "sha256": "77e4aab19017a558640acaf1fafdeb95779d63519e4dbcf01e6b076800388760"
+        },
+        {
+          "name": "tray-integration",
+          "path": "docs/rfcs/evidence/artifacts/0018/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/tray-integration/tray-integration.json",
+          "sha256": "1858b3b888c9430fd92b52ee315cfc40cb8614a5147a17b720fbd0604aa0e8ba"
+        },
+        {
+          "name": "tray-native-tests",
+          "path": "docs/rfcs/evidence/artifacts/0018/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/tray-native-tests/tray-native-tests.xml",
+          "sha256": "455b94b8887c447f27a0aee3141f0c520450a664a805a259af8c6c0f8ea6d722"
+        },
+        {
+          "name": "tray-package",
+          "path": "docs/rfcs/evidence/artifacts/0018/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/tray-package/native-tray-package.json",
+          "sha256": "e2c53a33691c5248e42864030cba465cb247566b766395fe9d3ab383494c58da"
+        },
+        {
+          "name": "tray-runtime",
+          "path": "docs/rfcs/evidence/artifacts/0018/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/tray-runtime/kweb-service-tray-1.0.0-macos-arm64.zip",
+          "sha256": "82738be781e06afaa23684492954c60ee227d45715a476c6f13141071ebdd879"
+        }
+      ]
+    },
+    {
+      "rfcId": "0018",
+      "rfcStatus": "Implemented",
+      "serviceId": "tray",
+      "serviceVersion": "1.0.0",
+      "schemaVersion": 2,
+      "providerId": "tray.hosted",
+      "target": "windows-x64",
+      "cefVersion": "151.3.16+gbe1e15d+chromium-151.0.7922.109",
+      "chromiumVersion": "151.0.7922.109",
+      "electronFixtureMajor": 44,
+      "run": {
+        "repository": "kingsword09/KWebShell",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
+        "runAttempt": 1,
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
+      },
+      "contractSha256": "fc9f38632a72a3838657c8072dc84ea244ed9b1718c3775be555495d697b5d07",
+      "compatibilityStatus": "READY",
+      "matrixRowIds": [
+        "tray"
+      ],
+      "artifacts": [
+        {
+          "name": "compatibility",
+          "path": "docs/rfcs/evidence/artifacts/0018/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/compatibility/compatibility.json",
+          "sha256": "a1d7d21cdc19918ff416ab45b4b239646a8dede72430d6b57a86e7c5e7010e24"
+        },
+        {
+          "name": "compatibility-report",
+          "path": "docs/rfcs/evidence/artifacts/0018/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/compatibility-report/compatibility.json",
+          "sha256": "a1d7d21cdc19918ff416ab45b4b239646a8dede72430d6b57a86e7c5e7010e24"
+        },
+        {
+          "name": "tray-contract-tests",
+          "path": "docs/rfcs/evidence/artifacts/0018/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/tray-contract-tests/TEST-io.github.kingsword09.kwebshell.service.tray.KWebTraysContractTest.xml",
+          "sha256": "1c44215514baa87d1dbbae149a2e40a773118ef7dd58b6792f8423e02f0ea6ca"
+        },
+        {
+          "name": "tray-integration",
+          "path": "docs/rfcs/evidence/artifacts/0018/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/tray-integration/tray-integration.json",
+          "sha256": "e66ca6bbdda9cc89ff67827c4d26beee281a1d07417fad82c0d9beff83ae6335"
+        },
+        {
+          "name": "tray-native-tests",
+          "path": "docs/rfcs/evidence/artifacts/0018/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/tray-native-tests/tray-native-tests.xml",
+          "sha256": "70139dd7acaea018b968fe69d9702759548ed620c197bd273752ef8e6753e9b6"
+        },
+        {
+          "name": "tray-package",
+          "path": "docs/rfcs/evidence/artifacts/0018/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/tray-package/native-tray-package.json",
+          "sha256": "1b64d3b4f4f24727d6ed723f351fea78dc07ca1220b5b3efb6d5cfad005331de"
+        },
+        {
+          "name": "tray-runtime",
+          "path": "docs/rfcs/evidence/artifacts/0018/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/tray-runtime/kweb-service-tray-1.0.0-windows-x64.zip",
+          "sha256": "33030c4613454c58b510bb8955377d46f79fa63ab7cb47ff23906988e301b017"
         }
       ]
     },
@@ -1641,12 +1824,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "d7a4438ebc683df5dd10d0922f0bd7f07827121406e2651fd2beacef79f613c2",
+      "contractSha256": "642ad71b3d3a9296881a4da182a1b9eda8533545001f8fadea057b8226c5d728",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "native-image"
@@ -1654,47 +1837,47 @@
       "artifacts": [
         {
           "name": "compatibility",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/compatibility/compatibility.json",
-          "sha256": "0ab23538c62a90f83a3a4981f0792fa43b0154323523f3afd55400bd73770ec9"
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/compatibility/compatibility.json",
+          "sha256": "e79156de8fe3ef70a27ddca06104fcebe9334a2e2899965d2faed67ee705b86a"
         },
         {
           "name": "compatibility-report",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/compatibility-report/compatibility.json",
-          "sha256": "0ab23538c62a90f83a3a4981f0792fa43b0154323523f3afd55400bd73770ec9"
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/compatibility-report/compatibility.json",
+          "sha256": "e79156de8fe3ef70a27ddca06104fcebe9334a2e2899965d2faed67ee705b86a"
         },
         {
           "name": "image-codec-tests",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/image-codec-tests/TEST-io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest.xml",
-          "sha256": "623c69e519da65576bd46b9ea615e2ae3daa9efdaceca7730cf6ce7149007d0b"
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/image-codec-tests/TEST-io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest.xml",
+          "sha256": "e92dec25fcfb164b6f5418a8ed27e86179f2af8d2d3f36d36c9dd81411dc8ea3"
         },
         {
           "name": "image-contract-tests",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/image-contract-tests/TEST-io.github.kingsword09.kwebshell.service.image.KWebImageContractTest.xml",
-          "sha256": "32078777b1569e65e093f9bf100a66686e354b769aaed1699c13149b6bc739a7"
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/image-contract-tests/TEST-io.github.kingsword09.kwebshell.service.image.KWebImageContractTest.xml",
+          "sha256": "4af11b4ced87c25cef4760007be6dd02a7967f82b1aa63d1c4b19e977a1a9b4b"
         },
         {
           "name": "image-native-tests",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/image-native-tests/image-native-tests.xml",
-          "sha256": "fab1d929fe508a7ec62d4060f7ee4dc4c2af3d71b3c90e658a099d359bf809fd"
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/image-native-tests/image-native-tests.xml",
+          "sha256": "90aa441180f88e8c66239c9fb420ef0d4b12b6cc5b57cdd5ee6a70227c1064b4"
         },
         {
           "name": "image-package",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/image-package/native-image-package.json",
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/image-package/native-image-package.json",
           "sha256": "30047b882ba7efd88e20484ae66e105316e1f0f180184b17261aec69e4b8a212"
         },
         {
           "name": "image-runtime",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/image-runtime/kweb-service-image-1.0.0-linux-x64.zip",
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/image-runtime/kweb-service-image-1.0.0-linux-x64.zip",
           "sha256": "1cf0be0867605b13625970ac530c2779c4f1145f8274cd508f2cf9fa19ede1bd"
         },
         {
           "name": "migration-image",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/migration-image/migration-image-evidence.json",
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/migration-image/migration-image-evidence.json",
           "sha256": "43a0a13108134e237d089adc4c0813f4d9748a171e02a54b9f463b86fbff32fc"
         },
         {
           "name": "native-image",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/native-image/native-image-evidence.json",
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/native-image/native-image-evidence.json",
           "sha256": "7e71e1e2fad712ab3d2751394cb891c49fb72b6cc8350b5c6e2c53964bbc1b67"
         }
       ]
@@ -1712,12 +1895,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "d7a4438ebc683df5dd10d0922f0bd7f07827121406e2651fd2beacef79f613c2",
+      "contractSha256": "642ad71b3d3a9296881a4da182a1b9eda8533545001f8fadea057b8226c5d728",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "native-image"
@@ -1725,47 +1908,47 @@
       "artifacts": [
         {
           "name": "compatibility",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/compatibility/compatibility.json",
-          "sha256": "db8bc3bd2d9c464bd522e9ed638fc7e624e66888160f68b2400e5f07bc59432a"
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/compatibility/compatibility.json",
+          "sha256": "64374b83ce19815ea634da18c0d0816b9dc012353b7a918d7f5da3e0123ce12b"
         },
         {
           "name": "compatibility-report",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/compatibility-report/compatibility.json",
-          "sha256": "db8bc3bd2d9c464bd522e9ed638fc7e624e66888160f68b2400e5f07bc59432a"
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/compatibility-report/compatibility.json",
+          "sha256": "64374b83ce19815ea634da18c0d0816b9dc012353b7a918d7f5da3e0123ce12b"
         },
         {
           "name": "image-codec-tests",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/image-codec-tests/TEST-io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest.xml",
-          "sha256": "a396b885b76c375206ed0fb7896dd2d9e02a3dca75da1f7d23665584c7b0ac2b"
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/image-codec-tests/TEST-io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest.xml",
+          "sha256": "2690f9c6a1adef848652ba67e7f263c9e876463fd493b340a613465147aeccc9"
         },
         {
           "name": "image-contract-tests",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/image-contract-tests/TEST-io.github.kingsword09.kwebshell.service.image.KWebImageContractTest.xml",
-          "sha256": "93394967e40c15a6a7e33353ec9ac9f548fe63eadb927fc153d31d2718310b6f"
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/image-contract-tests/TEST-io.github.kingsword09.kwebshell.service.image.KWebImageContractTest.xml",
+          "sha256": "01cd4bcadfabbe2dd5aa7133d6fce78a551ed456a3c703d48a3d9ee9e71273ab"
         },
         {
           "name": "image-native-tests",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/image-native-tests/image-native-tests.xml",
-          "sha256": "c9cf19bf117e20f79a64982acb90e700b24739c5e54f198171ee183eb1a2f24c"
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/image-native-tests/image-native-tests.xml",
+          "sha256": "aa24a13340aad92e2423edad742852bed63083631076c0b6200a4bd63f43a20c"
         },
         {
           "name": "image-package",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/image-package/native-image-package.json",
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/image-package/native-image-package.json",
           "sha256": "95d8428dabe5c433dbce49695124a95afa917a371870cfde1c36fc5dd29232f5"
         },
         {
           "name": "image-runtime",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/image-runtime/kweb-service-image-1.0.0-macos-arm64.zip",
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/image-runtime/kweb-service-image-1.0.0-macos-arm64.zip",
           "sha256": "4bd54ccd55e717573d143a4621e1602fd647070695646db3d95d672dc882e90a"
         },
         {
           "name": "migration-image",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/migration-image/migration-image-evidence.json",
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/migration-image/migration-image-evidence.json",
           "sha256": "53c0f350f9176b5f1fb8552f3edb0a95ef24688c9c709e798d70705dcc89e0a7"
         },
         {
           "name": "native-image",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/native-image/native-image-evidence.json",
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/native-image/native-image-evidence.json",
           "sha256": "29fcecd00aa1f3b1b6c57e041e1da89e04e4ba8bcc404a1aec9713b40d6bb017"
         }
       ]
@@ -1783,12 +1966,12 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "d7a4438ebc683df5dd10d0922f0bd7f07827121406e2651fd2beacef79f613c2",
+      "contractSha256": "642ad71b3d3a9296881a4da182a1b9eda8533545001f8fadea057b8226c5d728",
       "compatibilityStatus": "READY",
       "matrixRowIds": [
         "native-image"
@@ -1796,48 +1979,48 @@
       "artifacts": [
         {
           "name": "compatibility",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/compatibility/compatibility.json",
-          "sha256": "786cbc4fd09bba97efc3056151caa6c8d9f24ddd9b66507cb6dea278f30ab55c"
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/compatibility/compatibility.json",
+          "sha256": "a1d7d21cdc19918ff416ab45b4b239646a8dede72430d6b57a86e7c5e7010e24"
         },
         {
           "name": "compatibility-report",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/compatibility-report/compatibility.json",
-          "sha256": "786cbc4fd09bba97efc3056151caa6c8d9f24ddd9b66507cb6dea278f30ab55c"
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/compatibility-report/compatibility.json",
+          "sha256": "a1d7d21cdc19918ff416ab45b4b239646a8dede72430d6b57a86e7c5e7010e24"
         },
         {
           "name": "image-codec-tests",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/image-codec-tests/TEST-io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest.xml",
-          "sha256": "8be366ba034f872a31b93c31f0125569694f6c62fb63b2897c55ed16a1c14eb2"
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/image-codec-tests/TEST-io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest.xml",
+          "sha256": "3621b98458de30956b110a509b0ca4b887cb4c1306955e701c27409bea8122c2"
         },
         {
           "name": "image-contract-tests",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/image-contract-tests/TEST-io.github.kingsword09.kwebshell.service.image.KWebImageContractTest.xml",
-          "sha256": "198c47d5f2a80360af93daf331172881bb41f0d0fef210c11ee8533f2d7b81aa"
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/image-contract-tests/TEST-io.github.kingsword09.kwebshell.service.image.KWebImageContractTest.xml",
+          "sha256": "fac4dacdc4060ee3664e7a2a1f5758676cd3924680d2bfb52913064aa4dca5c6"
         },
         {
           "name": "image-native-tests",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/image-native-tests/image-native-tests.xml",
-          "sha256": "d043ece756f2347a546d33174c95798ba1b6756080c57d6c9ed289bbab21678e"
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/image-native-tests/image-native-tests.xml",
+          "sha256": "2ff426d24a40d2f3bfc0186f2fadfa1e98fbed62544b9c7c228409d80b33dfe4"
         },
         {
           "name": "image-package",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/image-package/native-image-package.json",
-          "sha256": "b2e6698d13e83b7f509e332715c5ef1f6b95f647243347603245307e2f4d2e94"
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/image-package/native-image-package.json",
+          "sha256": "85492ac44dca297a13eff0382fe284e4bf7b3f1d91a44a3602af312e59678055"
         },
         {
           "name": "image-runtime",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/image-runtime/kweb-service-image-1.0.0-windows-x64.zip",
-          "sha256": "7d3c04e5987f77bdf8b5708df0c94c0cd889c57186677486be1dfb61d0340f44"
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/image-runtime/kweb-service-image-1.0.0-windows-x64.zip",
+          "sha256": "f6ac2812e0135993d214977929a8265f42f8aa214874b308b22760a8233a4d23"
         },
         {
           "name": "migration-image",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/migration-image/migration-image-evidence.json",
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/migration-image/migration-image-evidence.json",
           "sha256": "e866be02db58a8fa6093cc83653ab3950c6bc249d5b00bc3e8012008a89160c4"
         },
         {
           "name": "native-image",
-          "path": "docs/rfcs/evidence/artifacts/0027/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/native-image/native-image-evidence.json",
-          "sha256": "3cf3cf5644b4315c301d4a424aa9737111bdec592be9fcafb38216caf6030725"
+          "path": "docs/rfcs/evidence/artifacts/0027/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/native-image/native-image-evidence.json",
+          "sha256": "3d136a917a885bd36393c412afd04798ee8913b8cce36235b6a52fea151b3f4d"
         }
       ]
     },
@@ -1854,19 +2037,19 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "09cf4d21ee77e73b965bc883d0c56e73126a472ab1c1955c005a86a3dc67dee7",
+      "contractSha256": "2df9eee9313b765680b4b832230e7610b0079b895bd498ed8751259d4f77ead6",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "application-package",
-          "path": "docs/rfcs/evidence/artifacts/0030/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/linux-x64/application-package/application-package-report.json",
-          "sha256": "9503008f22a3d1cd332d2a0189bbcf8442d5bc370a3fc6c5fd543e351374959a"
+          "path": "docs/rfcs/evidence/artifacts/0030/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/linux-x64/application-package/application-package-report.json",
+          "sha256": "21c5307e3dd8f8bd89217845cc18714fe5a90134e788206f5f4b3b488e46d199"
         }
       ]
     },
@@ -1883,19 +2066,19 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "09cf4d21ee77e73b965bc883d0c56e73126a472ab1c1955c005a86a3dc67dee7",
+      "contractSha256": "2df9eee9313b765680b4b832230e7610b0079b895bd498ed8751259d4f77ead6",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "application-package",
-          "path": "docs/rfcs/evidence/artifacts/0030/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/macos-arm64/application-package/application-package-report.json",
-          "sha256": "384477b963b5144a1df9736fbb1bf2f4000d8473d1c0d2308bcad2380aa735ba"
+          "path": "docs/rfcs/evidence/artifacts/0030/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/macos-arm64/application-package/application-package-report.json",
+          "sha256": "aa1e937452c24d29d9d778436ae301b9170534fc6de9417311d7e6e86bc6c809"
         }
       ]
     },
@@ -1912,24 +2095,24 @@
       "electronFixtureMajor": 44,
       "run": {
         "repository": "kingsword09/KWebShell",
-        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/75/merge",
-        "runId": "38032851635",
+        "workflowRef": "kingsword09/KWebShell/.github/workflows/ci.yml@refs/pull/76/merge",
+        "runId": "38066264061",
         "runAttempt": 1,
-        "sourceRevision": "f4f20a20ce37a0926fcb7d14bb441c08c80d98e7"
+        "sourceRevision": "500f33ddbf05f7563b535f0e0722df7da5ec4b7c"
       },
-      "contractSha256": "09cf4d21ee77e73b965bc883d0c56e73126a472ab1c1955c005a86a3dc67dee7",
+      "contractSha256": "2df9eee9313b765680b4b832230e7610b0079b895bd498ed8751259d4f77ead6",
       "compatibilityStatus": "READY",
       "matrixRowIds": [],
       "artifacts": [
         {
           "name": "application-package",
-          "path": "docs/rfcs/evidence/artifacts/0030/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/application-package/application-package-report.json",
-          "sha256": "67e030fdc2fb5c2ab9250bc4a268a7835f52ea44024723ca3bc1ec502d2379aa"
+          "path": "docs/rfcs/evidence/artifacts/0030/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/application-package/application-package-report.json",
+          "sha256": "8fcb0bc5e95b812204650b5d47279f6934fbef8a1acb166d28ce1f2898e5e528"
         },
         {
           "name": "windows-msix-proof",
-          "path": "docs/rfcs/evidence/artifacts/0030/f4f20a20ce37a0926fcb7d14bb441c08c80d98e7/windows-x64/windows-msix-proof/windows-msix-proof.zip",
-          "sha256": "3f71fae2934da515cbe8abf2038a36047e4aa1e1c24b22af3ae152e70ec64dc2"
+          "path": "docs/rfcs/evidence/artifacts/0030/500f33ddbf05f7563b535f0e0722df7da5ec4b7c/windows-x64/windows-msix-proof/windows-msix-proof.zip",
+          "sha256": "74d8cc896ba5577ce2945c3678827803c3a7b6a8bfbb030a0615d7b2131ccb3d"
         }
       ]
     }

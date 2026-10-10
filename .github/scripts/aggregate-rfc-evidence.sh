@@ -109,6 +109,18 @@ record() {
       arguments="$arguments --artifact $menus_key=$menus_file"
     done
   fi
+  if [ "$rfc" = "0018" ]; then
+    arguments="$arguments --service tray --matrix-row tray --from-compatibility-report $extra_file"
+    for tray_spec in \
+      "tray-native-tests|tray-native-tests.xml|tray-integration" \
+      "tray-contract-tests|TEST-io.github.kingsword09.kwebshell.service.tray.KWebTraysContractTest.xml|tray-integration" \
+      "tray-package|native-tray-package.json|tray-integration" \
+      "tray-runtime|kweb-service-tray-1.0.0-${target}.zip|tray-integration"; do
+      IFS='|' read -r tray_key tray_name tray_family <<< "$tray_spec"
+      tray_file=$(find "$downloaded" -type f -name "$tray_name" -path "*${tray_family}-${target}-*" | head -1)
+      arguments="$arguments --artifact $tray_key=$tray_file"
+    done
+  fi
   if [ "$rfc" = "0027" ]; then
     arguments="$arguments --service native-image --matrix-row native-image --from-compatibility-report $extra_file"
     for image_spec in \
@@ -145,6 +157,7 @@ for target in macos-arm64 windows-x64 linux-x64; do
     "0014|clipboard.hosted|clipboard|clipboard-evidence.json|clipboard|migration-clipboard|migration-clipboard-evidence.json|electron-migration"
     "0015|shell.hosted|shell|migration-shell-evidence.json|electron-migration|migration-shell|compatibility.json|electron-migration"
     "0017|menus.hosted|menus-integration|menus-integration.json|menus-integration|compatibility|compatibility.json|electron-migration"
+    "0018|tray.hosted|tray-integration|tray-integration.json|tray-integration|compatibility|compatibility.json|electron-migration"
     "0027|image.hosted|native-image|native-image-evidence.json|image-integration|compatibility|compatibility.json|electron-migration"
     "0007|window-controls.hosted|window-controls-report|window-controls-report.json|provider-lifecycle"
   )

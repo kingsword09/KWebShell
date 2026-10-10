@@ -971,6 +971,12 @@ private fun runContextMenuIntegration() {
     var profile: io.github.kingsword09.kwebshell.core.KWebProfile? = null
     var page: io.github.kingsword09.kwebshell.core.KWebPage? = null
     var surface: ComposeBrowserSurface? = null
+    var requestCount = 0
+    var commandCount = 0
+    var continuedOutcome = ""
+    var dismissedOutcome = ""
+    var duplicateOutcome = ""
+    var probeFailure: Throwable? = null
     try {
         kotlinx.coroutines.runBlocking {
             profile = engine.openProfile("rfc0017-context-menu")
@@ -997,6 +1003,7 @@ private fun runContextMenuIntegration() {
             )
             val request = requests.poll(30, TimeUnit.SECONDS)
                 ?: error("The real CEF page context menu was not published.")
+            requestCount += 1
             require(request.isMainFrame) { "The context menu did not come from the main frame." }
             require(request.url == fixture.pageUrl) {
                 "The context menu URL '${request.url}' does not match '${fixture.pageUrl}'."
@@ -1013,6 +1020,7 @@ private fun runContextMenuIntegration() {
             require(commands.any { it.command.startsWith("chromium.") }) {
                 "Chromium's own menu commands were not published: ${commands.map { it.command }}"
             }
+            commandCount = commands.size
             println("KWEBSHELL_CONTEXT_MENU_PROBE:request")
 
             val selected = commands.singleOrNull { it.command == "chromium.select-all" }
@@ -1024,6 +1032,7 @@ private fun runContextMenuIntegration() {
             require(continued.outcome == io.github.kingsword09.kwebshell.core.KWebContextMenuOutcome.CONTINUED) {
                 "The context-menu decision was not continued: $continued"
             }
+            continuedOutcome = continued.outcome.name
             require(requests.poll(2, TimeUnit.SECONDS) == null) {
                 "Chromium published a second context-menu request for one interaction."
             }
@@ -1040,6 +1049,7 @@ private fun runContextMenuIntegration() {
                 "page.context-menu.already-resolved") {
                 "A second decision on one request was not rejected: $duplicate"
             }
+            duplicateOutcome = (duplicate as io.github.kingsword09.kwebshell.core.KWebNativeException).code
             println("KWEBSHELL_CONTEXT_MENU_PROBE:continued-once")
 
             cdp.command(
@@ -1052,6 +1062,7 @@ private fun runContextMenuIntegration() {
             )
             val second = requests.poll(30, TimeUnit.SECONDS)
                 ?: error("The second real CEF page context menu was not published.")
+            requestCount += 1
             require(second.requestId != request.requestId) {
                 "The engine reused one context-menu request id."
             }
@@ -1059,8 +1070,12 @@ private fun runContextMenuIntegration() {
             require(dismissed.outcome == io.github.kingsword09.kwebshell.core.KWebContextMenuOutcome.DISMISSED) {
                 "The dismissal decision was not observed: $dismissed"
             }
+            dismissedOutcome = dismissed.outcome.name
             println("KWEBSHELL_CONTEXT_MENU_PROBE:dismissed")
         }
+    } catch (error: Throwable) {
+        probeFailure = error
+        throw error
     } finally {
         collector?.cancel()
         runCatching { page?.close() }
@@ -1072,6 +1087,33 @@ private fun runContextMenuIntegration() {
         runCatching { fixture.close() }
         scope.cancel()
     }
+    require(NativeBrowser.liveNativeBrowserCount() == 0L)
+    require(NativeEngine.liveNativeEngineCount() == 0L)
+    val evidence = buildJsonObject {
+        put("schemaVersion", 1)
+        put("target", currentTargetId())
+        put("cefRuntime", "stock-cef-151")
+        put("contractRevision", "2026-10-09.1")
+        put("requestCount", requestCount)
+        put("mainFrame", true)
+        put("origin", fixture.origin)
+        put("coordinateX", 120)
+        put("coordinateY", 14)
+        put("editableContext", true)
+        put("commandCount", commandCount)
+        put("continuedOutcome", continuedOutcome)
+        put("duplicateOutcome", duplicateOutcome)
+        put("dismissedOutcome", dismissedOutcome)
+        put("engineAbiVersion", 17)
+        put("menuBodyRetained", false)
+        put("failure", probeFailure?.let { it::class.simpleName } ?: "")
+    }
+    Files.writeString(
+        root.resolve("context-menu-evidence.json"),
+        evidence.toString() + "\n",
+        StandardCharsets.UTF_8,
+    )
+    println("KWebShell RFC0017 page context menu passed: requests=$requestCount, commands=$commandCount.")
 }
 
 /** Serves one editable page for the real context-menu fixture. */

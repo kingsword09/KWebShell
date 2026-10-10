@@ -300,6 +300,19 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Upload native menus evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: menus-integration-${{ matrix.target }}-${{ github.sha }}
+          path: |
+            kweb-service-menus/build/reports/menus-integration/
+            kweb-service-menus/build/reports/menus-native-tests.xml
+            kweb-service-menus/build/test-results/jvmTest/*.xml
+            kweb-service-menus/build/distributions/*.zip
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload application package evidence
         if: always()
         uses: actions/upload-artifact@v6
@@ -416,7 +429,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p build/rfc-evidence/downloaded
-          for family in rfc-governance provider-lifecycle native-dialogs engine-integration electron-migration clipboard image-integration application-package windows-launcher-smoke application-lifecycle; do
+          for family in rfc-governance provider-lifecycle native-dialogs engine-integration electron-migration clipboard image-integration menus-integration application-package windows-launcher-smoke application-lifecycle; do
             gh run download "$GITHUB_RUN_ID" \
               --repo "$GITHUB_REPOSITORY" \
               --pattern "$family-*-${{ github.sha }}" \

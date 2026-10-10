@@ -95,6 +95,20 @@ record() {
   if [ "$rfc" = "0015" ]; then
     arguments="$arguments --service shell --matrix-row shell --from-compatibility-report $extra_file"
   fi
+  if [ "$rfc" = "0017" ]; then
+    arguments="$arguments --service menus --matrix-row menu --from-compatibility-report $extra_file"
+    for menus_spec in \
+      "menus-native-tests|menus-native-tests.xml|menus-integration" \
+      "menus-contract-tests|TEST-io.github.kingsword09.kwebshell.service.menus.KWebMenusContractTest.xml|menus-integration" \
+      "menus-bridge-tests|TEST-io.github.kingsword09.kwebshell.service.menus.KWebMenusBridgeTest.xml|menus-integration" \
+      "menus-package|native-menus-package.json|menus-integration" \
+      "menus-runtime|kweb-service-menus-1.0.0-${target}.zip|menus-integration" \
+      "context-menu|context-menu-evidence.json|engine-integration"; do
+      IFS='|' read -r menus_key menus_name menus_family <<< "$menus_spec"
+      menus_file=$(find "$downloaded" -type f -name "$menus_name" -path "*${menus_family}-${target}-*" | head -1)
+      arguments="$arguments --artifact $menus_key=$menus_file"
+    done
+  fi
   if [ "$rfc" = "0027" ]; then
     arguments="$arguments --service native-image --matrix-row native-image --from-compatibility-report $extra_file"
     for image_spec in \
@@ -130,6 +144,7 @@ for target in macos-arm64 windows-x64 linux-x64; do
     "0013|files.hosted|files|files-evidence.json|engine-integration|migration-files|compatibility.json|electron-migration"
     "0014|clipboard.hosted|clipboard|clipboard-evidence.json|clipboard|migration-clipboard|migration-clipboard-evidence.json|electron-migration"
     "0015|shell.hosted|shell|migration-shell-evidence.json|electron-migration|migration-shell|compatibility.json|electron-migration"
+    "0017|menus.hosted|menus-integration|menus-integration.json|menus-integration|compatibility|compatibility.json|electron-migration"
     "0027|image.hosted|native-image|native-image-evidence.json|image-integration|compatibility|compatibility.json|electron-migration"
     "0007|window-controls.hosted|window-controls-report|window-controls-report.json|provider-lifecycle"
   )

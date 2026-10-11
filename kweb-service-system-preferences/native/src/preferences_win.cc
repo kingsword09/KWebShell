@@ -63,7 +63,8 @@ void ReadFacts(WindowsState &windows, State &state, Facts *facts) {
   }
   HIGHCONTRASTW contrast{};
   contrast.cbSize = sizeof(contrast);
-  if (SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(contrast), &contrast, 0)) {
+  if (SystemParametersInfoW(SPI_GETHIGHCONTRAST, static_cast<UINT>(sizeof(contrast)), &contrast,
+                          0)) {
     facts->contrast = (contrast.dwFlags & HCF_HIGHCONTRASTON) != 0 ? KWEB_CONTRAST_FORCED_COLORS
                                                                   : KWEB_CONTRAST_NONE;
     published |= KWEB_PREFERENCE_FACT_CONTRAST;

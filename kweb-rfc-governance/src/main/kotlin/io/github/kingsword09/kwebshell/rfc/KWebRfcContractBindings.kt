@@ -67,9 +67,12 @@ public object KWebRfcContractBindings {
     }
 
     /**
-     * Hashes path names and exact file bytes in stable order. Directory bindings are
-     * expanded recursively; symlinks are rejected so evidence cannot escape the
-     * repository or change meaning between runners.
+     * Hashes path names and exact file bytes in stable order. A directory binding is
+     * expanded to the files that belong to the repository revision, so untracked
+     * local build output under a bound path cannot invalidate evidence that was
+     * recorded from a committed revision. Symlinks are rejected so evidence cannot
+     * escape the repository or change meaning between runners, and a bound path the
+     * revision does not contain fails closed instead of hashing nothing.
      */
     public fun digest(
         document: KWebRfcContractBindingsDocument,
@@ -84,7 +87,8 @@ public object KWebRfcContractBindings {
                 message = "Implemented RFC evidence requires an explicit contract binding.",
             )
         val root = repositoryRoot.toAbsolutePath().normalize()
-        val files = linkedSetOf<Path>()
+        // Bound paths are checked before the revision is read, so a caller sees the
+        // precise path problem instead of a work-tree problem.
         binding.paths.forEach { configuredPath ->
             val path = root.resolve(configuredPath).normalize()
             if (!path.startsWith(root) || !Files.exists(path)) {
@@ -97,19 +101,32 @@ public object KWebRfcContractBindings {
             if (Files.isSymbolicLink(path)) {
                 throw unsafe(rfcId, configuredPath)
             }
-            if (Files.isDirectory(path)) {
-                Files.walk(path).use { stream ->
-                    stream.filter(Files::isRegularFile).forEach { file ->
-                        if (Files.isSymbolicLink(file)) {
-                            throw unsafe(rfcId, root.relativize(file).toString())
-                        }
-                        files.add(file)
-                    }
-                }
-            } else if (Files.isRegularFile(path)) {
-                files.add(path)
-            } else {
+            if (!Files.isDirectory(path) && !Files.isRegularFile(path)) {
                 throw unsafe(rfcId, configuredPath)
+            }
+        }
+        val tracked = trackedFiles(root)
+        val files = linkedSetOf<Path>()
+        binding.paths.forEach { configuredPath ->
+            val path = root.resolve(configuredPath).normalize()
+            if (Files.isDirectory(path)) {
+                val prefix = "$configuredPath/"
+                val members = tracked.filter { it.startsWith(prefix) }.sorted()
+                if (members.isEmpty()) {
+                    throw notTracked(rfcId, configuredPath)
+                }
+                members.forEach { member ->
+                    val file = root.resolve(member).normalize()
+                    if (!Files.isRegularFile(file) || Files.isSymbolicLink(file)) {
+                        throw trackedMissing(rfcId, member)
+                    }
+                    files.add(file)
+                }
+            } else {
+                if (configuredPath !in tracked) {
+                    throw notTracked(rfcId, configuredPath)
+                }
+                files.add(path)
             }
         }
         if (files.isEmpty()) {
@@ -130,6 +147,68 @@ public object KWebRfcContractBindings {
         }
         return KWebRfcEvidenceJson.sha256(digestInput.encodeToByteArray())
     }
+
+    /**
+     * The repository revision a contract digest binds: the files git tracks under the
+     * worktree root. A root that is not a worktree cannot name a revision, so it fails
+     * closed instead of hashing arbitrary local files.
+     */
+    private fun trackedFiles(root: Path): Set<String> {
+        val topLevel = git(root, "rev-parse", "--show-toplevel")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: throw notAWorktree(root)
+        val topLevelPath = try {
+            Path.of(topLevel).toRealPath()
+        } catch (error: Throwable) {
+            throw notAWorktree(root)
+        }
+        if (topLevelPath != root.toRealPath()) {
+            throw KWebRfcGovernanceException(
+                code = KWebRfcContractBindingErrorCode.NOT_A_WORK_TREE,
+                details = mapOf("root" to root.toString(), "worktree" to topLevelPath.toString()),
+                message = "The contract digest requires the git worktree root, not a subdirectory of it.",
+            )
+        }
+        val listing = git(root, "ls-files", "-z") ?: throw notAWorktree(root)
+        return listing.split('\u0000').filter { it.isNotEmpty() }.toSet()
+    }
+
+    private fun git(root: Path, vararg arguments: String): String? {
+        val command = listOf("git", "-C", root.toString()) + arguments
+        val process = try {
+            ProcessBuilder(command).redirectErrorStream(false).start()
+        } catch (error: Throwable) {
+            return null
+        }
+        val output = process.inputStream.use { it.readBytes().decodeToString() }
+        val failed = process.errorStream.use { it.readBytes().decodeToString() }
+        if (!process.waitFor(60, java.util.concurrent.TimeUnit.SECONDS) || process.exitValue() != 0) {
+            process.destroyForcibly()
+            return null
+        }
+        if (failed.isNotEmpty()) return null
+        return output
+    }
+
+    private fun notAWorktree(root: Path): KWebRfcGovernanceException =
+        KWebRfcGovernanceException(
+            code = KWebRfcContractBindingErrorCode.NOT_A_WORK_TREE,
+            details = mapOf("root" to root.toString()),
+            message = "A contract digest binds a repository revision, so its root must be a git work tree.",
+        )
+
+    private fun notTracked(rfcId: String, path: String): KWebRfcGovernanceException =
+        KWebRfcGovernanceException(
+            code = KWebRfcContractBindingErrorCode.NOT_TRACKED,
+            details = mapOf("rfc" to rfcId, "path" to path),
+            message = "A bound contract path must contain files the repository revision tracks.",
+        )
+
+    private fun trackedMissing(rfcId: String, path: String): KWebRfcGovernanceException =
+        KWebRfcGovernanceException(
+            code = KWebRfcContractBindingErrorCode.TRACKED_FILE_MISSING,
+            details = mapOf("rfc" to rfcId, "path" to path),
+            message = "A tracked contract file is missing from the working tree.",
+        )
 
     private fun unsafe(rfcId: String, path: String): KWebRfcGovernanceException =
         KWebRfcGovernanceException(
@@ -180,4 +259,7 @@ public object KWebRfcContractBindingErrorCode {
     public const val INVALID: String = "rfc.contract-binding.invalid"
     public const val MISSING: String = "rfc.contract-binding.missing"
     public const val UNSAFE_PATH: String = "rfc.contract-binding.unsafe-path"
+    public const val NOT_A_WORK_TREE: String = "rfc.contract-binding.not-a-work-tree"
+    public const val NOT_TRACKED: String = "rfc.contract-binding.not-tracked"
+    public const val TRACKED_FILE_MISSING: String = "rfc.contract-binding.tracked-file-missing"
 }

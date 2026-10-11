@@ -7,6 +7,7 @@
 #include "preferences_tests_fixture.h"
 
 #include <cstdlib>
+#include <errno.h>
 #include <cstring>
 
 namespace {
@@ -110,7 +111,11 @@ int RunPlatformNativeStructureTest() {
 
   // 5. Changing the application theme in an isolated session publishes exactly one
   //    ordered update and follows the new value.
-  if (std::getenv("KWEBSHELL_ISOLATED_DESKTOP") == nullptr) {
+  size_t isolated_session_size = 0;
+  char isolated_session[8] = {};
+  const errno_t isolated_status = getenv_s(&isolated_session_size, isolated_session,
+                                           sizeof(isolated_session), "KWEBSHELL_ISOLATED_DESKTOP");
+  if (isolated_status != 0 || isolated_session_size == 0) {
     std::printf("SKIP: the application-theme change requires an isolated desktop session.\n");
   } else if ((declared_snapshot.fact_bits & KWEB_PREFERENCE_FACT_COLOR_SCHEME) == 0) {
     std::printf("SKIP: the preference store publishes no application theme.\n");

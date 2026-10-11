@@ -227,7 +227,7 @@ kweb_preferences_status NativeOpen(State &state) {
     ReleaseWindows(*windows, true);
     delete windows;
     state.platform = nullptr;
-    return KWEB_PREFERENCES_STATUS_NATIVE_UNAVAILABLE;
+    return KWEB_PREFERENCES_STATUS_PLATFORM_UNAVAILABLE;
   }
   g_state = &state;
   return KWEB_PREFERENCES_STATUS_OK;

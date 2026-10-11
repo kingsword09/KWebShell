@@ -32,6 +32,7 @@ dependencies {
     testImplementation(kotlin("test-junit5"))
     testRuntimeOnly(libs.junit.platform.launcher)
     implementation(project(":kweb-service-system-preferences"))
+    implementation(project(":kweb-service-screen"))
 }
 
 tasks.withType<Test>().configureEach {

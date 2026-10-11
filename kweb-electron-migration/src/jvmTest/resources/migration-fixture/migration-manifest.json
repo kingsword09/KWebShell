@@ -640,6 +640,10 @@
     {
       "id": "system-preferences",
       "version": "1.0.0"
+    },
+    {
+      "id": "screen",
+      "version": "1.0.0"
     }
   ],
   "windows": [

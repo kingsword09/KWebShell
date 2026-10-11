@@ -539,6 +539,25 @@
       ]
     },
     {
+      "rfcId": "0020",
+      "paths": [
+        "build.gradle.kts",
+        "docs/rfcs/0020-screen-and-display.md",
+        "docs/rfcs/evidence/contracts.json",
+        "kweb-desktop/build.gradle.kts",
+        "kweb-desktop/src/main/kotlin/io/github/kingsword09/kwebshell/desktop/KWebScreenPlacement.kt",
+        "kweb-desktop/src/test/kotlin/io/github/kingsword09/kwebshell/desktop/KWebScreenPlacementTest.kt",
+        "kweb-electron-migration/src",
+        "kweb-rfc-governance/build.gradle.kts",
+        "kweb-rfc-governance/src/main/kotlin/io/github/kingsword09/kwebshell/rfc/KWebRfcServiceCatalog.kt",
+        "kweb-service-screen/README.md",
+        "kweb-service-screen/build.gradle.kts",
+        "kweb-service-screen/native",
+        "kweb-service-screen/src",
+        "settings.gradle.kts"
+      ]
+    },
+    {
       "rfcId": "0027",
       "paths": [
         ".github/scripts/aggregate-rfc-evidence.sh",

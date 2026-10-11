@@ -10,6 +10,7 @@ import io.github.kingsword09.kwebshell.service.windowcontrols.KWebWindowControls
 import io.github.kingsword09.kwebshell.service.image.KWebNativeImage
 import io.github.kingsword09.kwebshell.service.menus.KWebMenus
 import io.github.kingsword09.kwebshell.service.preferences.KWebSystemPreferences
+import io.github.kingsword09.kwebshell.service.screen.KWebScreens
 import io.github.kingsword09.kwebshell.service.tray.KWebTrays
 
 /** The published contract version of one installed native service. */
@@ -38,6 +39,10 @@ public object KWebRfcServiceCatalog {
         KWebRfcServiceContract(
             KWebSystemPreferences.DESCRIPTOR.id,
             KWebSystemPreferences.DESCRIPTOR.version.toString(),
+        ),
+        KWebRfcServiceContract(
+            KWebScreens.DESCRIPTOR.id,
+            KWebScreens.DESCRIPTOR.version.toString(),
         ),
     )
 

@@ -339,6 +339,39 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Verify the Wayland screen session
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A compositor publishes the monitors GDK reports; the headless backend is
+          # the declared facility of this verification.
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq weston
+          export XDG_RUNTIME_DIR="${RUNNER_TEMP}/kweb-wayland"
+          mkdir -p "$XDG_RUNTIME_DIR"
+          chmod 700 "$XDG_RUNTIME_DIR"
+          weston --backend=headless --socket=kweb-screen --width=1600 --height=1200 --idle-time=0 &
+          sleep 5
+          transcript="kweb-service-screen/build/reports/screen-integration/screen-wayland-transcript.txt"
+          mkdir -p "$(dirname "$transcript")"
+          unset DISPLAY
+          GDK_BACKEND=wayland WAYLAND_DISPLAY=kweb-screen \
+            kweb-service-screen/build/native/contract/kweb_screen_tests | tee "$transcript"
+
+      - name: Upload screen evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: screen-integration-${{ matrix.target }}-${{ github.sha }}
+          path: |
+            kweb-service-screen/build/reports/screen-integration/
+            kweb-service-screen/build/reports/screen-native-tests.xml
+            kweb-service-screen/build/test-results/jvmTest/*.xml
+            kweb-service-screen/build/distributions/*.zip
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload application package evidence
         if: always()
         uses: actions/upload-artifact@v6
@@ -459,7 +492,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p build/rfc-evidence/downloaded
-          for family in rfc-governance provider-lifecycle native-dialogs engine-integration electron-migration clipboard image-integration menus-integration tray-integration preferences-integration application-package windows-launcher-smoke application-lifecycle; do
+          for family in rfc-governance provider-lifecycle native-dialogs engine-integration electron-migration clipboard image-integration menus-integration tray-integration preferences-integration screen-integration application-package windows-launcher-smoke application-lifecycle; do
             gh run download "$GITHUB_RUN_ID" \
               --repo "$GITHUB_REPOSITORY" \
               --pattern "$family-*-${{ github.sha }}" \

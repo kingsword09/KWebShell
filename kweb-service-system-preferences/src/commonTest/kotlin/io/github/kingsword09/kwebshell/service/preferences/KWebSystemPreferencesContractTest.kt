@@ -216,12 +216,30 @@ class KWebSystemPreferencesContractTest {
         assertEquals("1.0.0", descriptor.version.toString())
         assertEquals(KWebServiceScope.APPLICATION, descriptor.scope)
         assertEquals(
-            setOf("capabilities", "changes", "request-appearance", "snapshot"),
+            setOf(
+                "capabilities",
+                "changes",
+                "read",
+                "request-appearance",
+                "set-appearance",
+                "snapshot",
+                "subscribe",
+            ),
             descriptor.operations.map { it.id }.toSet(),
         )
-        descriptor.operations.forEach { operation ->
-            // The renderer surface is a separate policy-gated bridge, never a service operation.
-            assertEquals(null, operation.rendererPermission)
+        // The renderer surface is policy-gated: reads and subscriptions need a
+        // declared grant, and the appearance override additionally needs a gesture.
+        val rendererOperations = descriptor.operations.filter { it.rendererPermission != null }
+        assertEquals(
+            setOf("read", "subscribe", "set-appearance"),
+            rendererOperations.map { it.id }.toSet(),
+        )
+        rendererOperations.forEach { operation ->
+            assertTrue(operation.rendererPermission!!.startsWith("native.system-preferences."))
+            assertEquals(operation.id == "set-appearance", operation.requiresUserGesture)
+            assertTrue(!operation.requiresOsConsent)
+        }
+        descriptor.operations.filter { it.rendererPermission == null }.forEach { operation ->
             assertTrue(!operation.requiresUserGesture)
             assertTrue(!operation.requiresOsConsent)
         }

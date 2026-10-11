@@ -272,6 +272,13 @@ public interface KWebSystemPreferences : KWebNativeService {
                 hostOperation("snapshot"),
                 hostOperation("request-appearance"),
                 hostOperation("changes"),
+                rendererOperation("read", "native.system-preferences.read"),
+                rendererOperation("subscribe", "native.system-preferences.subscribe"),
+                rendererOperation(
+                    "set-appearance",
+                    "native.system-preferences.set-appearance",
+                    requiresUserGesture = true,
+                ),
             ),
             requiredCapabilities = emptySet(),
             supportedTargets = setOf(
@@ -292,6 +299,22 @@ public interface KWebSystemPreferences : KWebNativeService {
             rendererPermission = null,
             requiresUserGesture = false,
         )
+
+        /**
+         * The renderer surface stays policy-gated: a page reads and subscribes
+         * with its declared grant, and the appearance override additionally
+         * requires a user gesture.
+         */
+        private fun rendererOperation(
+            id: String,
+            permission: String,
+            requiresUserGesture: Boolean = false,
+        ): KWebServiceOperationDescriptor = KWebServiceOperationDescriptor(
+            id = id,
+            schemaVersion = 1,
+            rendererPermission = permission,
+            requiresUserGesture = requiresUserGesture,
+        )
     }
 }
 
@@ -307,6 +330,8 @@ public object KWebSystemPreferenceErrorCode {
     public const val TEXT_SCALE_INVALID: String = "preferences.text-scale-invalid"
     public const val NATIVE_FAILED: String = "preferences.native-failed"
     public const val OWNER_CLOSED: String = "preferences.owner-closed"
+    public const val FACT_UNKNOWN: String = "preferences.fact-unknown"
+    public const val FACT_NOT_RENDERER_VISIBLE: String = "preferences.fact-not-renderer-visible"
 }
 
 public const val KWEB_PREFERENCES_EVENT_REPLAY: Int = 64

@@ -12,8 +12,6 @@
 #include <thread>
 #include <vector>
 
-void ScreenFixture::pump_platform_queue() {}
-
 namespace {
 
 /** Owns one RandR monitor the test creates and removes again. */
@@ -67,7 +65,7 @@ class VirtualMonitor {
 }  // namespace
 
 /** The real RandR topology, its emulated second display, and the ordered events. */
-int RunPlatformNativeStructureTest() {
+int RunX11StructureTest() {
   const int failures_before = g_failures;
   ScreenFixture fixture;
   uint64_t handle = 0;

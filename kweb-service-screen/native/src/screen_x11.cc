@@ -230,11 +230,9 @@ void OnX11Event(X11State &x11) {
 
 }  // namespace
 
-namespace kwebshell::screen {
+namespace kwebshell::screen::x11_provider {
 
-const char *ProviderId() { return kProviderId; }
-
-kweb_screen_status NativeOpen(State &state) {
+kweb_screen_status Open(State &state) {
   auto *x11 = new X11State();
   state.platform = x11;
   x11->display = XOpenDisplay(nullptr);
@@ -301,15 +299,15 @@ kweb_screen_status NativeOpen(State &state) {
   return KWEB_SCREEN_STATUS_OK;
 }
 
-kweb_screen_status NativeReadTopology(State &state, Topology *topology) {
+kweb_screen_status ReadTopologyOf(State &state, Topology *topology) {
   X11State *x11 = StateOf(state);
   if (x11 == nullptr || topology == nullptr) return KWEB_SCREEN_STATUS_PLATFORM_UNAVAILABLE;
   std::lock_guard<std::mutex> lock(x11->mutex);
   return ReadTopology(*x11, topology);
 }
 
-kweb_screen_status NativeReadCursor(State &state, int32_t *x, int32_t *y, std::string *display_id,
-                                    bool *display_known) {
+kweb_screen_status ReadCursor(State &state, int32_t *x, int32_t *y, std::string *display_id,
+                               bool *display_known) {
   X11State *x11 = StateOf(state);
   if (x11 == nullptr || x == nullptr || y == nullptr || display_id == nullptr || display_known == nullptr) {
     return KWEB_SCREEN_STATUS_INVALID_ARGUMENT;
@@ -344,7 +342,7 @@ kweb_screen_status NativeReadCursor(State &state, int32_t *x, int32_t *y, std::s
   return KWEB_SCREEN_STATUS_OK;
 }
 
-kweb_screen_status NativeClose(State &state) {
+kweb_screen_status Close(State &state) {
   X11State *x11 = StateOf(state);
   if (x11 == nullptr) return KWEB_SCREEN_STATUS_OK;
   if (g_state == &state) g_state = nullptr;
@@ -359,4 +357,7 @@ kweb_screen_status NativeClose(State &state) {
   return KWEB_SCREEN_STATUS_OK;
 }
 
-}  // namespace kwebshell::screen
+/** The declared provider identity of the X11 session. */
+const char *ProviderId() { return kProviderId; }
+
+}  // namespace kwebshell::screen::x11_provider

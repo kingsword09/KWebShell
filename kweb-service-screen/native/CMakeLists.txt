@@ -16,7 +16,8 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   find_package(PkgConfig REQUIRED)
   pkg_check_modules(X11 REQUIRED IMPORTED_TARGET x11)
   pkg_check_modules(XRANDR REQUIRED IMPORTED_TARGET xrandr)
-  set(KWEB_SCREEN_PLATFORM_SOURCE src/screen_x11.cc)
+  pkg_check_modules(GTK3 REQUIRED IMPORTED_TARGET gtk+-3.0)
+  set(KWEB_SCREEN_PLATFORM_SOURCE src/screen_linux.cc src/screen_x11.cc src/screen_wayland.cc)
 else()
   message(FATAL_ERROR "KWebScreen supports only Windows, macOS, and Linux.")
 endif()
@@ -47,7 +48,7 @@ if(APPLE)
 elseif(WIN32)
   target_link_libraries(kweb_screen_abi PRIVATE user32 shcore)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  target_link_libraries(kweb_screen_abi PRIVATE PkgConfig::X11 PkgConfig::XRANDR)
+  target_link_libraries(kweb_screen_abi PRIVATE PkgConfig::X11 PkgConfig::XRANDR PkgConfig::GTK3)
 endif()
 
 set_target_properties(kweb_screen_abi PROPERTIES
@@ -66,7 +67,11 @@ if(APPLE)
 elseif(WIN32)
   target_sources(kweb_screen_tests PRIVATE tests/screen_structure_win.cc)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  target_sources(kweb_screen_tests PRIVATE tests/screen_structure_x11.cc)
+  target_sources(kweb_screen_tests PRIVATE
+    tests/screen_structure_linux.cc
+    tests/screen_structure_x11.cc
+    tests/screen_structure_wayland.cc
+  )
 endif()
 target_include_directories(kweb_screen_tests PRIVATE include src)
 if(MSVC)
@@ -84,7 +89,7 @@ if(APPLE)
 elseif(WIN32)
   target_link_libraries(kweb_screen_tests PRIVATE user32 shcore)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  target_link_libraries(kweb_screen_tests PRIVATE PkgConfig::X11 PkgConfig::XRANDR)
+  target_link_libraries(kweb_screen_tests PRIVATE PkgConfig::X11 PkgConfig::XRANDR PkgConfig::GTK3)
 endif()
 set_target_properties(kweb_screen_tests PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${KWEB_CONTRACT_OUTPUT_DIR}"

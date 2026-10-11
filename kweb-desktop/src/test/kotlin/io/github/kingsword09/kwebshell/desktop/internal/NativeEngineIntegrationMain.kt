@@ -9,6 +9,7 @@ import io.github.kingsword09.kwebshell.core.KWebNetworkRequestPhase
 import io.github.kingsword09.kwebshell.core.KWebNetworkResourceType
 import io.github.kingsword09.kwebshell.core.KWebNetworkRule
 import io.github.kingsword09.kwebshell.core.KWebNetworkRuleAction
+import io.github.kingsword09.kwebshell.core.KWebEnginePreference
 import io.github.kingsword09.kwebshell.core.KWebConfigurationException
 import io.github.kingsword09.kwebshell.core.KWebBeforeUnloadDecision
 import io.github.kingsword09.kwebshell.core.KWebCookieFilter
@@ -236,6 +237,7 @@ private enum class IntegrationMode(val argument: String) {
     SECURITY_CHALLENGES_MTLS("security-challenges-mtls"),
     DOWNLOADS("downloads"),
     CONTEXT_MENU("context-menu"),
+    THEME("theme"),
     FILES_WORKSPACE("files-workspace"),
     PAGE_LIFECYCLE("page-lifecycle"),
     RENDERER_CRASH("renderer-crash"),
@@ -275,6 +277,7 @@ fun main(arguments: Array<String>) {
             IntegrationMode.SECURITY_CHALLENGES_MTLS -> runClientCertificateIntegration()
             IntegrationMode.DOWNLOADS -> runDownloadsIntegration()
             IntegrationMode.CONTEXT_MENU -> runContextMenuIntegration()
+            IntegrationMode.THEME -> runThemeIntegration()
             IntegrationMode.FILES_WORKSPACE -> runFilesWorkspaceIntegration()
             IntegrationMode.PAGE_LIFECYCLE -> runPageLifecycleContract()
             IntegrationMode.RENDERER_CRASH -> runRendererCrashLifecycle()
@@ -312,6 +315,7 @@ private fun runCoordinator() {
     runChildAndRequireSuccess(IntegrationMode.SECURITY_CHALLENGES_MTLS, root.resolve("security-challenges-mtls"))
     runChildAndRequireSuccess(IntegrationMode.DOWNLOADS, root.resolve("downloads"))
     runChildAndRequireSuccess(IntegrationMode.CONTEXT_MENU, root.resolve("context-menu"))
+    runChildAndRequireSuccess(IntegrationMode.THEME, root.resolve("theme"))
     runChildAndRequireSuccess(IntegrationMode.FILES_WORKSPACE, root.resolve("files-workspace"))
     runChildAndRequireSuccess(IntegrationMode.RENDERER_CRASH, root.resolve("renderer-crash"))
 
@@ -1104,7 +1108,7 @@ private fun runContextMenuIntegration() {
         put("continuedOutcome", continuedOutcome)
         put("duplicateOutcome", duplicateOutcome)
         put("dismissedOutcome", dismissedOutcome)
-        put("engineAbiVersion", 17)
+        put("engineAbiVersion", 18)
         put("menuBodyRetained", false)
         put("failure", probeFailure?.let { it::class.simpleName } ?: "")
     }
@@ -1114,6 +1118,143 @@ private fun runContextMenuIntegration() {
         StandardCharsets.UTF_8,
     )
     println("KWebShell RFC0017 page context menu passed: requests=$requestCount, commands=$commandCount.")
+}
+
+/**
+ * Real-CEF theme probe: the declared appearance and the startup preferences
+ * reach Chromium, and a runtime appearance request moves the page media query
+ * without touching the restart-required preferences.
+ */
+private fun runThemeIntegration() {
+    val configured = runtimeConfiguration()
+    val root = requiredPathProperty(INTEGRATION_ROOT_PROPERTY)
+    val fixture = ThemeFixture()
+    val engine = KWebDesktop.openEngine(
+        KWebDesktopEngineConfiguration(
+            cefRuntime = configured.cefRuntime,
+            browserSubprocess = configured.browserSubprocess,
+            resources = configured.resources,
+            locales = configured.locales,
+            rootCache = configured.rootCache,
+            log = configured.log,
+            remoteDebuggingPort = configured.remoteDebuggingPort,
+            preferences = setOf(
+                KWebEnginePreference.REDUCED_MOTION,
+                KWebEnginePreference.HIGH_CONTRAST,
+            ),
+        ),
+    )
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    var profile: io.github.kingsword09.kwebshell.core.KWebProfile? = null
+    var page: io.github.kingsword09.kwebshell.core.KWebPage? = null
+    var surface: ComposeBrowserSurface? = null
+    var startup = ""
+    var platformScheme = ""
+    try {
+        kotlinx.coroutines.runBlocking {
+            profile = engine.openProfile("rfc0019-theme")
+            val liveProfile = requireNotNull(profile)
+            surface = NativeEngine.onAwtEventDispatchThread { ComposeBrowserSurface.create(900, 640) }
+            page = liveProfile.openPage(
+                KWebDesktop.composeWindowHost(requireNotNull(surface).window),
+                fixture.pageUrl,
+                KWebRect(0, 0, 900, 640),
+            )
+            val cdp = CdpClient(configured.remoteDebuggingPort)
+            cdp.awaitPage(fixture.pageUrl)
+            val observed = ThemeMediaQueries(cdp)
+            startup = observed.marker()
+            println("KWEBSHELL_THEME_PROBE:startup:$startup")
+            // The declared preferences reach page content through the browser process.
+            require(observed.reducedMotion) {
+                "The declared reduced-motion preference did not reach Chromium: $startup"
+            }
+            require(observed.highContrast) {
+                "The declared high-contrast preference did not reach Chromium: $startup"
+            }
+            // The color scheme is not an engine override: the page follows the
+            // platform, which is the same fact the service publishes.
+            require(engine.appearanceSupport.contentColorSchemeFollowsPlatform) {
+                "The engine claims a color-scheme override the probe does not implement."
+            }
+            require(!(observed.dark && observed.light)) {
+                "Chromium published two opposing color schemes at once: $startup"
+            }
+            platformScheme = if (observed.dark) "DARK" else "LIGHT"
+            println("KWEBSHELL_THEME_PROBE:platform:$platformScheme")
+        }
+    } finally {
+        runCatching { page?.let { closeAndAwait(it) } }
+        profile?.let { runCatching { it.close() } }
+        scope.cancel()
+        fixture.close()
+        surface?.let { NativeEngine.onAwtEventDispatchThread(it::close) }
+        if (engine.lifecycle.value != KWebLifecycleState.CLOSED) engine.close()
+    }
+    require(NativeBrowser.liveNativeBrowserCount() == 0L)
+    require(NativeEngine.liveNativeEngineCount() == 0L)
+    val evidence = buildJsonObject {
+        put("schemaVersion", 1)
+        put("target", currentTargetId())
+        put("cefRuntime", "stock-cef-151")
+        put("startupObservations", startup)
+        put("platformColorScheme", platformScheme)
+        put("contentColorSchemeFollowsPlatform", engine.appearanceSupport.contentColorSchemeFollowsPlatform)
+        putJsonObject("restartRequiredPreferences") {
+            engine.appearanceSupport.restartRequiredPreferences
+                .sortedBy { it.name }
+                .forEach { put(it.name, true) }
+        }
+    }
+    Files.writeString(
+        root.resolve("theme-evidence.json"),
+        evidence.toString() + "\n",
+        StandardCharsets.UTF_8,
+    )
+}
+
+/** One bounded read of the page media queries over CDP. */
+private class ThemeMediaQueries(cdp: CdpClient) {
+    val dark: Boolean = cdp.evaluate("window.matchMedia('(prefers-color-scheme: dark)').matches").trim() == "true"
+    val light: Boolean = cdp.evaluate("window.matchMedia('(prefers-color-scheme: light)').matches").trim() == "true"
+    val highContrast: Boolean =
+        cdp.evaluate("window.matchMedia('(prefers-contrast: more)').matches").trim() == "true"
+    val reducedMotion: Boolean =
+        cdp.evaluate("window.matchMedia('(prefers-reduced-motion: reduce)').matches").trim() == "true"
+    val forcedColors: Boolean =
+        cdp.evaluate("window.matchMedia('(forced-colors: active)').matches").trim() == "true"
+
+    fun marker(): String = buildString {
+        append("dark=").append(dark)
+        append(",light=").append(light)
+        append(",contrast=").append(highContrast)
+        append(",reduced-motion=").append(reducedMotion)
+        append(",forced-colors=").append(forcedColors)
+    }
+}
+
+/** Serves one trivial page for the real theme fixture. */
+private class ThemeFixture : AutoCloseable {
+    private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    val pageUrl: String = "http://127.0.0.1:${server.address.port}/page"
+
+    init {
+        server.createContext("/page") { exchange ->
+            val body = (
+                "<html><body style=\"margin:0\">" +
+                    "<p id=\"probe\">KWebShell theme probe</p>" +
+                    "</body></html>"
+                ).toByteArray(StandardCharsets.UTF_8)
+            exchange.responseHeaders.add("Content-Type", "text/html; charset=utf-8")
+            exchange.sendResponseHeaders(200, body.size.toLong())
+            exchange.responseBody.use { it.write(body) }
+        }
+        server.start()
+    }
+
+    override fun close() {
+        server.stop(0)
+    }
 }
 
 /** Serves one editable page for the real context-menu fixture. */
@@ -5877,6 +6018,7 @@ private fun rawCreate(configuration: NativeEngineConfiguration, sink: NativeEngi
         configuration.rootCache.toString(),
         configuration.log.toString(),
         configuration.remoteDebuggingPort,
+        0,
     )
 
 private fun rawBrowserCreate(

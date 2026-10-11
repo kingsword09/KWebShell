@@ -42,7 +42,10 @@ public final class FfmLayouts {
         INT32.withName("remote_debugging_port"),
         UINT32.withName("reserved"),
         POINTER.withName("profile_data_callback"),
-        POINTER.withName("profile_data_user_data")
+        POINTER.withName("profile_data_user_data"),
+        UINT32.withName("preference_bits"),
+        // The C struct is aligned to eight bytes, so the layout carries its tail padding.
+        MemoryLayout.paddingLayout(4)
     ).withName("kweb_engine_config");
 
     public static final GroupLayout BROWSER_EVENT = MemoryLayout.structLayout(

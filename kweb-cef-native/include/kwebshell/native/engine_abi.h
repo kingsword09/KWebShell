@@ -80,6 +80,13 @@ typedef uint32_t kweb_profile_data_operation_type;
 /* Enables application-owned page context menus. While the flag is absent the
  * engine leaves CEF's default menu behavior untouched. */
 #define KWEB_BROWSER_CONFIG_CONTEXT_MENUS_ENABLED ((uint32_t)2)
+/* Startup preferences. Chromium reads these once while the browser process
+ * starts, so a runtime change is restart-required and never silently ignored.
+ * Page color scheme is not among them: this runtime applies the platform
+ * appearance to page content and publishes no engine override. */
+#define KWEB_ENGINE_PREFERENCE_REDUCED_MOTION ((uint32_t)1)
+#define KWEB_ENGINE_PREFERENCE_HIGH_CONTRAST ((uint32_t)2)
+#define KWEB_ENGINE_PREFERENCE_ALL ((uint32_t)3)
 #define KWEB_DOWNLOAD_CONTROL_CANCEL ((uint32_t)1)
 #define KWEB_DOWNLOAD_CONTROL_PAUSE ((uint32_t)2)
 #define KWEB_DOWNLOAD_CONTROL_RESUME ((uint32_t)3)
@@ -182,6 +189,8 @@ typedef struct kweb_engine_config {
   uint32_t reserved;
   kweb_profile_data_event_callback profile_data_callback;
   void *profile_data_user_data;
+  /* Startup preferences the browser process reads once. */
+  uint32_t preference_bits;
 } kweb_engine_config;
 
 typedef struct kweb_browser_event {

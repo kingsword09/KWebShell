@@ -1,6 +1,7 @@
 package io.github.kingsword09.kwebshell.desktop.internal
 
 import io.github.kingsword09.kwebshell.core.KWebConfigurationException
+import io.github.kingsword09.kwebshell.core.KWebEnginePreference
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -15,6 +16,7 @@ internal data class NativeEngineConfiguration(
     val rootCache: Path,
     val log: Path,
     val remoteDebuggingPort: Int = 0,
+    val preferences: Set<KWebEnginePreference> = emptySet(),
 ) {
     internal fun validated(
         operatingSystem: String = System.getProperty("os.name"),
@@ -78,6 +80,7 @@ internal data class NativeEngineConfiguration(
             rootCache = rootCachePath,
             log = logPath,
             remoteDebuggingPort = remoteDebuggingPort,
+            preferences = preferences,
         )
         normalized.validatePlatformLayout(operatingSystem)
         return normalized

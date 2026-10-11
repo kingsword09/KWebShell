@@ -3,6 +3,7 @@ package io.github.kingsword09.kwebshell.desktop
 import androidx.compose.ui.awt.ComposeWindow
 import io.github.kingsword09.kwebshell.bridge.KWebBridgeDispatcher
 import io.github.kingsword09.kwebshell.core.KWebEngine
+import io.github.kingsword09.kwebshell.core.KWebEnginePreference
 import io.github.kingsword09.kwebshell.bridge.KWebStreamBridgeDispatcher
 import io.github.kingsword09.kwebshell.services.policy.KWebUserGestureIssuer
 import java.nio.file.Path
@@ -47,6 +48,11 @@ public data class KWebDesktopEngineConfiguration(
     public val contextMenusEnabled: Boolean = false,
     public val userGestureIssuer: KWebUserGestureIssuer? = null,
     public val engineId: String = "engine-" + java.util.UUID.randomUUID(),
+    /**
+     * Preferences Chromium reads while its browser process starts. A runtime
+     * change is restart-required, so they are declared here instead.
+     */
+    public val preferences: Set<KWebEnginePreference> = emptySet(),
 )
 
 /** Creates the page dispatcher once the generated page identity is known. */

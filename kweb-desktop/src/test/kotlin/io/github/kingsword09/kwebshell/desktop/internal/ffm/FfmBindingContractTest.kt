@@ -11,12 +11,12 @@ import kotlin.test.assertTrue
 class FfmBindingContractTest {
     @Test
     fun productionInventoryMatchesAbiVersionSeventeen() {
-        assertEquals(17, FfmAbi.VERSION)
+        assertEquals(18, FfmAbi.VERSION)
         assertEquals(31, FfmAbi.FUNCTIONS.size)
         assertTrue(FfmAbi.FUNCTIONS.any { it.name() == "kweb_browser_context_menu_respond" })
         assertEquals(16, FfmLayouts.STRING_VIEW.byteSize())
         assertEquals(32, FfmLayouts.ENGINE_EVENT.byteSize())
-        assertEquals(144, FfmLayouts.ENGINE_CONFIG.byteSize())
+        assertEquals(152, FfmLayouts.ENGINE_CONFIG.byteSize())
         assertEquals(168, FfmLayouts.BROWSER_EVENT.byteSize())
         assertEquals(56, FfmLayouts.BRIDGE_EVENT.byteSize())
         assertEquals(64, FfmLayouts.PROFILE_DATA_EVENT.byteSize())

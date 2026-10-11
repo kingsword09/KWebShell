@@ -9,6 +9,11 @@
 
 #include <cstring>
 
+/** macOS needs no test environment of its own. */
+void PreparePlatformEnvironment() {}
+
+void ReleasePlatformEnvironment() {}
+
 /** Drains the main run loop so queued KVO and notification work is delivered. */
 void PreferencesFixture::pump_platform_queue() {
   if ([NSThread isMainThread]) {

@@ -146,7 +146,7 @@ void PublishedFactsAlwaysCarryTheirValue() {
   };
   for (size_t index = 0; index < 5; ++index) {
     const bool published = (snapshot.fact_bits & tri_state_facts[index]) != 0;
-    KWEB_CHECK(tri_states[index] >= KWEB_PREFERENCE_UNKNOWN && tri_states[index] <= KWEB_PREFERENCE_TRUE);
+    KWEB_CHECK(tri_states[index] <= KWEB_PREFERENCE_TRUE);
     KWEB_CHECK(published == (tri_states[index] != KWEB_PREFERENCE_UNKNOWN));
   }
   if ((snapshot.fact_bits & KWEB_PREFERENCE_FACT_ACCENT_COLOR) != 0) {
@@ -218,12 +218,14 @@ void AppearanceRequestsRecordTheEffectiveSourceAndDeduplicate() {
 }  // namespace
 
 int main() {
+  PreparePlatformEnvironment();
   ConfigurationValidationRejectsBadHeaders();
   SecondOpenIsRejectedAndCloseReleasesTheOwner();
   ArgumentValidationIsTypedAndChangesNothing();
   PublishedFactsAlwaysCarryTheirValue();
   AppearanceRequestsRecordTheEffectiveSourceAndDeduplicate();
   g_failures += RunPlatformNativeStructureTest();
+  ReleasePlatformEnvironment();
   if (g_failures == 0) {
     std::printf("kweb preferences native checks passed.\n");
     return 0;

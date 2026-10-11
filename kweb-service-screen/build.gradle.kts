@@ -1,6 +1,11 @@
 import org.gradle.api.tasks.Exec
+import org.gradle.api.tasks.JavaExec
+import org.gradle.api.tasks.bundling.Zip
+import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.security.MessageDigest
 import java.util.Locale
+import java.util.zip.ZipFile
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -98,3 +103,77 @@ val nativeTest = tasks.register<Exec>("nativeTest") {
         "--output-on-failure", "--output-junit", report.absolutePath)
 }
 tasks.named("check") { dependsOn(nativeTest) }
+
+val ffmJava = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) }
+val jvmTestRuntimeClasspath = configurations.named("jvmTestRuntimeClasspath")
+val jvmTestClasses = files(
+    layout.buildDirectory.dir("classes/kotlin/jvm/test"),
+    layout.buildDirectory.dir("classes/java/jvmTest"),
+    layout.buildDirectory.dir("classes/kotlin/jvm/main"),
+    layout.buildDirectory.dir("classes/java/jvmMain"),
+)
+val nativeScreenIntegrationTest = tasks.register<JavaExec>("nativeScreenIntegrationTest") {
+    group = "verification"
+    description = "Runs the real native screen provider integration."
+    dependsOn(tasks.named("jvmTestClasses"), nativeTest)
+    classpath = files(jvmTestClasses, jvmTestRuntimeClasspath)
+    mainClass.set("io.github.kingsword09.kwebshell.service.screen.ScreenIntegrationMainKt")
+    javaLauncher.set(ffmJava)
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    systemProperty("kweb.screen.native.library.path", nativeLibrary.get().absolutePath)
+    systemProperty(
+        "kweb.screen.integration.root",
+        layout.buildDirectory.dir("reports/screen-integration").get().asFile.absolutePath,
+    )
+    systemProperty("kweb.screen.target", screenTarget.get())
+}
+tasks.named("check") { dependsOn(nativeScreenIntegrationTest) }
+
+val nativeScreenRuntimeZip = tasks.register<Zip>("nativeScreenRuntimeZip") {
+    group = "distribution"
+    description = "Packages only the declared screen provider and its versioned C ABI header."
+    dependsOn(buildNative)
+    archiveFileName.set("kweb-service-screen-1.0.0-${screenTarget.get()}.zip")
+    destinationDirectory.set(layout.buildDirectory.dir("distributions"))
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+    from(nativeLibrary) { into("native/${screenTarget.get()}") }
+    from(nativeProjectDirectory.file("include/kweb_screen.h")) { into("include") }
+}
+val verifyNativeScreenPackage = tasks.register("verifyNativeScreenPackage") {
+    group = "verification"
+    description = "Verifies exact native screen package contents and retains its digest."
+    dependsOn(nativeScreenRuntimeZip)
+    val archive = nativeScreenRuntimeZip.flatMap { it.archiveFile }
+    val library = nativeLibrary.get()
+    val target = screenTarget.get()
+    val report = layout.buildDirectory.file("reports/screen-integration/native-screen-package.json").get().asFile
+    inputs.file(archive)
+    inputs.file(library)
+    outputs.file(report)
+    doLast {
+        val packageFile = archive.get().asFile
+        val libraryEntry = "native/$target/${library.name}"
+        ZipFile(packageFile).use { zip ->
+            val names = zip.entries().asSequence().filterNot { it.isDirectory }.map { it.name }.toSet()
+            check(names == setOf(libraryEntry, "include/kweb_screen.h")) {
+                "Unexpected files in the native screen package."
+            }
+            check(zip.getInputStream(zip.getEntry(libraryEntry)).readBytes().contentEquals(library.readBytes())) {
+                "The packaged screen library does not match the tested provider."
+            }
+            check(
+                zip.getInputStream(zip.getEntry("include/kweb_screen.h")).bufferedReader().readText()
+                    .contains("kweb_screen_abi_version"),
+            ) { "The packaged header does not declare the screen ABI revision." }
+        }
+        val digest = MessageDigest.getInstance("SHA-256").digest(packageFile.readBytes())
+            .joinToString("") { "%02x".format(it) }
+        report.parentFile.mkdirs()
+        report.writeText(
+            """{"schemaVersion":1,"target":"$target","archive":"${packageFile.name}","sha256":"$digest",""" +
+                """"nativeLibrary":"${library.name}","exactContents":true}""" + "\n",
+        )
+    }
+}
+tasks.named("check") { dependsOn(verifyNativeScreenPackage) }

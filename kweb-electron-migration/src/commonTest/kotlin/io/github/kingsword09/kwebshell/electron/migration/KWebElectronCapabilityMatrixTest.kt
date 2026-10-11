@@ -108,6 +108,16 @@ class KWebElectronCapabilityMatrixTest {
         )
         assertEquals("KWebTrays", KWebElectronCapabilityMatrix.find("tray")?.kweb)
         assertEquals(null, KWebElectronCapabilityMatrix.find("menu-tray"))
+        assertEquals(
+            KWebElectronMappingStatus.REWRITE,
+            KWebElectronCapabilityMatrix.find("native-theme")?.status,
+        )
+        assertEquals("KWebSystemPreferences", KWebElectronCapabilityMatrix.find("native-theme")?.kweb)
+        assertEquals(
+            KWebElectronMappingStatus.REWRITE,
+            KWebElectronCapabilityMatrix.find("system-preferences")?.status,
+        )
+        assertEquals("KWebSystemPreferences", KWebElectronCapabilityMatrix.find("system-preferences")?.kweb)
         assertTrue(KWebElectronCapabilityMatrix.entries.size >= 18)
     }
 }

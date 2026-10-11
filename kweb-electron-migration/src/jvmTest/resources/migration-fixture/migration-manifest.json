@@ -636,6 +636,10 @@
     {
       "id": "tray",
       "version": "1.0.0"
+    },
+    {
+      "id": "system-preferences",
+      "version": "1.0.0"
     }
   ],
   "windows": [

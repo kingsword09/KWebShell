@@ -22,6 +22,13 @@ artifact digests, test run IDs, and compatibility status. `Implemented` requires
 three current hosted target records unless the RFC declares a platform-specific
 key. Evidence expires when any bound contract or runtime digest changes.
 
+Evidence binds a repository revision, so the contract digest covers the files
+that revision tracks under the declared contract paths. Untracked local output —
+a native or JVM build directory under a bound path — is not part of the revision
+and MUST NOT invalidate a record, while changing a tracked bound file MUST. A
+root without a revision, a bound path the revision does not track, or a tracked
+bound file missing from the working tree fails closed with a structured reason.
+
 The migration matrix remains conservative runtime code. The RFC catalog is the
 planning source; CI MUST reject a supported matrix row that lacks an
 `Implemented` RFC and matching evidence.
@@ -55,8 +62,10 @@ waive platform tests, or let a stale successful run validate changed artifacts.
    copies their exact bytes into the checked-in evidence store, derives run
    identity and target from GitHub Actions, and rejects local or unsupported
    runner environments.
-7. Every evidence record binds the deterministic digest of the RFC's declared
-   repository contract paths; changing any bound file makes the record stale.
+7. Every evidence record binds the deterministic digest of the files the
+   repository revision tracks under the RFC's declared contract paths; changing a
+   tracked bound file makes the record stale, untracked local build output does
+   not, and a root without a revision fails closed.
 
 ## Evidence
 

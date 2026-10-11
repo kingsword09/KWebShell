@@ -13,6 +13,8 @@ class KWebRfcEvidenceRecorderTest {
     @TempDir
     lateinit var temporaryDirectory: Path
 
+    private var workTreeInitialized = false
+
     private val catalog = listOf(
         fixtureDocument(id = "0001", status = KWebRfcStatus.IMPLEMENTED),
         fixtureDocument(id = "0002", status = KWebRfcStatus.PROPOSED, dependsOn = listOf("0001")),
@@ -60,8 +62,29 @@ class KWebRfcEvidenceRecorderTest {
         compatibilityReportPath = report?.let { retainedFile("compatibility-report.json", "retained report") },
     )
 
-    private fun retainedFile(name: String, contents: String): Path =
-        temporaryDirectory.resolve(name).also { Files.writeString(it, contents) }
+    /**
+     * Creates one retained fixture file. The contract digest binds the repository
+     * revision, so the fixture directory is a real work tree and the file is staged.
+     */
+    private fun retainedFile(name: String, contents: String): Path {
+        val path = temporaryDirectory.resolve(name)
+        Files.writeString(path, contents)
+        if (!workTreeInitialized) {
+            workTreeInitialized = true
+            git("init", "-q")
+        }
+        git("add", "--", name)
+        return path
+    }
+
+    private fun git(vararg arguments: String) {
+        val command = listOf("git", "-C", temporaryDirectory.toString()) + arguments
+        val process = ProcessBuilder(command).redirectErrorStream(true).start()
+        val output = process.inputStream.use { it.readBytes().decodeToString() }
+        check(process.waitFor(60, java.util.concurrent.TimeUnit.SECONDS) && process.exitValue() == 0) {
+            "git ${arguments.joinToString(" ")} failed: $output"
+        }
+    }
 
     private fun record(
         request: KWebRfcEvidenceRecordRequest,

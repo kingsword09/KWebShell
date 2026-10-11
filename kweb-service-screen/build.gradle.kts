@@ -41,6 +41,23 @@ kotlin {
 
 tasks.named<Test>("jvmTest") { useJUnitPlatform() }
 
+val bridgeCodegen = configurations.create("bridgeCodegen")
+dependencies { bridgeCodegen(project(":kweb-bridge-codegen")) }
+
+val bridgeSchema = layout.projectDirectory.file("src/mainBridge/screen-bridge.json")
+val generatedBridgeDirectory = layout.buildDirectory.dir("generated/kwebBridge/screen")
+val generateScreenBridge = tasks.register<JavaExec>("generateScreenBridge") {
+    group = "build"
+    description = "Generates the KWebScreens Kotlin and TypeScript bridge clients."
+    classpath = bridgeCodegen
+    mainClass.set("io.github.kingsword09.kwebshell.bridge.codegen.MainKt")
+    inputs.file(bridgeSchema)
+    outputs.dir(generatedBridgeDirectory)
+    args(bridgeSchema.asFile.absolutePath, generatedBridgeDirectory.get().asFile.absolutePath)
+}
+kotlin.sourceSets.named("jvmMain") { kotlin.srcDir(generatedBridgeDirectory) }
+tasks.named("compileKotlinJvm") { dependsOn(generateScreenBridge) }
+
 val nativeProjectDirectory = layout.projectDirectory.dir("native")
 val nativeBuildDirectory = layout.buildDirectory.dir("native")
 val nativeLibrary = providers.systemProperty("os.name").map { operatingSystem ->

@@ -436,6 +436,8 @@ public object KWebScreenErrorCode {
     public const val SESSION_UNSUPPORTED: String = "screen.session-unsupported"
     public const val NATIVE_FAILED: String = "screen.native-failed"
     public const val OWNER_CLOSED: String = "screen.owner-closed"
+    public const val FACT_UNKNOWN: String = "screen.fact-unknown"
+    public const val FACT_NOT_RENDERER_VISIBLE: String = "screen.fact-not-renderer-visible"
 }
 
 public const val KWEB_SCREEN_EVENT_REPLAY: Int = 64

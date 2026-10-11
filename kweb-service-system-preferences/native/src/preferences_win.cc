@@ -29,6 +29,9 @@ struct WindowsState {
 
 kwebshell::preferences::State *g_state = nullptr;
 
+using kwebshell::preferences::Facts;
+using kwebshell::preferences::State;
+
 bool ReadDword(HKEY key, const wchar_t *name, DWORD *value) {
   if (key == nullptr || value == nullptr) return false;
   DWORD type = 0;
@@ -49,7 +52,7 @@ bool ReadDword(HKEY key, const wchar_t *name, DWORD *value) {
  * accent color through DWM. It publishes no differentiate-without-color or
  * invert-colors fact, so those stay absent.
  */
-void ReadFacts(WindowsState &windows, kwebshell::preferences::State &state, Facts *facts) {
+void ReadFacts(WindowsState &windows, State &state, Facts *facts) {
   uint32_t published = 0;
   uint32_t live = 0;
   DWORD light = 0;

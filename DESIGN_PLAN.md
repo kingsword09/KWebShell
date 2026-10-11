@@ -2742,21 +2742,6 @@ documentation, and the final acceptance review:
    Linux evidence pass, and every acceptance row is decided before the focused
    squash pull request is merged.
 
-### RFC 0001 contract revision: revision-bound contract digests
-
-An RFC contract digest must bind the repository revision, not whatever happens to
-sit in a developer's working tree. The objective is complete when:
-
-1. a directory binding expands to the files the revision tracks, so an untracked
-   native or JVM build directory under a bound path leaves a record current;
-2. changing a tracked bound file still makes the record stale, and a staged change
-   is part of the revision the digest reads;
-3. a root without a revision, a bound path the revision does not track, and a
-   tracked bound file missing from the working tree each fail closed with their
-   own stable `rfc.contract-binding.*` code; and
-4. the existing records keep verifying, because the tracked bytes are exactly what
-   the hosted recorder hashed all along.
-
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.

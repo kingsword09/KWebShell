@@ -6562,6 +6562,7 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
             mode == IntegrationMode.RENDERER_CRASH ||
             mode == IntegrationMode.FILES_WORKSPACE ||
             mode == IntegrationMode.CONTEXT_MENU ||
+            mode == IntegrationMode.THEME ||
             mode == IntegrationMode.EXTENSION_LIFECYCLE_CRASH ||
             mode.name.startsWith("EXTENSION_LIFECYCLE_STAGE")
         ) {

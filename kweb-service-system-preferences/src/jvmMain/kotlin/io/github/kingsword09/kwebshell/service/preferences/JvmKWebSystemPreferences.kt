@@ -1,5 +1,6 @@
 package io.github.kingsword09.kwebshell.service.preferences
 
+import io.github.kingsword09.kwebshell.core.KWebAppearanceSource
 import io.github.kingsword09.kwebshell.core.KWebException
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebOperatingSystem

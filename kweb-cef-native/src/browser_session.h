@@ -21,6 +21,7 @@ kweb_status SetBoundsBrowserSession(kweb_browser_handle browser, int32_t x,
 kweb_status SetSurfaceStateBrowserSession(kweb_browser_handle browser,
                                           bool visible, bool focused);
 kweb_status CloseBrowserSession(kweb_browser_handle browser);
+
 kweb_status OpenDevToolsSession(kweb_browser_handle browser);
 kweb_status CloseDevToolsSession(kweb_browser_handle browser);
 kweb_status CrashRendererSession(kweb_browser_handle browser);

@@ -127,6 +127,8 @@ public class KWebElectronInventoryScanner public constructor(
         "globalShortcut" -> "global-shortcut"
         "Menu", "MenuItem" -> "menu"
         "Tray" -> "tray"
+        "nativeTheme" -> "native-theme"
+        "systemPreferences" -> "system-preferences"
         "utilityProcess", "child_process" -> "process"
         "autoUpdater" -> "auto-updater"
         else -> null

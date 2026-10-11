@@ -23,7 +23,8 @@ public final class FfmBindings {
         String localesPath,
         String rootCachePath,
         String logPath,
-        int remoteDebuggingPort
+        int remoteDebuggingPort,
+        int preferenceBits
     ) {
         return FfmEngineCalls.create(
             sink,
@@ -35,7 +36,8 @@ public final class FfmBindings {
             localesPath,
             rootCachePath,
             logPath,
-            remoteDebuggingPort
+            remoteDebuggingPort,
+            preferenceBits
         );
     }
 

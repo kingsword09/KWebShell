@@ -28,7 +28,8 @@ final class FfmEngineCalls {
         String localesPath,
         String rootCachePath,
         String logPath,
-        int remoteDebuggingPort
+        int remoteDebuggingPort,
+        int preferenceBits
     ) {
         FfmEngineCallbackOwner owner = null;
         try {
@@ -58,6 +59,7 @@ final class FfmEngineCalls {
                 );
                 config.set(FfmLayouts.POINTER, offset("profile_data_callback"), owner.profileDataStub());
                 config.set(FfmLayouts.POINTER, offset("profile_data_user_data"), MemorySegment.NULL);
+                config.set(FfmLayouts.UINT32, offset("preference_bits"), preferenceBits);
                 int status = invokeCreate(library.handle("kweb_engine_create"), config, output);
                 if (status != FfmStatus.OK) {
                     abort(owner);

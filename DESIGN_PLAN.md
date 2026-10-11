@@ -2710,6 +2710,38 @@ evidence, documentation, and the final acceptance review:
    Linux evidence pass, and every acceptance row is decided before the focused
    squash pull request is merged.
 
+### RFC 0019 implementation objective: theme, system preferences, and accessibility
+
+RFC 0019 publishes one application-scoped system-preferences service for Windows
+x64, macOS arm64, and Linux x64 that owns the observable appearance and
+accessibility facts, one ordered change stream, and the application appearance
+request. The objective is complete only when the same PR lands the typed
+contract, the three providers, the engine and Compose synchronization, the
+renderer bridge, the migration mapping, real three-target evidence,
+documentation, and the final acceptance review:
+
+1. `kweb-service-system-preferences` publishes an atomic optional-fact snapshot,
+   declared capability facts, ordered changes, and a bounded appearance request.
+   A fact the platform does not publish stays absent; it is never defaulted.
+2. Exactly one provider per target: AppKit appearance and accessibility APIs with
+   `effectiveAppearance` KVO and the distributed interface-theme notification;
+   Win32 `SystemParametersInfo`, DWM, declared preference reads, and
+   `WM_SETTINGCHANGE`/`WM_THEMECHANGED` updates; and the XDG settings portal with
+   `SettingChanged`, `org.a11y.Status`, and the declared desktop interface.
+3. Engine ABI v18 carries the declared appearance and startup preference set,
+   applies runtime appearance changes through the browser request context, and a
+   real-CEF probe proves `prefers-color-scheme`, `prefers-contrast`, and
+   `prefers-reduced-motion` agree with service state; startup-only facts are
+   declared restart-required instead of being ignored.
+4. The Compose adapter and the renderer bridge follow the same service state, and
+   only an exact-origin main frame with the declared grant and a user gesture can
+   request the declared appearance override.
+5. The Electron `nativeTheme` mapping rewrites declared operations, and
+   `systemPreferences` is classified per method with explicit blockers.
+6. Common, JVM, native, packaging, migration, and hosted Windows, macOS, and
+   Linux evidence pass, and every acceptance row is decided before the focused
+   squash pull request is merged.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.

@@ -17,6 +17,7 @@ struct ValidatedEngineConfiguration final {
   std::filesystem::path framework_dir_path;
   std::filesystem::path main_bundle_path;
   int32_t remote_debugging_port = 0;
+  uint32_t preference_bits = 0;
 };
 
 kweb_status

@@ -24,6 +24,19 @@ const checker = program.getTypeChecker();
 const facts = [];
 const builtin = new Set(builtinModules.map(n => n.replace(/^node:/, '')));
 const electronNames = new Set(['app', 'ipcMain', 'ipcRenderer', 'contextBridge', 'BrowserWindow', 'webContents', 'session', 'protocol', 'Menu', 'MenuItem', 'Tray']);
+// Electron systemPreferences methods that map to one declared preference fact.
+// Every other method, including the permission and platform-specific ones, stays
+// an explicit rewrite blocker.
+const electronSystemPreferenceFacts = new Set([
+  'getAccentColor', 'shouldUseHighContrastColors', 'shouldUseInvertedColorScheme',
+  'shouldUseReducedMotion', 'getEffectiveAppearance',
+]);
+// Electron nativeTheme members that map to the declared snapshot. A member read
+// that is not declared, and the Electron-side theme mutation, stay blockers.
+const electronNativeThemeMembers = new Set([
+  'shouldUseDarkColors', 'shouldUseHighContrastColors', 'shouldUseInvertedColorScheme',
+  'shouldUseReducedMotion', 'prefersReducedTransparency', 'inForcedColorsMode',
+]);
 const electronMenuRoles = new Set([
   'about', 'services', 'hide', 'hideOthers', 'unhide', 'quit',
   'close', 'minimize', 'zoom', 'togglefullscreen', 'front',
@@ -229,6 +242,16 @@ for (const fileName of sourceNames) {
         emit(sf, node, 'UNCLASSIFIED', 'electron.Tray', { symbol: 'Tray', operation: 'electron.Tray' });
       }
     }
+    if (ts.isPropertyAccessExpression(node) && !ts.isCallExpression(node.parent)) {
+      const target = binding(node.expression);
+      if (target === 'electron.nativeTheme') {
+        const member = node.name.text;
+        const operation = electronNativeThemeMembers.has(member)
+          ? `electron.nativeTheme.${member}`
+          : `electron.nativeTheme.${member}-unsupported`;
+        emit(sf, node, 'UNCLASSIFIED', operation, { symbol: 'nativeTheme', operation });
+      }
+    }
     if (ts.isCallExpression(node)) {
       const callee = unwrap(node.expression);
       const globalCall = ts.isIdentifier(callee) && !checker.getSymbolAtLocation(callee);
@@ -258,7 +281,13 @@ for (const fileName of sourceNames) {
       } else if (target?.startsWith('electron.Menu.')) {
         emit(sf, node, 'UNCLASSIFIED', target, { symbol: 'Menu', operation: target });
         if (target === 'electron.Menu.buildFromTemplate') menuTemplateFacts(sf, node);
-      } else if (target?.startsWith('electron.Tray.')) {
+      } else if (target?.startsWith('electron.systemPreferences.')) {
+        const method = target.slice('electron.systemPreferences.'.length);
+        const operation = electronSystemPreferenceFacts.has(method)
+          ? target
+          : `${target}-unsupported`;
+        emit(sf, node, 'UNCLASSIFIED', operation, { symbol: 'systemPreferences', operation });
+} else if (target?.startsWith('electron.Tray.')) {
         if (target === 'electron.Tray.instance.on') {
           const event = literal(node.arguments[0]);
           const known = event !== null && electronTrayEvents.has(event);

@@ -19,6 +19,7 @@ kotlin {
 
 dependencies {
     api(project(":kweb-core"))
+    api(project(":kweb-service-system-preferences"))
     implementation(project(":kweb-desktop"))
     implementation(libs.compose.ui.desktop)
     implementation(libs.kotlinx.coroutines.core)

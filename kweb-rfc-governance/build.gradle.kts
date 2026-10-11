@@ -31,6 +31,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     testImplementation(kotlin("test-junit5"))
     testRuntimeOnly(libs.junit.platform.launcher)
+    implementation(project(":kweb-service-system-preferences"))
 }
 
 tasks.withType<Test>().configureEach {

@@ -15,6 +15,7 @@ import unittest
 from _msix_fixture import REVISION, create_fixture, write_report
 from _image_fixture import write_image_fixture
 from _menus_fixture import write_menus_fixture
+from _preferences_fixture import write_preferences_fixture
 from _tray_fixture import write_tray_fixture
 
 REPOSITORY = Path(__file__).resolve().parents[3]
@@ -22,7 +23,7 @@ SCRIPT = REPOSITORY / ".github/scripts/aggregate-rfc-evidence.sh"
 TARGETS = ("macos-arm64", "windows-x64", "linux-x64")
 IMPLEMENTED = {
     "0001", "0002", "0003", "0004", "0006", "0007", "0008", "0009",
-    "0010", "0011", "0012", "0013", "0014", "0015", "0017", "0018", "0027", "0030",
+    "0010", "0011", "0012", "0013", "0014", "0015", "0017", "0018", "0019", "0027", "0030",
 }
 ARTIFACTS = {
     "rfc-governance": ["TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml"],
@@ -75,6 +76,7 @@ class AggregationTest(unittest.TestCase):
             write_image_fixture(self.root / "build/rfc-evidence/downloaded", target)
             write_menus_fixture(self.root / "build/rfc-evidence/downloaded", target)
             write_tray_fixture(self.root / "build/rfc-evidence/downloaded", target)
+            write_preferences_fixture(self.root / "build/rfc-evidence/downloaded", target)
         self.msix, self.msix_report_path, self.msix_report, _ = create_fixture(
             self.root / "build/rfc-evidence/downloaded/application-package-windows-x64-revision"
         )

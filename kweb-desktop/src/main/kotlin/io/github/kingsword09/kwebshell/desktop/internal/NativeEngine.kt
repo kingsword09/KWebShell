@@ -559,6 +559,7 @@ internal class NativeEngine private constructor(
                         validated.rootCache.toString(),
                         validated.log.toString(),
                         validated.remoteDebuggingPort,
+                        validated.preferences.fold(0) { bits, preference -> bits or (1 shl preference.ordinal) },
                     )
                 }
             } catch (error: Throwable) {

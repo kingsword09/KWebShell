@@ -121,6 +121,20 @@ record() {
       arguments="$arguments --artifact $tray_key=$tray_file"
     done
   fi
+  if [ "$rfc" = "0019" ]; then
+    arguments="$arguments --service system-preferences --matrix-row native-theme --matrix-row system-preferences --from-compatibility-report $extra_file"
+    for preferences_spec in \
+      "preferences-native-tests|preferences-native-tests.xml|preferences-integration" \
+      "preferences-contract-tests|TEST-io.github.kingsword09.kwebshell.service.preferences.KWebSystemPreferencesContractTest.xml|preferences-integration" \
+      "preferences-bridge-tests|TEST-io.github.kingsword09.kwebshell.service.preferences.KWebSystemPreferencesBridgeTest.xml|preferences-integration" \
+      "preferences-package|native-preferences-package.json|preferences-integration" \
+      "preferences-runtime|kweb-service-system-preferences-1.0.0-${target}.zip|preferences-integration" \
+      "theme-probe|theme-evidence.json|engine-integration"; do
+      IFS='|' read -r preferences_key preferences_name preferences_family <<< "$preferences_spec"
+      preferences_file=$(find "$downloaded" -type f -name "$preferences_name" -path "*${preferences_family}-${target}-*" | head -1)
+      arguments="$arguments --artifact $preferences_key=$preferences_file"
+    done
+  fi
   if [ "$rfc" = "0027" ]; then
     arguments="$arguments --service native-image --matrix-row native-image --from-compatibility-report $extra_file"
     for image_spec in \
@@ -158,6 +172,7 @@ for target in macos-arm64 windows-x64 linux-x64; do
     "0015|shell.hosted|shell|migration-shell-evidence.json|electron-migration|migration-shell|compatibility.json|electron-migration"
     "0017|menus.hosted|menus-integration|menus-integration.json|menus-integration|compatibility|compatibility.json|electron-migration"
     "0018|tray.hosted|tray-integration|tray-integration.json|tray-integration|compatibility|compatibility.json|electron-migration"
+    "0019|preferences.hosted|preferences-integration|preferences-integration.json|preferences-integration|compatibility|compatibility.json|electron-migration"
     "0027|image.hosted|native-image|native-image-evidence.json|image-integration|compatibility|compatibility.json|electron-migration"
     "0007|window-controls.hosted|window-controls-report|window-controls-report.json|provider-lifecycle"
   )

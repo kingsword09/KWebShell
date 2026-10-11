@@ -34,7 +34,7 @@ constexpr std::array<size_t, 6> kEngineEventOffsets = {
     offsetof(kweb_engine_event, sequence),
 };
 
-constexpr std::array<size_t, 14> kEngineConfigOffsets = {
+constexpr std::array<size_t, 15> kEngineConfigOffsets = {
     offsetof(kweb_engine_config, struct_size),
     offsetof(kweb_engine_config, abi_version),
     offsetof(kweb_engine_config, callback),
@@ -49,6 +49,7 @@ constexpr std::array<size_t, 14> kEngineConfigOffsets = {
     offsetof(kweb_engine_config, reserved),
     offsetof(kweb_engine_config, profile_data_callback),
     offsetof(kweb_engine_config, profile_data_user_data),
+    offsetof(kweb_engine_config, preference_bits),
 };
 
 constexpr std::array<size_t, 20> kBrowserEventOffsets = {

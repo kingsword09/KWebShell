@@ -6,6 +6,8 @@ import io.github.kingsword09.kwebshell.core.KWebRect
 import io.github.kingsword09.kwebshell.core.KWebCapability
 import io.github.kingsword09.kwebshell.services.policy.KWebGestureBinding
 import io.github.kingsword09.kwebshell.services.policy.KWebUserGestureIssuer
+import io.github.kingsword09.kwebshell.core.KWebAppearanceSupport
+import io.github.kingsword09.kwebshell.core.KWebEnginePreference
 import io.github.kingsword09.kwebshell.core.KWebConfigurationException
 import io.github.kingsword09.kwebshell.core.KWebEngine
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
@@ -113,6 +115,16 @@ public class KWebDesktopEngine private constructor(
     internal val engineId: String = configuration.engineId
     internal val downloadPolicy: KWebDesktopDownloadPolicy? = configuration.downloadPolicy
     internal val contextMenusEnabled: Boolean = configuration.contextMenusEnabled
+    /**
+     * What the engine applies to page content. The real-CEF probe of the hosted
+     * matrix proves the startup preferences and that page content follows the
+     * platform color scheme, so a preference change requires a restart instead
+     * of being silently dropped and no engine color-scheme override is claimed.
+     */
+    public val appearanceSupport: KWebAppearanceSupport = KWebAppearanceSupport(
+        restartRequiredPreferences = KWebEnginePreference.entries.toSet(),
+        contentColorSchemeFollowsPlatform = true,
+    )
 
     internal val openingProfileCount: Int
         get() = synchronized(lock) { openingProfiles.size }
@@ -126,6 +138,8 @@ public class KWebDesktopEngine private constructor(
     private var shutdownReport: KWebDesktopShutdownReport? = null
 
     public val nativeServices: KWebNativeServiceRegistry = KWebNativeServiceRegistry()
+
+
 
     public val lastApplicationShutdownReport: KWebDesktopShutdownReport?
         get() = synchronized(lock) { shutdownReport }
@@ -302,6 +316,7 @@ public class KWebDesktopEngine private constructor(
                 rootCache = validatedConfiguration.rootCache,
                 log = validatedConfiguration.log,
                 remoteDebuggingPort = validatedConfiguration.remoteDebuggingPort,
+                preferences = validatedConfiguration.preferences,
             )
             return KWebDesktopEngine(
                 native = NativeEngine.open(nativeConfiguration),
@@ -326,6 +341,7 @@ internal class KWebDesktopProfile(
     private val contextMenuStream = KWebDesktopContextMenuStream()
     private val downloadStream = KWebDesktopDownloadStream()
     private val pages = linkedSetOf<KWebDesktopPage>()
+
     private val downloadsById = linkedMapOf<Long, KWebDesktopDownload>()
     private data class SecurityChallengeOwner(
         val browserHandle: Long,
@@ -1328,6 +1344,7 @@ internal class KWebDesktopPage(
     internal fun trackTerminalOwnership() {
         eventStream.setPageClosedListener { owner.removePage(this) }
     }
+
 
     override val lifecycle: StateFlow<KWebLifecycleState> = native.lifecycle
     override val events: Flow<KWebPageEvent> = eventStream.events

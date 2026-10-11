@@ -18,6 +18,8 @@
 #include <windows.h>
 #endif
 
+#include <cstdio>
+
 #include "engine_configuration.h"
 #include "browser_session.h"
 #include "engine_internal.h"
@@ -109,6 +111,10 @@ public:
 
   Engine(const Engine &) = delete;
   Engine &operator=(const Engine &) = delete;
+
+  const ValidatedEngineConfiguration &configuration() const {
+    return configuration_;
+  }
 
   bool Initialize() {
     if (!EnginePlatformRuntimeMatches(configuration_.cef_runtime_path)) {
@@ -330,6 +336,25 @@ void EngineApplication::OnContextInitialized() {
 void EngineApplication::OnBeforeCommandLineProcessing(
     const CefString &process_type, CefRefPtr<CefCommandLine> command_line) {
   ConfigureEngineCommandLineOnPlatform(process_type, command_line);
+  if (!process_type.empty()) {
+    return;
+  }
+  const ValidatedEngineConfiguration &configuration = engine_->configuration();
+  // The browser process reads these preferences once, so a runtime change is
+  // restart-required and is reported as such instead of being ignored.
+  if ((configuration.preference_bits & KWEB_ENGINE_PREFERENCE_REDUCED_MOTION) != 0) {
+    command_line->AppendSwitch("force-prefers-reduced-motion");
+  }
+  if ((configuration.preference_bits & KWEB_ENGINE_PREFERENCE_HIGH_CONTRAST) != 0) {
+    command_line->AppendSwitch("force-high-contrast");
+  }
+  if (configuration.preference_bits != 0) {
+    std::fprintf(stderr,
+                 "KWEBSHELL_ENGINE_CMDLINE:bits=%u reduced=%d contrast=%d\n",
+                 configuration.preference_bits,
+                 command_line->HasSwitch("force-prefers-reduced-motion") ? 1 : 0,
+                 command_line->HasSwitch("force-high-contrast") ? 1 : 0);
+  }
 }
 
 void EngineApplication::OnScheduleMessagePumpWork(int64_t delay_ms) {

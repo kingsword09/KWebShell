@@ -180,6 +180,79 @@ class KWebElectronInventoryContractTest {
         }
     }
 
+    @Test
+    fun scannerClassifiesDeclaredSystemPreferenceReadsAndBlocksTheRest() {
+        val root = Files.createTempDirectory("kweb-electron-theme")
+        try {
+            root.resolve("theme.ts").writeText(
+                """
+                import { nativeTheme, systemPreferences } from "electron";
+                const dark = nativeTheme.shouldUseDarkColors;
+                nativeTheme.themeSource = "dark";
+                nativeTheme.on("updated", () => refresh());
+                const accent = systemPreferences.getAccentColor();
+                const high = systemPreferences.shouldUseHighContrastColors();
+                const inverted = systemPreferences.shouldUseInvertedColorScheme();
+                const motion = systemPreferences.shouldUseReducedMotion();
+                const appearance = systemPreferences.getEffectiveAppearance();
+                const media = systemPreferences.getMediaAccessStatus("camera");
+                const granted = systemPreferences.askForMediaAccess("camera");
+                const userDefault = systemPreferences.getUserDefault("key", "string");
+                """.trimIndent(),
+            )
+            val findings = KWebElectronInventoryScanner().scan(root).findings
+            // The Electron import itself is already a blocking rewrite finding.
+            assertTrue(
+                findings.any {
+                    it.matrixId == "native-theme" && it.expression == "electron.nativeTheme" && it.blocking
+                },
+                findings.toString(),
+            )
+            assertTrue(
+                findings.any {
+                    it.matrixId == "system-preferences" &&
+                        it.expression == "electron.systemPreferences" &&
+                        it.blocking
+                },
+                findings.toString(),
+            )
+            // A declared member read is classified; the Electron-side theme
+            // mutation stays an explicit blocker.
+            listOf(
+                "electron.nativeTheme.shouldUseDarkColors",
+                "electron.nativeTheme.themeSource-unsupported",
+            ).forEach { operation ->
+                assertTrue(findings.any { it.matrixId == "native-theme" && it.detail == operation && it.blocking }, findings.toString())
+            }
+            listOf(
+                "electron.systemPreferences.getAccentColor",
+                "electron.systemPreferences.shouldUseHighContrastColors",
+                "electron.systemPreferences.shouldUseInvertedColorScheme",
+                "electron.systemPreferences.shouldUseReducedMotion",
+                "electron.systemPreferences.getEffectiveAppearance",
+            ).forEach { operation ->
+                assertTrue(
+                    findings.any { it.matrixId == "system-preferences" && it.detail == operation && it.blocking },
+                    findings.toString(),
+                )
+            }
+            // Permission, platform-specific, and preference-store methods stay explicit blockers.
+            listOf("getMediaAccessStatus", "askForMediaAccess", "getUserDefault").forEach { method ->
+                assertTrue(
+                    findings.any {
+                        it.matrixId == "system-preferences" &&
+                            it.detail == "electron.systemPreferences.$method-unsupported" &&
+                            it.blocking
+                    },
+                    findings.toString(),
+                )
+            }
+            assertTrue(findings.none { it.matrixId == "system-preferences" && !it.blocking }, findings.toString())
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
     private fun manifest(): KWebElectronManifest = KWebElectronMigrationJson.decode(
         """
         {

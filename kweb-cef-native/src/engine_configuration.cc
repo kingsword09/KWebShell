@@ -270,9 +270,9 @@ ValidateEngineConfiguration(const kweb_engine_config &config,
   }
 
   ValidatedEngineConfiguration configuration{
-      *cef_runtime,    *subprocess, *resources, *locales,
-      *canonical_root, *log,        {},         {},
-      config.remote_debugging_port};
+      *cef_runtime,     *subprocess, *resources, *locales,
+      *canonical_root,  *log,        {},         {},
+      config.remote_debugging_port, config.preference_bits};
   return ValidatePlatformLayout(configuration, validated_out);
 }
 

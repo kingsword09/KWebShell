@@ -130,7 +130,8 @@ struct ConfigurationStorage final {
             remote_debugging_port,
             0,
             nullptr,
-            nullptr};
+            nullptr,
+            0};
   }
 };
 

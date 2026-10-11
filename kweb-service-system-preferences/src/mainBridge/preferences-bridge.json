@@ -1,0 +1,94 @@
+{
+  "namespace": "SystemPreferencesBridge",
+  "kotlinPackage": "io.github.kingsword09.kwebshell.service.preferences.generated",
+  "version": 1,
+  "types": [
+    {
+      "name": "ReadRequest",
+      "fields": [
+        {
+          "name": "facts",
+          "type": "string",
+          "list": true
+        }
+      ]
+    },
+    {
+      "name": "Snapshot",
+      "fields": [
+        {
+          "name": "appearanceSource",
+          "type": "string"
+        },
+        {
+          "name": "colorScheme",
+          "type": "string"
+        },
+        {
+          "name": "contrast",
+          "type": "string"
+        },
+        {
+          "name": "reducedMotion",
+          "type": "string"
+        },
+        {
+          "name": "accentColor",
+          "type": "string"
+        },
+        {
+          "name": "textScalePercent",
+          "type": "int32"
+        },
+        {
+          "name": "sequence",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "SetAppearanceRequest",
+      "fields": [
+        {
+          "name": "source",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "SetAppearanceResponse",
+      "fields": [
+        {
+          "name": "effective",
+          "type": "string"
+        },
+        {
+          "name": "sequence",
+          "type": "string"
+        }
+      ]
+    }
+  ],
+  "methods": [
+    {
+      "name": "read",
+      "request": "ReadRequest",
+      "response": "Snapshot"
+    },
+    {
+      "name": "setAppearance",
+      "request": "SetAppearanceRequest",
+      "response": "SetAppearanceResponse"
+    }
+  ],
+  "streams": [
+    {
+      "name": "changes",
+      "request": "ReadRequest",
+      "chunk": "Snapshot",
+      "binary": false,
+      "capacity": 16,
+      "schemaVersion": 1
+    }
+  ]
+}

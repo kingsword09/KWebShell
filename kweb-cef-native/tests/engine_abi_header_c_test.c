@@ -7,7 +7,7 @@
 
 _Static_assert(KWEB_INVALID_ENGINE_HANDLE == 0,
                "the invalid engine handle must remain zero");
-_Static_assert(KWEB_ABI_VERSION == 17,
+_Static_assert(KWEB_ABI_VERSION == 18,
                "page context menus require ABI version 17");
 _Static_assert(KWEB_STATUS_CONTEXT_MENU_NOT_FOUND == 89,
                "the context-menu not-found status is ABI-stable");
@@ -17,12 +17,16 @@ _Static_assert(KWEB_STATUS_CONTEXT_MENU_DECISION_INVALID == 91,
                "the context-menu decision-invalid status is ABI-stable");
 _Static_assert(KWEB_STATUS_CONTEXT_MENU_CLOSING == 92,
                "the context-menu closing status is ABI-stable");
+_Static_assert(KWEB_ENGINE_PREFERENCE_ALL == 3,
+               "the engine preference mask is ABI-stable");
 _Static_assert(KWEB_BROWSER_EVENT_CONTEXT_MENU == 27,
                "the context-menu browser event type is ABI-stable");
 _Static_assert(KWEB_STATUS_PROFILE_CONTEXT_INITIALIZATION_FAILED == 70,
                "the Profile context initialization status is ABI-stable");
-_Static_assert(sizeof(kweb_engine_config) == 144,
+_Static_assert(sizeof(kweb_engine_config) == 152,
                "the engine configuration layout is ABI-stable");
+_Static_assert(offsetof(kweb_engine_config, preference_bits) == 144,
+               "the engine preference offset is ABI-stable");
 _Static_assert(offsetof(kweb_engine_config, profile_data_callback) == 128,
                "the engine Profile callback offset is ABI-stable");
 _Static_assert(sizeof(kweb_profile_data_event) == 64,
@@ -215,6 +219,7 @@ int main(void) {
       0,
       NULL,
       NULL,
+      0,
   };
   const kweb_engine_event event = {(uint32_t)sizeof(kweb_engine_event),
                                    KWEB_ABI_VERSION,

@@ -99,6 +99,7 @@ internal object NativeBindings {
         rootCachePath: String,
         logPath: String,
         remoteDebuggingPort: Int,
+        preferenceBits: Int,
     ): Long = FfmBindings.engineCreate(
         FfmCallbacks.EngineEvent(sink::onNativeEngineEvent),
         FfmCallbacks.ProfileDataEvent(profileDataSink::onNativeProfileDataEvent),
@@ -110,6 +111,7 @@ internal object NativeBindings {
         rootCachePath,
         logPath,
         remoteDebuggingPort,
+        preferenceBits,
     )
 
     internal fun engineClose(handle: Long): Int = FfmBindings.engineClose(handle)

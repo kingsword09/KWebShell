@@ -23,9 +23,9 @@ One implementation objective delivers:
 2. one explicit provider per target: AppKit appearance and accessibility APIs,
    Win32 `SystemParametersInfo`/DWM and declared preference reads, and the XDG
    settings portal plus the declared accessibility and desktop interfaces;
-3. engine ABI v18 appearance support: the declared appearance and startup
-   preference set applied to Chromium, one runtime appearance request export, and
-   a real-CEF probe that proves the page media queries agree with service state;
+3. engine ABI v18 theme support: the declared startup preference set applied to
+   Chromium and one real-CEF probe that records which media queries the runtime
+   actually moves, including that page color scheme follows the platform;
 4. one Compose adapter that derives appearance state from this service instead of
    introducing a second source of truth;
 5. the closed Electron `nativeTheme` and selected `systemPreferences` migration
@@ -107,19 +107,26 @@ facts stay absent from the capability set on that target.
 ### Engine and Compose synchronization
 
 One provider keeps the application appearance, the Compose adapter, and Chromium
-in agreement:
+in agreement. The contract review measured what the pinned runtime can actually
+do, and the engine declares exactly that:
 
-- Engine ABI v18 adds `appearance_scheme` and `preference_bits` to
-  `kweb_engine_config`. They are applied before CEF initialization because the
-  corresponding Chromium preferences are startup-only.
-- `KWEB_BROWSER_CONFIG_APPEARANCE_SYNC_ENABLED` opt-in makes the engine own the
-  page appearance; without it Chromium keeps its own behavior.
-- `kweb_engine_browser_set_appearance(browser, scheme)` applies a runtime
-  appearance change through the browser's request context and returns a typed
-  status; a rejected request changes nothing.
-- Facts whose Chromium representation is startup-only (contrast, reduced motion)
-  are declared as restart-required in the capability report instead of being
-  silently ignored at runtime.
+- Engine ABI v18 adds `preference_bits` to `kweb_engine_config`. Chromium reads
+  those preferences once while its browser process starts, so they are declared
+  as restart-required in the capability report instead of a runtime change being
+  dropped silently.
+- The page color scheme is **not** an engine override. The pinned runtime
+  publishes no engine or command-line control that moves `prefers-color-scheme`
+  for Alloy page content: declaring an appearance and applying
+  `CefRequestContext::SetChromeColorScheme` at browser creation and at runtime,
+  with and without a reload, never changed the page media query, and a
+  discriminating run with a declared dark appearance still published a light
+  page. Page content therefore follows the platform appearance, which is the
+  same fact this service publishes, so the Compose adapter and Chromium agree
+  through the platform instead of through a second source of truth.
+- `KWebAppearanceSupport` reports that shape: the restart-required preferences,
+  and that content color scheme follows the platform. A host that needs a page
+  style override does it in page content, not by claiming an engine switch the
+  runtime does not implement.
 - The Compose adapter in `kweb-compose` derives its state from this service and
   updates from the same change stream.
 
@@ -158,8 +165,8 @@ identity changes.
 | A2 / platform providers | One provider per target publishes exactly the facts its platform exposes. | macOS appearance and accessibility facts, Windows system-parameter facts, Linux portal facts, a fact the target does not publish. | Provider structure tests on all three targets. | Provider snapshot builders and per-target structure tests. | Provider transcripts. | `NOT_RUN` before implementation. |
 | A3 / change ordering | Each native change delivers exactly one ordered update; identical snapshots are not re-emitted and rejected calls emit nothing. | One change per setting, duplicate native notification, unchanged snapshot, failed request. | Provider observer tests with injected native changes. | Sequence and de-duplication code plus provider observer tests. | Observer transcripts. | `NOT_RUN` before implementation. |
 | A4 / appearance request | `SYSTEM`, `LIGHT`, and `DARK` are recorded and the effective source is reported; an unsupported source fails typed. | Each source, unsupported source, request after close, request without the platform facility. | JVM request tests plus provider assertions. | `requestAppearance` and provider appearance application. | Request transcripts. | `NOT_RUN` before implementation. |
-| A5 / engine color scheme | With the opt-in flag, the engine applies the declared color scheme and the page observes the matching `prefers-color-scheme`, at startup and at runtime. | Light, dark, system, runtime switch, engine without the flag, runtime request on a closed browser. | Real-CEF probe on all three targets. | Engine ABI v18 fields, `kweb_engine_browser_set_appearance`, theme probe mode. | Probe transcripts. | `NOT_RUN` before implementation. |
-| A6 / engine contrast and reduced motion | The declared startup preferences are applied to Chromium and proven by the probe; a runtime change is reported as restart-required instead of being ignored. | Reduced motion on and off, high contrast on, runtime change notification, probe reading of all three media features. | Real-CEF probe on all three targets. | Engine startup preference bits and probe mode. | Probe transcripts. | `NOT_RUN` before implementation. |
+| A5 / engine color scheme | The engine declares no page color-scheme override, and the probe records that page content follows the platform appearance the service publishes. | Platform light session, platform dark session, a declared appearance that the runtime cannot apply, probe reading of `prefers-color-scheme`. | Real-CEF probe on all three targets. | `KWebAppearanceSupport` and the theme probe mode. | Probe transcripts. | `NOT_RUN` before implementation. |
+| A6 / engine contrast and reduced motion | The declared startup preferences reach page content and the probe proves it; a runtime change is reported as restart-required instead of being ignored. | Reduced motion declared and absent, high contrast declared and absent, probe reading of all three media features. | Real-CEF probe on all three targets. | Engine startup preference bits and the probe mode. | Probe transcripts. | `NOT_RUN` before implementation. |
 | A7 / Compose synchronization | The Compose adapter derives appearance from this service and follows the same change stream. | Initial state, change event, unavailable fact, service close. | Compose adapter tests plus the desktop session wiring test. | Compose adapter and session integration. | Adapter transcript. | `NOT_RUN` before implementation. |
 | A8 / renderer authority | Renderer reads and subscriptions are grant-checked, the override needs a gesture, and child or cross-origin frames only receive denials. | Declared grant, missing grant, no gesture, subframe, cross-origin frame, sensitive fact request. | Bridge tests plus engine fixture. | Renderer bridge and its contract tests. | Bridge transcripts. | `NOT_RUN` before implementation. |
 | A9 / sensitive preferences | Assistive-technology facts require the declared platform key and are otherwise absent everywhere. | Declared key, missing key, renderer request for a sensitive fact. | Capability tests plus bridge tests. | Sensitive-key policy and capability facts. | Capability transcript. | `NOT_RUN` before implementation. |
@@ -189,21 +196,27 @@ identity changes.
     appearance changes are observed through `effectiveAppearance` KVO and the
     distributed interface-theme notification instead.
   - The pinned CEF 151 runtime exposes
-    `CefRequestContext::SetChromeColorScheme(variant, user_color)`, documented as
-    changing the underlying color mode for every browser that shares the request
-    context, and its binary contains the `force-prefers-reduced-motion`,
+    `CefRequestContext::SetChromeColorScheme(variant, user_color)` and its binary
+    contains the `force-prefers-reduced-motion`,
     `force-prefers-no-reduced-motion`, `force-high-contrast`, and `forced-colors`
-    switches. Color scheme is therefore runtime-controllable while contrast and
-    reduced motion are startup-only, which A6 and A13 encode as a declared
-    restart-required capability instead of a silent no-op.
+    switches. Contrast and reduced motion are startup-only, which A6 and A13
+    encode as a declared restart-required capability instead of a silent no-op.
+  - The real-CEF theme probe, run before the contract was finalised, disproved
+    the runtime color-scheme assumption: applying `SetChromeColorScheme` at
+    browser creation and at runtime, with and without a page reload, never moved
+    the page media query, and a discriminating run that declared a dark
+    appearance in a light session still published `prefers-color-scheme: light`.
+    The reviewed contract therefore claims no engine color-scheme override, A5
+    records the platform-following behaviour instead, and the engine ABI carries
+    no appearance field or export that the runtime cannot honour.
 - Open questions settled:
   - Text scale is not published on macOS, so the field is absent there rather
     than derived from a font metric.
   - The portal does not publish reduced transparency or
     differentiate-without-color, so those facts stay absent on Linux.
   - The engine probe, not the ABI documentation, decides A5 and A6: a media
-    feature that the probe cannot observe on a target is removed from that
-    target's engine capability set before merge.
+    feature the probe cannot observe is removed from the engine capability set
+    before merge, which is exactly what happened to the color-scheme override.
 - Decision: `READY`.
 
 ## Non-goals

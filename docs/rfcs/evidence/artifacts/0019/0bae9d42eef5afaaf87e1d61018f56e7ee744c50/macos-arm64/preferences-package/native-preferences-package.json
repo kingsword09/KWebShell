@@ -1,0 +1,1 @@
+{"schemaVersion":1,"target":"macos-arm64","archive":"kweb-service-system-preferences-1.0.0-macos-arm64.zip","sha256":"652c6655738fd29a23af20fbae136f926c44c508074090b1e759d82b6c7c879e","nativeLibrary":"libkwebshell_system_preferences.dylib","exactContents":true}

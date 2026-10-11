@@ -191,6 +191,20 @@ catalog/evidence consistency, not completed RFC 0016 acceptance.
 
 ## Refreshing evidence after contract changes
 
+A pull request that changes any bound contract path must import the manifest from
+the **last** matrix run of that pull request, because later commits move the
+contract digests the records bind. Each intermediate run records evidence for its
+own revision, so importing an earlier run leaves the checked-in manifest stale
+while the hosted verification, which replaces the manifest before checking, still
+passes.
+
+The hosted `Verify checked-in RFC evidence` job closes that gap: it verifies the
+committed manifest against the tree before it replaces it with the freshly
+recorded one. A stale import fails that job with the RFC-by-RFC reasons in its
+retained report.
+
+## Refreshing evidence after contract changes
+
 CI runs `runtimeCheck` on all three hosted targets. This includes real native,
 CEF, packaging and unit tests, including governance `contractTest`. The strict
 checked-in repository-evidence test belongs to the separate governance stage;

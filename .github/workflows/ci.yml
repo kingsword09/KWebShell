@@ -395,6 +395,10 @@ jobs:
           distribution: temurin
           java-version: "25"
       - uses: gradle/actions/setup-gradle@v6
+      - name: Verify the checked-in evidence manifest
+        shell: bash
+        run: ./gradlew --no-daemon :kweb-rfc-governance:rfcGovernanceCheck
+
       - name: Download freshly recorded RFC evidence
         env:
           GH_TOKEN: ${{ github.token }}

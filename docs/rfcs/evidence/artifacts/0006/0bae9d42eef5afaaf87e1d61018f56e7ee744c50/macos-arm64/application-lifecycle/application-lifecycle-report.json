@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "target": "macos-arm64",
+  "provider": "macos-appkit-launch-services",
+  "abiVersion": 1,
+  "secondaryForwarded": true,
+  "unicodeFileForwarded": true,
+  "activationSequence": 3,
+  "activationEvents": ["1:INITIAL_ARGUMENTS","2:FILE_OPEN","3:SECOND_INSTANCE"],
+  "registrationInstallDigest": "fnv1a64:3adbd0d3e3ac12a4",
+  "registrationRemoveDigest": "fnv1a64:52f7cfa8d924dc6f",
+  "registrationCleaned": true,
+  "shutdown": "GRACEFUL",
+  "liveNativeOwners": 0,
+  "status": "PASS"
+}

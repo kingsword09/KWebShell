@@ -190,6 +190,27 @@ class KWebRfcEvidenceBatchTest {
     }
 
     @Test
+    fun ioFailureAfterPublishingAnArtifactKeepsManifestAndAllowsRetry() {
+        val entries = listOf(entry, entry.copy(target = "windows-x64"))
+        val revisionDirectory = root.resolve("docs/rfcs/evidence/artifacts/0001/${FIXTURE_RUN.sourceRevision}")
+        Files.createDirectories(revisionDirectory)
+        // A regular file where the later target needs a directory forces a real I/O failure.
+        val obstruction = revisionDirectory.resolve("windows-x64")
+        Files.writeString(obstruction, "occupied")
+        val before = Files.readAllBytes(output)
+        assertCode("rfc.record.batch-publish") { record(batch(entries)) }
+        assertContentEquals(before, Files.readAllBytes(output))
+        assertEquals("occupied", Files.readString(obstruction))
+        val orphan = revisionDirectory.resolve("linux-x64/proof/raw.bin")
+        assertContentEquals(bytes, Files.readAllBytes(orphan))
+        Files.delete(obstruction)
+        val result = record(batch(entries))
+        assertEquals(2, result.records.size)
+        assertEquals(result, KWebRfcEvidenceJson.decodeManifest(Files.readString(output)))
+        result.records.forEach { assertContentEquals(bytes, Files.readAllBytes(root.resolve(it.artifacts.single().path))) }
+    }
+
+    @Test
     fun linkedSourceDirectoryIsRejectedOnEveryHost() {
         val link = root.resolve("linked-inputs")
         val source = root.resolve("downloaded inputs")
@@ -270,6 +291,9 @@ class KWebRfcEvidenceBatchTest {
             runCli(true, missing = "GITHUB_SHA") to "rfc.record.missing-provenance",
             runCli(true, args = arguments + listOf("--unexpected", "value")) to "rfc.record.batch-invalid",
             runCli(true, args = arguments + listOf("--batch", batchFile.toString())) to "rfc.record.batch-invalid",
+            runCli(true, args = arguments.dropLast(2)) to "rfc.record.batch-invalid",
+            runCli(true, args = arguments + "--batch") to "rfc.record.batch-invalid",
+            runCli(true, args = listOf("recordBatch", output.toString())) to "rfc.record.batch-invalid",
         )) {
             assertEquals(2, result.first, result.second)
             assertEquals(code, Json.parseToJsonElement(result.second).jsonObject.getValue("code").jsonPrimitive.content)

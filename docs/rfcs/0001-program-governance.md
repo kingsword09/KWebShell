@@ -127,7 +127,7 @@ validation and hosted provenance. No errors print artifact contents or credentia
 |---|---|---|---|---|---|---|
 | CI-B1 / deterministic recording | Batch output equals sequential recording and preserves unrelated records | Three targets, shuffled entries, repeated identical input, exact binary/CRLF bytes | Governance contract tests on macOS arm64, Windows x64 and Linux x64 | `KWebRfcEvidenceBatchTest.batchEqualsSequentialRecordingAcrossTargetsAndKeepsHistoricalRecords`; `batchRetainsCompatibilityBytesAndRejectsWrongTargetOrRuntime` | NOT_RUN | NOT_RUN |
 | CI-B2 / strict input | Invalid batch cannot claim support | Empty/257 entries, unknown fields, wrong types/version, duplicate identity, missing artifact, non-Implemented RFC, invalid report/runtime, unsafe path | Batch and real CLI subprocess tests on all three targets | `strictSchemaRejectsUnknownFieldsWrongTypesVersionsAndSizeBoundaries`; `lastRecordFailureDoesNotPublishEarlierRecordsOrArtifacts`; `unsafePathsAndInvalidSourceRevisionNeverEscapeStaging` | NOT_RUN | NOT_RUN |
-| CI-B3 / publication | No partial manifest or overwritten existing evidence | Last entry fails; pre-existing identical/different destination; publish failure; cleanup | Real temporary filesystem tests on all three targets | `existingArtifactsCannotBeOverwrittenAndIdenticalRerunIsSafe`; `twoProvidersCannotPublishConflictingBytesAtTheSameRetainedPath`; `outputDirectoryFailsWithStructuredPublishErrorAndPreservesManifest`; `linkedSourceDirectoryIsRejectedOnEveryHost` | NOT_RUN | NOT_RUN |
+| CI-B3 / publication | No partial manifest or overwritten existing evidence | Last entry fails; pre-existing identical/different destination; publish failure; cleanup | Real temporary filesystem tests on all three targets | `existingArtifactsCannotBeOverwrittenAndIdenticalRerunIsSafe`; `twoProvidersCannotPublishConflictingBytesAtTheSameRetainedPath`; `outputDirectoryFailsWithStructuredPublishErrorAndPreservesManifest`; `ioFailureAfterPublishingAnArtifactKeepsManifestAndAllowsRetry`; `linkedSourceDirectoryIsRejectedOnEveryHost` | NOT_RUN | NOT_RUN |
 | CI-B4 / provenance | Same hosted provenance and target rules as individual recording | Local invocation rejected; missing provenance rejected; target outside triple rejected; supplied JSON provenance rejected | CLI subprocess and existing provenance tests on all three targets | `actualCliRecordsFromHostedEnvironmentAndRejectsLocalAndInvalidOptions`; existing `KWebRfcGovernanceCliTest` | NOT_RUN | NOT_RUN |
 | CI-B5 / orchestration | One Gradle launch records the same full hosted set | Exactly 60 unique records; all artifact roles/compatibility/service bindings retained; missing late artifact and notification/image/MSIX failures block | Python collector tests on Linux plus actual hosted aggregation | `.github/scripts/tests/test_aggregate_rfc_evidence.py` (single launch, complete identity set, artifact roles, late failure, paths with spaces); existing notification/image/MSIX tests | NOT_RUN | NOT_RUN |
 | CI-B6 / preserved guarantees | Real native and packaging proof remains complete | Current full runtimeCheck on three targets; actual batch collector and strict governance; imported artifact digests | CI verify, rfc-evidence and checked-in evidence jobs | Existing full suite and new batch recording | NOT_RUN | NOT_RUN |
@@ -155,11 +155,13 @@ are preserved; RFC 0001 additionally retains batch tests and the actual request.
 No workflow/native suite or capability status is changed. The compatibility
 report fixture is shared with the single-record tests to exercise both paths.
 
-Local macOS arm64 / Temurin 25: governance `contractTest` passed 84 tests with
+Local macOS arm64 / Temurin 25: governance `contractTest` passed 85 tests with
 zero failures or skips; `jar` contains the exact batch schema and recorder;
 40 Python evidence tests passed; Bash syntax, actionlint and `git diff --check`
 passed. The strict-number test found implicit JSON string-to-integer coercion;
 explicit JSON integer validation fixed it and the full contract suite passed.
+A further review added a real mid-publication I/O failure and successful retry,
+plus missing/duplicated/malformed CLI-option cases; the full suite passed again.
 These are local results, not hosted evidence. CI-B1--CI-B7 remain NOT_RUN for
 final acceptance until real three-target verification, evidence import and final
 row-by-row review are complete.

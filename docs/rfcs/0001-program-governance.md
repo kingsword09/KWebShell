@@ -294,8 +294,8 @@ these files govern completeness and must invalidate their own evidence.
 | CI-N5 / evidence freshness | Only stale/missing required records refresh | Runtime change, bound Markdown, current history, three targets, malformed manifest | Planner/collector tests and strict hosted governance | `evidence_refresh`, `tracked_digest`, `import_paths`; `CiGitInputTest.test_evidence_refresh_matches_targets_runtime_and_tracked_digest`, `test_contract_digest_matches_tracked_bytes_and_excludes_output`, `test_evidence_import_tail_does_not_hide_unbound_or_later_code`; strict governance | Same run/revision; current manifest and `ci-plan`; freshly recorded governance passes, checked-in stale governance correctly fails | PASS: tracked bytes/runtime/targets govern freshness; full policy run refreshes 20 RFCs and all 60 records; untracked build output excluded; unrelated incremental proof preserved in fixtures |
 | CI-N6 / incremental publication | No skipped preflight, missing artifact or partial manifest | Single RFC refresh, no refresh, absent last target, late invalid proof | Real collector tests plus existing batch filesystem tests | `.github/scripts/tests/test_aggregate_rfc_evidence.py`: `test_partial_governance_batch_does_not_require_unselected_preflights`, `test_no_refresh_plan_preserves_manifest_without_gradle`, `test_partial_batch_requires_last_target_and_preserves_manifest_on_failure`, `test_selected_migration_producer_still_requires_notification_preflight`; `KWebRfcEvidenceBatchTest` | Same run/revision; retained `batch-plan`, `governance-batch-tests` and `ci-policy-tests`; actual recording job | PASS: one atomic 60-record publication; selected notification/image/MSIX proof validated, missing last target cannot publish, no-refresh invokes no recorder |
 | CI-N7 / native/platform proof | Graph and selected native verification work on every target | Real tray-only suite on three hosts; full workflow-change validation; packaging/Wayland/notifications preserved | Full hosted matrix and retained targeted plan/audit/output | Workflow three `Verify` jobs, isolated-native step, runtime/native/package step, Linux Wayland step, Windows MSIX/benchmark/live HTML5 steps | Same run/revision; all three native selection transcripts/audits and 60 exact support records; hosted benchmark and HTML5 artifacts | PASS: every required platform job succeeds with real native/CEF/runtime/package verification; no host inferred from another and no required platform omitted |
-| CI-N8 / CI integration | Fixed gate, scheduled full, cancellation and cache obey plan | Documentation/evidence only, required skipped/failed jobs, real event baselines | Workflow validation, gate unit tests and hosted outcomes | Workflow `CI Gate`, scope/plan/governance predicates, schedule/concurrency; `CiPlanTest.test_gate_rejects_failure_cancellation_and_unexpected_skip`; actionlint | Full run `38215845162` rejects stale checked-in proof; superseded `38215471991` cancelled; documentation run `38215845149` succeeds | NOT_RUN: negative gate, cancellation and static scheduled/manual policy verified; actual current-evidence import-tail green gate still required |
-| CI-N9 / universal completion | Docs, exact evidence import and full-diff review agree | No changed support status, schema/config and retained artifact inspection | All tests, packaging, hosted import and final review | This matrix, design objective, `docs/ci-verification.md`, strict governance and complete base-to-head diff/artifact review | Full run `38215845162`, implementation head `3b9de0c`; exact generated manifest/tree import and historical-byte audit | NOT_RUN: complete implementation/platform/artifact review performed; final imported-candidate strict governance and hosted green gate remain blocking |
+| CI-N8 / CI integration | Fixed gate, scheduled full, cancellation and cache obey plan | Documentation/evidence only, required skipped/failed jobs, real event baselines | Workflow validation, gate unit tests and hosted outcomes | Workflow `CI Gate`, scope/plan/governance predicates, schedule/concurrency; `CiPlanTest.test_gate_rejects_failure_cancellation_and_unexpected_skip`; actionlint | Full run `38215845162` rejects stale checked-in proof; superseded `38215471991` cancelled; import-tail run `38222396787` at merge `fdedcf1` and documentation run `38222396929` succeed | PASS: actual current-evidence tail selects zero modules/roots/refreshes and no setup, legally skips native/recording, and passes strict governance and CI Gate; scheduled/manual full verified by real Git fixtures and workflow review |
+| CI-N9 / universal completion | Docs, exact evidence import and full-diff review agree | No changed support status, schema/config and retained artifact inspection | All tests, packaging, hosted import and final review | This matrix, design objective, `docs/ci-verification.md`, strict governance and complete base-to-head diff/artifact review | Full run `38215845162`, implementation head `3b9de0c`; exact import candidate `a1bcdfe`, green tail `38222396787`; final same-contributor review below | PASS: 71 Python tests, fresh governance and all hosted targets pass; all 218 current artifact hashes/staged bytes, 48 XML files/306 tests, 16 ZIP CRCs and 2,217 immutable historical files verified; no supported API/status changed |
 
 ### Change-aware readiness review
 
@@ -393,3 +393,46 @@ metadata while remaining configuration-cache compatible. Validate two real
 tray/governance invocations, including configuration-cache reuse, and require
 the package/test actions to execute in both without disabling compilation
 caching. Supersede the in-flight policy run before accepting hosted evidence.
+
+### Change-aware final requirement acceptance
+
+2026-10-12, Codex separate same-contributor review of the complete PR #81
+diff from base `9d99ae84563f12decb71cdae07b080e79f1b80b7` to imported
+candidate `a1bcdfec1aadf206b5cfa15adf64e9ed2e887262`, plus this acceptance
+update: **PASS** for CI-N1 through CI-N9. This is an actual review pass, not
+independent-person approval. Inspected every added policy/configuration/test
+file, workflow setup and producer selection, immutable historical artifacts,
+current generated reports/transcripts/XML/ZIPs, contract bindings and docs.
+Confirmed all previous binding paths remain, new policy binds its own Git
+retention rules, and no application API, capability row or catalog support
+status changed. Missing verification remains blocking rather than a fallback.
+
+Full hosted run `38215845162` tests code `3b9de0c08b241c6b0451989950e02ad15aa5a966`
+at GitHub merge revision `d610152964bfd3d1e216f48eea517e61c2594463`. All
+three real native/runtime/package suites and isolated tray probes passed.
+Reviewed actual logs: native contract, tray integration, package verification,
+JVM tests and governance actions execute freshly in both the isolated and full
+invocation on every host. Linux Wayland and notification fixtures, Windows
+MSIX activation/preflight, workload benchmark and live HTML5 checks passed.
+The recorder published 60 records in one batch and fresh strict governance
+passed. Checked-in stale governance and CI Gate failed before the new exact
+import; that negative result is intentionally retained, not relabelled green.
+
+Imported generated bytes without changing provenance: 218 referenced files,
+48 XML files with 306 tests and zero failures/errors/skips, 16 valid ZIPs and
+all 2,217 prior files unchanged. Manifest file SHA-256 is
+`c969785953ae8e29c181a2ad6ece1c5cca45937c3cc2be6ac2dfb829cac10f7a`;
+canonical evidence digest is
+`fad1756383e1d6c0659bb77c51d31393ddb6abeccff66313176aa7019e34d0e9`.
+Local 71 script tests and fresh `:kweb-rfc-governance:check` passed with zero
+findings across 42 RFCs. Import-tail run `38222396787`, tested merge
+`fdedcf192ea60c0036abc8edc32f0d13fda0ce11`, retained the reason
+`current-evidence-import:bound-implementation-already-verified`, selected zero
+modules/roots/refreshes with every setup flag false, and passed strict
+checked-in governance and the stable gate without a second native cycle.
+
+No requirement is marked NOT_APPLICABLE. Existing shared RFC/Electron contract
+bindings can still widen a service change to CEF/package verification; this
+objective does not remove them or claim universally isolated future modules.
+The final acceptance-only revision must retain the green required checks
+before squash integration; its RFC body is not a bound implementation input.

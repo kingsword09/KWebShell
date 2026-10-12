@@ -140,6 +140,13 @@ Path(arguments[2]).write_text(json.dumps(manifest))
     def partial_plan(self, rfcs, families):
         plan = self.root / "build/ci/plan.json"
         plan.parent.mkdir(parents=True, exist_ok=True)
+        for target in TARGETS:
+            audit = self.root / "build/rfc-evidence/downloaded/ci-audits" / ("ci-audit-" + target + "-fixture")
+            audit.mkdir(parents=True, exist_ok=True)
+            (audit / "audit.json").write_text('{"schemaVersion":1}')
+        policy = self.root / "build/rfc-evidence/downloaded/ci-policy-tests-fixture"
+        policy.mkdir(parents=True, exist_ok=True)
+        (policy / "tests.txt").write_text("fixture policy tests\n")
         plan.write_text(json.dumps({"schemaVersion": 1, "revision": REVISION, "base": REVISION,
                                    "changedPaths": [], "full": False, "modules": [], "roots": [],
                                    "tasks": [], "refreshRfcs": rfcs, "families": families, "reasons": [],
@@ -175,6 +182,14 @@ Path(arguments[2]).write_text(json.dumps(manifest))
         result = self.run_script(self.partial_plan(["0018"], ["tray-integration", "electron-migration"]))
         self.assertNotEqual(0, result.returncode)
         self.assertIn("notifications evidence", result.stderr)
+        self.assertEqual(self.manifest_before, self.manifest.read_bytes())
+
+    def test_selected_governance_requires_actual_policy_tests_and_audit(self):
+        plan = self.partial_plan(["0001"], ["rfc-governance"])
+        (self.root / "build/rfc-evidence/downloaded/ci-policy-tests-fixture/tests.txt").unlink()
+        result = self.run_script(plan)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("CI policy tests", result.stderr)
         self.assertEqual(self.manifest_before, self.manifest.read_bytes())
 
     def test_unknown_rfc_and_invalid_plan_fail_before_recording(self):

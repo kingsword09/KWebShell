@@ -229,9 +229,9 @@ jobs:
           bash .github/scripts/export-ci-graph.sh
           python3 .github/scripts/ci_plan.py audit --plan build/ci/plan.json --graph build/ci/graph.json --output build/ci/audit.json --target '${{ matrix.target }}'
           for feature in cef native node notifications shell screen msix benchmark liveHtml5; do
-            echo "$feature=$(jq -r --arg name "$feature" '.features[$name]' build/ci/audit.json)" >> "$GITHUB_OUTPUT"
+            echo "$feature=$(jq -r --arg name "$feature" '.features[$name]' build/ci/audit.json | tr -d '\r')" >> "$GITHUB_OUTPUT"
           done
-          for family in $(jq -r '.families[]' build/ci/plan.json); do
+          for family in $(jq -r '.families[]' build/ci/plan.json | tr -d '\r'); do
             echo "$family=true" >> "$GITHUB_OUTPUT"
           done
 
@@ -326,7 +326,7 @@ jobs:
           roots=()
           while IFS= read -r task; do
             roots+=("$task")
-          done < <(jq -r '.plan.roots[]' build/ci/tray-selection-probe.json)
+          done < <(jq -r '.plan.roots[]' build/ci/tray-selection-probe.json | tr -d '\r')
           if [[ "${{ runner.os }}" == Linux ]]; then
             XDG_CURRENT_DESKTOP=GNOME xvfb-run -a dbus-run-session -- \
               bash .github/scripts/run-linux-ui-verification.sh ./gradlew --no-daemon --max-workers=1 -I .github/ci/fresh-verification.gradle "${roots[@]}" | tee build/ci/tray-selection-probe.log
@@ -341,7 +341,7 @@ jobs:
           set -euo pipefail
           artifact="$(jq -er --arg target '${{ matrix.target }}' \
             '.artifacts[] | select(.target == $target)' runtime/cef-runtime.json)"
-          archive="$(jq -er '.fileName' <<<"$artifact")"
+          archive="$(jq -er '.fileName' <<<"$artifact" | tr -d '\r')"
           directory="${archive%.tar.bz2}"
           {
             echo "CEF_ARCHIVE=$archive"
@@ -431,7 +431,7 @@ jobs:
               :kweb-example-app-benchmark:applicationBenchmarkIntegrationTest|:kweb-example-html5-lab:html5TestSiteRun) ;;
               *) arguments+=("$task") ;;
             esac
-          done < <(jq -r '.roots[]' build/ci/plan.json)
+          done < <(jq -r '.roots[]' build/ci/plan.json | tr -d '\r')
           if [[ "${{ steps.scope.outputs.cef }}" == true ]]; then
             arguments+=("-PcefRoot=$PWD/.cef-ci/source/$CEF_DIRECTORY")
           fi
@@ -725,6 +725,10 @@ jobs:
               --pattern "$family-*-${{ github.sha }}" \
               --dir "build/rfc-evidence/downloaded/$family"
           done
+          if jq -e '.refreshRfcs | index("0001") != null' build/ci/plan.json > /dev/null; then
+            gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --pattern 'ci-audit-*-${{ github.sha }}' --dir build/rfc-evidence/downloaded/ci-audits
+            gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --pattern 'ci-policy-tests-${{ github.sha }}' --dir build/rfc-evidence/downloaded/ci-policy-tests-${{ github.sha }}
+          fi
           find build/rfc-evidence/downloaded -type f | sort
 
       - name: Test RFC evidence aggregation

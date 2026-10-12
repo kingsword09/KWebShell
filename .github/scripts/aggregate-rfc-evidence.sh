@@ -89,6 +89,24 @@ record() {
       exit 1
     fi
     arguments+=(--artifact "governance-batch-tests=$batch_tests" --artifact "batch-plan=$batch")
+    if [[ -n "$selection" ]]; then
+      policy_tests=$(find "$downloaded" -type f -name tests.txt -path '*ci-policy-tests-*' | head -1)
+      task_audit=$(find "$downloaded" -type f -name audit.json -path "*ci-audit-${target}-*" | head -1)
+      if [[ -z "$policy_tests" || -z "$task_audit" ]]; then
+        echo "Missing CI policy tests or platform task audit for $target" >&2
+        exit 1
+      fi
+      arguments+=(--artifact "ci-plan=$selection" --artifact "ci-policy-tests=$policy_tests" --artifact "ci-task-audit=$task_audit")
+      if [[ "$(jq -r '.full' "$selection")" == true ]]; then
+        probe_plan=$(find "$downloaded" -type f -name tray-selection-probe.json -path "*ci-audit-${target}-*" | head -1)
+        probe_log=$(find "$downloaded" -type f -name tray-selection-probe.log -path "*ci-audit-${target}-*" | head -1)
+        if [[ -z "$probe_plan" || -z "$probe_log" ]]; then
+          echo "Missing native selection probe for $target" >&2
+          exit 1
+        fi
+        arguments+=(--artifact "ci-native-selection=$probe_plan" --artifact "ci-native-selection-log=$probe_log")
+      fi
+    fi
   fi
   if [ -n "$extra_name" ]; then
     if [ -z "$extra_file" ] || [ ! -f "$extra_file" ]; then

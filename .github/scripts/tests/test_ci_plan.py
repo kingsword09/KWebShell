@@ -155,6 +155,10 @@ class CiPlanTest(unittest.TestCase):
                                      "validate", "--plan", str(path)], capture_output=True, text=True)
             self.assertEqual(2, result.returncode)
             self.assertEqual("ci.invalid-input", json.loads(result.stderr)["code"])
+            invalid = subprocess.run([sys.executable, str(ROOT / ".github/scripts/ci_plan.py"), "validate"],
+                                     capture_output=True, text=True)
+            self.assertEqual(2, invalid.returncode)
+            self.assertEqual("ci.invalid-options", json.loads(invalid.stderr)["code"])
 
     def test_platform_graph_union_includes_platform_specific_consumers(self):
         windows = copy.deepcopy(self.graph)

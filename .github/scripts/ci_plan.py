@@ -26,6 +26,11 @@ class PlanError(Exception):
         self.code = "ci." + kind
 
 
+class StrictParser(argparse.ArgumentParser):
+    def error(self, message):
+        raise PlanError("invalid-options", "The CI command options do not match the declared interface.")
+
+
 def require(condition, kind, message):
     if not condition:
         raise PlanError(kind, message)
@@ -360,12 +365,13 @@ def plan(root, graph, registry, changed, full=False, refresh=None):
     new_modules = new_module_registration(root, changed, graph, registry)
     if chosen_paths != changed["paths"]:
         reasons.append("current-evidence-import:bound-implementation-already-verified")
-    for path in chosen_paths:
+    for path in changed["paths"]:
         safe_path(path)
         if root is not None:
             require(not (root / path).is_symlink() and
                     not any((root / parent).is_symlink() for parent in PurePosixPath(path).parents),
                     "unsafe-path", "Changed paths must not traverse a redirected input.")
+    for path in chosen_paths:
         module = next((name for name, metadata in graph["modules"].items()
                        if path == metadata["directory"] or path.startswith(metadata["directory"] + "/")), None)
         if module:
@@ -442,7 +448,7 @@ def gate(plan_value, results):
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = StrictParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
     collector = subparsers.add_parser("changes")
     collector.add_argument("--repository-root", default=".")
@@ -520,6 +526,8 @@ def main():
                 summary.write("## CI execution plan\n\n```json\n" + json.dumps(value, indent=2) + "\n```\n")
     elif arguments.command == "audit":
         value = validate_plan(load(arguments.plan))
+        require(value["revision"] == git(Path("."), "rev-parse", "HEAD").decode().strip(),
+                "graph-drift", "The audited checkout does not match the plan revision.")
         graph = load(arguments.graph)
         registry = load(Path(".github/ci/suites.json"))
         validate_graph(graph, registry)

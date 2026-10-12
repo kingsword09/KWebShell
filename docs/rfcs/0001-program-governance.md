@@ -360,3 +360,11 @@ and its macOS audit passed. Actionlint, Bash syntax and `git diff --check`
 passed. These are local results, not hosted support evidence. CI-N1--CI-N9
 remain NOT_RUN for final acceptance until hosted platform, exact import and
 full-diff/artifact review complete.
+
+Review refinement: RFC 0001's selected records also retain the actual CI plan,
+policy-test transcript and per-platform task audit; full plans retain the native
+isolation plan/transcript. Missing required proof blocks recording. The first
+hosted Windows graph export found native jq CRLF on task-name lines; all task
+and feature reads strip that transport carriage return, not retained evidence
+bytes. The failed run is retained honestly and the new revision requires fresh
+hosted verification. Local policy/evidence tests now total 68, all passing.

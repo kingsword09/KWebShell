@@ -218,6 +218,7 @@ debug.log
 
 # Logs, coverage, temporary files, and editor backups
 *.log
+!docs/rfcs/evidence/artifacts/0001/**/ci-native-selection-log/*.log
 *.tmp
 *.temp
 *.bak

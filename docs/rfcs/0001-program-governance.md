@@ -213,3 +213,226 @@ are **PASS**, subject to the imported commit's required hosted gate. No row is
 NOT_APPLICABLE, and no skipped required scenario is accepted. Merge remains
 blocked until that gate succeeds. Change-aware module selection is a separate
 objective and is not claimed by this batch change.
+
+## Change-aware CI contract v1
+
+One complete objective replaces unconditional runtime verification with a
+deterministic plan; it does not weaken contract bindings or capability claims.
+`.github/ci/suites.json` registers every included Gradle module's non-empty
+verification roots and every Implemented RFC's raw-evidence producers. A module
+or Implemented RFC without a rule is an error, including new modules. Global
+toolchain/build/runtime/CI-policy changes select full verification deliberately,
+not as a silent fallback for unknown files. Ordinary Markdown and retained
+evidence run only lightweight checks. A stale document-only contract fails
+strict governance instead of starting the native matrix or trusting old proof.
+
+The planner accepts `--repository-root`, `--graph`, `--changes`, `--output`
+and optional `--full`. Its version-1 JSON output names the source revision,
+changed paths, affected modules, selected suite roots, complete task closure,
+reasons, RFC refresh IDs, raw artifact families and required setup features.
+Input and output JSON reject unknown fields and unsupported versions. Paths are
+repository-relative and reject traversal, backslashes, symlinks and private
+absolute paths. Collection is bounded to 20,000 changed paths, 256 modules,
+50,000 graph tasks and 256 refresh RFCs. Failures emit structured `ci.*` JSON
+and exit 2, never an apparently successful empty plan. No credentials or
+artifact contents are printed. There is one writer per plan/manifest.
+
+The pinned Gradle's `--dry-run --no-configuration-cache` graph export runs no
+tests or native builds. It reads actual `ProjectDependency` declarations and
+`TaskExecutionGraph.getDependencies`, including generated bindings and native
+packaging edges. Reverse dependencies include test/codegen and cross-project
+task consumers; ordering-only edges do not imply consumption. Every platform
+exports its own graph and audits its selected task closure before execution.
+Required test actions disable up-to-date reuse and build-cache reads/writes
+through `fresh-verification.gradle`; compilation/build caching remains enabled.
+Missing roots, unresolved dependencies or graph drift block
+the run. Existing serial desktop-session ordering remains intact.
+
+PR changes use the merge-base of the event base and source head, with Git
+NUL-delimited `--no-renames` paths so renames include both removed and new paths.
+The checkout/tested merge revision remains the evidence source. Push changes
+use `before`/`after`; an initial push, scheduled run and manual full request are
+explicit full plans. Evidence-only imports additionally compare against the
+last implementation commit: a valid import with no subsequent bound changes
+runs strict governance without another CEF cycle. Corrupt/missing evidence
+fails strict validation; it is not trusted or synthesized by the planner.
+
+Current digests are the existing tracked-file SHA-256 algorithm. Missing,
+stale-runtime or stale-contract Implemented records in implementation/full plans select all required hosted
+targets and their raw producers; still-current unrelated records remain
+byte-for-byte unchanged. Fresh raw evidence is downloaded only for planned
+families. Notifications, image and Windows MSIX preflight remain required when
+their producer/record is selected. Partial refresh validates every required
+target before one `recordBatch` publication. No-refresh plans do not invoke the
+recorder. Catalog support status is never changed by planning or aggregation.
+
+One stable `CI Gate` runs with `always()` and succeeds only when planning,
+lightweight validation and every selected platform, aggregation and strict
+governance job succeeded. Legal non-selection is distinct from a skipped,
+failed or cancelled required job. Plan artifacts and per-target graph/task
+audits are retained for 14 days. Same-PR superseding runs cancel older runs;
+main and scheduled runs are not cancelled by a different PR. Native setup,
+Node and CEF provisioning are conditional on actual selected tasks, not just
+module names. Platform availability is never inferred from another host.
+The workload benchmark and live HTML5 checks retain their existing Windows-only
+hosted requirement; per-target audits omit these roots on macOS and Linux.
+An evidence-only PR tail avoids a repeated native cycle only when all required
+digests are current, every earlier implementation path is covered by a
+registered RFC binding, and the tail actually imports retained evidence.
+Unbound code, stale digests or another implementation edit retain full PR scope.
+RFC 0001 additionally binds the new planner, suite registry, exporter and tests;
+these files govern completeness and must invalidate their own evidence.
+
+### Change-aware acceptance matrix
+
+| ID / source | Observable requirement | Normal, negative and boundary scenarios | Planned verification / required targets | Implementation and test references | Retained evidence / tested revision | Result / review rationale |
+|---|---|---|---|---|---|---|
+| CI-N1 / Git input | Correct PR/push scope, deletes and renames | Merge-base divergence, initial push, spaces, deleted module, invalid base/path | Python real-Git fixtures and hosted event plan | `.github/scripts/ci_plan.py:changes`; `CiGitInputTest.test_push_and_initial_push`, `test_pr_merge_base_excludes_other_branch_changes_and_covers_rename`, `test_manual_schedule_and_invalid_base` in `.github/scripts/tests/test_ci_plan.py` | Run `38215845162`, tested merge `d610152`; retained `ci-plan` and `ci-policy-tests` on all three targets | PASS: real Git fixtures select exact paths and reject invalid revisions; actual PR baseline is `9d99ae8`, not the tested merge parent |
+| CI-N2 / dependency selection | Changed modules and actual reverse consumers run | Independent tray, native ABI, codegen/test edges, cycles, new module missing roots | Python fixtures and real Gradle graph on all targets | `export-graph.gradle`, `suites.json`; `CiPlanTest.test_reverse_dependencies_include_project_and_cross_project_task_edges`, `test_dependency_cycle_terminates_deterministically`, `test_platform_graph_union_includes_platform_specific_consumers`; `CiGitInputTest.test_new_module_addition_preserves_existing_registry_and_settings` | Same run/revision; `ci-plan`, `ci-task-audit`, `ci-native-selection` for macOS arm64, Windows x64 and Linux x64 | PASS: 29 actual modules, 36 full roots and platform-unioned consumers; missing registration/root blocks, additive registration preserves prior policy |
+| CI-N3 / fail-closed input | Unknown inputs or incomplete registration cannot skip tests | Invalid/extra JSON fields, limits, unknown code path, missing task/RFC rule | Python boundary/negative tests and actual CLI | `CiPlanTest.test_strict_graph_types_fields_dependencies_and_limits`, `test_paths_and_plan_mutations_are_rejected`, `test_missing_new_module_or_verification_task_blocks`, `test_missing_family_producer_blocks_refresh`, `test_duplicate_json_fields_and_cli_failure_are_structured` | Same run/revision; retained `ci-policy-tests` reports all 71 tests passing | PASS: malformed/duplicate/unknown inputs and missing producers cannot produce success or an empty accepted plan; typed `ci.*` errors and exit 2 observed |
+| CI-N4 / lifecycle and execution | Only selected tasks/setup run; complete tests remain fresh | No CEF in tray closure, conditional fixtures, benchmark selection, failed/cancelled mandatory job | Native tray-only probe, task audit and gate tests on all targets | `fresh-verification.gradle`, workflow scope/probe/execution steps; `CiPlanTest.test_gate_rejects_failure_cancellation_and_unexpected_skip`; `CiWorkflowTest.test_workflow_keeps_fail_closed_jobs_conditional_setup_and_fresh_tests` | Same run/revision; all three `ci-native-selection-log` and `ci-task-audit` files; two local actual invocations including configuration-cache reuse | PASS: real tray/native/package/governance actions run before CEF provisioning without CEF/Node tasks; final-metadata policy keeps verification fresh while compilation remains reusable |
+| CI-N5 / evidence freshness | Only stale/missing required records refresh | Runtime change, bound Markdown, current history, three targets, malformed manifest | Planner/collector tests and strict hosted governance | `evidence_refresh`, `tracked_digest`, `import_paths`; `CiGitInputTest.test_evidence_refresh_matches_targets_runtime_and_tracked_digest`, `test_contract_digest_matches_tracked_bytes_and_excludes_output`, `test_evidence_import_tail_does_not_hide_unbound_or_later_code`; strict governance | Same run/revision; current manifest and `ci-plan`; freshly recorded governance passes, checked-in stale governance correctly fails | PASS: tracked bytes/runtime/targets govern freshness; full policy run refreshes 20 RFCs and all 60 records; untracked build output excluded; unrelated incremental proof preserved in fixtures |
+| CI-N6 / incremental publication | No skipped preflight, missing artifact or partial manifest | Single RFC refresh, no refresh, absent last target, late invalid proof | Real collector tests plus existing batch filesystem tests | `.github/scripts/tests/test_aggregate_rfc_evidence.py`: `test_partial_governance_batch_does_not_require_unselected_preflights`, `test_no_refresh_plan_preserves_manifest_without_gradle`, `test_partial_batch_requires_last_target_and_preserves_manifest_on_failure`, `test_selected_migration_producer_still_requires_notification_preflight`; `KWebRfcEvidenceBatchTest` | Same run/revision; retained `batch-plan`, `governance-batch-tests` and `ci-policy-tests`; actual recording job | PASS: one atomic 60-record publication; selected notification/image/MSIX proof validated, missing last target cannot publish, no-refresh invokes no recorder |
+| CI-N7 / native/platform proof | Graph and selected native verification work on every target | Real tray-only suite on three hosts; full workflow-change validation; packaging/Wayland/notifications preserved | Full hosted matrix and retained targeted plan/audit/output | Workflow three `Verify` jobs, isolated-native step, runtime/native/package step, Linux Wayland step, Windows MSIX/benchmark/live HTML5 steps | Same run/revision; all three native selection transcripts/audits and 60 exact support records; hosted benchmark and HTML5 artifacts | PASS: every required platform job succeeds with real native/CEF/runtime/package verification; no host inferred from another and no required platform omitted |
+| CI-N8 / CI integration | Fixed gate, scheduled full, cancellation and cache obey plan | Documentation/evidence only, required skipped/failed jobs, real event baselines | Workflow validation, gate unit tests and hosted outcomes | Workflow `CI Gate`, scope/plan/governance predicates, schedule/concurrency; `CiPlanTest.test_gate_rejects_failure_cancellation_and_unexpected_skip`; actionlint | Full run `38215845162` rejects stale checked-in proof; superseded `38215471991` cancelled; import-tail run `38222396787` at merge `fdedcf1` and documentation run `38222396929` succeed | PASS: actual current-evidence tail selects zero modules/roots/refreshes and no setup, legally skips native/recording, and passes strict governance and CI Gate; scheduled/manual full verified by real Git fixtures and workflow review |
+| CI-N9 / universal completion | Docs, exact evidence import and full-diff review agree | No changed support status, schema/config and retained artifact inspection | All tests, packaging, hosted import and final review | This matrix, design objective, `docs/ci-verification.md`, strict governance and complete base-to-head diff/artifact review | Full run `38215845162`, implementation head `3b9de0c`; exact import candidate `a1bcdfe`, green tail `38222396787`; final same-contributor review below | PASS: 71 Python tests, fresh governance and all hosted targets pass; all 218 current artifact hashes/staged bytes, 48 XML files/306 tests, 16 ZIP CRCs and 2,217 immutable historical files verified; no supported API/status changed |
+
+### Change-aware readiness review
+
+2026-10-12, Codex separate same-contributor contract review on `9d99ae8`
+plus this contract and CI-N1--CI-N9 matrix: **READY**. The actual pinned Gradle
+9.7 task graph was exported on macOS using `--dry-run`; 523 tasks and all 29
+modules were inspected without building CEF or running native tests. Earlier
+probes that queried task dependencies after configuration failed Gradle's
+exclusive-lock checks; the settled implementation uses the public scheduled
+graph API instead. Cross-platform graph differences are audited on each target,
+and all required native probes remain blocking. Existing `recordBatch` provides
+the required atomic manifest boundary for partial refreshes. Reviewed all
+current producers, preflight scripts, contract bindings and fixture setup.
+No unresolved external behavior is delegated to inference or Copilot, no
+binding is removed, and no application API is changed. This is not an
+independent-person approval. Final implementation and hosted acceptance remain
+NOT_RUN.
+
+Readiness addendum, 2026-10-12, same-contributor review: **READY** for the
+three-platform graph union. Lightweight graph jobs export each actual host
+without running tests, and the planner unions their dependency edges before
+selection. This removes the need to guess Windows/macOS-specific consumer edges
+from a Linux graph. Per-target audits still reject undeclared setup or missing
+verification roots. Newly registered modules are included in export even before
+being added to the historical `runtimeCheck` aggregate. The stable gate also
+depends on the graph jobs; a missing platform graph prevents planning.
+
+Graph/platform selection is bypassed entirely for pure documentation/evidence
+events; strict governance remains required and stale evidence blocks them.
+The verification init script disables cached verification actions while leaving
+compilation cacheable. Contract-policy changes select governance plus whichever
+existing digests actually become stale; RFC 0001 binds `contracts.json` itself
+so changing evidence policy cannot reuse its old approval. No existing binding
+is removed. These refinements were separately reviewed as **READY** by Codex,
+the same contributor, on 2026-10-12 before dependent execution.
+
+Readiness addendum, 2026-10-12, same-contributor review: **READY** for pure
+module registration and documentation isolation. Adding only Gradle `include`
+entries plus corresponding new suite rules does not invalidate existing module
+verification rules; the new module and actual consumers are selected without
+declaring a global toolchain change. Changes to existing registrations or other
+settings logic remain full. Documentation-only stale contracts block strict
+governance without executing native tests, as required by repository policy.
+
+### Change-aware implementation review before hosted verification
+
+2026-10-12, Codex separate same-contributor pass on the working diff against
+`9d99ae8`: all nine acceptance requirements are represented by the planner,
+strict input/Git tests, collector tests, setup/audit workflow and contributor
+guide. Confirmed no historical binding was removed and no supported application
+API/matrix row changed. Full selection preserves every historical runtimeCheck
+root plus registered new-module roots. Pure docs skip platform graph jobs and
+use strict governance; evidence imports cannot hide unbound or later code.
+Verification actions disable cache/up-to-date reuse; compilation remains cached.
+
+Local macOS arm64 / Temurin 25: 67 Python script tests passed; real exported
+Gradle graph validated all 29 registrations; the native tray and governance
+contract roots passed without CEF/Node setup, with fresh verification actions
+and cached compilation. The governance contract suite passed 85 tests without
+failure or skipping. The full selected plan has 36 roots and 20 refresh RFCs,
+and its macOS audit passed. Actionlint, Bash syntax and `git diff --check`
+passed. These are local results, not hosted support evidence. CI-N1--CI-N9
+remain NOT_RUN for final acceptance until hosted platform, exact import and
+full-diff/artifact review complete.
+
+Review refinement: RFC 0001's selected records also retain the actual CI plan,
+policy-test transcript and per-platform task audit; full plans retain the native
+isolation plan/transcript. Missing required proof blocks recording. The first
+hosted Windows graph export found native jq CRLF on task-name lines; all task
+and feature reads strip that transport carriage return, not retained evidence
+bytes. The failed run is retained honestly and the new revision requires fresh
+hosted verification. Local policy/evidence tests now total 68, all passing.
+
+Readiness addendum, 2026-10-12, separate same-contributor review: **READY**
+for retaining exact native selection transcripts. Run `38210599624` passed all
+three platform suites and recording, but import review found that Windows
+Gradle transcripts contain both CRLF and trailing spaces emitted by Gradle.
+These bytes must not be rewritten to satisfy source formatting rules. Exempt
+only RFC 0001's retained `ci-native-selection-log/*.log` from end-of-line and
+end-of-file whitespace checks; retain space-before-tab checks and ordinary
+source/other-log checks. Allow those retained transcripts through `.gitignore`
+so that normal evidence staging cannot omit a manifest dependency. Bind both
+Git policies and their regression tests to RFC 0001 so that the exceptions
+themselves require fresh reviewed evidence. Verify
+exact staged bytes, isolation of the exception and a new complete hosted run
+before importing or accepting this objective. The earlier run's checked-in
+governance failure remains a real failure, not an approval.
+
+Readiness refinement, 2026-10-12, separate same-contributor review: **READY**
+to register fresh-verification policy after project evaluation. Reviewing the
+actual Linux transcript showed `verifyNativeTrayPackage` reused the earlier
+probe result within the same run: its group was assigned after the init
+script's early configuration callback. The policy must inspect final task
+metadata while remaining configuration-cache compatible. Validate two real
+tray/governance invocations, including configuration-cache reuse, and require
+the package/test actions to execute in both without disabling compilation
+caching. Supersede the in-flight policy run before accepting hosted evidence.
+
+### Change-aware final requirement acceptance
+
+2026-10-12, Codex separate same-contributor review of the complete PR #81
+diff from base `9d99ae84563f12decb71cdae07b080e79f1b80b7` to imported
+candidate `a1bcdfec1aadf206b5cfa15adf64e9ed2e887262`, plus this acceptance
+update: **PASS** for CI-N1 through CI-N9. This is an actual review pass, not
+independent-person approval. Inspected every added policy/configuration/test
+file, workflow setup and producer selection, immutable historical artifacts,
+current generated reports/transcripts/XML/ZIPs, contract bindings and docs.
+Confirmed all previous binding paths remain, new policy binds its own Git
+retention rules, and no application API, capability row or catalog support
+status changed. Missing verification remains blocking rather than a fallback.
+
+Full hosted run `38215845162` tests code `3b9de0c08b241c6b0451989950e02ad15aa5a966`
+at GitHub merge revision `d610152964bfd3d1e216f48eea517e61c2594463`. All
+three real native/runtime/package suites and isolated tray probes passed.
+Reviewed actual logs: native contract, tray integration, package verification,
+JVM tests and governance actions execute freshly in both the isolated and full
+invocation on every host. Linux Wayland and notification fixtures, Windows
+MSIX activation/preflight, workload benchmark and live HTML5 checks passed.
+The recorder published 60 records in one batch and fresh strict governance
+passed. Checked-in stale governance and CI Gate failed before the new exact
+import; that negative result is intentionally retained, not relabelled green.
+
+Imported generated bytes without changing provenance: 218 referenced files,
+48 XML files with 306 tests and zero failures/errors/skips, 16 valid ZIPs and
+all 2,217 prior files unchanged. Manifest file SHA-256 is
+`c969785953ae8e29c181a2ad6ece1c5cca45937c3cc2be6ac2dfb829cac10f7a`;
+canonical evidence digest is
+`fad1756383e1d6c0659bb77c51d31393ddb6abeccff66313176aa7019e34d0e9`.
+Local 71 script tests and fresh `:kweb-rfc-governance:check` passed with zero
+findings across 42 RFCs. Import-tail run `38222396787`, tested merge
+`fdedcf192ea60c0036abc8edc32f0d13fda0ce11`, retained the reason
+`current-evidence-import:bound-implementation-already-verified`, selected zero
+modules/roots/refreshes with every setup flag false, and passed strict
+checked-in governance and the stable gate without a second native cycle.
+
+No requirement is marked NOT_APPLICABLE. Existing shared RFC/Electron contract
+bindings can still widen a service change to CEF/package verification; this
+objective does not remove them or claim universally isolated future modules.
+The final acceptance-only revision must retain the green required checks
+before squash integration; its RFC body is not a bound implementation input.

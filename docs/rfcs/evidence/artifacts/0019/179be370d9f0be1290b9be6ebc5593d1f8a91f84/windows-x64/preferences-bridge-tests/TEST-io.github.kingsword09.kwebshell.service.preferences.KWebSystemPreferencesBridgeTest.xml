@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="KWebSystemPreferencesBridgeTest[jvm]" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-10-12T06:35:19.127Z" hostname="runnervmtn0fv" time="0.307">
+  <properties/>
+  <testcase name="aGrantedRendererReadsOnlyTheFactsItAskedFor()[jvm]" classname="io.github.kingsword09.kwebshell.service.preferences.KWebSystemPreferencesBridgeTest" time="0.155"/>
+  <testcase name="sensitiveAndUnknownFactsAreRejectedWithStableCodes()[jvm]" classname="io.github.kingsword09.kwebshell.service.preferences.KWebSystemPreferencesBridgeTest" time="0.013"/>
+  <testcase name="theSubscriptionIsGrantCheckedAndEndsOnAProviderFailure()[jvm]" classname="io.github.kingsword09.kwebshell.service.preferences.KWebSystemPreferencesBridgeTest" time="0.101"/>
+  <testcase name="aMissingGrantOrAChildFrameIsDeniedBeforeAnythingHappens()[jvm]" classname="io.github.kingsword09.kwebshell.service.preferences.KWebSystemPreferencesBridgeTest" time="0.003"/>
+  <testcase name="theAppearanceOverrideRequiresAGestureAndReportsTheEffectiveSource()[jvm]" classname="io.github.kingsword09.kwebshell.service.preferences.KWebSystemPreferencesBridgeTest" time="0.011"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

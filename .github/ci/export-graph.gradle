@@ -1,0 +1,20 @@
+import groovy.json.JsonOutput
+import org.gradle.api.artifacts.ProjectDependency
+
+gradle.taskGraph.whenReady { graph ->
+    def root = gradle.rootProject
+    def modules = root.subprojects.sort { it.path }.collectEntries { project ->
+        [(project.path): [
+            directory: root.relativePath(project.projectDir).replace('\\', '/'),
+            dependencies: project.configurations.collectMany { configuration ->
+                configuration.dependencies.withType(ProjectDependency).collect { it.path }
+            }.unique().sort()
+        ]]
+    }
+    def tasks = graph.allTasks.toList().sort { it.path }.collectEntries { task ->
+        [(task.path): graph.getDependencies(task).collect { it.path }.sort()]
+    }
+    def output = new File(root.projectDir, 'build/ci/graph.json')
+    output.parentFile.mkdirs()
+    output.text = JsonOutput.toJson([schemaVersion: 1, modules: modules, tasks: tasks]) + '\n'
+}

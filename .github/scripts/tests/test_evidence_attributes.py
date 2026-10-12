@@ -12,6 +12,9 @@ RETAINED_JSON = "docs/rfcs/evidence/artifacts/0030/revision/windows-x64/report.j
 SOURCE_JSON = "module/config.json"
 RETAINED_CLI_XML = "docs/rfcs/0005-migrate-cli-evidence/p6/run/windows-x64/report.xml"
 SOURCE_XML = "module/report.xml"
+RETAINED_NATIVE_LOG = "docs/rfcs/evidence/artifacts/0001/revision/windows-x64/ci-native-selection-log/tray-selection-probe.log"
+OTHER_RETAINED_LOG = "docs/rfcs/evidence/artifacts/0001/revision/windows-x64/other/log.log"
+SOURCE_LOG = "module/build.log"
 
 
 class EvidenceAttributesTest(unittest.TestCase):
@@ -21,11 +24,13 @@ class EvidenceAttributesTest(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.git("init", "--quiet")
         (self.root / ".gitattributes").write_bytes((ROOT / ".gitattributes").read_bytes())
-        for name in (RETAINED_JSON, SOURCE_JSON, RETAINED_CLI_XML, SOURCE_XML):
+        for name in (RETAINED_JSON, SOURCE_JSON, RETAINED_CLI_XML, SOURCE_XML,
+                     RETAINED_NATIVE_LOG, OTHER_RETAINED_LOG, SOURCE_LOG):
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"")
-        self.git("add", ".gitattributes", RETAINED_JSON, SOURCE_JSON, RETAINED_CLI_XML, SOURCE_XML)
+        self.git("add", ".gitattributes", RETAINED_JSON, SOURCE_JSON, RETAINED_CLI_XML, SOURCE_XML,
+                 RETAINED_NATIVE_LOG, OTHER_RETAINED_LOG, SOURCE_LOG)
 
     def git(self, *arguments, check=True):
         environment = os.environ.copy()
@@ -115,6 +120,35 @@ class EvidenceAttributesTest(unittest.TestCase):
                 self.assertEqual(payload, self.git("show", ":" + str(staged_path)).stdout)
         self.assertEqual(2, len(list(retained.glob("*.xml"))))
         self.assertEqual(0, self.git("diff", "--cached", "--check").returncode)
+
+    def test_native_transcript_whitespace_exception_is_isolated(self):
+        payload = b"Daemon will be stopped at the end of the build \r\n\r\n"
+        for name in (RETAINED_NATIVE_LOG, OTHER_RETAINED_LOG, SOURCE_LOG):
+            (self.root / name).write_bytes(payload)
+        self.assertEqual(0, self.git("diff", "--check", "--", RETAINED_NATIVE_LOG).returncode)
+        for name in (OTHER_RETAINED_LOG, SOURCE_LOG):
+            result = self.git("diff", "--check", "--", name, check=False)
+            self.assertEqual(2, result.returncode)
+            self.assertIn(b"trailing whitespace", result.stdout)
+        (self.root / RETAINED_NATIVE_LOG).write_bytes(b" \tinvalid indentation\r\n")
+        result = self.git("diff", "--check", "--", RETAINED_NATIVE_LOG, check=False)
+        self.assertEqual(2, result.returncode)
+        self.assertIn(b"space before tab", result.stdout)
+
+    def test_staging_preserves_exact_native_transcript_bytes(self):
+        payload = b"> Task :kweb-service-tray:check\r\nBUILD SUCCESSFUL \r\n\r\n"
+        (self.root / RETAINED_NATIVE_LOG).write_bytes(payload)
+        self.git("add", RETAINED_NATIVE_LOG)
+        self.assertEqual(payload, self.git("show", ":" + RETAINED_NATIVE_LOG).stdout)
+        self.assertEqual(0, self.git("diff", "--cached", "--check").returncode)
+
+    def test_native_transcript_is_not_ignored_but_source_logs_remain_ignored(self):
+        (self.root / ".gitignore").write_bytes((ROOT / ".gitignore").read_bytes())
+        self.git("rm", "--cached", RETAINED_NATIVE_LOG, SOURCE_LOG)
+        self.assertEqual(1, self.git("check-ignore", RETAINED_NATIVE_LOG, check=False).returncode)
+        self.assertEqual(0, self.git("check-ignore", SOURCE_LOG).returncode)
+        self.git("add", RETAINED_NATIVE_LOG)
+        self.assertEqual(b"", self.git("show", ":" + RETAINED_NATIVE_LOG).stdout)
 
 
 if __name__ == "__main__":

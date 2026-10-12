@@ -1,0 +1,12 @@
+import org.gradle.api.tasks.testing.Test
+
+gradle.projectsEvaluated {
+    gradle.rootProject.allprojects { project ->
+        project.tasks.configureEach { task ->
+            if (task instanceof Test || task.group == 'verification' || task.name.endsWith('IntegrationTest')) {
+                task.outputs.upToDateWhen { false }
+                task.outputs.doNotCacheIf('CI requires actual verification actions for this run') { true }
+            }
+        }
+    }
+}

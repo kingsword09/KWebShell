@@ -33,6 +33,7 @@ dependencies {
     testRuntimeOnly(libs.junit.platform.launcher)
     implementation(project(":kweb-service-system-preferences"))
     implementation(project(":kweb-service-screen"))
+    implementation(project(":kweb-service-shortcuts"))
 }
 
 tasks.withType<Test>().configureEach {

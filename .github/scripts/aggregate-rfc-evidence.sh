@@ -141,13 +141,21 @@ record() {
       "screen-native-tests|screen-native-tests.xml|screen-integration" \
       "screen-contract-tests|TEST-io.github.kingsword09.kwebshell.service.screen.KWebScreensContractTest.xml|screen-integration" \
       "screen-bridge-tests|TEST-io.github.kingsword09.kwebshell.service.screen.KWebScreensBridgeTest.xml|screen-integration" \
-      "screen-wayland|screen-wayland-transcript.txt|screen-integration" \
       "screen-package|native-screen-package.json|screen-integration" \
       "screen-runtime|kweb-service-screen-1.0.0-${target}.zip|screen-integration"; do
       IFS='|' read -r screen_key screen_name screen_family <<< "$screen_spec"
       screen_file=$(find "$downloaded" -type f -name "$screen_name" -path "*${screen_family}-${target}-*" | head -1)
       arguments="$arguments --artifact $screen_key=$screen_file"
     done
+    # The Wayland session is verified on the Linux target only.
+    if [ "$target" = "linux-x64" ]; then
+      screen_wayland=$(find "$downloaded" -type f -name "screen-wayland-transcript.txt" -path "*screen-integration-${target}-*" | head -1)
+      if [ -z "$screen_wayland" ] || [ ! -f "$screen_wayland" ]; then
+        echo "Missing Wayland screen transcript for $target" >&2
+        exit 1
+      fi
+      arguments="$arguments --artifact screen-wayland=$screen_wayland"
+    fi
   fi
   if [ "$rfc" = "0027" ]; then
     arguments="$arguments --service native-image --matrix-row native-image --from-compatibility-report $extra_file"

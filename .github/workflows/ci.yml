@@ -72,7 +72,7 @@ jobs:
   plan:
     name: Plan affected verification
     needs: [scope, graphs]
-    if: always() && needs.scope.result == 'success' && (needs.graphs.result == 'success' || needs.scope.outputs.graphs == 'false')
+    if: ${{ !cancelled() && needs.scope.result == 'success' && (needs.graphs.result == 'success' || needs.scope.outputs.graphs == 'false') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
@@ -121,7 +121,7 @@ jobs:
   lightweight:
     name: Check CI contracts and documentation
     needs: [plan]
-    if: always() && needs.plan.result == 'success'
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -166,7 +166,7 @@ jobs:
   verify:
     name: Verify (${{ matrix.target }}, ${{ matrix.gpu-contract }})
     needs: [plan]
-    if: always() && needs.plan.result == 'success' && needs.plan.outputs.verify == 'true'
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.verify == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -634,7 +634,7 @@ jobs:
   governance:
     name: Verify checked-in RFC evidence
     needs: [plan, lightweight, verify, rfc-evidence]
-    if: always() && needs.plan.result == 'success' && needs.lightweight.result == 'success' && (needs.verify.result == 'success' || needs.plan.outputs.verify == 'false') && (needs.rfc-evidence.result == 'success' || needs.plan.outputs.refresh == 'false')
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.lightweight.result == 'success' && (needs.verify.result == 'success' || needs.plan.outputs.verify == 'false') && (needs.rfc-evidence.result == 'success' || needs.plan.outputs.refresh == 'false') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -688,7 +688,7 @@ jobs:
   rfc-evidence:
     name: Record hosted RFC evidence
     needs: [plan, lightweight, verify]
-    if: always() && needs.plan.result == 'success' && needs.lightweight.result == 'success' && needs.verify.result == 'success' && needs.plan.outputs.refresh == 'true'
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.lightweight.result == 'success' && needs.verify.result == 'success' && needs.plan.outputs.refresh == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:

@@ -17,6 +17,7 @@
 #include <windows.h>
 #include <wtsapi32.h>
 
+#include <cstdio>
 #include <string>
 #include <thread>
 #include <vector>
@@ -230,6 +231,8 @@ kweb_shortcuts_status NativeRegister(State &state, const Registration &registrat
   entry.virtual_key = virtual_key;
   if (RegisterHotKey(native->window, entry.hotkey_id, modifiers, virtual_key) == FALSE) {
     const DWORD error = GetLastError();
+    std::fprintf(stderr, "RegisterHotKey(id=%d, mods=0x%x, vk=0x%x) failed with error %lu.\n",
+                 entry.hotkey_id, modifiers, virtual_key, static_cast<unsigned long>(error));
     if (error == ERROR_HOTKEY_ALREADY_REGISTERED) return KWEB_SHORTCUTS_STATUS_CONFLICT;
     return KWEB_SHORTCUTS_STATUS_NATIVE_FAILED;
   }

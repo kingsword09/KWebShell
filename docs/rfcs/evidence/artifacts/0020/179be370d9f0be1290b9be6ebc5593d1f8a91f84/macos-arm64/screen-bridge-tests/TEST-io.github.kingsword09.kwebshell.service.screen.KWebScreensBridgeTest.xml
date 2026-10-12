@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="KWebScreensBridgeTest[jvm]" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-10-12T06:33:20.507Z" hostname="sjc22-bm204-239a5814-0807-4201-861d-f1e03abbbded-DE10B8E77AAE.local" time="0.266">
+  <properties/>
+  <testcase name="identifiersCursorAndUnknownFactsAreRejectedWithStableCodes()[jvm]" classname="io.github.kingsword09.kwebshell.service.screen.KWebScreensBridgeTest" time="0.142"/>
+  <testcase name="aGrantedRendererReadsOnlyTheSummaryItAskedFor()[jvm]" classname="io.github.kingsword09.kwebshell.service.screen.KWebScreensBridgeTest" time="0.013"/>
+  <testcase name="theSubscriptionPublishesTheSummaryAndEndsOnAProviderFailure()[jvm]" classname="io.github.kingsword09.kwebshell.service.screen.KWebScreensBridgeTest" time="0.081"/>
+  <testcase name="aMissingGrantOrAChildFrameIsDeniedBeforeAnythingHappens()[jvm]" classname="io.github.kingsword09.kwebshell.service.screen.KWebScreensBridgeTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

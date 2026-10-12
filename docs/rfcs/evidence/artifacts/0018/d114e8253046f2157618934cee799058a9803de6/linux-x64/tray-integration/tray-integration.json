@@ -1,0 +1,1 @@
+{"schemaVersion":1,"target":"linux-x64","library":"libkwebshell_tray.so","outcome":"passed","provider":"tray.linux.status-notifier","capabilities":"MENU,TOOLTIP,ICON_VARIANTS","activations":"PRIMARY,SECONDARY","host":"tray.platform-unavailable","created":"false"}

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="JvmKWebImageCodecTest[jvm]" tests="15" skipped="0" failures="0" errors="0" timestamp="2026-10-12T00:26:10.147Z" hostname="iad20-gt1017-a9d80cd5-fed1-4d26-9e27-e31a7f606259-86D527056162.local" time="1.16">
+  <properties/>
+  <testcase name="canonicalPngPreservesPixelsAndMaximumWidthRows()[jvm]" classname="io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest" time="0.357"/>
+  <testcase name="premultipliedAlphaCannotBeEncodedWithoutAnExplicitConversion()[jvm]" classname="io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest" time="0.023"/>
+  <testcase name="embeddedLinearRgbIccIsConvertedToSrgbWithAlphaPreserved()[jvm]" classname="io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest" time="0.067"/>
+  <testcase name="packageDigestIsCheckedBeforeDecode()[jvm]" classname="io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest" time="0.008"/>
+  <testcase name="malformedExifOffsetsAndOrientationEntriesAreRejected()[jvm]" classname="io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest" time="0.022"/>
+  <testcase name="pngCrcTruncationAnimationAndTrailingBytesAreRejected()[jvm]" classname="io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest" time="0.003"/>
+  <testcase name="jpegExifOrientationIsParsedAndOnlyIdentityIsAccepted()[jvm]" classname="io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest" time="0.015"/>
+  <testcase name="malformedAndTruncatedPayloadsFailBeforeNativeUse()[jvm]" classname="io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest" time="0.001"/>
+  <testcase name="opaqueMetadataCannotDescribeTransparentPng()[jvm]" classname="io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest" time="0.003"/>
+  <testcase name="pixelAndDimensionLimitsAreCheckedBeforePixelAllocation()[jvm]" classname="io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest" time="0.615"/>
+  <testcase name="jpegDecodeAndUnsupportedFormatsFailExplicitly()[jvm]" classname="io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest" time="0.004"/>
+  <testcase name="malformedAndOversizedIccProfilesFailWithinTheirBound()[jvm]" classname="io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest" time="0.013"/>
+  <testcase name="pngDecodeNormalizesToDeterministicRgbaPng()[jvm]" classname="io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest" time="0.003"/>
+  <testcase name="declaredDimensionsMustMatchThePng()[jvm]" classname="io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest" time="0.002"/>
+  <testcase name="jpegEmbeddedIccIsConvertedToSrgb()[jvm]" classname="io.github.kingsword09.kwebshell.service.image.JvmKWebImageCodecTest" time="0.007"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

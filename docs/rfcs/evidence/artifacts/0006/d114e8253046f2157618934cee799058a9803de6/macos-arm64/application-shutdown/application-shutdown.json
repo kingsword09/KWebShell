@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "target": "macos-arm64",
+  "outcome": "GRACEFUL",
+  "stages": ["engine-native", "native-services", "profiles"],
+  "cefEngineClosed": true,
+  "liveNativeEngines": 0,
+  "liveNativeBrowsers": 0,
+  "liveNativeExtensionOperations": 0,
+  "status": "PASS"
+}

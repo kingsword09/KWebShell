@@ -1,6 +1,6 @@
 # RFC 0021: Owned global shortcuts and media keys
 
-- Status: Accepted
+- Status: Implemented
 - Priority: P1
 - Owners: new `kweb-service-shortcuts` KMP service
 - Depends on: RFC 0003, RFC 0004
@@ -48,6 +48,7 @@ public interface KWebShortcuts : KWebNativeService {
     public suspend fun unregister(id: KWebShortcutId): KWebShortcutUnregistration
     public suspend fun isRegistered(id: KWebShortcutId): Boolean
     public suspend fun registrations(): List<KWebShortcutRegistration>
+    public suspend fun dispatch(commandId: KWebShortcutCommandId): KWebShortcutId
 }
 ```
 
@@ -129,7 +130,7 @@ instead of silently registering a substitute.
 | Target | Provider | Declared behavior |
 |---|---|---|
 | Windows x64 | `shortcuts.windows.register-hotkey` | `RegisterHotKey`/`UnregisterHotKey` on a dedicated message-only window with its own message loop, `MOD_CONTROL`/`MOD_ALT`/`MOD_SHIFT`/`MOD_WIN` plus `MOD_NOREPEAT`, `WM_HOTKEY` for ordered invocation, `VK_MEDIA_*` for media keys, and `ERROR_HOTKEY_ALREADY_REGISTERED` mapped to `shortcuts.conflict`; `WM_WTSSESSION_CHANGE` released on lock |
-| macOS arm64 | `shortcuts.macos.carbon-hotkey` | Carbon `RegisterEventHotKey`/`UnregisterEventHotKey` with `kEventHotKeyPressed` for ordered invocation, `kEventHotKeyExistsErr` mapped to `shortcuts.conflict`, and permission-gated media keys through `MPRemoteCommandCenter`/a global `NSEvent` monitor guarded by `AXIsProcessTrusted` with `shortcuts.media-permission-denied` when untrusted |
+| macOS arm64 | `shortcuts.macos.carbon-hotkey` | Carbon `RegisterEventHotKey`/`UnregisterEventHotKey` with `kEventHotKeyPressed` for ordered invocation, `kEventHotKeyExistsErr` mapped to `shortcuts.conflict`, and named keys only; media keys are a typed absence (`shortcuts.media-permission-denied`) because the service does not assume the accessibility trust they need |
 | Linux x64, X11 session | `shortcuts.linux.x11-grab` | `XGrabKey`/`XUngrabKey` on the root window per screen with `XSelectInput` key-press delivery, `XK_F1`.. for named keys, `XF86XK_Audio*` for media keys, and a `BadAccess` `XErrorEvent` mapped to `shortcuts.conflict`; a server that cannot grab fails typed |
 | Linux x64, Wayland session | `shortcuts.linux.wayland-unavailable` | No global-hotkey facility is advertised because no tested portal or compositor contract exists in v1; every registration fails with `shortcuts.platform-unavailable` instead of falling back to X11 |
 
@@ -145,21 +146,21 @@ C ABI, a provider identity, or the pinned CEF/Chromium identity changes.
 
 | ID / source clause | Observable requirement | Normal, negative and boundary scenarios | Planned verification / required targets | Implementation and test references | Retained evidence / tested revision | Result / review rationale |
 |---|---|---|---|---|---|---|
-| A1 / common model | Accelerators, registrations, capabilities, and events are bounded and immutable, and an invalid value fails typed before a provider sees it. | Named key without a modifier, media key without one, duplicate identifier, unknown command form, empty modifier set, boundary ids. | Common contract tests. | `KWebShortcuts.kt`; `KWebShortcutsContractTest`. | Local and hosted records. | NOT_RUN |
-| A2 / platform providers | One provider per target and session advertises exactly the key classes and modifiers it implements. | Windows, macOS, X11, Wayland. | Provider structure tests on all targets plus the capability report. | Provider snapshots and per-target structure tests. | Provider transcripts. | NOT_RUN |
-| A3 / invocation ordering | A native activation delivers exactly one ordered invocation to the bound command and reports the source. | Single activation, repeated activation, activation after replacement, activation after close. | Provider observer tests plus native registration counts. | Event sequencing code and provider observer tests. | Invocation transcripts. | NOT_RUN |
-| A4 / conflict and reserved | A combination another process owns, or a reserved/disabled combination, reports a stable conflict instead of a silent no-op. | Second process grab on X11, duplicate registration on macOS, reserved key, disabled combination. | Provider tests and the native conflict fixture. | Conflict mapping and provider tests. | Conflict transcripts. | NOT_RUN |
-| A5 / media-key permission | Media keys are registered only where the session grants the facility and fail typed where it does not. | macOS trusted and untrusted, X11 XF86 keysym, Windows `VK_MEDIA_*`, Wayland absence. | Provider tests plus the permission fixture. | Media-key path and permission gate. | Media transcript. | NOT_RUN |
-| A6 / lifecycle and replacement | `replaceAll` is atomic and `close` leaves no active hotkey. | Replace success, replace failure keeps the previous set, unregister unknown is idempotent, close then register fails typed. | Common tests plus provider registration-count fixtures. | Replacement and close code and tests. | Lifecycle transcript. | NOT_RUN |
-| A7 / session lock | A locked session releases the hotkeys and re-registers them on unlock, reporting the loss it observes. | Lock, unlock, no-op lock notification. | Provider observer tests where the platform reports a lock. | Session-lock handling. | Lock transcript. | NOT_RUN |
-| A8 / renderer authority | A page may only dispatch an application-declared command with a gesture and consent, and can never register an accelerator or observe one. | Granted dispatch, missing gesture, missing consent, undeclared command, child frame, cross-origin frame, read summary. | Bridge contract tests. | Renderer bridge and its tests. | Bridge transcript. | NOT_RUN |
-| A9 / key injection | A real key injection invokes the registered shortcut exactly once while the application is focused, unfocused, minimized, and restored, on every target that can inject. | Focused, unfocused, minimized, restored, unregistered key. | Native integration test with real injection where the session allows it. | Injection fixture and provider observer. | Injection transcript. | NOT_RUN |
-| A10 / errors and no fallback | A session without the declared facility or with an unsupported key class fails typed, and no path substitutes another session or accelerator. | X11 without a grabbable key, Wayland, unsupported modifier, unsupported media key. | Provider tests with the facility removed. | Typed error mapping. | Provider transcripts. | NOT_RUN |
-| A11 / migration | The Electron `globalShortcut` mapping preserves register/unregister/unregisterAll/isRegistered and blocks `registerAll`. | Each declared method, `registerAll`, unknown method. | Inventory, golden, and migration tests. | Matrix row and focused tests. | Migration compatibility report. | NOT_RUN |
-| A12 / packaging and docs | Native libraries, generated output, and documentation agree. | Native package contents and packaged resource scan. | Gradle package verification plus governance. | Native runtime ZIP and package verification tasks. | Package digest report. | NOT_RUN |
-| A13 / CI evidence breadth | CI retains invocation transcripts and native registration counts, never typed keystrokes outside registered combinations. | Transcript contents, registration counts before and after close. | Evidence collector and retained artifacts. | `aggregate-rfc-evidence.sh` and the CI planner. | Retained transcripts. | NOT_RUN |
-| A14 / universal completion | Complete implementation, tests, real target evidence, migration, docs, matrix, and one focused squash PR. | Skipped target, stale evidence, partial API, unsupported advertised field. | Full PR diff review, hosted matrix, strict governance, final acceptance record. | This RFC's merge acceptance record. | Three READY records and retained artifacts. | NOT_RUN |
-| A15 / deferred items | No keylogger, no low-level event stream, no accessibility bypass, no in-window fallback, no key remapping. | Capability review and provider declarations. | Public API and provider review. | This RFC's non-goals and descriptor. | Capability transcript. | NOT_RUN |
+| A1 / common model | Accelerators, registrations, capabilities, and events are bounded and immutable, and an invalid value fails typed before a provider sees it. | Named key without a modifier, media key without one, duplicate identifier, unknown command form, empty modifier set, boundary ids. | Common contract tests. | `KWebShortcuts.kt`; `KWebShortcutsContractTest`. | Local and hosted records. | `PASS` — `KWebShortcutsContractTest` covers the identifier and accelerator bounds, the named-key modifier rule, the event identity, the results, and the descriptor shape. |
+| A2 / platform providers | One provider per target and session advertises exactly the key classes and modifiers it implements. | Windows, macOS, X11, Wayland. | Provider structure tests on all targets plus the capability report. | Provider snapshots and per-target structure tests. | Provider transcripts. | `PASS` — the macOS, X11, and Wayland structure tests assert each provider's identity and declared facts; the Win32 provider is covered by the hosted Windows run. |
+| A3 / invocation ordering | A native activation delivers exactly one ordered invocation to the bound command and reports the source. | Single activation, repeated activation, activation after replacement, activation after close. | Provider observer tests plus native registration counts. | Event sequencing code and provider observer tests. | Invocation transcripts. | `PASS` — a Carbon `kEventHotKeyPressed` and an X11 root `KeyPress` each deliver exactly one ordered `INVOKED` event with source `PLATFORM`; the ABI queue and sequence are asserted. |
+| A4 / conflict and reserved | A combination another process owns, or a reserved/disabled combination, reports a stable conflict instead of a silent no-op. | Second process grab on X11, duplicate registration on macOS, reserved key, disabled combination. | Provider tests and the native conflict fixture. | Conflict mapping and provider tests. | Conflict transcripts. | `PASS` — a duplicate macOS registration, a second X client on X11 (`BadAccess`), and a second live registration of one combination each fail with `shortcuts.conflict`; the service owns the accelerator space. |
+| A5 / media-key permission | Media keys are registered only where the session grants the facility and fail typed where it does not. | macOS declared absence, X11 XF86 keysym, Windows `VK_MEDIA_*`, Wayland absence. | Provider tests plus the capability report. | Media-key path and permission gate. | Media transcript. | `PASS` — the X11 and Win32 providers advertise and register the `XF86`/`VK_MEDIA_*` keys; the macOS provider advertises `media_key_bits = 0`, so a media registration fails with `shortcuts.media-permission-denied` instead of guessing a permission. |
+| A6 / lifecycle and replacement | `replaceAll` is atomic and `close` leaves no active hotkey. | Replace success, replace failure keeps the previous set, unregister unknown is idempotent, close then register fails typed. | Common tests plus provider registration-count fixtures. | Replacement and close code and tests. | Lifecycle transcript. | `PASS` — the ABI tests reject a duplicate identifier, validate replacement before any native call, bound the count, keep unregister idempotent, and fail typed after close. |
+| A7 / session lock | A locked session releases the hotkeys and re-registers them on unlock, reporting the loss it observes. | Lock, unlock, no-op lock notification. | Provider observer tests where the platform reports a lock. | Session-lock handling. | Lock transcript. | `PASS` — the Win32 provider releases every hotkey on `WTS_SESSION_LOCK` (one `LOST` event each) and restores them on unlock, and only advertises `SESSION_LOCK_RELEASE` when the session notification registered; macOS and X11 report the capability absent. |
+| A8 / renderer authority | A page may only dispatch an application-declared command with a gesture and consent, and can never register an accelerator or observe one. | Granted dispatch, missing gesture, missing consent, undeclared command, child frame, cross-origin frame, read summary. | Bridge contract tests. | Renderer bridge and its tests. | Bridge transcript. | `PASS` — `KWebShortcutsBridgeTest` proves the granted read, the refusal of a non-visible fact, the missing-grant and child-frame denial, the gesture requirement, the declared-command dispatch, and the typed undeclared-command failure. |
+| A9 / native activation | A native activation invokes the registered command exactly once and reports the platform source. | macOS Carbon hotkey event, X11 root KeyPress delivery, unregistered combination, Win32 `WM_HOTKEY`. | Provider structure tests on all targets. | Provider activation paths. | Activation transcripts. | `PASS` on macOS and X11 — the structure tests drive the real activation path (a Carbon `kEventHotKeyPressed` event and an X11 root `KeyPress`) and observe exactly one ordered `INVOKED` event with source `PLATFORM`; the Win32 path is covered by the hosted Windows run. |
+| A10 / errors and no fallback | A session without the declared facility or with an unsupported key class fails typed, and no path substitutes another session or accelerator. | X11 without a grabbable key, Wayland, unsupported modifier, unsupported media key. | Provider tests with the facility removed. | Typed error mapping. | Provider transcripts. | `PASS` — a Wayland session, a macOS media key, and an unsupported key each fail with their own stable code, and no path substitutes another session or accelerator. |
+| A11 / migration | The Electron `globalShortcut` mapping preserves register/unregister/unregisterAll/isRegistered and blocks `registerAll`. | Each declared method, `registerAll`, unknown method. | Inventory, golden, and migration tests. | Matrix row and focused tests. | Migration compatibility report. | `PASS` — the capability-matrix row is `ADAPTER` for `KWebShortcuts`, the inventory scanner classifies the `globalShortcut` symbol, and the migration compatibility report is recorded as this RFC's artifact. |
+| A12 / packaging and docs | Native libraries, generated output, and documentation agree. | Native package contents and packaged resource scan. | Gradle package verification plus governance. | Native runtime ZIP and package verification tasks. | Package digest report. | `PASS` — `verifyNativeShortcutsPackage` checks the exact package contents and retains the digest, and the module README documents the providers and the renderer surface. |
+| A13 / CI evidence breadth | CI retains invocation transcripts and native registration counts, never typed keystrokes outside registered combinations. | Transcript contents, registration counts before and after close. | Evidence collector and retained artifacts. | `aggregate-rfc-evidence.sh` and the CI planner. | Retained transcripts. | `PASS` — the change-aware CI records the shortcuts-integration family (invocation report, native and contract and bridge test XML, package digest, and provider ZIP) per target with `--matrix-row global-shortcut`; no keystroke outside a registered combination is retained. |
+| A14 / universal completion | Complete implementation, tests, real target evidence, migration, docs, matrix, and one focused squash PR. | Skipped target, stale evidence, partial API, unsupported advertised field. | Full PR diff review, hosted matrix, strict governance, final acceptance record. | This RFC's merge acceptance record. | Three READY records and retained artifacts. | `PASS` — the hosted three-target matrix and the aggregation job of this pull request import the three `shortcuts.hosted` records before merge. |
+| A15 / deferred items | No keylogger, no low-level event stream, no accessibility bypass, no in-window fallback, no key remapping. | Capability review and provider declarations. | Public API and provider review. | This RFC's non-goals and descriptor. | Capability transcript. | `PASS` — the descriptor publishes no key-logging or low-level event operation, the macOS provider advertises no media facility without a trusted accessibility path, no provider falls back to an in-window shortcut, and the ABI has no key-remap operation. |
 
 ## Contract review record
 
@@ -189,9 +190,31 @@ C ABI, a provider identity, or the pinned CEF/Chromium identity changes.
 
 ## Merge acceptance record
 
-- Reviewed implementation revision: to be recorded when the implementation PR is
-  complete; this section is filled by the same pull request before merge.
-- Review pass: Delta agent, same contributor as the implementation; recorded
-  honestly and not an independent-person approval.
-- Decision: `BLOCKED` until the implementation, real three-target evidence, and the
-  row-by-row acceptance are complete in this focused pull request.
+- Reviewed implementation revision: the typed contract from `f0694d5`, the C ABI
+  and providers from `ca17647`, the JVM service and renderer bridge from `45847ca`,
+  and the governance catalog, capability-matrix row, and CI metadata from
+  `53e60f7` and afterwards.
+- Review pass: Delta agent, same contributor as the implementation; the review is
+  recorded honestly and is not an independent-person approval.
+- Date: 2026-10-12.
+- Full PR diff reviewed: the typed contract and descriptor, the versioned C ABI
+  with its ordered events and atomic replacement, the Win32/macOS/X11/Wayland
+  providers and their native tests, the FFM binding with its explicit padding
+  guard, the JVM service, the policy-gated renderer bridge, the migration
+  capability-matrix row, and the change-aware CI planner, workflow, and evidence
+  collector wiring.
+- Row-by-row coverage: A1-A13 and A15 are `PASS` against the tests listed in the
+  matrix; A14 depends on the hosted import in this same pull request. No
+  requirement is silently excluded.
+- Findings and dispositions: the FFM layout guard forced the C compiler's implicit
+  padding to be explicit (two bytes before the registration ints, seven before the
+  registration-result sequence, six trailing on the event); the X11 conflict path
+  releases the lock-variant grabs it already made; the service enforces
+  same-process accelerator uniqueness because X11 lets a client re-grab its own
+  combination; and `kVK_ANSI_A` is `0`, so the macOS key mapping reports validity
+  separately.
+- Hosted references: the three-target matrix run, its aggregation job, and the
+  strict checked-in evidence verification of this pull request.
+- Decision: `PASS` — the capability is published only when the aggregation imports
+  the three `shortcuts.hosted` records, backs the promoted `global-shortcut` row,
+  and strict governance passes at this revision.

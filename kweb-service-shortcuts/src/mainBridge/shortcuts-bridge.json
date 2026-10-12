@@ -1,0 +1,36 @@
+{
+  "namespace": "ShortcutsBridge",
+  "kotlinPackage": "io.github.kingsword09.kwebshell.service.shortcuts.generated",
+  "version": 1,
+  "types": [
+    {
+      "name": "ReadRequest",
+      "fields": [
+        { "name": "facts", "type": "string", "list": true }
+      ]
+    },
+    {
+      "name": "DispatchRequest",
+      "fields": [
+        { "name": "commandId", "type": "string" }
+      ]
+    },
+    {
+      "name": "ShortcutsSummary",
+      "fields": [
+        { "name": "supported", "type": "boolean" },
+        { "name": "registrationCount", "type": "int32" }
+      ]
+    },
+    {
+      "name": "DispatchAck",
+      "fields": [
+        { "name": "accepted", "type": "boolean" }
+      ]
+    }
+  ],
+  "methods": [
+    { "name": "read", "request": "ReadRequest", "response": "ShortcutsSummary" },
+    { "name": "dispatch", "request": "DispatchRequest", "response": "DispatchAck" }
+  ]
+}

@@ -223,6 +223,14 @@ public interface KWebShortcuts : KWebNativeService {
 
     public suspend fun registrations(): List<KWebShortcutRegistration>
 
+    /**
+     * Dispatches one application-declared command on behalf of a policy-authorized
+     * renderer, emitting one `Invoked` event with source `RENDERER`. The renderer
+     * bridge calls this after its gesture, consent, origin, and grant checks; an
+     * undeclared command fails typed and no accelerator is ever accepted here.
+     */
+    public suspend fun dispatch(commandId: KWebShortcutCommandId): KWebShortcutId
+
     public companion object {
         public val DESCRIPTOR: KWebServiceDescriptor = KWebServiceDescriptor(
             id = "shortcuts",
@@ -292,6 +300,8 @@ public object KWebShortcutErrorCode {
     public const val COMMAND_UNDECLARED: String = "shortcuts.command-undeclared"
     public const val GESTURE_REQUIRED: String = "shortcuts.gesture-required"
     public const val CONSENT_DENIED: String = "shortcuts.consent-denied"
+    public const val FACT_UNKNOWN: String = "shortcuts.fact-unknown"
+    public const val FACT_NOT_RENDERER_VISIBLE: String = "shortcuts.fact-not-renderer-visible"
     public const val PLATFORM_UNAVAILABLE: String = "shortcuts.platform-unavailable"
     public const val NATIVE_FAILED: String = "shortcuts.native-failed"
     public const val OWNER_CLOSED: String = "shortcuts.owner-closed"

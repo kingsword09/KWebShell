@@ -1,6 +1,8 @@
 import org.gradle.api.tasks.Exec
+import org.gradle.api.tasks.JavaExec
 import org.gradle.api.tasks.bundling.Zip
 import org.gradle.api.tasks.testing.Test
+import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.security.MessageDigest
 import java.util.Locale
@@ -18,13 +20,19 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":kweb-services-core"))
+            api(project(":kweb-bridge"))
             implementation(libs.kotlinx.coroutines.core)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.core)
         }
+        jvmMain.dependencies {
+            implementation(libs.kotlinx.coroutines.core)
+        }
         jvmTest.dependencies {
+            implementation(libs.kotlinx.serialization.json)
+            implementation(project(":kweb-example-support"))
             implementation(kotlin("test-junit5"))
             runtimeOnly(libs.junit.platform.launcher)
             implementation(libs.kotlinx.coroutines.core)
@@ -33,6 +41,23 @@ kotlin {
 }
 
 tasks.named<Test>("jvmTest") { useJUnitPlatform() }
+
+val bridgeCodegen = configurations.create("bridgeCodegen")
+dependencies { bridgeCodegen(project(":kweb-bridge-codegen")) }
+
+val bridgeSchema = layout.projectDirectory.file("src/mainBridge/shortcuts-bridge.json")
+val generatedBridgeDirectory = layout.buildDirectory.dir("generated/kwebBridge/shortcuts")
+val generateShortcutsBridge = tasks.register<JavaExec>("generateShortcutsBridge") {
+    group = "build"
+    description = "Generates the KWebShortcuts Kotlin and TypeScript bridge clients."
+    classpath = bridgeCodegen
+    mainClass.set("io.github.kingsword09.kwebshell.bridge.codegen.MainKt")
+    inputs.file(bridgeSchema)
+    outputs.dir(generatedBridgeDirectory)
+    args(bridgeSchema.asFile.absolutePath, generatedBridgeDirectory.get().asFile.absolutePath)
+}
+kotlin.sourceSets.named("jvmMain") { kotlin.srcDir(generatedBridgeDirectory) }
+tasks.named("compileKotlinJvm") { dependsOn(generateShortcutsBridge) }
 
 val nativeProjectDirectory = layout.projectDirectory.dir("native")
 val nativeBuildDirectory = layout.buildDirectory.dir("native")
@@ -86,6 +111,7 @@ val buildNative = tasks.register<Exec>("buildNative") {
 }
 val nativeTest = tasks.register<Exec>("nativeTest") {
     group = "verification"
+    description = "Runs the native C ABI and provider structure tests of the current target."
     dependsOn(buildNative)
     val report = layout.buildDirectory.file("reports/shortcuts-native-tests.xml").get().asFile
     doFirst { report.parentFile.mkdirs() }
@@ -93,6 +119,31 @@ val nativeTest = tasks.register<Exec>("nativeTest") {
         "--output-on-failure", "--output-junit", report.absolutePath)
 }
 tasks.named("check") { dependsOn(nativeTest) }
+
+val ffmJava = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) }
+val jvmTestRuntimeClasspath = configurations.named("jvmTestRuntimeClasspath")
+val jvmTestClasses = files(
+    layout.buildDirectory.dir("classes/kotlin/jvm/test"),
+    layout.buildDirectory.dir("classes/java/jvmTest"),
+    layout.buildDirectory.dir("classes/kotlin/jvm/main"),
+    layout.buildDirectory.dir("classes/java/jvmMain"),
+)
+val nativeShortcutsIntegrationTest = tasks.register<JavaExec>("nativeShortcutsIntegrationTest") {
+    group = "verification"
+    description = "Runs the real native shortcut provider integration."
+    dependsOn(tasks.named("jvmTestClasses"), nativeTest)
+    classpath = files(jvmTestClasses, jvmTestRuntimeClasspath)
+    mainClass.set("io.github.kingsword09.kwebshell.service.shortcuts.ShortcutsIntegrationMainKt")
+    javaLauncher.set(ffmJava)
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    systemProperty("kweb.shortcuts.native.library.path", nativeLibrary.get().absolutePath)
+    systemProperty(
+        "kweb.shortcuts.integration.root",
+        layout.buildDirectory.dir("reports/shortcuts-integration").get().asFile.absolutePath,
+    )
+    systemProperty("kweb.shortcuts.target", shortcutsTarget.get())
+}
+tasks.named("check") { dependsOn(nativeShortcutsIntegrationTest) }
 
 val nativeShortcutsRuntimeZip = tasks.register<Zip>("nativeShortcutsRuntimeZip") {
     group = "distribution"
@@ -121,15 +172,24 @@ val verifyNativeShortcutsPackage = tasks.register("verifyNativeShortcutsPackage"
         val libraryEntry = "native/$target/${library.name}"
         ZipFile(packageFile).use { zip ->
             val names = zip.entries().asSequence().filterNot { it.isDirectory }.map { it.name }.toSet()
-            check(names == setOf(libraryEntry, "include/kweb_shortcuts.h")) { "Unexpected files in the native shortcuts package." }
+            check(names == setOf(libraryEntry, "include/kweb_shortcuts.h")) {
+                "Unexpected files in the native shortcuts package."
+            }
             check(zip.getInputStream(zip.getEntry(libraryEntry)).readBytes().contentEquals(library.readBytes())) {
                 "The packaged shortcut library does not match the tested provider."
             }
-            check(zip.getInputStream(zip.getEntry("include/kweb_shortcuts.h")).bufferedReader().readText().contains("kweb_shortcuts_abi_version"))
+            check(
+                zip.getInputStream(zip.getEntry("include/kweb_shortcuts.h")).bufferedReader().readText()
+                    .contains("kweb_shortcuts_abi_version"),
+            ) { "The packaged header does not declare the shortcuts ABI revision." }
         }
-        val digest = MessageDigest.getInstance("SHA-256").digest(packageFile.readBytes()).joinToString("") { "%02x".format(it) }
+        val digest = MessageDigest.getInstance("SHA-256").digest(packageFile.readBytes())
+            .joinToString("") { "%02x".format(it) }
         report.parentFile.mkdirs()
-        report.writeText("""{"schemaVersion":1,"target":"$target","archive":"${packageFile.name}","sha256":"$digest","nativeLibrary":"${library.name}","exactContents":true}""" + "\n")
+        report.writeText(
+            """{"schemaVersion":1,"target":"$target","archive":"${packageFile.name}","sha256":"$digest",""" +
+                """"nativeLibrary":"${library.name}","exactContents":true}""" + "\n",
+        )
     }
 }
 tasks.named("check") { dependsOn(verifyNativeShortcutsPackage) }

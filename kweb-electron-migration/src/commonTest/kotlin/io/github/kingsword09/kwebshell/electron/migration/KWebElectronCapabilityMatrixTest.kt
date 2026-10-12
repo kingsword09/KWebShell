@@ -118,6 +118,11 @@ class KWebElectronCapabilityMatrixTest {
             KWebElectronCapabilityMatrix.find("system-preferences")?.status,
         )
         assertEquals("KWebSystemPreferences", KWebElectronCapabilityMatrix.find("system-preferences")?.kweb)
+        assertEquals(
+            KWebElectronMappingStatus.REWRITE,
+            KWebElectronCapabilityMatrix.find("screen")?.status,
+        )
+        assertEquals("KWebScreens", KWebElectronCapabilityMatrix.find("screen")?.kweb)
         assertTrue(KWebElectronCapabilityMatrix.entries.size >= 18)
     }
 }

@@ -253,6 +253,54 @@ class KWebElectronInventoryContractTest {
         }
     }
 
+    @Test
+    fun scannerClassifiesDeclaredScreenReadsAndBlocksTheRest() {
+        val root = Files.createTempDirectory("kweb-electron-screen")
+        try {
+            root.resolve("screen.ts").writeText(
+                """
+                import { screen } from "electron";
+                const primary = screen.getPrimaryDisplay();
+                const all = screen.getAllDisplays();
+                const near = screen.getDisplayNearestPoint({ x: 10, y: 20 });
+                const matching = screen.getDisplayMatching({ x: 0, y: 0, width: 10, height: 10 });
+                const cursor = screen.getCursorScreenPoint();
+                const dip = screen.screenToDipPoint({ x: 1, y: 2 });
+                screen.on("display-added", (event, display) => refresh());
+                screen.setDisplayMode(display.id, {});
+                """.trimIndent(),
+            )
+            val findings = KWebElectronInventoryScanner().scan(root).findings
+            listOf(
+                "electron.screen.getPrimaryDisplay",
+                "electron.screen.getAllDisplays",
+                "electron.screen.getDisplayNearestPoint",
+                "electron.screen.getDisplayMatching",
+                "electron.screen.getCursorScreenPoint",
+                "electron.screen.screenToDipPoint",
+            ).forEach { operation ->
+                assertTrue(
+                    findings.any { it.matrixId == "screen" && it.detail == operation && it.blocking },
+                    findings.toString(),
+                )
+            }
+            // Event registration and display mutation stay explicit blockers.
+            listOf("on", "setDisplayMode").forEach { method ->
+                assertTrue(
+                    findings.any {
+                        it.matrixId == "screen" &&
+                            it.detail == "electron.screen.$method-unsupported" &&
+                            it.blocking
+                    },
+                    findings.toString(),
+                )
+            }
+            assertTrue(findings.none { it.matrixId == "screen" && !it.blocking }, findings.toString())
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
     private fun manifest(): KWebElectronManifest = KWebElectronMigrationJson.decode(
         """
         {

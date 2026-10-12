@@ -1,0 +1,55 @@
+{
+  "namespace": "ScreenBridge",
+  "kotlinPackage": "io.github.kingsword09.kwebshell.service.screen.generated",
+  "version": 1,
+  "types": [
+    {
+      "name": "ReadRequest",
+      "fields": [
+        {
+          "name": "facts",
+          "type": "string",
+          "list": true
+        }
+      ]
+    },
+    {
+      "name": "ScreenSummary",
+      "fields": [
+        {
+          "name": "displayCount",
+          "type": "int32"
+        },
+        {
+          "name": "primaryWidth",
+          "type": "int32"
+        },
+        {
+          "name": "primaryHeight",
+          "type": "int32"
+        },
+        {
+          "name": "primaryScalePermille",
+          "type": "int32"
+        }
+      ]
+    }
+  ],
+  "methods": [
+    {
+      "name": "read",
+      "request": "ReadRequest",
+      "response": "ScreenSummary"
+    }
+  ],
+  "streams": [
+    {
+      "name": "changes",
+      "request": "ReadRequest",
+      "chunk": "ScreenSummary",
+      "binary": false,
+      "capacity": 16,
+      "schemaVersion": 1
+    }
+  ]
+}

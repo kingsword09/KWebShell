@@ -49,6 +49,7 @@ dependencies {
     api(project(":kweb-service-application-lifecycle"))
     api(project(":kweb-bridge"))
     implementation(project(":kweb-extensions"))
+    implementation(project(":kweb-service-screen"))
     implementation(libs.compose.ui.desktop)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)

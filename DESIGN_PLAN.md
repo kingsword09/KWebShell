@@ -2757,6 +2757,36 @@ sit in a developer's working tree. The objective is complete when:
 4. the existing records keep verifying, because the tracked bytes are exactly what
    the hosted recorder hashed all along.
 
+### RFC 0020 implementation objective: screen and display topology
+
+RFC 0020 publishes one application-scoped screen service for Windows x64, macOS
+arm64, and Linux x64 that owns multi-display topology, work areas, scale,
+rotation, refresh rate, cursor position, and coordinate conversion. The objective
+is complete only when the same PR lands the typed contract, the four declared
+providers, the resolved placement consumer, the renderer surface, the migration
+mapping, real three-target evidence, documentation, and the final acceptance
+review:
+
+1. `kweb-service-screen` publishes an atomic topology of stable-per-lifetime
+   display identifiers with the facts each session provides, ordered change
+   events carrying added, removed, and changed identifiers, bounded conversion
+   between logical, native, and physical spaces, and resolution that never
+   guesses after a removal.
+2. Exactly one provider per target and session type: Win32 monitor and DPI APIs,
+   AppKit `NSScreen` with CoreGraphics display modes, an X11 provider that reads
+   RandR 1.5 monitors directly because GDK does not observe them, and a Wayland
+   provider over the compositor-reported GDK monitors. Each advertises only its
+   own session and facts, and a missing facility fails typed instead of falling
+   back to another display server.
+3. The desktop placement consumer follows the service topology so a window is
+   never placed on a removed display, and the renderer surface exposes a declared
+   summary and change notifications without identifiers or the cursor.
+4. The Electron `screen` mapping rewrites the declared reads and keeps every host
+   service operation it does not expose as an explicit blocker.
+5. Common, JVM, native, packaging, migration, and hosted Windows, macOS, and
+   Linux evidence pass, and every acceptance row is decided before the focused
+   squash pull request is merged.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.

@@ -135,6 +135,28 @@ record() {
       arguments="$arguments --artifact $preferences_key=$preferences_file"
     done
   fi
+  if [ "$rfc" = "0020" ]; then
+    arguments="$arguments --service screen --matrix-row screen --from-compatibility-report $extra_file"
+    for screen_spec in \
+      "screen-native-tests|screen-native-tests.xml|screen-integration" \
+      "screen-contract-tests|TEST-io.github.kingsword09.kwebshell.service.screen.KWebScreensContractTest.xml|screen-integration" \
+      "screen-bridge-tests|TEST-io.github.kingsword09.kwebshell.service.screen.KWebScreensBridgeTest.xml|screen-integration" \
+      "screen-package|native-screen-package.json|screen-integration" \
+      "screen-runtime|kweb-service-screen-1.0.0-${target}.zip|screen-integration"; do
+      IFS='|' read -r screen_key screen_name screen_family <<< "$screen_spec"
+      screen_file=$(find "$downloaded" -type f -name "$screen_name" -path "*${screen_family}-${target}-*" | head -1)
+      arguments="$arguments --artifact $screen_key=$screen_file"
+    done
+    # The Wayland session is verified on the Linux target only.
+    if [ "$target" = "linux-x64" ]; then
+      screen_wayland=$(find "$downloaded" -type f -name "screen-wayland-transcript.txt" -path "*screen-integration-${target}-*" | head -1)
+      if [ -z "$screen_wayland" ] || [ ! -f "$screen_wayland" ]; then
+        echo "Missing Wayland screen transcript for $target" >&2
+        exit 1
+      fi
+      arguments="$arguments --artifact screen-wayland=$screen_wayland"
+    fi
+  fi
   if [ "$rfc" = "0027" ]; then
     arguments="$arguments --service native-image --matrix-row native-image --from-compatibility-report $extra_file"
     for image_spec in \
@@ -173,6 +195,7 @@ for target in macos-arm64 windows-x64 linux-x64; do
     "0017|menus.hosted|menus-integration|menus-integration.json|menus-integration|compatibility|compatibility.json|electron-migration"
     "0018|tray.hosted|tray-integration|tray-integration.json|tray-integration|compatibility|compatibility.json|electron-migration"
     "0019|preferences.hosted|preferences-integration|preferences-integration.json|preferences-integration|compatibility|compatibility.json|electron-migration"
+    "0020|screen.hosted|screen-integration|screen-integration.json|screen-integration|compatibility|compatibility.json|electron-migration"
     "0027|image.hosted|native-image|native-image-evidence.json|image-integration|compatibility|compatibility.json|electron-migration"
     "0007|window-controls.hosted|window-controls-report|window-controls-report.json|provider-lifecycle"
   )

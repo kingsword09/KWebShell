@@ -23,6 +23,13 @@ const program = ts.createProgram(sourceNames, options, host);
 const checker = program.getTypeChecker();
 const facts = [];
 const builtin = new Set(builtinModules.map(n => n.replace(/^node:/, '')));
+// Electron screen methods that map to one declared screen operation. Every other
+// method, including display mutation and event registration, stays an explicit
+// rewrite blocker.
+const electronScreenReads = new Set([
+  'getPrimaryDisplay', 'getAllDisplays', 'getDisplayNearestPoint', 'getDisplayMatching',
+  'getCursorScreenPoint', 'screenToDipPoint', 'dipToScreenPoint', 'screenToDipRect', 'dipToScreenRect',
+]);
 const electronNames = new Set(['app', 'ipcMain', 'ipcRenderer', 'contextBridge', 'BrowserWindow', 'webContents', 'session', 'protocol', 'Menu', 'MenuItem', 'Tray']);
 // Electron systemPreferences methods that map to one declared preference fact.
 // Every other method, including the permission and platform-specific ones, stays
@@ -281,6 +288,12 @@ for (const fileName of sourceNames) {
       } else if (target?.startsWith('electron.Menu.')) {
         emit(sf, node, 'UNCLASSIFIED', target, { symbol: 'Menu', operation: target });
         if (target === 'electron.Menu.buildFromTemplate') menuTemplateFacts(sf, node);
+      } else if (target?.startsWith('electron.screen.')) {
+        const method = target.slice('electron.screen.'.length);
+        const operation = electronScreenReads.has(method)
+          ? target
+          : `${target}-unsupported`;
+        emit(sf, node, 'UNCLASSIFIED', operation, { symbol: 'screen', operation });
       } else if (target?.startsWith('electron.systemPreferences.')) {
         const method = target.slice('electron.systemPreferences.'.length);
         const operation = electronSystemPreferenceFacts.has(method)

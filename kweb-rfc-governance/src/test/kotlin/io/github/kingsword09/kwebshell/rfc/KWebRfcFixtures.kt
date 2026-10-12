@@ -1,6 +1,7 @@
 package io.github.kingsword09.kwebshell.rfc
 
 import io.github.kingsword09.kwebshell.electron.migration.KWebElectronCapabilityMatrixDocument
+import io.github.kingsword09.kwebshell.electron.migration.KWebElectronCompatibilityReport
 
 internal val FIXTURE_RUNTIME: KWebRfcRuntimeIdentity = KWebRfcRuntimeIdentity(
     cefVersion = "151.3.16+gbe1e15d+chromium-151.0.7922.109",
@@ -124,3 +125,31 @@ internal fun threeHostedTargets(
     transform: (KWebRfcEvidenceRecord) -> KWebRfcEvidenceRecord = { it },
 ): List<KWebRfcEvidenceRecord> = listOf("macos-arm64", "windows-x64", "linux-x64")
     .map { target -> transform(fixtureRecord(target = target)) }
+
+internal fun fixtureCompatibilityReport(): KWebElectronCompatibilityReport = KWebElectronCompatibilityReport(
+    schemaVersion = 2,
+    applicationId = "io.github.kwebshell.fixture",
+    entryId = "entry-1",
+    rendererOrigin = "app://fixture",
+    rendererProfile = "default",
+    policies = mapOf("channel:app.getPath" to io.github.kingsword09.kwebshell.electron.migration.KWebElectronChannelPolicy("native.app-paths.resolve", false, false)),
+    sourceSha256 = "a".repeat(64),
+    lockfileSha256 = "b".repeat(64),
+    rfcEvidenceSha256 = "c".repeat(64),
+    rfcCatalogSha256 = "d".repeat(64),
+    runtimeSha256 = "e".repeat(64),
+    runtimeArtifactSha256 = "f".repeat(64),
+    electronFixtureMajor = 37,
+    migrationStatus = "READY",
+    blockedReasons = emptyList(),
+    rendererSha256 = "b".repeat(64),
+    manifestSha256 = "c".repeat(64),
+    generatedOutputSha256 = "d".repeat(64),
+    inventorySha256 = "e".repeat(64),
+    capabilityMatrixVersion = 1,
+    capabilityMatrixSha256 = "f".repeat(64),
+    serviceContractVersions = mapOf("app-paths" to "1.0.0"),
+    cefVersion = FIXTURE_RUNTIME.cefVersion,
+    chromiumVersion = FIXTURE_RUNTIME.chromiumVersion,
+    target = "macos-arm64",
+)

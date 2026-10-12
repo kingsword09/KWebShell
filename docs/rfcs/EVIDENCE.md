@@ -42,6 +42,29 @@ regenerated with the `record` command below.
 
 ## Recording evidence
 
+Hosted aggregation uses `recordBatch` to record the complete target set with one
+Gradle/JVM invocation. The collector creates `build/rfc-evidence/batch.json` from
+the validated raw artifacts, then runs:
+
+```bash
+./gradlew --no-daemon :kweb-rfc-governance:rfcEvidenceRecord \
+  -PrfcEvidenceArguments='recordBatch docs/rfcs/evidence/manifest.json docs/rfcs/evidence/manifest.json --catalog docs/rfcs --runtime runtime/cef-runtime.json --contracts docs/rfcs/evidence/contracts.json --repository-root . --batch build/rfc-evidence/batch.json'
+```
+
+The version-1 request schema is packaged as `rfc-evidence-batch.schema.json`.
+RFC 0001 retains the actual batch-recorder contract-test XML from each target
+and the exact batch request alongside its existing governance test evidence.
+Inputs contain RFC/provider/target identities, artifact paths and optional
+compatibility-report bindings. Run identity still comes exclusively from the
+hosted environment. Batch recording stages and validates every record before
+publishing immutable artifacts and atomically replacing the manifest; different
+bytes at an existing retained path are an explicit collision. A failed I/O
+publication may leave unreferenced new artifacts but cannot partially write a
+manifest or overwrite historical evidence. See the
+[batch contract and acceptance](0001-program-governance.md#batch-recording-contract-v1).
+
+Single-capability recording remains available with `record`:
+
 Evidence records are derived from structured test output, never typed from
 memory. To upsert one record into the manifest from a migration compatibility
 report (the Phase 11 flow):
@@ -143,19 +166,19 @@ runner tokens, cloud credentials, private keys, native pointers, and private
 filesystem paths. A detection is a typed failure that names the field and the
 pattern class; the sensitive value itself is never echoed.
 
-## Hosted recording flow (RFC 0001-0004)
+## Hosted recording flow
 
-A single aggregation job records all twelve hosted records from the retained
-artifacts of the same run's verification jobs:
+A single aggregation job records all 60 hosted records (20 implemented RFCs on
+three targets) from the retained artifacts of the same run's verification jobs:
 
 1. Each verification target uploads its raw evidence: governance contract-test
    XML (`rfc-governance-*`), provider lifecycle output (`provider-lifecycle-*`),
    dialogs consent status (`native-dialogs-*`), and stream conformance output
    (`engine-integration-*`).
 2. The `rfc-evidence` job checks the repository out (LF working tree), downloads
-  those artifacts, and chains four upserts per target through
+  those artifacts, and batches all upserts through
   `.github/scripts/aggregate-rfc-evidence.sh`, passing the target explicitly
-  with `--target`; the recorder still requires the `Implemented` catalog, so
+  in each structured entry; the recorder still requires the `Implemented` catalog, so
   the check-in commit lands the catalog flip together with the records.
 3. The merged manifest plus the retained artifact tree are checked in together
   with the `Implemented` status flips. `rfcGovernanceCheck` then re-hashes the

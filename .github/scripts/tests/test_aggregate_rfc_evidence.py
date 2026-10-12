@@ -1,6 +1,6 @@
 """Exercise the real shell orchestrator with an isolated recorder test double.
 
-The double checks catalog status and chains invocation records; it does not
+The double checks catalog status and records the batch invocation; it does not
 generate RFC support evidence. Real recording and governance run next in CI.
 """
 
@@ -27,7 +27,8 @@ IMPLEMENTED = {
     "0010", "0011", "0012", "0013", "0014", "0015", "0017", "0018", "0019", "0020", "0027", "0030",
 }
 ARTIFACTS = {
-    "rfc-governance": ["TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml"],
+    "rfc-governance": ["TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml",
+                       "TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcEvidenceBatchTest.xml"],
     "provider-lifecycle": ["provider-lifecycle-report.json", "window-controls-report.json"],
     "native-dialogs": ["consent-status.json"],
     "application-package": ["application-package-report.json"],
@@ -89,16 +90,23 @@ class AggregationTest(unittest.TestCase):
 from pathlib import Path
 import sys
 arguments = next(a.split("=", 1)[1].split() for a in sys.argv if a.startswith("-PrfcEvidenceArguments="))
-assert arguments[0] == "record"
+assert arguments[0] == "recordBatch"
 options = dict(zip(arguments[3::2], arguments[4::2]))
 catalog = Path(options["--catalog"])
 assert catalog == Path("docs/rfcs"), "Recorder must use the actual repository catalog"
-rfc = options["--rfc"]
-document, = catalog.glob(rfc + "-*.md")
-assert "- Status: Implemented" in document.read_text().splitlines(), "Cannot record an unimplemented RFC"
 manifest = json.loads(Path(arguments[1]).read_text())
-artifacts = [arguments[i + 1] for i, value in enumerate(arguments) if value == "--artifact"]
-manifest["invocations"].append({"rfc": rfc, "target": options["--target"], "artifacts": artifacts, "compatibility": options.get("--from-compatibility-report"), "service": options.get("--service")})
+batch = json.loads(Path(options["--batch"]).read_text())
+assert batch["schemaVersion"] == 1
+with Path("gradle-invocations.txt").open("a") as log:
+    log.write("batch\\n")
+for record in batch["records"]:
+    rfc = record["rfcId"]
+    document, = catalog.glob(rfc + "-*.md")
+    assert "- Status: Implemented" in document.read_text().splitlines(), "Cannot record an unimplemented RFC"
+    artifacts = [a["name"] + "=" + a["path"] for a in record["artifacts"]]
+    for artifact in record["artifacts"]:
+        assert Path(artifact["path"]).is_file(), "Missing batch artifact"
+    manifest["invocations"].append({"rfc": rfc, "target": record["target"], "artifacts": artifacts, "compatibility": record.get("compatibilityReportPath"), "service": record.get("serviceId"), "matrixRows": record["matrixRowIds"]})
 Path(arguments[2]).write_text(json.dumps(manifest))
 ''')
         wrapper = self.root / "gradlew"
@@ -141,6 +149,10 @@ Path(arguments[2]).write_text(json.dumps(manifest))
         self.assertEqual(0, result.returncode, result.stderr)
         calls = json.loads(self.manifest.read_text())["invocations"]
         self.assertEqual(3 * len(IMPLEMENTED), len(calls))
+        self.assertEqual(["batch"], (self.root / "gradle-invocations.txt").read_text().splitlines())
+        for call in [c for c in calls if c["rfc"] == "0001"]:
+            self.assertEqual({"governance-contract-tests", "governance-batch-tests", "batch-plan"},
+                             {a.split("=", 1)[0] for a in call["artifacts"]})
         self.assertEqual(
             {(rfc, target) for rfc in IMPLEMENTED for target in TARGETS},
             {(call["rfc"], call["target"]) for call in calls},
@@ -219,8 +231,26 @@ Path(arguments[2]).write_text(json.dumps(manifest))
                     self.assert_preflight_failure(target)
             self.report(target).write_text(json.dumps(valid))
 
+    def test_missing_last_target_artifact_never_starts_gradle_or_changes_manifest(self):
+        path = next(self.root.glob("build/rfc-evidence/downloaded/provider-lifecycle-linux-x64-*/window-controls-report.json"))
+        path.unlink()
+        result = self.run_script()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("Missing window-controls-report", result.stderr)
+        self.assertFalse((self.root / "gradle-invocations.txt").exists())
+        self.assertEqual(self.manifest_before, self.manifest.read_bytes())
+
+    def test_paths_with_spaces_preserve_artifact_arguments(self):
+        original = next(self.root.glob("build/rfc-evidence/downloaded/rfc-governance-macos-arm64-*"))
+        original.rename(original.with_name(original.name + " with spaces"))
+        result = self.run_script()
+        self.assertEqual(0, result.returncode, result.stderr)
+        calls = json.loads(self.manifest.read_text())["invocations"]
+        call, = [c for c in calls if c["rfc"] == "0001" and c["target"] == "macos-arm64"]
+        self.assertIn("with spaces/", call["artifacts"][0])
+
     def test_missing_implemented_artifact_is_still_fatal(self):
-        path = next(self.root.glob("build/rfc-evidence/downloaded/rfc-governance-macos-arm64-*/*.xml"))
+        path = next(self.root.glob("build/rfc-evidence/downloaded/rfc-governance-macos-arm64-*/TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml"))
         path.unlink()
         result = self.run_script()
         self.assertNotEqual(0, result.returncode)

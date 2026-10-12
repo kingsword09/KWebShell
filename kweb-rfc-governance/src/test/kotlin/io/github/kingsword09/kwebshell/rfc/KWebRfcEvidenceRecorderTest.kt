@@ -20,33 +20,7 @@ class KWebRfcEvidenceRecorderTest {
         fixtureDocument(id = "0002", status = KWebRfcStatus.PROPOSED, dependsOn = listOf("0001")),
     )
 
-    private val compatibilityReport = KWebElectronCompatibilityReport(
-        schemaVersion = 2,
-            applicationId = "io.github.kwebshell.fixture",
-            entryId = "entry-1",
-            rendererOrigin = "app://fixture",
-            rendererProfile = "default",
-            policies = mapOf("channel:app.getPath" to io.github.kingsword09.kwebshell.electron.migration.KWebElectronChannelPolicy("native.app-paths.resolve", false, false)),
-            sourceSha256 = "a".repeat(64),
-            lockfileSha256 = "b".repeat(64),
-            rfcEvidenceSha256 = "c".repeat(64),
-            rfcCatalogSha256 = "d".repeat(64),
-            runtimeSha256 = "e".repeat(64),
-            runtimeArtifactSha256 = "f".repeat(64),
-            electronFixtureMajor = 37,
-        migrationStatus = "READY",
-        blockedReasons = emptyList(),
-        rendererSha256 = "b".repeat(64),
-        manifestSha256 = "c".repeat(64),
-        generatedOutputSha256 = "d".repeat(64),
-        inventorySha256 = "e".repeat(64),
-        capabilityMatrixVersion = 1,
-        capabilityMatrixSha256 = "f".repeat(64),
-        serviceContractVersions = mapOf("app-paths" to "1.0.0"),
-        cefVersion = FIXTURE_RUNTIME.cefVersion,
-        chromiumVersion = FIXTURE_RUNTIME.chromiumVersion,
-        target = "macos-arm64",
-    )
+    private val compatibilityReport = fixtureCompatibilityReport()
 
     private fun request(
         report: KWebElectronCompatibilityReport? = compatibilityReport,

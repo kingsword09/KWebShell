@@ -11,6 +11,8 @@ cd "$(dirname "$0")/../.."
 downloaded="build/rfc-evidence/downloaded"
 input="docs/rfcs/evidence/manifest.json"
 catalog="docs/rfcs"
+batch_arguments="build/rfc-evidence/batch-arguments.bin"
+batch="build/rfc-evidence/batch.json"
 
 # RFC 0016 remains Accepted. Its reports are mandatory diagnostic artifacts,
 # not Implemented support records. Validate every target before updating the
@@ -42,61 +44,73 @@ python3 .github/scripts/retain_windows_msix_evidence.py \
   --downloaded "$downloaded" --output "$windows_msix_proof" \
   --source-revision "$GITHUB_SHA"
 
+mkdir -p build/rfc-evidence
+: > "$batch_arguments"
+
 record() {
-  local target="$1" rfc="$2" provider="$3" artifact="$4" file="$5" input="$6" output="$7" extra_name="${8:-}" extra_file="${9:-}"
+  local target="$1" rfc="$2" provider="$3" artifact="$4" file="$5" extra_name="${6:-}" extra_file="${7:-}"
   if [ -z "$file" ] || [ ! -f "$file" ]; then
     echo "Missing $artifact evidence file for $target" >&2
     exit 1
   fi
-  local arguments="record $input $output --catalog $catalog --runtime runtime/cef-runtime.json --contracts docs/rfcs/evidence/contracts.json --repository-root . --rfc $rfc --provider $provider --electron-major 44 --target $target --artifact $artifact=$file"
+  local arguments=(--rfc "$rfc" --provider "$provider" --electron-major 44 --target "$target" --artifact "$artifact=$file")
+  if [ "$rfc" = "0001" ]; then
+    local batch_tests
+    batch_tests=$(find "$downloaded" -type f -name TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcEvidenceBatchTest.xml -path "*rfc-governance-${target}-*" | head -1)
+    if [ -z "$batch_tests" ] || [ ! -f "$batch_tests" ]; then
+      echo "Missing batch recorder test evidence for $target" >&2
+      exit 1
+    fi
+    arguments+=(--artifact "governance-batch-tests=$batch_tests" --artifact "batch-plan=$batch")
+  fi
   if [ -n "$extra_name" ]; then
     if [ -z "$extra_file" ] || [ ! -f "$extra_file" ]; then
       echo "Missing $extra_name evidence file for $target" >&2
       exit 1
     fi
-    arguments="$arguments --artifact $extra_name=$extra_file"
+    arguments+=(--artifact "$extra_name=$extra_file")
   fi
   if [ "$rfc" = "0008" ]; then
-    arguments="$arguments --matrix-row web-contents-reload"
-    arguments="$arguments --matrix-row web-contents-before-unload"
-    arguments="$arguments --matrix-row window-open-handler"
-    arguments="$arguments --matrix-row renderer-process-state"
+    arguments+=(--matrix-row web-contents-reload)
+    arguments+=(--matrix-row web-contents-before-unload)
+    arguments+=(--matrix-row window-open-handler)
+    arguments+=(--matrix-row renderer-process-state)
   fi
   if [ "$rfc" = "0009" ]; then
-    arguments="$arguments --matrix-row session-cookies"
-    arguments="$arguments --matrix-row session-cache-clear"
-    arguments="$arguments --matrix-row session-storage-clear"
-    arguments="$arguments --matrix-row session-storage-usage"
-    arguments="$arguments --matrix-row session-spellcheck"
-    arguments="$arguments --matrix-row session-flush"
+    arguments+=(--matrix-row session-cookies)
+    arguments+=(--matrix-row session-cache-clear)
+    arguments+=(--matrix-row session-storage-clear)
+    arguments+=(--matrix-row session-storage-usage)
+    arguments+=(--matrix-row session-spellcheck)
+    arguments+=(--matrix-row session-flush)
   fi
   if [ "$rfc" = "0010" ]; then
-    arguments="$arguments --matrix-row session-web-request"
+    arguments+=(--matrix-row session-web-request)
   fi
   if [ "$rfc" = "0011" ]; then
-    arguments="$arguments --matrix-row certificate-error"
-    arguments="$arguments --matrix-row select-client-certificate"
+    arguments+=(--matrix-row certificate-error)
+    arguments+=(--matrix-row select-client-certificate)
   fi
   if [ "$rfc" = "0012" ]; then
-    arguments="$arguments --matrix-row downloads"
+    arguments+=(--matrix-row downloads)
   fi
   if [ "$rfc" = "0013" ]; then
-    arguments="$arguments --matrix-row node-fs"
+    arguments+=(--matrix-row node-fs)
   fi
   if [ "$rfc" = "0014" ]; then
-    arguments="$arguments --matrix-row clipboard"
+    arguments+=(--matrix-row clipboard)
     clipboard_report=$(find "$downloaded" -type f -name compatibility.json -path "*electron-migration-${target}-*" | head -1)
     if [ -z "$clipboard_report" ] || [ ! -f "$clipboard_report" ]; then
       echo "Missing clipboard migration compatibility report for $target" >&2
       exit 1
     fi
-    arguments="$arguments --service clipboard --from-compatibility-report $clipboard_report"
+    arguments+=(--service clipboard --from-compatibility-report "$clipboard_report")
   fi
   if [ "$rfc" = "0015" ]; then
-    arguments="$arguments --service shell --matrix-row shell --from-compatibility-report $extra_file"
+    arguments+=(--service shell --matrix-row shell --from-compatibility-report "$extra_file")
   fi
   if [ "$rfc" = "0017" ]; then
-    arguments="$arguments --service menus --matrix-row menu --from-compatibility-report $extra_file"
+    arguments+=(--service menus --matrix-row menu --from-compatibility-report "$extra_file")
     for menus_spec in \
       "menus-native-tests|menus-native-tests.xml|menus-integration" \
       "menus-contract-tests|TEST-io.github.kingsword09.kwebshell.service.menus.KWebMenusContractTest.xml|menus-integration" \
@@ -106,11 +120,11 @@ record() {
       "context-menu|context-menu-evidence.json|engine-integration"; do
       IFS='|' read -r menus_key menus_name menus_family <<< "$menus_spec"
       menus_file=$(find "$downloaded" -type f -name "$menus_name" -path "*${menus_family}-${target}-*" | head -1)
-      arguments="$arguments --artifact $menus_key=$menus_file"
+      arguments+=(--artifact "$menus_key=$menus_file")
     done
   fi
   if [ "$rfc" = "0018" ]; then
-    arguments="$arguments --service tray --matrix-row tray --from-compatibility-report $extra_file"
+    arguments+=(--service tray --matrix-row tray --from-compatibility-report "$extra_file")
     for tray_spec in \
       "tray-native-tests|tray-native-tests.xml|tray-integration" \
       "tray-contract-tests|TEST-io.github.kingsword09.kwebshell.service.tray.KWebTraysContractTest.xml|tray-integration" \
@@ -118,11 +132,11 @@ record() {
       "tray-runtime|kweb-service-tray-1.0.0-${target}.zip|tray-integration"; do
       IFS='|' read -r tray_key tray_name tray_family <<< "$tray_spec"
       tray_file=$(find "$downloaded" -type f -name "$tray_name" -path "*${tray_family}-${target}-*" | head -1)
-      arguments="$arguments --artifact $tray_key=$tray_file"
+      arguments+=(--artifact "$tray_key=$tray_file")
     done
   fi
   if [ "$rfc" = "0019" ]; then
-    arguments="$arguments --service system-preferences --matrix-row native-theme --matrix-row system-preferences --from-compatibility-report $extra_file"
+    arguments+=(--service system-preferences --matrix-row native-theme --matrix-row system-preferences --from-compatibility-report "$extra_file")
     for preferences_spec in \
       "preferences-native-tests|preferences-native-tests.xml|preferences-integration" \
       "preferences-contract-tests|TEST-io.github.kingsword09.kwebshell.service.preferences.KWebSystemPreferencesContractTest.xml|preferences-integration" \
@@ -132,11 +146,11 @@ record() {
       "theme-probe|theme-evidence.json|engine-integration"; do
       IFS='|' read -r preferences_key preferences_name preferences_family <<< "$preferences_spec"
       preferences_file=$(find "$downloaded" -type f -name "$preferences_name" -path "*${preferences_family}-${target}-*" | head -1)
-      arguments="$arguments --artifact $preferences_key=$preferences_file"
+      arguments+=(--artifact "$preferences_key=$preferences_file")
     done
   fi
   if [ "$rfc" = "0020" ]; then
-    arguments="$arguments --service screen --matrix-row screen --from-compatibility-report $extra_file"
+    arguments+=(--service screen --matrix-row screen --from-compatibility-report "$extra_file")
     for screen_spec in \
       "screen-native-tests|screen-native-tests.xml|screen-integration" \
       "screen-contract-tests|TEST-io.github.kingsword09.kwebshell.service.screen.KWebScreensContractTest.xml|screen-integration" \
@@ -145,7 +159,7 @@ record() {
       "screen-runtime|kweb-service-screen-1.0.0-${target}.zip|screen-integration"; do
       IFS='|' read -r screen_key screen_name screen_family <<< "$screen_spec"
       screen_file=$(find "$downloaded" -type f -name "$screen_name" -path "*${screen_family}-${target}-*" | head -1)
-      arguments="$arguments --artifact $screen_key=$screen_file"
+      arguments+=(--artifact "$screen_key=$screen_file")
     done
     # The Wayland session is verified on the Linux target only.
     if [ "$target" = "linux-x64" ]; then
@@ -154,11 +168,11 @@ record() {
         echo "Missing Wayland screen transcript for $target" >&2
         exit 1
       fi
-      arguments="$arguments --artifact screen-wayland=$screen_wayland"
+      arguments+=(--artifact "screen-wayland=$screen_wayland")
     fi
   fi
   if [ "$rfc" = "0027" ]; then
-    arguments="$arguments --service native-image --matrix-row native-image --from-compatibility-report $extra_file"
+    arguments+=(--service native-image --matrix-row native-image --from-compatibility-report "$extra_file")
     for image_spec in \
       "migration-image|migration-image-evidence.json|electron-migration" \
       "image-package|native-image-package.json|image-integration" \
@@ -168,15 +182,14 @@ record() {
       "image-contract-tests|TEST-io.github.kingsword09.kwebshell.service.image.KWebImageContractTest.xml|image-integration"; do
       IFS='|' read -r image_key image_name image_family <<< "$image_spec"
       image_file=$(find "$downloaded" -type f -name "$image_name" -path "*${image_family}-${target}-*" | head -1)
-      arguments="$arguments --artifact $image_key=$image_file"
+      arguments+=(--artifact "$image_key=$image_file")
     done
   fi
-  ./gradlew --no-daemon :kweb-rfc-governance:rfcEvidenceRecord \
-    -PrfcEvidenceArguments="$arguments"
+  printf '%s\0' "${arguments[@]}" >> "$batch_arguments"
+  printf '\0' >> "$batch_arguments"
 }
 
 for target in macos-arm64 windows-x64 linux-x64; do
-  chain="$input"
   specs=(
     "0001|governance.hosted|governance-contract-tests|TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml|rfc-governance"
     "0002|governance.hosted|provider-lifecycle-report|provider-lifecycle-report.json|provider-lifecycle"
@@ -199,8 +212,6 @@ for target in macos-arm64 windows-x64 linux-x64; do
     "0027|image.hosted|native-image|native-image-evidence.json|image-integration|compatibility|compatibility.json|electron-migration"
     "0007|window-controls.hosted|window-controls-report|window-controls-report.json|provider-lifecycle"
   )
-  count=0
-  total=${#specs[@]}
   for spec in "${specs[@]}"; do
     IFS='|' read -r rfc provider artifact name family extra_name extra_file_name extra_family <<< "$spec"
     file=$(find "$downloaded" -type f -name "$name" -path "*${family}-${target}-*" | head -1)
@@ -208,19 +219,47 @@ for target in macos-arm64 windows-x64 linux-x64; do
     if [ -n "${extra_name:-}" ]; then
       extra_file=$(find "$downloaded" -type f -name "$extra_file_name" -path "*${extra_family}-${target}-*" | head -1)
     fi
-    count=$((count + 1))
-    if [ "$count" -eq "$total" ]; then
-      output="$input"
-    else
-      output="build/rfc-evidence/chain-${target}-${count}.json"
-    fi
     if [ "$rfc" = "0030" ] && [ "$target" = "windows-x64" ]; then
-      record "$target" "$rfc" "$provider" "$artifact" "$file" "$chain" "$output" "windows-msix-proof" "$windows_msix_proof"
+      record "$target" "$rfc" "$provider" "$artifact" "$file" "windows-msix-proof" "$windows_msix_proof"
     else
-      record "$target" "$rfc" "$provider" "$artifact" "$file" "$chain" "$output" "${extra_name:-}" "${extra_file:-}"
+      record "$target" "$rfc" "$provider" "$artifact" "$file" "${extra_name:-}" "${extra_file:-}"
     fi
-    chain="$output"
   done
 done
+
+# NUL-delimited arguments preserve paths containing spaces without shell parsing.
+python3 - "$batch_arguments" "$batch" <<'PYTHON'
+import json
+from pathlib import Path
+import sys
+
+fields = {"--rfc": "rfcId", "--provider": "providerId", "--target": "target",
+          "--electron-major": "electronFixtureMajor", "--service": "serviceId",
+          "--from-compatibility-report": "compatibilityReportPath"}
+records = []
+for group in Path(sys.argv[1]).read_bytes().split(b"\0\0"):
+    if not group:
+        continue
+    arguments = group.decode("utf-8").split("\0")
+    if len(arguments) % 2:
+        raise ValueError("Batch arguments must be option/value pairs")
+    record = {"artifacts": [], "matrixRowIds": []}
+    for option, value in zip(arguments[::2], arguments[1::2]):
+        if option == "--artifact":
+            name, path = value.split("=", 1)
+            record["artifacts"].append({"name": name, "path": path})
+        elif option == "--matrix-row":
+            record["matrixRowIds"].append(value)
+        else:
+            key = fields[option]
+            if key in record:
+                raise ValueError("Duplicate batch option: " + option)
+            record[key] = int(value) if option == "--electron-major" else value
+    records.append(record)
+Path(sys.argv[2]).write_text(json.dumps({"schemaVersion": 1, "records": records}) + "\n")
+PYTHON
+
+./gradlew --no-daemon :kweb-rfc-governance:rfcEvidenceRecord \
+  -PrfcEvidenceArguments="recordBatch $input $input --catalog $catalog --runtime runtime/cef-runtime.json --contracts docs/rfcs/evidence/contracts.json --repository-root . --batch $batch"
 
 echo "Hosted RFC evidence recorded into $input"

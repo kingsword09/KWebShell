@@ -687,8 +687,8 @@ jobs:
 
   rfc-evidence:
     name: Record hosted RFC evidence
-    needs: [plan, verify]
-    if: always() && needs.plan.result == 'success' && needs.verify.result == 'success' && needs.plan.outputs.refresh == 'true'
+    needs: [plan, lightweight, verify]
+    if: always() && needs.plan.result == 'success' && needs.lightweight.result == 'success' && needs.verify.result == 'success' && needs.plan.outputs.refresh == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:

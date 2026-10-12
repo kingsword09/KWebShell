@@ -334,6 +334,7 @@ class CiWorkflowTest(unittest.TestCase):
         self.assertIn(".families[]", workflow)
         self.assertIn(".roots[]", workflow)
         self.assertIn(".github/ci/fresh-verification.gradle", workflow)
+        self.assertIn("needs: [plan, lightweight, verify]", workflow)
         self.assertNotIn("--rerun-tasks", workflow)
         self.assertIn("task.outputs.doNotCacheIf", (ROOT / ".github/ci/fresh-verification.gradle").read_text())
 

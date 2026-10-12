@@ -17,7 +17,6 @@
 #include <windows.h>
 #include <wtsapi32.h>
 
-#include <cstdio>
 #include <string>
 #include <thread>
 #include <vector>
@@ -29,6 +28,12 @@ using kwebshell::shortcuts::State;
 
 constexpr char kProviderId[] = "shortcuts.windows.register-hotkey";
 constexpr wchar_t kWindowClass[] = L"KWebShellShortcutWindow";
+
+// RegisterHotKey requires the calling thread to own the window, so every
+// registration and unregistration runs on the message thread through SendMessage.
+constexpr UINT kRegisterMessage = WM_APP + 1;
+constexpr UINT kUnregisterMessage = WM_APP + 2;
+constexpr UINT kCloseMessage = WM_APP + 3;
 
 /** One registered hotkey and the registration it represents. */
 struct Entry {
@@ -46,6 +51,16 @@ struct NativeState {
   std::vector<Entry> entries;
   int next_id = 1;
   bool session_registered = false;
+};
+
+struct RegisterCommand {
+  const Registration *registration;
+  int status;
+};
+
+struct UnregisterCommand {
+  std::string registration_id;
+  int status;
 };
 
 NativeState *g_native = nullptr;
@@ -121,16 +136,75 @@ void ReleaseAll(UINT reason) {
   }
 }
 
-/** Reinstalls every registration the state currently owns after an unlock. */
+/** Reinstalls every registration the state owns after an unlock, on this thread. */
 void RestoreAll() {
   if (g_native == nullptr || g_state == nullptr) return;
-  for (const auto &registration : g_state->registrations) {
-    kwebshell::shortcuts::NativeRegister(*g_state, registration);
+  std::vector<Registration> registrations;
+  {
+    std::lock_guard<std::mutex> lock(g_state->mutex);
+    registrations = g_state->registrations;
+  }
+  for (const Registration &registration : registrations) {
+    const UINT virtual_key = VirtualKeyOf(registration.key_kind, registration.key_code);
+    if (virtual_key == 0) continue;
+    const int hotkey_id = g_native->next_id++;
+    if (RegisterHotKey(g_native->window, hotkey_id, ModifiersOf(registration.modifier_bits), virtual_key)) {
+      Entry entry;
+      entry.registration = registration;
+      entry.hotkey_id = hotkey_id;
+      entry.modifiers = ModifiersOf(registration.modifier_bits);
+      entry.virtual_key = virtual_key;
+      g_native->entries.push_back(entry);
+    }
   }
 }
 
 LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
   switch (message) {
+    case kRegisterMessage: {
+      auto *command = reinterpret_cast<RegisterCommand *>(lparam);
+      const Registration &registration = *command->registration;
+      const UINT virtual_key = VirtualKeyOf(registration.key_kind, registration.key_code);
+      if (virtual_key == 0) {
+        command->status = KWEB_SHORTCUTS_STATUS_ACCELERATOR_UNSUPPORTED;
+        return 0;
+      }
+      const int hotkey_id = g_native->next_id++;
+      const UINT modifiers = ModifiersOf(registration.modifier_bits);
+      if (RegisterHotKey(window, hotkey_id, modifiers, virtual_key) == FALSE) {
+        const DWORD error = GetLastError();
+        command->status = error == ERROR_HOTKEY_ALREADY_REGISTERED ? KWEB_SHORTCUTS_STATUS_CONFLICT
+                                                                   : KWEB_SHORTCUTS_STATUS_NATIVE_FAILED;
+        return 0;
+      }
+      Entry entry;
+      entry.registration = registration;
+      entry.hotkey_id = hotkey_id;
+      entry.modifiers = modifiers;
+      entry.virtual_key = virtual_key;
+      g_native->entries.push_back(entry);
+      command->status = KWEB_SHORTCUTS_STATUS_OK;
+      return 0;
+    }
+    case kUnregisterMessage: {
+      auto *command = reinterpret_cast<UnregisterCommand *>(lparam);
+      command->status = KWEB_SHORTCUTS_STATUS_OK;
+      for (size_t index = 0; index < g_native->entries.size(); ++index) {
+        if (g_native->entries[index].registration.id != command->registration_id) continue;
+        UnregisterHotKey(window, g_native->entries[index].hotkey_id);
+        g_native->entries.erase(g_native->entries.begin() + static_cast<long>(index));
+        return 0;
+      }
+      return 0;
+    }
+    case kCloseMessage:
+      ReleaseAll(KWEB_SHORTCUTS_REMOVAL_OWNER_CLOSED);
+      if (g_native != nullptr && g_native->session_registered) {
+        WTSUnRegisterSessionNotification(window);
+        g_native->session_registered = false;
+      }
+      DestroyWindow(window);
+      return 0;
     case WM_HOTKEY: {
       if (g_native == nullptr) return 0;
       for (const Entry &entry : g_native->entries) {
@@ -221,57 +295,28 @@ kweb_shortcuts_status NativeOpen(State &state) {
 kweb_shortcuts_status NativeRegister(State &state, const Registration &registration) {
   NativeState *native = static_cast<NativeState *>(state.platform);
   if (native == nullptr || native->window == nullptr) return KWEB_SHORTCUTS_STATUS_PLATFORM_UNAVAILABLE;
-  const UINT virtual_key = VirtualKeyOf(registration.key_kind, registration.key_code);
-  if (virtual_key == 0) return KWEB_SHORTCUTS_STATUS_ACCELERATOR_UNSUPPORTED;
-  const UINT modifiers = ModifiersOf(registration.modifier_bits);
-  Entry entry;
-  entry.registration = registration;
-  entry.hotkey_id = native->next_id++;
-  entry.modifiers = modifiers;
-  entry.virtual_key = virtual_key;
-  if (RegisterHotKey(native->window, entry.hotkey_id, modifiers, virtual_key) == FALSE) {
-    const DWORD error = GetLastError();
-    std::fprintf(stderr, "RegisterHotKey(id=%d, mods=0x%x, vk=0x%x) failed with error %lu.\n",
-                 entry.hotkey_id, modifiers, virtual_key, static_cast<unsigned long>(error));
-    if (error == ERROR_HOTKEY_ALREADY_REGISTERED) return KWEB_SHORTCUTS_STATUS_CONFLICT;
-    return KWEB_SHORTCUTS_STATUS_NATIVE_FAILED;
-  }
-  native->entries.push_back(entry);
-  return KWEB_SHORTCUTS_STATUS_OK;
+  RegisterCommand command{&registration, KWEB_SHORTCUTS_STATUS_NATIVE_FAILED};
+  SendMessageW(native->window, kRegisterMessage, 0, reinterpret_cast<LPARAM>(&command));
+  return command.status;
 }
 
 kweb_shortcuts_status NativeUnregister(State &state, const Registration &registration) {
   NativeState *native = static_cast<NativeState *>(state.platform);
-  if (native == nullptr) return KWEB_SHORTCUTS_STATUS_PLATFORM_UNAVAILABLE;
-  for (size_t index = 0; index < native->entries.size(); ++index) {
-    if (native->entries[index].registration.id != registration.id) continue;
-    UnregisterHotKey(native->window, native->entries[index].hotkey_id);
-    native->entries.erase(native->entries.begin() + static_cast<long>(index));
-    return KWEB_SHORTCUTS_STATUS_OK;
-  }
-  return KWEB_SHORTCUTS_STATUS_OK;
+  if (native == nullptr || native->window == nullptr) return KWEB_SHORTCUTS_STATUS_PLATFORM_UNAVAILABLE;
+  UnregisterCommand command{registration.id, KWEB_SHORTCUTS_STATUS_NATIVE_FAILED};
+  SendMessageW(native->window, kUnregisterMessage, 0, reinterpret_cast<LPARAM>(&command));
+  return command.status;
 }
 
 kweb_shortcuts_status NativeClose(State &state) {
   NativeState *native = static_cast<NativeState *>(state.platform);
   if (native == nullptr) return KWEB_SHORTCUTS_STATUS_OK;
-  for (const Entry &entry : native->entries) {
-    UnregisterHotKey(native->window, entry.hotkey_id);
-  }
-  native->entries.clear();
-  if (native->session_registered && native->window != nullptr) {
-    WTSUnRegisterSessionNotification(native->window);
-    native->session_registered = false;
-  }
   if (native->window != nullptr) {
-    PostMessageW(native->window, WM_CLOSE, 0, 0);
-    PostThreadMessageW(native->thread_id, WM_QUIT, 0, 0);
+    SendMessageW(native->window, kCloseMessage, 0, 0);
   }
   if (native->thread.joinable()) native->thread.join();
-  if (native->window != nullptr) {
-    DestroyWindow(native->window);
-    native->window = nullptr;
-  }
+  native->entries.clear();
+  native->window = nullptr;
   if (g_native == native) g_native = nullptr;
   if (g_state == &state) g_state = nullptr;
   delete native;

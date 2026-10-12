@@ -41,6 +41,8 @@ internal class KWebRfcEvidenceRecorder {
         runtime: KWebRfcRuntimeIdentity,
         contractBindings: KWebRfcContractBindingsDocument,
         repositoryRoot: Path,
+        retainedRoot: Path = repositoryRoot,
+        immutableArtifacts: Boolean = false,
     ): KWebRfcEvidenceManifest {
         val document = catalog.singleOrNull { it.id == request.rfcId }
             ?: throw KWebRfcGovernanceException(
@@ -129,7 +131,7 @@ internal class KWebRfcEvidenceRecorder {
                 message = "An evidence record must retain at least one artifact digest.",
             )
         }
-        val artifacts = artifactInputs.map { input -> retainArtifact(input, request, repositoryRoot) }
+        val artifacts = artifactInputs.map { input -> retainArtifact(input, request, retainedRoot, immutableArtifacts) }
 
         val record = KWebRfcEvidenceRecord(
             rfcId = request.rfcId,
@@ -160,6 +162,7 @@ internal class KWebRfcEvidenceRecorder {
         input: KWebRfcEvidenceArtifactInput,
         request: KWebRfcEvidenceRecordRequest,
         repositoryRoot: Path,
+        immutable: Boolean,
     ): KWebRfcEvidenceArtifact {
         if (!Files.isRegularFile(input.path) || Files.isSymbolicLink(input.path)) {
             throw KWebRfcGovernanceException(
@@ -196,6 +199,9 @@ internal class KWebRfcEvidenceRecorder {
         )
         val destination = repositoryRoot.toAbsolutePath().normalize().resolve(relative).normalize()
         Files.createDirectories(destination.parent)
+        if (immutable && Files.exists(destination) && Files.mismatch(input.path, destination) != -1L) {
+            throw KWebRfcEvidenceBatchRecorder.failure("collision", "Two batch records retain different bytes at the same artifact path.")
+        }
         if (input.path.toAbsolutePath().normalize() != destination) {
             Files.copy(input.path, destination, StandardCopyOption.REPLACE_EXISTING)
         }

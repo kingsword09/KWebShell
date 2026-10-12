@@ -1,5 +1,22 @@
 # KWebShell Design Plan
 
+## CI objective: batch hosted RFC evidence recording
+
+The current collector launches Gradle once per RFC/target: 60 launches for 20
+RFCs on three targets. Replace that loop with one Gradle/JVM batch invocation,
+retaining all existing native, packaging, notification and image verification.
+The implementation contract and single acceptance matrix are in
+[RFC 0001](docs/rfcs/0001-program-governance.md#batch-recording-contract-v1).
+Requirements CI-B1 through CI-B7 cover deterministic equivalence, strict input,
+publication, provenance, orchestration, real hosted verification and review.
+
+This objective does not select fewer tests or change supported capabilities.
+Change-aware verification and narrower shared fixture/contract bindings are
+subsequent complete objectives, after this one passes and is squash-merged.
+Baseline: hosted run 38189044137 recorded evidence in 916 seconds (17.5 minutes
+including aggregation job setup/download/verification). Retain the new run's
+timing and compare recording separately from runner queue/setup time.
+
 ## 1. Project Positioning
 
 KWebShell is a Kotlin Multiplatform browser shell for Compose and Chromium. It is not a thin HTML widget. The target product combines:

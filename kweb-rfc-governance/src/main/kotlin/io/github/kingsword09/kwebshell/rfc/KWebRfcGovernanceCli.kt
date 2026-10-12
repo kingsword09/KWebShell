@@ -32,6 +32,11 @@ import kotlinx.serialization.json.put
  *   the manifest canonically. Regeneration from the same inputs is byte-for-byte
  *   deterministic.
  *
+ * recordBatch <manifest.json> <output.json> --catalog <dir> --runtime <runtime.json>
+ *             --contracts <contracts.json> --repository-root <dir> --batch <batch.json>
+ *   Validates and records a strict version-1 batch in one process, publishing one
+ *   manifest atomically after immutable artifact retention.
+ *
  */
 public object KWebRfcGovernanceCli {
     @JvmStatic
@@ -61,7 +66,8 @@ public object KWebRfcGovernanceCli {
             "catalogCheck" -> catalogCheck(arguments.drop(1))
             "check" -> check(arguments.drop(1))
             "record" -> record(arguments.drop(1))
-            else -> throw IllegalArgumentException("Usage: catalogCheck|check|record ...")
+            "recordBatch" -> recordBatch(arguments.drop(1))
+            else -> throw IllegalArgumentException("Usage: catalogCheck|check|record|recordBatch ...")
         }
     }
 
@@ -195,6 +201,33 @@ public object KWebRfcGovernanceCli {
             "RFC evidence manifest updated: ${updated.records.size} records, " +
                 "digest ${updated.recordsSha256}.",
         )
+    }
+
+    private fun recordBatch(arguments: List<String>) {
+        val positional = arguments.takeWhile { !it.startsWith("--") }
+        if (positional.size != 2) {
+            throw KWebRfcEvidenceBatchRecorder.failure("invalid", "Usage: recordBatch <manifest.json> <output.json> --catalog <dir> --runtime <file> --contracts <file> --repository-root <dir> --batch <file>")
+        }
+        val names = setOf("--catalog", "--runtime", "--contracts", "--repository-root", "--batch")
+        val options = try {
+            parseMultiOptions(arguments.drop(2))
+        } catch (error: IllegalArgumentException) {
+            throw KWebRfcEvidenceBatchRecorder.failure("invalid", "Batch options must be name/value pairs.", error)
+        }
+        if (options.keys != names || options.values.any { it.size != 1 || it.single().isEmpty() }) {
+            throw KWebRfcEvidenceBatchRecorder.failure("invalid", "The batch command requires exactly one of each documented option.")
+        }
+        fun path(name: String): Path = Path.of(options.getValue(name).single())
+        val run = hostedRunFromEnvironment(System.getenv())
+        val updated = KWebRfcEvidenceBatchRecorder.record(
+            KWebRfcEvidenceBatchRecorder.decode(Files.readString(path("--batch"))),
+            KWebRfcEvidenceJson.decodeManifest(Files.readString(Path.of(positional[0]))),
+            KWebRfcCatalog.load(path("--catalog")),
+            KWebRfcRuntimeIdentity.load(path("--runtime")),
+            KWebRfcContractBindings.load(path("--contracts")),
+            path("--repository-root"), run, Path.of(positional[1]),
+        )
+        println("RFC evidence batch recorded: ${updated.records.size} records, digest ${updated.recordsSha256}.")
     }
 
     private fun writeReport(path: Path, report: KWebRfcGovernanceReport) {

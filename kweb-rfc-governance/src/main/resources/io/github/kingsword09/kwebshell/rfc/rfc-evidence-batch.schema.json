@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "KWebShell hosted RFC evidence batch",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "records"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "records": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {"$ref": "#/$defs/record"}
+    }
+  },
+  "$defs": {
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rfcId", "providerId", "target", "electronFixtureMajor", "artifacts"],
+      "properties": {
+        "rfcId": {"type": "string", "pattern": "^[0-9]{4}$"},
+        "providerId": {"type": "string"},
+        "target": {"enum": ["macos-arm64", "windows-x64", "linux-x64"]},
+        "electronFixtureMajor": {"type": "integer", "minimum": 1, "maximum": 999},
+        "artifacts": {"type": "array", "items": {"$ref": "#/$defs/artifact"}},
+        "serviceId": {"type": ["string", "null"], "default": null},
+        "matrixRowIds": {"type": "array", "items": {"type": "string"}, "default": []},
+        "compatibilityStatus": {"enum": ["READY", "BLOCKED", null], "default": null},
+        "compatibilityReportPath": {"type": ["string", "null"], "default": null}
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "path"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{0,63}$"},
+        "path": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

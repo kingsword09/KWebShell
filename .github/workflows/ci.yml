@@ -198,6 +198,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          # The platform audit re-runs the planner, which resolves the PR base
+          # commit to recognize a new-module registration; a shallow checkout
+          # cannot and would fail closed with ci.git-input.
+          fetch-depth: 0
 
       - name: Download the execution plan
         uses: actions/download-artifact@v7

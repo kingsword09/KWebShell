@@ -125,13 +125,13 @@ validation and hosted provenance. No errors print artifact contents or credentia
 
 | ID / source | Observable requirement | Normal, negative and boundary scenarios | Planned verification / required targets | Implementation and test references | Retained evidence / tested revision | Result / review rationale |
 |---|---|---|---|---|---|---|
-| CI-B1 / deterministic recording | Batch output equals sequential recording and preserves unrelated records | Three targets, shuffled entries, repeated identical input, exact binary/CRLF bytes | Governance contract tests on macOS arm64, Windows x64 and Linux x64 | `KWebRfcEvidenceBatchTest.batchEqualsSequentialRecordingAcrossTargetsAndKeepsHistoricalRecords`; `batchRetainsCompatibilityBytesAndRejectsWrongTargetOrRuntime` | NOT_RUN | NOT_RUN |
-| CI-B2 / strict input | Invalid batch cannot claim support | Empty/257 entries, unknown fields, wrong types/version, duplicate identity, missing artifact, non-Implemented RFC, invalid report/runtime, unsafe path | Batch and real CLI subprocess tests on all three targets | `strictSchemaRejectsUnknownFieldsWrongTypesVersionsAndSizeBoundaries`; `lastRecordFailureDoesNotPublishEarlierRecordsOrArtifacts`; `unsafePathsAndInvalidSourceRevisionNeverEscapeStaging` | NOT_RUN | NOT_RUN |
-| CI-B3 / publication | No partial manifest or overwritten existing evidence | Last entry fails; pre-existing identical/different destination; publish failure; cleanup | Real temporary filesystem tests on all three targets | `existingArtifactsCannotBeOverwrittenAndIdenticalRerunIsSafe`; `twoProvidersCannotPublishConflictingBytesAtTheSameRetainedPath`; `outputDirectoryFailsWithStructuredPublishErrorAndPreservesManifest`; `ioFailureAfterPublishingAnArtifactKeepsManifestAndAllowsRetry`; `linkedSourceDirectoryIsRejectedOnEveryHost` | NOT_RUN | NOT_RUN |
-| CI-B4 / provenance | Same hosted provenance and target rules as individual recording | Local invocation rejected; missing provenance rejected; target outside triple rejected; supplied JSON provenance rejected | CLI subprocess and existing provenance tests on all three targets | `actualCliRecordsFromHostedEnvironmentAndRejectsLocalAndInvalidOptions`; existing `KWebRfcGovernanceCliTest` | NOT_RUN | NOT_RUN |
-| CI-B5 / orchestration | One Gradle launch records the same full hosted set | Exactly 60 unique records; all artifact roles/compatibility/service bindings retained; missing late artifact and notification/image/MSIX failures block | Python collector tests on Linux plus actual hosted aggregation | `.github/scripts/tests/test_aggregate_rfc_evidence.py` (single launch, complete identity set, artifact roles, late failure, paths with spaces); existing notification/image/MSIX tests | NOT_RUN | NOT_RUN |
-| CI-B6 / preserved guarantees | Real native and packaging proof remains complete | Current full runtimeCheck on three targets; actual batch collector and strict governance; imported artifact digests | CI verify, rfc-evidence and checked-in evidence jobs | Existing full suite and new batch recording | NOT_RUN | NOT_RUN |
-| CI-B7 / universal completion | Documentation, packaged schema, timing and full-diff acceptance agree | Packaged schema matches input; document review; actual readiness/final review; no public OS API/support changes | Resource/schema tests, actionlint, diff review, hosted timing | `packagedSchemaMatchesBatchFieldsAndBoundaries`; built JAR inspected; EVIDENCE.md and this matrix | NOT_RUN | NOT_RUN |
+| CI-B1 / deterministic recording | Batch output equals sequential recording and preserves unrelated records | Three targets, shuffled entries, repeated identical input, exact binary/CRLF bytes | Governance contract tests on macOS arm64, Windows x64 and Linux x64 | `KWebRfcEvidenceBatchTest.batchEqualsSequentialRecordingAcrossTargetsAndKeepsHistoricalRecords`; `batchRetainsCompatibilityBytesAndRejectsWrongTargetOrRuntime` | [Hosted batch evidence](#batch-final-acceptance-review), `8952e7b` / `2eeb6c7` | PASS: equivalence and retained-byte assertions passed on every target |
+| CI-B2 / strict input | Invalid batch cannot claim support | Empty/257 entries, unknown fields, wrong types/version, duplicate identity, missing artifact, non-Implemented RFC, invalid report/runtime, unsafe path | Batch and real CLI subprocess tests on all three targets | `strictSchemaRejectsUnknownFieldsWrongTypesVersionsAndSizeBoundaries`; `lastRecordFailureDoesNotPublishEarlierRecordsOrArtifacts`; `unsafePathsAndInvalidSourceRevisionNeverEscapeStaging` | [Hosted batch evidence](#batch-final-acceptance-review), `8952e7b` / `2eeb6c7` | PASS: negative and boundary assertions passed on every target |
+| CI-B3 / publication | No partial manifest or overwritten existing evidence | Last entry fails; pre-existing identical/different destination; publish failure; cleanup | Real temporary filesystem tests on all three targets | `existingArtifactsCannotBeOverwrittenAndIdenticalRerunIsSafe`; `twoProvidersCannotPublishConflictingBytesAtTheSameRetainedPath`; `outputDirectoryFailsWithStructuredPublishErrorAndPreservesManifest`; `ioFailureAfterPublishingAnArtifactKeepsManifestAndAllowsRetry`; `linkedSourceDirectoryIsRejectedOnEveryHost` | [Hosted batch evidence](#batch-final-acceptance-review), `8952e7b` / `2eeb6c7` | PASS: real I/O failure/retry and redirect rejection passed without skipped tests |
+| CI-B4 / provenance | Same hosted provenance and target rules as individual recording | Local invocation rejected; missing provenance rejected; target outside triple rejected; supplied JSON provenance rejected | CLI subprocess and existing provenance tests on all three targets | `actualCliRecordsFromHostedEnvironmentAndRejectsLocalAndInvalidOptions`; existing `KWebRfcGovernanceCliTest` | [Hosted batch evidence](#batch-final-acceptance-review), `8952e7b` / `2eeb6c7` | PASS: real subprocess failures and original hosted provenance preserved |
+| CI-B5 / orchestration | One Gradle launch records the same full hosted set | Exactly 60 unique records; all artifact roles/compatibility/service bindings retained; missing late artifact and notification/image/MSIX failures block | Python collector tests on Linux plus actual hosted aggregation | `.github/scripts/tests/test_aggregate_rfc_evidence.py` (single launch, complete identity set, artifact roles, late failure, paths with spaces); existing notification/image/MSIX tests | [Hosted batch evidence](#batch-final-acceptance-review), request and run 38198668788 | PASS: 40 script tests, one launch, 60 unique identities and all required roles |
+| CI-B6 / preserved guarantees | Real native and packaging proof remains complete | Current full runtimeCheck on three targets; actual batch collector and strict governance; imported artifact digests | CI verify, rfc-evidence and checked-in evidence jobs | Existing full suite and new batch recording | [Hosted batch evidence](#batch-final-acceptance-review), complete manifest and retained artifacts | PASS: three full target jobs and fresh validation succeeded; imported strict check has zero findings |
+| CI-B7 / universal completion | Documentation, packaged schema, timing and full-diff acceptance agree | Packaged schema matches input; document review; actual readiness/final review; no public OS API/support changes | Resource/schema tests, actionlint, diff review, hosted timing | `packagedSchemaMatchesBatchFieldsAndBoundaries`; built JAR inspected; EVIDENCE.md and this matrix | [Final review](#batch-final-acceptance-review), run 38198668788 / baseline 38189044137 | PASS: packaged schema, full-diff/artifact review and measured timing; no capability promotion |
 
 ### Batch readiness review
 
@@ -165,3 +165,51 @@ plus missing/duplicated/malformed CLI-option cases; the full suite passed again.
 These are local results, not hosted evidence. CI-B1--CI-B7 remain NOT_RUN for
 final acceptance until real three-target verification, evidence import and final
 row-by-row review are complete.
+
+### Batch final acceptance review
+
+2026-10-12, Codex separate same-contributor review of PR #80, implementation
+head `8952e7baf02af5366bf0b683359ef00621700273` against base `6c28579`, plus
+the evidence-import and acceptance-documentation diff. This is not an
+independent-person approval. Reviewed every changed source/test/schema/script
+and documentation file, including added files and every imported referenced
+artifact's bytes and digest. No application API or capability status changes.
+
+Hosted [run 38198668788](https://github.com/kingsword09/KWebShell/actions/runs/38198668788)
+tested PR merge revision `2eeb6c7aec17627be57fbc8ab3bc52d05cd68a3a`.
+The macOS arm64, Windows x64 and Linux x64 full verification jobs passed,
+including native runtime, platform sessions and packaging. Each target passed
+85 governance contract tests, including all 12 batch tests, with zero failures,
+errors or skipped tests. The aggregation job passed all 40 script tests, recorded
+60 unique identities and passed strict governance on the fresh manifest.
+
+Retained RFC 0001 evidence is under
+[`evidence/artifacts/0001/2eeb6c7aec17627be57fbc8ab3bc52d05cd68a3a/`](evidence/artifacts/0001/2eeb6c7aec17627be57fbc8ab3bc52d05cd68a3a/).
+Each target retains `governance-batch-tests/TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcEvidenceBatchTest.xml`,
+`governance-contract-tests/TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml`
+and `batch-plan/batch.json`. All 60 records preserve the actual hosted run and
+merge revision; all referenced artifact hashes were checked before import.
+Historical artifact bytes were compared and preserved, not re-recorded locally.
+
+Review finding: adding post-run timing to `DESIGN_PLAN.md` and `EVIDENCE.md`
+would invalidate other RFCs that bind those documents. Those additions were
+removed, and the timing/review is recorded here instead. No contract binding
+was weakened or deleted to make evidence pass.
+
+The original checked-in-evidence job failed because the implementation changed
+bound contracts before the new hosted manifest was imported. This failure is
+retained honestly, not described as a green run. After importing the manifest
+and exact artifact bytes, local `:kweb-rfc-governance:check` passed with zero
+findings across 42 RFCs. The evidence-import commit must also pass its hosted
+checked-in-evidence gate before merge.
+
+Recording ran from 03:36:43 to 03:37:52 UTC (69 seconds); the aggregation job
+ran from 03:35:22 to 03:38:32 UTC (190 seconds). Baseline run 38189044137 used
+916 seconds for recording and 1050 seconds for the job. The comparison is
+recording overhead only; no required native verification was removed.
+
+Final row-by-row decision: CI-B1, CI-B2, CI-B3, CI-B4, CI-B5, CI-B6 and CI-B7
+are **PASS**, subject to the imported commit's required hosted gate. No row is
+NOT_APPLICABLE, and no skipped required scenario is accepted. Merge remains
+blocked until that gate succeeds. Change-aware module selection is a separate
+objective and is not claimed by this batch change.

@@ -3,21 +3,170 @@ name: CI
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/rfcs/**"
   pull_request:
-    paths-ignore:
-      - "**/*.md"
-      - "docs/rfcs/**"
   workflow_dispatch:
+  schedule:
+    - cron: "23 2 * * 1"
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
+  scope:
+    name: Identify event scope
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      graphs: ${{ steps.changes.outputs.graphs }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Collect exact event changes
+        id: changes
+        run: python3 .github/scripts/ci_plan.py changes --event "$GITHUB_EVENT_PATH" --event-name "$GITHUB_EVENT_NAME" --output build/ci/changes.json
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ci-changes-${{ github.sha }}
+          path: build/ci/changes.json
+          if-no-files-found: error
+          retention-days: 14
+
+  graphs:
+    name: Inspect Gradle graph (${{ matrix.target }})
+    needs: [scope]
+    if: needs.scope.outputs.graphs == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos-arm64
+            runner: macos-15
+          - target: windows-x64
+            runner: windows-2022
+          - target: linux-x64
+            runner: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Export the scheduled graph without native execution
+        shell: bash
+        run: bash .github/scripts/export-ci-graph.sh
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ci-graph-${{ matrix.target }}
+          path: build/ci/graph.json
+          if-no-files-found: error
+          retention-days: 14
+
+  plan:
+    name: Plan affected verification
+    needs: [scope, graphs]
+    if: always() && needs.scope.result == 'success' && (needs.graphs.result == 'success' || needs.scope.outputs.graphs == 'false')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      verify: ${{ steps.plan.outputs.verify || steps.docs.outputs.verify }}
+      refresh: ${{ steps.plan.outputs.refresh || steps.docs.outputs.refresh }}
+      full: ${{ steps.plan.outputs.full || steps.docs.outputs.full }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        if: needs.scope.outputs.graphs == 'true'
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v6
+        if: needs.scope.outputs.graphs == 'true'
+      - uses: actions/download-artifact@v7
+        with:
+          name: ci-changes-${{ github.sha }}
+          path: build/ci/
+      - name: Plan documentation without native platform jobs
+        if: needs.scope.outputs.graphs == 'false'
+        id: docs
+        run: python3 .github/scripts/ci_plan.py docs --changes build/ci/changes.json --output build/ci/plan.json
+      - name: Download all platform graphs
+        if: needs.scope.outputs.graphs == 'true'
+        uses: actions/download-artifact@v7
+        with:
+          pattern: ci-graph-*
+          path: build/ci/platforms/
+      - name: Merge actual platform dependencies
+        if: needs.scope.outputs.graphs == 'true'
+        run: python3 .github/scripts/ci_plan.py merge-graphs --directory build/ci/platforms --output build/ci/graph.json
+      - name: Select verification and evidence producers
+        if: needs.scope.outputs.graphs == 'true'
+        id: plan
+        run: python3 .github/scripts/ci_plan.py plan --graph build/ci/graph.json --changes build/ci/changes.json --output build/ci/plan.json
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ci-plan-${{ github.sha }}
+          path: build/ci/
+          if-no-files-found: error
+          retention-days: 14
+
+  lightweight:
+    name: Check CI contracts and documentation
+    needs: [plan]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Test CI policy and evidence contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/ci-policy
+          python3 -m unittest discover -s .github/scripts/tests -p 'test_*.py' -v 2>&1 | tee build/ci-policy/tests.txt
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: ci-policy-tests-${{ github.sha }}
+          path: build/ci-policy/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Check diff formatting
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        shell: bash
+        run: |
+          if [[ -n "$BASE_SHA" && "$BASE_SHA" != 0000000000000000000000000000000000000000 ]]; then
+            git diff --check "$BASE_SHA" HEAD
+          else
+            git diff --check HEAD^
+          fi
+      - name: Test RFC contracts before refreshing hosted evidence
+        if: needs.plan.outputs.refresh == 'true'
+        run: ./gradlew --no-daemon :kweb-rfc-governance:contractTest
+      - name: Validate current evidence without native execution
+        if: needs.plan.outputs.refresh != 'true'
+        run: ./gradlew --no-daemon :kweb-rfc-governance:check
+
   verify:
     name: Verify (${{ matrix.target }}, ${{ matrix.gpu-contract }})
+    needs: [plan]
+    if: always() && needs.plan.result == 'success' && needs.plan.outputs.verify == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -50,6 +199,17 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
+      - name: Download the execution plan
+        uses: actions/download-artifact@v7
+        with:
+          name: ci-plan-${{ github.sha }}
+          path: build/ci/
+
+      - name: Set up Python for cross-platform planning
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
       - name: Configure line endings for deterministic contract digests
         run: git config --local core.eol lf
 
@@ -59,21 +219,39 @@ jobs:
           distribution: temurin
           java-version: "25"
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Audit the actual platform task graph
+        id: scope
+        shell: bash
+        run: |
+          bash .github/scripts/export-ci-graph.sh
+          python3 .github/scripts/ci_plan.py audit --plan build/ci/plan.json --graph build/ci/graph.json --output build/ci/audit.json --target '${{ matrix.target }}'
+          for feature in cef native node notifications shell screen msix benchmark liveHtml5; do
+            echo "$feature=$(jq -r --arg name "$feature" '.features[$name]' build/ci/audit.json)" >> "$GITHUB_OUTPUT"
+          done
+          for family in $(jq -r '.families[]' build/ci/plan.json); do
+            echo "$family=true" >> "$GITHUB_OUTPUT"
+          done
+
       - name: Set up Node.js 24 LTS
+        if: steps.scope.outputs.node == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: "24"
           cache: npm
 
       - name: Install pinned TypeScript compiler
+        if: steps.scope.outputs.node == 'true'
         run: npm ci
 
       - name: Set up MSVC
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && steps.scope.outputs.native == 'true'
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Verify Windows MSIX preflight isolation
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && steps.scope.outputs.msix == 'true'
         shell: pwsh
         run: |
           powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .github/scripts/tests/test_windows_msix_preflight.ps1
@@ -82,18 +260,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows MSIX native activation diagnostics failed.' }
 
       - name: Start macOS notification fixture agent
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && steps.scope.outputs.notifications == 'true'
         shell: bash
         run: bash .github/scripts/configure-macos-notification-fixture.sh
 
       - name: Register Windows notification fixture identity
         id: windows-notification-identity
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && steps.scope.outputs.notifications == 'true'
         shell: pwsh
         run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .github/scripts/configure-windows-notification-fixture.ps1
 
       - name: Verify Windows notification fixture through the native ABI
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && steps.scope.outputs.notifications == 'true'
         shell: pwsh
         run: |
           cmake -S kweb-service-notifications/native -B kweb-service-notifications/build/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DKWEB_PROJECT_ARCH=x86_64
@@ -106,7 +284,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Notification native fixture permission failed.' }
 
       - name: Install Linux native dependencies
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.scope.outputs.native == 'true'
         shell: bash
         run: |
           sudo apt-get update
@@ -127,18 +305,37 @@ jobs:
           xdg-user-dirs-update
 
       - name: Configure Linux shell provider fixture
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.scope.outputs.shell == 'true'
         shell: bash
         run: .github/scripts/configure-linux-shell-fixture.sh
 
       - name: Verify native build prerequisites
+        if: steps.scope.outputs.native == 'true'
         shell: bash
         run: |
           java -version
           cmake --version
           ninja --version
 
+      - name: Verify an isolated native selection before provisioning CEF
+        if: needs.plan.outputs.full == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/ci_plan.py probe --graph build/ci/graph.json --output build/ci/tray-selection-probe.json
+          roots=()
+          while IFS= read -r task; do
+            roots+=("$task")
+          done < <(jq -r '.plan.roots[]' build/ci/tray-selection-probe.json)
+          if [[ "${{ runner.os }}" == Linux ]]; then
+            XDG_CURRENT_DESKTOP=GNOME xvfb-run -a dbus-run-session -- \
+              bash .github/scripts/run-linux-ui-verification.sh ./gradlew --no-daemon --max-workers=1 -I .github/ci/fresh-verification.gradle "${roots[@]}" | tee build/ci/tray-selection-probe.log
+          else
+            ./gradlew --no-daemon --max-workers=1 -I .github/ci/fresh-verification.gradle "${roots[@]}" | tee build/ci/tray-selection-probe.log
+          fi
+
       - name: Resolve pinned CEF artifact
+        if: steps.scope.outputs.cef == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -152,12 +349,14 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Cache pinned CEF archive
+        if: steps.scope.outputs.cef == 'true'
         uses: actions/cache@v6
         with:
           path: .cef-ci/archives
           key: cef-${{ matrix.target }}-${{ hashFiles('runtime/cef-runtime.json') }}
 
       - name: Download pinned CEF archive
+        if: steps.scope.outputs.cef == 'true'
         shell: bash
         run: |
           mkdir -p .cef-ci/archives
@@ -169,6 +368,7 @@ jobs:
           fi
 
       - name: Verify pinned CEF archive
+        if: steps.scope.outputs.cef == 'true'
         shell: bash
         run: |
           ./gradlew --no-daemon :kweb-runtime-pack:verifyCefRuntimeArtifact \
@@ -176,6 +376,7 @@ jobs:
             -PcefRuntimeArchive="$PWD/.cef-ci/archives/$CEF_ARCHIVE"
 
       - name: Extract verified CEF archive
+        if: steps.scope.outputs.cef == 'true'
         shell: bash
         run: |
           mkdir -p .cef-ci/source
@@ -183,7 +384,7 @@ jobs:
             -C .cef-ci/source
 
       - name: Run application workload benchmark
-        if: matrix.run-application-benchmark
+        if: matrix.run-application-benchmark && steps.scope.outputs.benchmark == 'true'
         shell: bash
         run: |
           ./gradlew --no-daemon :kweb-example-app-benchmark:applicationBenchmarkIntegrationTest \
@@ -191,7 +392,7 @@ jobs:
             -PkwebBenchmarkMachineClass=${{ matrix.benchmark-machine-class }}
 
       - name: Upload application benchmark evidence
-        if: matrix.run-application-benchmark
+        if: matrix.run-application-benchmark && steps.scope.outputs.benchmark == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: application-benchmark-${{ matrix.target }}-${{ github.sha }}
@@ -200,14 +401,14 @@ jobs:
           retention-days: 14
 
       - name: Run live HTML5test example
-        if: matrix.run-live-html5
+        if: matrix.run-live-html5 && steps.scope.outputs.liveHtml5 == 'true'
         shell: bash
         run: |
           ./gradlew --no-daemon :kweb-example-html5-lab:html5TestSiteRun \
             -PcefRoot="$PWD/.cef-ci/source/$CEF_DIRECTORY"
 
       - name: Upload live HTML5test evidence
-        if: matrix.run-live-html5
+        if: matrix.run-live-html5 && steps.scope.outputs.liveHtml5 == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: html5test-${{ matrix.target }}-${{ github.sha }}
@@ -221,15 +422,23 @@ jobs:
           arguments=(
             --no-daemon
             --max-workers=1
-            runtimeCheck
-            "-PcefRoot=$PWD/.cef-ci/source/$CEF_DIRECTORY"
+            -I .github/ci/fresh-verification.gradle
             -PkwebNotificationActionMode=contract
             "-PkwebExpectHardwareGpuUnavailable=${{ matrix.expect-hardware-gpu-unavailable }}"
           )
+          while IFS= read -r task; do
+            case "$task" in
+              :kweb-example-app-benchmark:applicationBenchmarkIntegrationTest|:kweb-example-html5-lab:html5TestSiteRun) ;;
+              *) arguments+=("$task") ;;
+            esac
+          done < <(jq -r '.roots[]' build/ci/plan.json)
+          if [[ "${{ steps.scope.outputs.cef }}" == true ]]; then
+            arguments+=("-PcefRoot=$PWD/.cef-ci/source/$CEF_DIRECTORY")
+          fi
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             arguments+=(--no-configuration-cache)
           fi
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
+          if [[ "${{ runner.os }}" == "Linux" && "${{ steps.scope.outputs.native }}" == true ]]; then
             XDG_CURRENT_DESKTOP=GNOME xvfb-run -a dbus-run-session -- \
               bash .github/scripts/run-linux-ui-verification.sh ./gradlew "${arguments[@]}"
           else
@@ -237,7 +446,7 @@ jobs:
           fi
 
       - name: Upload native dialog evidence
-        if: always()
+        if: always() && steps.scope.outputs['native-dialogs'] == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: native-dialogs-${{ matrix.target }}-${{ github.sha }}
@@ -249,7 +458,7 @@ jobs:
           retention-days: 14
 
       - name: Upload engine integration evidence
-        if: always()
+        if: always() && steps.scope.outputs['engine-integration'] == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: engine-integration-${{ matrix.target }}-${{ github.sha }}
@@ -258,7 +467,7 @@ jobs:
           retention-days: 14
 
       - name: Upload provider lifecycle evidence
-        if: always()
+        if: always() && steps.scope.outputs['provider-lifecycle'] == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: provider-lifecycle-${{ matrix.target }}-${{ github.sha }}
@@ -267,7 +476,7 @@ jobs:
           retention-days: 14
 
       - name: Upload Electron migration evidence
-        if: always()
+        if: always() && steps.scope.outputs['electron-migration'] == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: electron-migration-${{ matrix.target }}-${{ github.sha }}
@@ -279,7 +488,7 @@ jobs:
           retention-days: 14
 
       - name: Upload clipboard evidence
-        if: always()
+        if: always() && steps.scope.outputs['clipboard'] == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: clipboard-${{ matrix.target }}-${{ github.sha }}
@@ -288,7 +497,7 @@ jobs:
           retention-days: 14
 
       - name: Upload native image evidence
-        if: always()
+        if: always() && steps.scope.outputs['image-integration'] == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: image-integration-${{ matrix.target }}-${{ github.sha }}
@@ -301,7 +510,7 @@ jobs:
           retention-days: 14
 
       - name: Upload native menus evidence
-        if: always()
+        if: always() && steps.scope.outputs['menus-integration'] == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: menus-integration-${{ matrix.target }}-${{ github.sha }}
@@ -314,7 +523,7 @@ jobs:
           retention-days: 14
 
       - name: Upload native tray evidence
-        if: always()
+        if: always() && steps.scope.outputs['tray-integration'] == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: tray-integration-${{ matrix.target }}-${{ github.sha }}
@@ -327,7 +536,7 @@ jobs:
           retention-days: 14
 
       - name: Upload system-preferences evidence
-        if: always()
+        if: always() && steps.scope.outputs['preferences-integration'] == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: preferences-integration-${{ matrix.target }}-${{ github.sha }}
@@ -340,7 +549,7 @@ jobs:
           retention-days: 14
 
       - name: Verify the Wayland screen session
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.scope.outputs.screen == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -360,7 +569,7 @@ jobs:
             kweb-service-screen/build/native/contract/kweb_screen_tests | tee "$transcript"
 
       - name: Upload screen evidence
-        if: always()
+        if: always() && steps.scope.outputs['screen-integration'] == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: screen-integration-${{ matrix.target }}-${{ github.sha }}
@@ -373,7 +582,7 @@ jobs:
           retention-days: 14
 
       - name: Upload application package evidence
-        if: always()
+        if: always() && steps.scope.outputs['application-package'] == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: application-package-${{ matrix.target }}-${{ github.sha }}
@@ -382,7 +591,7 @@ jobs:
           retention-days: 14
 
       - name: Upload Windows launcher smoke evidence
-        if: always() && runner.os == 'Windows'
+        if: always() && runner.os == 'Windows' && steps.scope.outputs['windows-launcher-smoke'] == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: windows-launcher-smoke-${{ matrix.target }}-${{ github.sha }}
@@ -391,7 +600,7 @@ jobs:
           retention-days: 14
 
       - name: Upload application lifecycle evidence
-        if: always()
+        if: always() && steps.scope.outputs['application-lifecycle'] == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: application-lifecycle-${{ matrix.target }}-${{ github.sha }}
@@ -400,11 +609,20 @@ jobs:
           retention-days: 14
 
       - name: Upload RFC governance contract-test evidence
-        if: always()
+        if: always() && steps.scope.outputs['rfc-governance'] == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: rfc-governance-${{ matrix.target }}-${{ github.sha }}
           path: kweb-rfc-governance/build/test-results/contractTest/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Retain platform plan and task audit
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ci-audit-${{ matrix.target }}-${{ github.sha }}
+          path: build/ci/
           if-no-files-found: error
           retention-days: 14
 
@@ -415,7 +633,8 @@ jobs:
 
   governance:
     name: Verify checked-in RFC evidence
-    needs: [rfc-evidence]
+    needs: [plan, lightweight, verify, rfc-evidence]
+    if: always() && needs.plan.result == 'success' && needs.lightweight.result == 'success' && (needs.verify.result == 'success' || needs.plan.outputs.verify == 'false') && (needs.rfc-evidence.result == 'success' || needs.plan.outputs.refresh == 'false')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -433,6 +652,7 @@ jobs:
         run: ./gradlew --no-daemon :kweb-rfc-governance:rfcGovernanceCheck
 
       - name: Download freshly recorded RFC evidence
+        if: needs.plan.outputs.refresh == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -467,7 +687,8 @@ jobs:
 
   rfc-evidence:
     name: Record hosted RFC evidence
-    needs: [verify]
+    needs: [plan, verify]
+    if: always() && needs.plan.result == 'success' && needs.verify.result == 'success' && needs.plan.outputs.refresh == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -486,13 +707,19 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      - name: Download the recording plan
+        uses: actions/download-artifact@v7
+        with:
+          name: ci-plan-${{ github.sha }}
+          path: build/ci/
+
       - name: Download hosted verification evidence
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           mkdir -p build/rfc-evidence/downloaded
-          for family in rfc-governance provider-lifecycle native-dialogs engine-integration electron-migration clipboard image-integration menus-integration tray-integration preferences-integration screen-integration application-package windows-launcher-smoke application-lifecycle; do
+          for family in $(jq -r '.families[]' build/ci/plan.json); do
             gh run download "$GITHUB_RUN_ID" \
               --repo "$GITHUB_REPOSITORY" \
               --pattern "$family-*-${{ github.sha }}" \
@@ -506,7 +733,7 @@ jobs:
 
       - name: Record hosted RFC evidence
         shell: bash
-        run: .github/scripts/aggregate-rfc-evidence.sh
+        run: .github/scripts/aggregate-rfc-evidence.sh build/ci/plan.json
 
       - name: Verify freshly recorded evidence
         run: ./gradlew --no-daemon :kweb-rfc-governance:check
@@ -526,3 +753,37 @@ jobs:
           path: docs/rfcs/evidence/artifacts/
           if-no-files-found: error
           retention-days: 14
+
+  gate:
+    name: CI Gate
+    needs: [scope, graphs, plan, lightweight, verify, rfc-evidence, governance]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: ci-plan-${{ github.sha }}
+          path: build/ci/
+      - name: Reject failed or skipped required verification
+        env:
+          PLAN_RESULT: ${{ needs.plan.result }}
+          LIGHTWEIGHT_RESULT: ${{ needs.lightweight.result }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          EVIDENCE_RESULT: ${{ needs.rfc-evidence.result }}
+          GOVERNANCE_RESULT: ${{ needs.governance.result }}
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          GRAPHS_RESULT: ${{ needs.graphs.result }}
+          GRAPHS_REQUIRED: ${{ needs.scope.outputs.graphs }}
+        shell: bash
+        run: |
+          test "$SCOPE_RESULT" = success
+          if [[ "$GRAPHS_REQUIRED" == true ]]; then
+            test "$GRAPHS_RESULT" = success
+          else
+            test "$GRAPHS_REQUIRED" = false
+            test "$GRAPHS_RESULT" = skipped
+          fi
+          jq -n --arg plan "$PLAN_RESULT" --arg lightweight "$LIGHTWEIGHT_RESULT" --arg verify "$VERIFY_RESULT" --arg evidence "$EVIDENCE_RESULT" --arg governance "$GOVERNANCE_RESULT" '{plan:$plan,lightweight:$lightweight,verify:$verify,"rfc-evidence":$evidence,governance:$governance}' > build/ci/results.json
+          python3 .github/scripts/ci_plan.py gate --plan build/ci/plan.json --results build/ci/results.json

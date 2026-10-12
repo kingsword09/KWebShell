@@ -1,5 +1,23 @@
 # KWebShell Design Plan
 
+## CI objective: change-aware verification and incremental evidence
+
+Use the actual Gradle project and task graph, tracked Git changes and current
+RFC contract/runtime digests to select verification suites and reverse
+consumers. New modules must register complete verification roots; unknown
+implementation inputs fail closed. The same retained plan controls native
+setup, task execution, artifact upload/download, incremental recording and a
+fixed `CI Gate`. Unaffected evidence keeps its original bytes and provenance.
+PRs compare their merge base to the source head; pushes compare `before` to
+`after`. Scheduled/manual full verification remains available. This objective
+does not narrow existing shared RFC bindings or application support claims.
+
+The implementation contract, CI-N1 through CI-N9 acceptance matrix and
+readiness review are in RFC 0001. Required proof includes Python negative and
+boundary tests, real Gradle graph/dry-run audits, a native tray-only execution
+on each hosted target, complete platform/runtime/packaging validation of the
+workflow change, exact hosted evidence import and final row-by-row acceptance.
+
 ## CI objective: batch hosted RFC evidence recording
 
 The current collector launches Gradle once per RFC/target: 60 launches for 20

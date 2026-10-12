@@ -57,6 +57,7 @@ class AggregationTest(unittest.TestCase):
         script = self.root / ".github/scripts/aggregate-rfc-evidence.sh"
         script.parent.mkdir(parents=True)
         shutil.copyfile(SCRIPT, script)
+        shutil.copyfile(SCRIPT.with_name("ci_plan.py"), script.with_name("ci_plan.py"))
         shutil.copyfile(SCRIPT.with_name("validate_image_evidence.py"), script.with_name("validate_image_evidence.py"))
         shutil.copyfile(SCRIPT.with_name("retain_windows_msix_evidence.py"), script.with_name("retain_windows_msix_evidence.py"))
         catalog = self.root / "docs/rfcs"
@@ -128,13 +129,60 @@ Path(arguments[2]).write_text(json.dumps(manifest))
             "actionActivationCount": 1 if linux else 0,
         }
 
-    def run_script(self):
+    def run_script(self, plan=None):
         import os
         return subprocess.run(
-            ["bash", ".github/scripts/aggregate-rfc-evidence.sh"], cwd=self.root,
+            ["bash", ".github/scripts/aggregate-rfc-evidence.sh"] + ([str(plan)] if plan else []), cwd=self.root,
             env={**os.environ, "KWEB_TEST_PYTHON": sys.executable, "GITHUB_SHA": REVISION},
             text=True, capture_output=True, timeout=60,
         )
+
+    def partial_plan(self, rfcs, families):
+        plan = self.root / "build/ci/plan.json"
+        plan.parent.mkdir(parents=True, exist_ok=True)
+        plan.write_text(json.dumps({"schemaVersion": 1, "revision": REVISION, "base": REVISION,
+                                   "changedPaths": [], "full": False, "modules": [], "roots": [],
+                                   "tasks": [], "refreshRfcs": rfcs, "families": families, "reasons": [],
+                                   "features": {name: False for name in ("cef", "native", "node", "notifications", "shell", "screen", "msix", "benchmark", "liveHtml5")}}))
+        return plan
+
+    def test_partial_governance_batch_does_not_require_unselected_preflights(self):
+        for target in TARGETS:
+            self.report(target).unlink()
+        self.msix.unlink()
+        result = self.run_script(self.partial_plan(["0001"], ["rfc-governance"]))
+        self.assertEqual(0, result.returncode, result.stderr)
+        calls = json.loads(self.manifest.read_text())["invocations"]
+        self.assertEqual({("0001", target) for target in TARGETS}, {(call["rfc"], call["target"]) for call in calls})
+        self.assertEqual(["batch"], (self.root / "gradle-invocations.txt").read_text().splitlines())
+
+    def test_no_refresh_plan_preserves_manifest_without_gradle(self):
+        result = self.run_script(self.partial_plan([], []))
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(self.manifest_before, self.manifest.read_bytes())
+        self.assertFalse((self.root / "gradle-invocations.txt").exists())
+
+    def test_partial_batch_requires_last_target_and_preserves_manifest_on_failure(self):
+        missing = next(self.root.glob("build/rfc-evidence/downloaded/**/rfc-governance-linux-x64-*/TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml"))
+        missing.unlink()
+        result = self.run_script(self.partial_plan(["0001"], ["rfc-governance"]))
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(self.manifest_before, self.manifest.read_bytes())
+        self.assertFalse((self.root / "gradle-invocations.txt").exists())
+
+    def test_selected_migration_producer_still_requires_notification_preflight(self):
+        self.report("linux-x64").unlink()
+        result = self.run_script(self.partial_plan(["0018"], ["tray-integration", "electron-migration"]))
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("notifications evidence", result.stderr)
+        self.assertEqual(self.manifest_before, self.manifest.read_bytes())
+
+    def test_unknown_rfc_and_invalid_plan_fail_before_recording(self):
+        plan = self.partial_plan(["0099"], [])
+        self.assertNotEqual(0, self.run_script(plan).returncode)
+        plan.write_text('{"schemaVersion":1}')
+        self.assertEqual(2, self.run_script(plan).returncode)
+        self.assertEqual(self.manifest_before, self.manifest.read_bytes())
 
     def assert_preflight_failure(self, target):
         result = self.run_script()

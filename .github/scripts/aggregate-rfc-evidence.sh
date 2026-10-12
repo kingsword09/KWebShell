@@ -13,10 +13,32 @@ input="docs/rfcs/evidence/manifest.json"
 catalog="docs/rfcs"
 batch_arguments="build/rfc-evidence/batch-arguments.bin"
 batch="build/rfc-evidence/batch.json"
+selection="${1:-}"
+if [[ "$#" -gt 1 ]]; then
+  echo "Expected at most one execution plan." >&2
+  exit 2
+fi
+if [[ -n "$selection" ]]; then
+  python3 .github/scripts/ci_plan.py validate --plan "$selection"
+  if [[ "$(jq '.refreshRfcs | length' "$selection")" == 0 ]]; then
+    echo "No RFC evidence refresh selected."
+    exit 0
+  fi
+  jq -e '.refreshRfcs - ["0001","0002","0003","0004","0006","0007","0008","0009","0010","0011","0012","0013","0014","0015","0017","0018","0019","0020","0027","0030"] | length == 0' "$selection" > /dev/null
+fi
+
+selected() {
+  [[ -z "$selection" ]] || jq -e --arg rfc "$1" '.refreshRfcs | index($rfc) != null' "$selection" > /dev/null
+}
+
+notifications_selected() {
+  [[ -z "$selection" ]] || jq -e '.families | index("electron-migration") != null' "$selection" > /dev/null
+}
 
 # RFC 0016 remains Accepted. Its reports are mandatory diagnostic artifacts,
 # not Implemented support records. Validate every target before updating the
 # manifest; retain the reports unchanged in the electron-migration artifacts.
+if notifications_selected; then
 for target in macos-arm64 windows-x64 linux-x64; do
   file=$(find "$downloaded" -type f -name migration-notifications-evidence.json -path "*electron-migration-${target}-*" | head -1)
   if [ -z "$file" ] || [ ! -f "$file" ]; then
@@ -36,13 +58,18 @@ for target in macos-arm64 windows-x64 linux-x64; do
     exit 1
   fi
 done
+fi
 
-python3 .github/scripts/validate_image_evidence.py --downloaded "$downloaded"
+if selected 0027; then
+  python3 .github/scripts/validate_image_evidence.py --downloaded "$downloaded"
+fi
 
 windows_msix_proof="build/rfc-evidence/windows-msix-proof.zip"
-python3 .github/scripts/retain_windows_msix_evidence.py \
-  --downloaded "$downloaded" --output "$windows_msix_proof" \
-  --source-revision "$GITHUB_SHA"
+if selected 0030; then
+  python3 .github/scripts/retain_windows_msix_evidence.py \
+    --downloaded "$downloaded" --output "$windows_msix_proof" \
+    --source-revision "$GITHUB_SHA"
+fi
 
 mkdir -p build/rfc-evidence
 : > "$batch_arguments"
@@ -214,6 +241,9 @@ for target in macos-arm64 windows-x64 linux-x64; do
   )
   for spec in "${specs[@]}"; do
     IFS='|' read -r rfc provider artifact name family extra_name extra_file_name extra_family <<< "$spec"
+    if ! selected "$rfc"; then
+      continue
+    fi
     file=$(find "$downloaded" -type f -name "$name" -path "*${family}-${target}-*" | head -1)
     extra_file=""
     if [ -n "${extra_name:-}" ]; then

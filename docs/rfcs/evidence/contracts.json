@@ -4,7 +4,13 @@
     {
       "rfcId": "0001",
       "paths": [
+        ".github/ci",
+        ".github/scripts/ci_plan.py",
+        ".github/scripts/export-ci-graph.sh",
+        ".github/scripts/tests/test_ci_plan.py",
+        ".github/workflows/ci.yml",
         ".github/workflows/docs.yml",
+        "docs/rfcs/evidence/contracts.json",
         "kweb-rfc-governance/build.gradle.kts",
         "kweb-rfc-governance/src"
       ]

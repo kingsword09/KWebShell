@@ -383,3 +383,13 @@ themselves require fresh reviewed evidence. Verify
 exact staged bytes, isolation of the exception and a new complete hosted run
 before importing or accepting this objective. The earlier run's checked-in
 governance failure remains a real failure, not an approval.
+
+Readiness refinement, 2026-10-12, separate same-contributor review: **READY**
+to register fresh-verification policy after project evaluation. Reviewing the
+actual Linux transcript showed `verifyNativeTrayPackage` reused the earlier
+probe result within the same run: its group was assigned after the init
+script's early configuration callback. The policy must inspect final task
+metadata while remaining configuration-cache compatible. Validate two real
+tray/governance invocations, including configuration-cache reuse, and require
+the package/test actions to execute in both without disabling compilation
+caching. Supersede the in-flight policy run before accepting hosted evidence.

@@ -345,6 +345,9 @@ class CiWorkflowTest(unittest.TestCase):
         self.assertIn("needs: [plan, lightweight, verify]", workflow)
         self.assertNotIn("--rerun-tasks", workflow)
         self.assertIn("task.outputs.doNotCacheIf", (ROOT / ".github/ci/fresh-verification.gradle").read_text())
+        fresh = (ROOT / ".github/ci/fresh-verification.gradle").read_text()
+        self.assertIn("gradle.projectsEvaluated", fresh)
+        self.assertNotIn("gradle.beforeProject", fresh)
 
 
 if __name__ == "__main__":

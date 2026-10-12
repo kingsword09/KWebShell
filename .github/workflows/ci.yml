@@ -198,6 +198,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          # The platform audit re-runs the planner, which resolves the PR base
+          # commit to recognize a new-module registration; a shallow checkout
+          # cannot and would fail closed with ci.git-input.
+          fetch-depth: 0
 
       - name: Download the execution plan
         uses: actions/download-artifact@v7
@@ -578,6 +583,19 @@ jobs:
             kweb-service-screen/build/reports/screen-native-tests.xml
             kweb-service-screen/build/test-results/jvmTest/*.xml
             kweb-service-screen/build/distributions/*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload shortcuts evidence
+        if: always() && steps.scope.outputs['shortcuts-integration'] == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: shortcuts-integration-${{ matrix.target }}-${{ github.sha }}
+          path: |
+            kweb-service-shortcuts/build/reports/shortcuts-integration/
+            kweb-service-shortcuts/build/reports/shortcuts-native-tests.xml
+            kweb-service-shortcuts/build/test-results/jvmTest/*.xml
+            kweb-service-shortcuts/build/distributions/*.zip
           if-no-files-found: error
           retention-days: 14
 

@@ -24,7 +24,7 @@ if [[ -n "$selection" ]]; then
     echo "No RFC evidence refresh selected."
     exit 0
   fi
-  jq -e '.refreshRfcs - ["0001","0002","0003","0004","0006","0007","0008","0009","0010","0011","0012","0013","0014","0015","0017","0018","0019","0020","0027","0030"] | length == 0' "$selection" > /dev/null
+  jq -e '.refreshRfcs - ["0001","0002","0003","0004","0006","0007","0008","0009","0010","0011","0012","0013","0014","0015","0017","0018","0019","0020","0021","0027","0030"] | length == 0' "$selection" > /dev/null
 fi
 
 selected() {
@@ -216,6 +216,23 @@ record() {
       arguments+=(--artifact "screen-wayland=$screen_wayland")
     fi
   fi
+  if [ "$rfc" = "0021" ]; then
+    arguments+=(--service shortcuts --matrix-row global-shortcut --from-compatibility-report "$extra_file")
+    for shortcuts_spec in \
+      "shortcuts-native-tests|shortcuts-native-tests.xml|shortcuts-integration" \
+      "shortcuts-contract-tests|TEST-io.github.kingsword09.kwebshell.service.shortcuts.KWebShortcutsContractTest.xml|shortcuts-integration" \
+      "shortcuts-bridge-tests|TEST-io.github.kingsword09.kwebshell.service.shortcuts.KWebShortcutsBridgeTest.xml|shortcuts-integration" \
+      "shortcuts-package|native-shortcuts-package.json|shortcuts-integration" \
+      "shortcuts-runtime|kweb-service-shortcuts-1.0.0-${target}.zip|shortcuts-integration"; do
+      IFS='|' read -r shortcuts_key shortcuts_name shortcuts_family <<< "$shortcuts_spec"
+      shortcuts_file=$(find "$downloaded" -type f -name "$shortcuts_name" -path "*${shortcuts_family}-${target}-*" | head -1)
+      if [ -z "$shortcuts_file" ] || [ ! -f "$shortcuts_file" ]; then
+        echo "Missing $shortcuts_key for $target" >&2
+        exit 1
+      fi
+      arguments+=(--artifact "$shortcuts_key=$shortcuts_file")
+    done
+  fi
   if [ "$rfc" = "0027" ]; then
     arguments+=(--service native-image --matrix-row native-image --from-compatibility-report "$extra_file")
     for image_spec in \
@@ -254,6 +271,7 @@ for target in macos-arm64 windows-x64 linux-x64; do
     "0018|tray.hosted|tray-integration|tray-integration.json|tray-integration|compatibility|compatibility.json|electron-migration"
     "0019|preferences.hosted|preferences-integration|preferences-integration.json|preferences-integration|compatibility|compatibility.json|electron-migration"
     "0020|screen.hosted|screen-integration|screen-integration.json|screen-integration|compatibility|compatibility.json|electron-migration"
+    "0021|shortcuts.hosted|shortcuts-integration|shortcuts-integration.json|shortcuts-integration|compatibility|compatibility.json|electron-migration"
     "0027|image.hosted|native-image|native-image-evidence.json|image-integration|compatibility|compatibility.json|electron-migration"
     "0007|window-controls.hosted|window-controls-report|window-controls-report.json|provider-lifecycle"
   )

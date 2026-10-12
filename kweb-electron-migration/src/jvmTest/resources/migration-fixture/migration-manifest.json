@@ -644,6 +644,10 @@
     {
       "id": "screen",
       "version": "1.0.0"
+    },
+    {
+      "id": "shortcuts",
+      "version": "1.0.0"
     }
   ],
   "windows": [

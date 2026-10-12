@@ -13,6 +13,7 @@ Renderer origin: `app://migration-fixture`; profile: `default`.
 - [ ] Install `notifications` (version `1.0.0`)
 - [ ] Install `screen` (version `1.0.0`)
 - [ ] Install `shell` (version `1.0.0`)
+- [ ] Install `shortcuts` (version `1.0.0`)
 - [ ] Install `system-preferences` (version `1.0.0`)
 - [ ] Install `tray` (version `1.0.0`)
 

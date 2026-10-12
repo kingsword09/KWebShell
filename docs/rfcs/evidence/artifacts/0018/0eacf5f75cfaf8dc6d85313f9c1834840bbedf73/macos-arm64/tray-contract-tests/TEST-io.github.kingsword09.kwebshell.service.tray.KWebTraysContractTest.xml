@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="KWebTraysContractTest[jvm]" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-10-12T18:51:12.606Z" hostname="sjc22-be107-70862cab-b159-4d39-96a0-1774f368bba3-1642C7E09240.local" time="0.107">
+  <properties/>
+  <testcase name="itemIdentifiersAndTooltipsAreBounded()[jvm]" classname="io.github.kingsword09.kwebshell.service.tray.KWebTraysContractTest" time="0.047"/>
+  <testcase name="iconVariantsRequireUniqueBoundedScalesAndVerifiedDigests()[jvm]" classname="io.github.kingsword09.kwebshell.service.tray.KWebTraysContractTest" time="0.018"/>
+  <testcase name="descriptorPublishesOnlyHostOperationsAndEveryTarget()[jvm]" classname="io.github.kingsword09.kwebshell.service.tray.KWebTraysContractTest" time="0.009"/>
+  <testcase name="itemSpecificationReusesTheMenuModelWithoutDeclaringOne()[jvm]" classname="io.github.kingsword09.kwebshell.service.tray.KWebTraysContractTest" time="0.006"/>
+  <testcase name="boundsRejectInvalidGeometry()[jvm]" classname="io.github.kingsword09.kwebshell.service.tray.KWebTraysContractTest" time="0.001"/>
+  <testcase name="singleScaleProvidersSelectTheHighestVariantWithinThePlatformScale()[jvm]" classname="io.github.kingsword09.kwebshell.service.tray.KWebTraysContractTest" time="0.002"/>
+  <testcase name="activationsAreDeclaredAndNeverEmpty()[jvm]" classname="io.github.kingsword09.kwebshell.service.tray.KWebTraysContractTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -2822,6 +2822,35 @@ review:
    Linux evidence pass, and every acceptance row is decided before the focused
    squash pull request is merged.
 
+### RFC 0021 implementation objective: owned global shortcuts
+
+RFC 0021 publishes one application-scoped shortcut service for Windows x64,
+macOS arm64, and Linux x64 that owns global shortcut registration, conflict and
+permission reporting, ordered invocation, and deterministic unregistration. The
+objective is complete only when the same PR lands the typed contract, the four
+declared providers, the renderer surface, the migration mapping, real three-target
+evidence, documentation, the CI planner metadata, and the final acceptance review:
+
+1. `kweb-service-shortcuts` publishes a bounded accelerator model of modifiers and
+   named or media keys, application-owned registration identifiers bound to
+   declared command identifiers, atomic bulk replacement, idempotent
+   unregistration, declared capabilities, ordered invocation, loss, removal, and
+   failure events, and stable `shortcuts.*` errors.
+2. Exactly one provider per target and session: Win32 `RegisterHotKey` on a
+   message-only window, macOS Carbon `RegisterEventHotKey` with a permission-gated
+   media path, the X11 `XGrabKey` provider, and a Wayland boundary that declares
+   no facility rather than falling back to X11. Each advertises only the key
+   classes and modifiers it implements.
+3. The renderer surface dispatches only application-declared command identifiers
+   with a user gesture and consent, and never registers or reveals an accelerator.
+4. The Electron `globalShortcut` mapping preserves the declared register,
+   unregister, unregisterAll, and isRegistered behavior and blocks best-effort
+   `registerAll`.
+5. Common, JVM, native, packaging, migration, and hosted Windows, macOS, and
+   Linux evidence pass, the module and its artifact family are registered in the
+   change-aware CI planner, and every acceptance row is decided before the focused
+   squash pull request is merged.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.

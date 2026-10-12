@@ -16,6 +16,7 @@
     ":kweb-service-tray": [":kweb-service-tray:check"],
     ":kweb-service-system-preferences": [":kweb-service-system-preferences:check"],
     ":kweb-service-screen": [":kweb-service-screen:check"],
+    ":kweb-service-shortcuts": [":kweb-service-shortcuts:check"],
     ":kweb-electron-migration": [":kweb-electron-migration:check"],
     ":kweb-rfc-governance": [":kweb-rfc-governance:contractTest"],
     ":kweb-bridge": [":kweb-bridge:check"],

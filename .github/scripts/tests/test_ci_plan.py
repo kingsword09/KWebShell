@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -298,6 +299,12 @@ class CiGitInputTest(unittest.TestCase):
         manifest.write_text(json.dumps({"schemaVersion": 2, "records": records}))
         registry = {"rfcs": {"0001": {}}}
         self.assertEqual(set(), CI.evidence_refresh(self.root, registry, False))
+        original_read = Path.read_text
+        def utf8_read(path, *arguments, **options):
+            self.assertEqual("utf-8", options.get("encoding"))
+            return original_read(path, *arguments, **options)
+        with patch.object(Path, "read_text", utf8_read):
+            self.assertEqual(set(), CI.evidence_refresh(self.root, registry, False))
         self.assertEqual({"0001"}, CI.evidence_refresh(self.root, registry, True))
         manifest.write_text(json.dumps({"schemaVersion": 2, "records": records[:-1]}))
         self.assertEqual({"0001"}, CI.evidence_refresh(self.root, registry, False))

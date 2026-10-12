@@ -63,7 +63,7 @@ def load(path):
             result[name] = value
         return result
     try:
-        return json.loads(Path(path).read_text(), object_pairs_hook=unique)
+        return json.loads(Path(path).read_text(encoding="utf-8"), object_pairs_hook=unique)
     except (ValueError, OSError) as error:
         raise PlanError("invalid-input", "Cannot read valid JSON input.") from error
 
@@ -72,7 +72,7 @@ def write(path, value):
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(destination.name + ".tmp")
-    temporary.write_text(json.dumps(value, sort_keys=True, indent=2) + "\n")
+    temporary.write_text(json.dumps(value, sort_keys=True, indent=2) + "\n", encoding="utf-8", newline="\n")
     temporary.replace(destination)
 
 
@@ -255,7 +255,7 @@ def evidence_refresh(root, registry, full):
     bound = {entry["rfcId"]: entry["paths"] for entry in bindings["bindings"]}
     implemented = {}
     for path in sorted((root / "docs/rfcs").glob("[0-9][0-9][0-9][0-9]-*.md")):
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         if re.search(r"^- Status: Implemented$", text, re.MULTILINE):
             targets = re.search(r"^- Platform targets: (.+)$", text, re.MULTILINE)
             implemented[path.name[:4]] = targets.group(1).split(", ") if targets else list(TARGETS)
@@ -323,7 +323,7 @@ def new_module_registration(root, changed, graph, registry):
     if root is None or not {"settings.gradle.kts", ".github/ci/suites.json"} <= set(changed["paths"]):
         return set()
     previous_settings = git(root, "show", changed["base"] + ":settings.gradle.kts").decode()
-    settings = (root / "settings.gradle.kts").read_text()
+    settings = (root / "settings.gradle.kts").read_text(encoding="utf-8")
     pattern = r'^include\("(:[a-z0-9-]+)"\)\s*$'
     previous = set(re.findall(pattern, previous_settings, re.MULTILINE))
     current = set(re.findall(pattern, settings, re.MULTILINE))
@@ -502,12 +502,12 @@ def main():
         value = changes(Path(arguments.repository_root), load(arguments.event), arguments.event_name)
         write(arguments.output, value)
         if os.environ.get("GITHUB_OUTPUT"):
-            with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+            with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8", newline="\n") as output:
                 output.write("graphs=" + str(not only_documentation(value)).lower() + "\n")
     elif arguments.command == "docs":
         write(arguments.output, documentation_plan(load(arguments.changes)))
         if os.environ.get("GITHUB_OUTPUT"):
-            with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+            with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8", newline="\n") as output:
                 output.write("verify=false\nrefresh=false\nfull=false\n")
     elif arguments.command == "plan":
         root = Path(arguments.repository_root).resolve()
@@ -517,12 +517,12 @@ def main():
         value = plan(root, load(arguments.graph), load(root / ".github/ci/suites.json"), changed, arguments.full)
         write(arguments.output, value)
         if os.environ.get("GITHUB_OUTPUT"):
-            with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+            with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8", newline="\n") as output:
                 for name, enabled in (("verify", bool(value["roots"])), ("refresh", bool(value["refreshRfcs"])),
                                       ("full", value["full"])):
                     output.write(name + "=" + str(enabled).lower() + "\n")
         if os.environ.get("GITHUB_STEP_SUMMARY"):
-            with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as summary:
+            with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8", newline="\n") as summary:
                 summary.write("## CI execution plan\n\n```json\n" + json.dumps(value, indent=2) + "\n```\n")
     elif arguments.command == "audit":
         value = validate_plan(load(arguments.plan))

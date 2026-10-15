@@ -1,0 +1,37 @@
+{
+  "namespace": "PowerBridge",
+  "kotlinPackage": "io.github.kingsword09.kwebshell.service.power.generated",
+  "version": 1,
+  "types": [
+    {
+      "name": "ReadRequest",
+      "fields": [
+        { "name": "facts", "type": "string", "list": true }
+      ]
+    },
+    {
+      "name": "AcquireRequest",
+      "fields": [
+        { "name": "profileId", "type": "string" }
+      ]
+    },
+    {
+      "name": "PowerSummary",
+      "fields": [
+        { "name": "supported", "type": "boolean" },
+        { "name": "onBattery", "type": "boolean" },
+        { "name": "leaseCount", "type": "int32" }
+      ]
+    },
+    {
+      "name": "AcquireAck",
+      "fields": [
+        { "name": "accepted", "type": "boolean" }
+      ]
+    }
+  ],
+  "methods": [
+    { "name": "read", "request": "ReadRequest", "response": "PowerSummary" },
+    { "name": "acquireProfile", "request": "AcquireRequest", "response": "AcquireAck" }
+  ]
+}

@@ -200,6 +200,15 @@ void CloseReleasesEveryLease() {
 
 int main() {
   std::setvbuf(stdout, nullptr, _IONBF, 0);
+  // The provider must never consult the host's real system bus during a test: a
+  // hosted runner whose logind denies the inhibitor would otherwise turn a
+  // correctly typed provider failure into a portable-test failure.
+#if defined(__linux__)
+  std::string owned_bus_pid;
+  if (!EnsurePrivatePowerBus(&owned_bus_pid)) {
+    std::printf("SKIP: no private D-Bus session is available for the power tests.\n");
+  }
+#endif
   HeaderAndArgumentValidation();
   LeaseLifecycleAndBounds();
   LeasesExpireExactlyOnce();

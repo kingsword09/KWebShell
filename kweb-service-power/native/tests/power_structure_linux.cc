@@ -267,13 +267,11 @@ int RunPlatformNativeStructureTest() {
     std::printf("SKIP: no D-Bus session is available for the power provider test.\n");
     return g_failures - failures_before;
   }
-  std::printf("%s\n", "STEP double-created");
   Double service;
   g_double = &service;
   if (!StartDouble(&service)) {
     std::printf("SKIP: the logind/UPower test double could not start.\n");
-    std::printf("%s\n", "STEP stop-double");
-  StopDouble(&service);
+    StopDouble(&service);
     g_double = nullptr;
     return g_failures - failures_before;
   }
@@ -306,7 +304,6 @@ int RunPlatformNativeStructureTest() {
   // The real inhibitor request reaches the service and returns a live descriptor.
   kweb_power_lease_result result{};
   auto system_lease = fixture.Request("system", KWEB_POWER_TYPE_SYSTEM_SLEEP, "Keep working", 600);
-  std::printf("%s\n", "STEP acquired-system");
   const kweb_power_status acquired = fixture.Acquire(handle, system_lease, &result);
   KWEB_CHECK(acquired == KWEB_POWER_STATUS_OK);
   KWEB_CHECK(service.inhibit_count == 1);
@@ -334,7 +331,6 @@ int RunPlatformNativeStructureTest() {
   kweb_power_event event{};
   event.struct_size = sizeof(event);
   event.abi_version = KWEB_POWER_ABI_VERSION;
-  std::printf("%s\n", "STEP sleep-signal");
   EmitSleep(&service, true);
   KWEB_CHECK(fixture.AwaitEvent(handle, &event, 3000));
   KWEB_CHECK(event.kind == KWEB_POWER_EVENT_SUSPENDED);
@@ -353,7 +349,6 @@ int RunPlatformNativeStructureTest() {
   KWEB_CHECK(event.value == 1u);
 
   // Closing releases the remaining descriptor.
-  std::printf("%s\n", "STEP close");
   KWEB_CHECK(kweb_power_close(handle) == KWEB_POWER_STATUS_OK);
   if (service.write_ends.size() == 2) {
     for (int attempt = 0; attempt < 100 && !InhibitorClosed(service.write_ends[1]); ++attempt) {

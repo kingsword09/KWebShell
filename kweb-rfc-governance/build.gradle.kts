@@ -34,6 +34,7 @@ dependencies {
     implementation(project(":kweb-service-system-preferences"))
     implementation(project(":kweb-service-screen"))
     implementation(project(":kweb-service-shortcuts"))
+    implementation(project(":kweb-service-power"))
 }
 
 tasks.withType<Test>().configureEach {

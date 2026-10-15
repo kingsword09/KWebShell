@@ -10,6 +10,7 @@ import io.github.kingsword09.kwebshell.service.windowcontrols.KWebWindowControls
 import io.github.kingsword09.kwebshell.service.image.KWebNativeImage
 import io.github.kingsword09.kwebshell.service.menus.KWebMenus
 import io.github.kingsword09.kwebshell.service.preferences.KWebSystemPreferences
+import io.github.kingsword09.kwebshell.service.power.KWebPower
 import io.github.kingsword09.kwebshell.service.screen.KWebScreens
 import io.github.kingsword09.kwebshell.service.shortcuts.KWebShortcuts
 import io.github.kingsword09.kwebshell.service.tray.KWebTrays
@@ -48,6 +49,10 @@ public object KWebRfcServiceCatalog {
         KWebRfcServiceContract(
             KWebShortcuts.DESCRIPTOR.id,
             KWebShortcuts.DESCRIPTOR.version.toString(),
+        ),
+        KWebRfcServiceContract(
+            KWebPower.DESCRIPTOR.id,
+            KWebPower.DESCRIPTOR.version.toString(),
         ),
     )
 

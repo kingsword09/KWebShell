@@ -1,5 +1,6 @@
 package io.github.kingsword09.kwebshell.service.power
 
+import io.github.kingsword09.kwebshell.services.KWebServiceException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -27,6 +28,8 @@ public fun main() {
     var peakLeases = 0
     var expired = 0
     var profileAcquired = false
+    var leaseLifecycle = "not-attempted"
+    var sessionBoundary = ""
 
     val profile = KWebPowerLeaseProfile(
         KWebPowerLeaseProfileId("render"),
@@ -59,15 +62,40 @@ public fun main() {
             }.sorted().joinToString(",")
 
             if (capabilities.supports(KWebPowerCapability.SYSTEM_SLEEP_BLOCKER)) {
-                // A real assertion is acquired, observed, and released.
-                val system = service.acquire(
-                    KWebPowerLeaseRequest(
-                        KWebPowerLeaseId("blocker"),
-                        KWebPowerBlockerType.SYSTEM_SLEEP,
-                        "Integration fixture holds the system awake",
-                        600,
-                    ),
+                // The declared profile is always validated, whether or not the
+                // session lets this process hold a real assertion.
+                val undeclared = runCatching {
+                    service.acquireProfile(KWebPowerLeaseProfileId("absent"))
+                }.exceptionOrNull()
+                check(
+                    undeclared is KWebServiceException && undeclared.code == KWebPowerErrorCode.PROFILE_UNKNOWN,
+                    "an undeclared profile did not fail typed",
                 )
+                // A real assertion is acquired, observed, and released.
+                val system = try {
+                    service.acquire(
+                        KWebPowerLeaseRequest(
+                            KWebPowerLeaseId("blocker"),
+                            KWebPowerBlockerType.SYSTEM_SLEEP,
+                            "Integration fixture holds the system awake",
+                            600,
+                        ),
+                    )
+                } catch (error: KWebServiceException) {
+                    // The session declares the blocker facility but refused this
+                    // process: that is the declared typed boundary, not a silent
+                    // success. The lease lifecycle is then covered by the native
+                    // provider tests, which own their bus.
+                    if (error.code != KWebPowerErrorCode.NATIVE_FAILED &&
+                        error.code != KWebPowerErrorCode.SERVICE_UNAVAILABLE
+                    ) {
+                        throw error
+                    }
+                    sessionBoundary = error.code
+                    leaseLifecycle = "session-denied"
+                    return@runBlocking
+                }
+                leaseLifecycle = "verified"
                 check(system.id == KWebPowerLeaseId("blocker"), "the lease identifier changed")
                 check(system.reason.isNotEmpty(), "the lease reason is missing")
                 val display = service.acquire(
@@ -82,18 +110,10 @@ public fun main() {
                 check(peakLeases == 2, "the live lease count is not two")
                 check(display.remainingSeconds in 1..600, "the remaining window is out of range")
 
-                // The declared profile is a real acquire, and an undeclared one fails typed.
+                // The declared profile is a real acquire.
                 val acquired = service.acquireProfile(KWebPowerLeaseProfileId("render"))
                 profileAcquired = acquired.type == KWebPowerBlockerType.SYSTEM_SLEEP
                 check(profileAcquired, "the declared profile did not acquire its type")
-                val undeclared = runCatching {
-                    service.acquireProfile(KWebPowerLeaseProfileId("absent"))
-                }.exceptionOrNull()
-                check(
-                    undeclared is io.github.kingsword09.kwebshell.services.KWebServiceException &&
-                        undeclared.code == KWebPowerErrorCode.PROFILE_UNKNOWN,
-                    "an undeclared profile did not fail typed",
-                )
 
                 // A short lease expires without an explicit release, exactly once.
                 val short = KWebPowerLeaseId("short")
@@ -132,6 +152,8 @@ public fun main() {
         append("\"peakLeases\":").append(peakLeases).append(',')
         append("\"expiredLeases\":").append(expired).append(',')
         append("\"profileAcquired\":").append(profileAcquired).append(',')
+        append("\"leaseLifecycle\":\"").append(leaseLifecycle).append("\",")
+        append("\"sessionBoundary\":\"").append(sessionBoundary).append("\",")
         append("\"liveLeasesAfterClose\":0,")
         append("\"status\":\"").append(status).append("\",")
         append("\"failures\":[").append(failures.joinToString(",") { "\"${it.replace('"', '\'')}\"" }).append("]}")

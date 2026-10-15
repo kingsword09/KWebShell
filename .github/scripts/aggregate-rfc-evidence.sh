@@ -24,7 +24,7 @@ if [[ -n "$selection" ]]; then
     echo "No RFC evidence refresh selected."
     exit 0
   fi
-  jq -e '.refreshRfcs - ["0001","0002","0003","0004","0006","0007","0008","0009","0010","0011","0012","0013","0014","0015","0017","0018","0019","0020","0021","0027","0030"] | length == 0' "$selection" > /dev/null
+  jq -e '.refreshRfcs - ["0001","0002","0003","0004","0006","0007","0008","0009","0010","0011","0012","0013","0014","0015","0017","0018","0019","0020","0021","0022","0027","0030"] | length == 0' "$selection" > /dev/null
 fi
 
 selected() {
@@ -233,6 +233,23 @@ record() {
       arguments+=(--artifact "$shortcuts_key=$shortcuts_file")
     done
   fi
+  if [ "$rfc" = "0022" ]; then
+    arguments+=(--service power --matrix-row power-monitor --matrix-row power-save-blocker --from-compatibility-report "$extra_file")
+    for power_spec in \
+      "power-native-tests|power-native-tests.xml|power-integration" \
+      "power-contract-tests|TEST-io.github.kingsword09.kwebshell.service.power.KWebPowerContractTest.xml|power-integration" \
+      "power-bridge-tests|TEST-io.github.kingsword09.kwebshell.service.power.KWebPowerBridgeTest.xml|power-integration" \
+      "power-package|native-power-package.json|power-integration" \
+      "power-runtime|kweb-service-power-1.0.0-${target}.zip|power-integration"; do
+      IFS='|' read -r power_key power_name power_family <<< "$power_spec"
+      power_file=$(find "$downloaded" -type f -name "$power_name" -path "*${power_family}-${target}-*" | head -1)
+      if [ -z "$power_file" ] || [ ! -f "$power_file" ]; then
+        echo "Missing $power_key for $target" >&2
+        exit 1
+      fi
+      arguments+=(--artifact "$power_key=$power_file")
+    done
+  fi
   if [ "$rfc" = "0027" ]; then
     arguments+=(--service native-image --matrix-row native-image --from-compatibility-report "$extra_file")
     for image_spec in \
@@ -272,6 +289,7 @@ for target in macos-arm64 windows-x64 linux-x64; do
     "0019|preferences.hosted|preferences-integration|preferences-integration.json|preferences-integration|compatibility|compatibility.json|electron-migration"
     "0020|screen.hosted|screen-integration|screen-integration.json|screen-integration|compatibility|compatibility.json|electron-migration"
     "0021|shortcuts.hosted|shortcuts-integration|shortcuts-integration.json|shortcuts-integration|compatibility|compatibility.json|electron-migration"
+    "0022|power.hosted|power-integration|power-integration.json|power-integration|compatibility|compatibility.json|electron-migration"
     "0027|image.hosted|native-image|native-image-evidence.json|image-integration|compatibility|compatibility.json|electron-migration"
     "0007|window-controls.hosted|window-controls-report|window-controls-report.json|provider-lifecycle"
   )

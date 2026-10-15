@@ -29,6 +29,7 @@ class KWebRfcGovernanceCheckerTest {
                     entry.id in RFC_0019_ROWS ||
                     entry.id in RFC_0020_ROWS ||
                     entry.id in RFC_0021_ROWS ||
+                    entry.id in RFC_0022_ROWS ||
                     entry.id in RFC_0027_ROWS
                 ) {
                     entry.copy(status = KWebElectronMappingStatus.UNSUPPORTED, kweb = "")
@@ -65,6 +66,7 @@ class KWebRfcGovernanceCheckerTest {
         val RFC_0019_ROWS: Set<String> = setOf("native-theme", "system-preferences")
         val RFC_0020_ROWS: Set<String> = setOf("screen")
         val RFC_0021_ROWS: Set<String> = setOf("global-shortcut")
+        val RFC_0022_ROWS: Set<String> = setOf("power-monitor", "power-save-blocker")
         val RFC_0027_ROWS: Set<String> = setOf("native-image")
     }
 

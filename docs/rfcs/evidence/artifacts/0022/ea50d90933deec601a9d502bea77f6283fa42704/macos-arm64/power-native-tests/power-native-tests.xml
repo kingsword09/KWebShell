@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)"
+	tests="1"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname=""
+	time="3"
+	timestamp="2026-10-15T21:38:27"
+	>
+	<testcase name="kweb_power_tests" classname="kweb_power_tests" time="3.58428" status="run">
+		<properties>
+			<property name="cmake_labels" value="abi;native;power"/>
+		</properties>
+		<system-out>kweb power portable checks: 0 failures.
+2026-10-15 21:38:28.303 kweb_power_tests[48330:146570] IOPMScheduleUserActivityLevelNotification returned 0
+2026-10-15 21:38:28.304 kweb_power_tests[48330:146570] IOPMScheduleUserActivityLevelNotification returned 0
+kweb power native checks passed.
+</system-out>
+	</testcase>
+</testsuite>

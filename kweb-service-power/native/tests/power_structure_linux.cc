@@ -127,15 +127,15 @@ bool InhibitorClosed(int write_end) {
   return written < 0 && errno == EPIPE;
 }
 
-/** Uses the session bus as the system bus, or starts a private one. */
-bool EnsureBus(std::string *owned_pid) {
-  const char *system_bus = g_getenv("DBUS_SYSTEM_BUS_ADDRESS");
-  if (system_bus != nullptr && system_bus[0] != '\0') return true;
-  const char *session_bus = g_getenv("DBUS_SESSION_BUS_ADDRESS");
-  if (session_bus != nullptr && session_bus[0] != '\0') {
-    g_setenv("DBUS_SYSTEM_BUS_ADDRESS", session_bus, TRUE);
-    return true;
-  }
+}  // namespace
+
+/**
+ * Points the provider at a private bus the test owns, so neither the portable
+ * tests nor the structure test can depend on the host's real system bus, and a
+ * hosted runner whose logind denies the inhibitor cannot change the result.
+ * `owned_pid` receives a daemon the caller should terminate.
+ */
+bool EnsurePrivatePowerBus(std::string *owned_pid) {
   GError *error = nullptr;
   gchar *output = nullptr;
   if (!g_spawn_command_line_sync("dbus-daemon --session --fork --print-address=1 --print-pid=1",
@@ -154,6 +154,8 @@ bool EnsureBus(std::string *owned_pid) {
   g_setenv("DBUS_SYSTEM_BUS_ADDRESS", address.c_str(), TRUE);
   return true;
 }
+
+namespace {
 
 bool StartDouble(Double *service) {
   GError *error = nullptr;
@@ -261,7 +263,7 @@ void PowerFixture::pump_platform_queue() {}
 int RunPlatformNativeStructureTest() {
   const int failures_before = g_failures;
   std::string spawned_pid;
-  if (!EnsureBus(&spawned_pid)) {
+  if (!EnsurePrivatePowerBus(&spawned_pid)) {
     std::printf("SKIP: no D-Bus session is available for the power provider test.\n");
     return g_failures - failures_before;
   }

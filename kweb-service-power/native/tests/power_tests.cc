@@ -3,7 +3,13 @@
 #include "power_tests_fixture.h"
 
 #include <cstring>
+#include <string>
 #include <vector>
+
+#if defined(__linux__)
+/** Points the provider at a private bus the tests own; see the Linux structure test. */
+bool EnsurePrivatePowerBus(std::string *owned_pid);
+#endif
 
 namespace {
 

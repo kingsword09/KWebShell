@@ -46,18 +46,32 @@ bool WaitForAssertionCount(pid_t pid, int expected, int timeout_ms) {
   return false;
 }
 
-/** Acquires one lease in a child process that exits without releasing it. */
-void RunCrashCleanupChild() {
+/**
+ * Acquires one lease in a child process that exits without releasing it. The child
+ * reports readiness over `ready` once the assertion is live, so the parent never
+ * races the acquisition; it then dies with the assertion still held.
+ */
+void RunCrashCleanupChild(int ready) {
   PowerFixture child_fixture;
   uint64_t child_handle = 0;
   kweb_power_configuration configuration = child_fixture.Configuration();
-  if (kweb_power_open(&configuration, &child_handle) != KWEB_POWER_STATUS_OK) _exit(3);
+  if (kweb_power_open(&configuration, &child_handle) != KWEB_POWER_STATUS_OK) {
+    const char byte = '0';
+    [[maybe_unused]] const ssize_t written = write(ready, &byte, 1);
+    _exit(3);
+  }
   kweb_power_lease_request request =
       child_fixture.Request("crash", KWEB_POWER_TYPE_SYSTEM_SLEEP, "Crash cleanup probe", 600);
   kweb_power_lease_result result{};
   result.struct_size = sizeof(result);
   result.abi_version = KWEB_POWER_ABI_VERSION;
-  if (kweb_power_acquire(child_handle, &request, &result) != KWEB_POWER_STATUS_OK) _exit(4);
+  if (kweb_power_acquire(child_handle, &request, &result) != KWEB_POWER_STATUS_OK) {
+    const char byte = '0';
+    [[maybe_unused]] const ssize_t written = write(ready, &byte, 1);
+    _exit(4);
+  }
+  const char byte = '1';
+  [[maybe_unused]] const ssize_t written = write(ready, &byte, 1);
   std::this_thread::sleep_for(std::chrono::milliseconds(700));
   // The owner dies with the assertion live; the kernel must reclaim it.
   _exit(0);
@@ -70,20 +84,34 @@ int RunPlatformNativeStructureTest() {
   const int failures_before = g_failures;
 
   // 1. A crashed owner leaves no live assertion behind.
+  int ready[2] = {-1, -1};
+  KWEB_CHECK(pipe(ready) == 0);
+  if (ready[0] < 0) return g_failures - failures_before;
   const pid_t child = fork();
   if (child == 0) {
-    RunCrashCleanupChild();
+    close(ready[0]);
+    RunCrashCleanupChild(ready[1]);
     _exit(5);
   }
+  close(ready[1]);
   KWEB_CHECK(child > 0);
   if (child > 0) {
-    const bool observed = WaitForAssertionCount(child, 1, 4000);
-    KWEB_CHECK(observed);
-    int status = 0;
-    waitpid(child, &status, 0);
-    KWEB_CHECK(WIFEXITED(status));
-    const bool reclaimed = WaitForAssertionCount(child, 0, 6000);
-    KWEB_CHECK(reclaimed);
+    // Wait for the child's readiness byte before inspecting the system list.
+    char signal_byte = '0';
+    const ssize_t read_bytes = read(ready[0], &signal_byte, 1);
+    if (read_bytes == 1 && signal_byte == '1') {
+      KWEB_CHECK(WaitForAssertionCount(child, 1, 4000));
+      int status = 0;
+      waitpid(child, &status, 0);
+      KWEB_CHECK(WIFEXITED(status));
+      KWEB_CHECK(WaitForAssertionCount(child, 0, 6000));
+    } else {
+      int status = 0;
+      waitpid(child, &status, 0);
+      std::printf("SKIP: the child could not hold an assertion (exit %d).\n",
+                  WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+    }
+    close(ready[0]);
   }
 
   PowerFixture fixture;

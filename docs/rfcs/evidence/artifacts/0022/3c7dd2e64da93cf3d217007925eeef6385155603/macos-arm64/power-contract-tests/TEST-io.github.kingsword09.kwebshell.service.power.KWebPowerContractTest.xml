@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="KWebPowerContractTest[jvm]" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-10-16T02:01:18.891Z" hostname="sjc22-bt146-c9ba799e-48d5-456b-a64e-465a66dbe675-C6044C6310DE.local" time="0.012">
+  <properties/>
+  <testcase name="eventsCarryAStrictlyOrderedIdentity()[jvm]" classname="io.github.kingsword09.kwebshell.service.power.KWebPowerContractTest" time="0.002"/>
+  <testcase name="identifiersAreBoundedAndStable()[jvm]" classname="io.github.kingsword09.kwebshell.service.power.KWebPowerContractTest" time="0.001"/>
+  <testcase name="capabilityReportAnswersDeclaredQueries()[jvm]" classname="io.github.kingsword09.kwebshell.service.power.KWebPowerContractTest" time="0.002"/>
+  <testcase name="reasonsAreBoundedAndControlFree()[jvm]" classname="io.github.kingsword09.kwebshell.service.power.KWebPowerContractTest" time="0.001"/>
+  <testcase name="durationsAreRequiredAndCeilinged()[jvm]" classname="io.github.kingsword09.kwebshell.service.power.KWebPowerContractTest" time="0.001"/>
+  <testcase name="stateKeepsUnpublishedFactsAbsent()[jvm]" classname="io.github.kingsword09.kwebshell.service.power.KWebPowerContractTest" time="0.001"/>
+  <testcase name="descriptorPublishesHostAndPolicyGatedRendererOperations()[jvm]" classname="io.github.kingsword09.kwebshell.service.power.KWebPowerContractTest" time="0.002"/>
+  <testcase name="profilesCarryTheSameRulesAsRequests()[jvm]" classname="io.github.kingsword09.kwebshell.service.power.KWebPowerContractTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

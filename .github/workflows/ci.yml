@@ -300,6 +300,7 @@ jobs:
             libgdk-pixbuf-2.0-dev \
             libgtk-3-dev \
             libnss3-tools \
+            libsecret-1-dev \
             openbox \
             desktop-file-utils \
             x11-utils \

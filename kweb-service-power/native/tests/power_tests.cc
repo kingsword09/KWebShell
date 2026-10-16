@@ -2,11 +2,14 @@
 #include "power_platform_test.h"
 #include "power_tests_fixture.h"
 
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
 
 #if defined(__linux__)
+#include <csignal>
+#include <sys/types.h>
 /** Points the provider at a private bus the tests own; see the Linux structure test. */
 bool EnsurePrivatePowerBus(std::string *owned_pid);
 #endif
@@ -219,6 +222,13 @@ int main() {
   if (platform_failures > 0) {
     std::printf("kweb power provider checks: %d failures.\n", platform_failures);
   }
+#if defined(__linux__)
+  // Release the private bus this test started so no daemon outlives the run.
+  if (!owned_bus_pid.empty()) {
+    const pid_t bus_pid = static_cast<pid_t>(std::atoi(owned_bus_pid.c_str()));
+    if (bus_pid > 0) kill(bus_pid, SIGTERM);
+  }
+#endif
   if (g_failures == 0) {
     std::printf("kweb power native checks passed.\n");
     return 0;

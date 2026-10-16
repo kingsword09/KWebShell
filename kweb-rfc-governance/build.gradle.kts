@@ -35,6 +35,7 @@ dependencies {
     implementation(project(":kweb-service-screen"))
     implementation(project(":kweb-service-shortcuts"))
     implementation(project(":kweb-service-power"))
+    implementation(project(":kweb-service-secure-storage"))
 }
 
 tasks.withType<Test>().configureEach {

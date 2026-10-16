@@ -1,0 +1,33 @@
+{
+  "namespace": "SecureStorageBridge",
+  "kotlinPackage": "io.github.kingsword09.kwebshell.service.securestorage.generated",
+  "version": 1,
+  "types": [
+    {
+      "name": "MetadataRequest",
+      "fields": [
+        { "name": "facts", "type": "string", "list": true },
+        { "name": "secretIds", "type": "string", "list": true }
+      ]
+    },
+    {
+      "name": "SecretSummary",
+      "fields": [
+        { "name": "id", "type": "string" },
+        { "name": "scope", "type": "string" },
+        { "name": "sizeBytes", "type": "int32" }
+      ]
+    },
+    {
+      "name": "MetadataResponse",
+      "fields": [
+        { "name": "backend", "type": "string" },
+        { "name": "supportsUserPresence", "type": "boolean" },
+        { "name": "secrets", "type": "SecretSummary", "list": true }
+      ]
+    }
+  ],
+  "methods": [
+    { "name": "readMetadata", "request": "MetadataRequest", "response": "MetadataResponse" }
+  ]
+}

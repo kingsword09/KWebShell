@@ -24,7 +24,7 @@ if [[ -n "$selection" ]]; then
     echo "No RFC evidence refresh selected."
     exit 0
   fi
-  jq -e '.refreshRfcs - ["0001","0002","0003","0004","0006","0007","0008","0009","0010","0011","0012","0013","0014","0015","0017","0018","0019","0020","0021","0022","0027","0030"] | length == 0' "$selection" > /dev/null
+  jq -e '.refreshRfcs - ["0001","0002","0003","0004","0006","0007","0008","0009","0010","0011","0012","0013","0014","0015","0017","0018","0019","0020","0021","0022","0023","0027","0030"] | length == 0' "$selection" > /dev/null
 fi
 
 selected() {
@@ -250,6 +250,23 @@ record() {
       arguments+=(--artifact "$power_key=$power_file")
     done
   fi
+  if [ "$rfc" = "0023" ]; then
+    arguments+=(--service secure-storage --matrix-row safe-storage --from-compatibility-report "$extra_file")
+    for secrets_spec in \
+      "secure-storage-native-tests|secure-storage-native-tests.xml|secure-storage-integration" \
+      "secure-storage-contract-tests|TEST-io.github.kingsword09.kwebshell.service.securestorage.KWebSecureStorageContractTest.xml|secure-storage-integration" \
+      "secure-storage-bridge-tests|TEST-io.github.kingsword09.kwebshell.service.securestorage.KWebSecureStorageMetadataAdapterTest.xml|secure-storage-integration" \
+      "secure-storage-package|native-secure-storage-package.json|secure-storage-integration" \
+      "secure-storage-runtime|kweb-service-secure-storage-1.0.0-${target}.zip|secure-storage-integration"; do
+      IFS='|' read -r secrets_key secrets_name secrets_family <<< "$secrets_spec"
+      secrets_file=$(find "$downloaded" -type f -name "$secrets_name" -path "*${secrets_family}-${target}-*" | head -1)
+      if [ -z "$secrets_file" ] || [ ! -f "$secrets_file" ]; then
+        echo "Missing $secrets_key for $target" >&2
+        exit 1
+      fi
+      arguments+=(--artifact "$secrets_key=$secrets_file")
+    done
+  fi
   if [ "$rfc" = "0027" ]; then
     arguments+=(--service native-image --matrix-row native-image --from-compatibility-report "$extra_file")
     for image_spec in \
@@ -290,6 +307,7 @@ for target in macos-arm64 windows-x64 linux-x64; do
     "0020|screen.hosted|screen-integration|screen-integration.json|screen-integration|compatibility|compatibility.json|electron-migration"
     "0021|shortcuts.hosted|shortcuts-integration|shortcuts-integration.json|shortcuts-integration|compatibility|compatibility.json|electron-migration"
     "0022|power.hosted|power-integration|power-integration.json|power-integration|compatibility|compatibility.json|electron-migration"
+    "0023|secure-storage.hosted|secure-storage-integration|secure-storage-integration.json|secure-storage-integration|compatibility|compatibility.json|electron-migration"
     "0027|image.hosted|native-image|native-image-evidence.json|image-integration|compatibility|compatibility.json|electron-migration"
     "0007|window-controls.hosted|window-controls-report|window-controls-report.json|provider-lifecycle"
   )

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="KWebPowerBridgeTest[jvm]" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-10-16T15:13:58.102Z" hostname="iad20-fj924-e79bbc36-a180-4ee7-a24b-560ebd4cc917-263B397C9A36.local" time="0.192">
+  <properties/>
+  <testcase name="profileAcquisitionRequiresAGestureAndADeclaredProfile()[jvm]" classname="io.github.kingsword09.kwebshell.service.power.KWebPowerBridgeTest" time="0.161"/>
+  <testcase name="aGrantedRendererReadsOnlyTheSummaryItAskedFor()[jvm]" classname="io.github.kingsword09.kwebshell.service.power.KWebPowerBridgeTest" time="0.013"/>
+  <testcase name="unknownAndNonVisibleFactsAreRejectedWithStableCodes()[jvm]" classname="io.github.kingsword09.kwebshell.service.power.KWebPowerBridgeTest" time="0.001"/>
+  <testcase name="aMissingGrantOrAChildFrameIsDeniedBeforeAnythingHappens()[jvm]" classname="io.github.kingsword09.kwebshell.service.power.KWebPowerBridgeTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

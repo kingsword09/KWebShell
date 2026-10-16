@@ -154,7 +154,7 @@ val nativeSecureStorageRuntimeZip = tasks.register<Zip>("nativeSecureStorageRunt
     isPreserveFileTimestamps = false
     isReproducibleFileOrder = true
     from(nativeLibrary) { into("native/${secureStorageTarget.get()}") }
-    from(nativeProjectDirectory.file("include/kweb_power.h")) { into("include") }
+    from(nativeProjectDirectory.file("include/kweb_secure_storage.h")) { into("include") }
 }
 val verifyNativeSecureStoragePackage = tasks.register("verifyNativeSecureStoragePackage") {
     group = "verification"
@@ -172,16 +172,16 @@ val verifyNativeSecureStoragePackage = tasks.register("verifyNativeSecureStorage
         val libraryEntry = "native/$target/${library.name}"
         ZipFile(packageFile).use { zip ->
             val names = zip.entries().asSequence().filterNot { it.isDirectory }.map { it.name }.toSet()
-            check(names == setOf(libraryEntry, "include/kweb_power.h")) {
-                "Unexpected files in the native power package."
+            check(names == setOf(libraryEntry, "include/kweb_secure_storage.h")) {
+                "Unexpected files in the native secure-storage package."
             }
             check(zip.getInputStream(zip.getEntry(libraryEntry)).readBytes().contentEquals(library.readBytes())) {
-                "The packaged shortcut library does not match the tested provider."
+                "The packaged secure-storage library does not match the tested provider."
             }
             check(
-                zip.getInputStream(zip.getEntry("include/kweb_power.h")).bufferedReader().readText()
-                    .contains("kweb_power_abi_version"),
-            ) { "The packaged header does not declare the power ABI revision." }
+                zip.getInputStream(zip.getEntry("include/kweb_secure_storage.h")).bufferedReader().readText()
+                    .contains("kweb_secure_storage_abi_version"),
+            ) { "The packaged header does not declare the secure-storage ABI revision." }
         }
         val digest = MessageDigest.getInstance("SHA-256").digest(packageFile.readBytes())
             .joinToString("") { "%02x".format(it) }

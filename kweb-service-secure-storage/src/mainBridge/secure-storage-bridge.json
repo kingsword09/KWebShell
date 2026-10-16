@@ -15,8 +15,7 @@
       "fields": [
         { "name": "id", "type": "string" },
         { "name": "scope", "type": "string" },
-        { "name": "sizeBytes", "type": "int32" },
-        { "name": "generation", "type": "int32" }
+        { "name": "sizeBytes", "type": "int32" }
       ]
     },
     {

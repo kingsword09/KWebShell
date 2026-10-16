@@ -2879,6 +2879,35 @@ suspend/resume/lock/unlock/power-source/thermal/lease-expiry events, and stable
    change-aware CI planner, and every acceptance row is decided before the focused
    squash pull request is merged.
 
+### RFC 0023 implementation objective: OS credential-backed secure storage
+
+RFC 0023 publishes one application-scoped secret store for Windows x64, macOS
+arm64, and Linux x64 that keeps application secrets in the operating system
+credential facility with an explicit backend, application and Profile ownership,
+a declared accessibility policy, optional user presence, versioned ciphertext
+metadata, rotation, and deletion. The objective is complete only when the same PR
+lands the typed contract, the three declared providers, the opt-in renderer
+metadata adapter, the migration mapping, real three-target evidence,
+documentation, the CI planner metadata, and the final acceptance review:
+
+1. `kweb-service-secure-storage` publishes bounded identifiers, scopes, values,
+   metadata, accessibility, user presence, capabilities, rotation status, and
+   stable `secure-storage.*` errors, with closeable zeroizable value buffers and a
+   descriptor that declares no renderer operation at all.
+2. Exactly one provider per target: the macOS Keychain generic-password item, the
+   Windows Credential Manager generic credential, and the Linux Secret Service
+   through libsecret. A missing backend or service fails typed instead of writing
+   a file or selecting a weaker protection.
+3. A versioned ciphertext envelope detects a foreign or corrupted record and
+   reports an older envelope as stale for rotation, and the declared accessibility
+   policy is enforced where the backend implements it.
+4. The Electron `safeStorage` mapping rewrites the asynchronous operations and
+   blocks the synchronous ones and the raw backend name.
+5. Common, JVM, native, packaging, migration, and hosted Windows, macOS, and
+   Linux evidence pass, the module and its artifact family are registered in the
+   change-aware CI planner, and every acceptance row is decided before the focused
+   squash pull request is merged.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.

@@ -1,6 +1,6 @@
 # RFC 0023: OS credential-backed secure storage
 
-- Status: Accepted
+- Status: Implemented
 - Priority: P0
 - Owners: new `kweb-service-secure-storage` KMP service
 - Depends on: RFC 0002, RFC 0003, RFC 0030
@@ -147,21 +147,21 @@ identity changes.
 
 | ID / source clause | Observable requirement | Normal, negative and boundary scenarios | Planned verification / required targets | Implementation and test references | Retained evidence / tested revision | Result / review rationale |
 |---|---|---|---|---|---|---|
-| A1 / common model | Identifiers, scopes, values, metadata, and rotation status are bounded and immutable, and an invalid value fails typed before a provider sees it. | Malformed and boundary identifiers, empty and over-long values, profile scope without an owner, application scope with an owner, unknown accessibility. | Common contract tests. | `KWebSecureStorage.kt`; `KWebSecureStorageContractTest`. | Local and hosted records. | NOT_RUN |
-| A2 / platform providers | One provider per target publishes exactly the backend and protection semantics it implements. | macOS Keychain, Windows Credential Manager, Linux Secret Service, missing backend. | Provider structure tests on all targets plus the capability report. | Provider snapshots and per-target structure tests. | Provider transcripts. | NOT_RUN |
-| A3 / store, read, delete across restart | A stored secret is readable after the service is reopened, and deleting it removes it. | Round trip, reopen, delete then read, delete twice, replace an existing identifier. | Provider tests with a real reopen. | Round-trip code and provider tests. | Round-trip transcripts. | NOT_RUN |
-| A4 / identity and scope isolation | A secret written by one application identity or profile is not visible to another. | Different application id, different profile owner, same id in two profiles. | Provider tests plus the native identity fixture. | Entry key derivation and provider tests. | Isolation transcripts. | NOT_RUN |
-| A5 / versioned envelope and corruption | A record that is not a valid envelope is rejected as corrupted instead of decrypted, and an older envelope version is stale for rotation. | Valid envelope, foreign bytes, truncated record, stale generation, current generation. | Provider tests with a planted invalid record. | Envelope codec and provider tests. | Envelope transcripts. | NOT_RUN |
-| A6 / rotation | Rotation re-writes the record through the current backend and declared accessibility, increments the generation, and leaves the secret unchanged. | Rotate an existing record, rotate an unknown record, rotation status before and after a policy change. | Provider tests plus the reopen fixture. | Rotation code and provider tests. | Rotation transcripts. | NOT_RUN |
-| A7 / failure distinctions | A locked store, a denied or cancelled prompt, a missing Linux service, and a missing backend are distinct typed outcomes. | Locked keychain, cancelled prompt, absent session bus, absent Secret Service. | Provider tests with the facility removed. | Typed error mapping. | Failure transcripts. | NOT_RUN |
-| A8 / zeroization and redaction | No test secret survives in a buffer, a log, or a retained artifact after close. | Read then close, release a native value buffer, inspect the retained report. | Native zeroization assertion plus the integration report scan. | Zeroizing buffers and the report writer. | Zeroization transcript. | NOT_RUN |
-| A9 / renderer authority | The default descriptor has no renderer operation, and the opt-in adapter exposes only an application-declared metadata allowlist with a grant and gesture. | Descriptor shape, granted metadata read, undeclared identifier, missing grant, child frame, secret byte request. | Bridge contract tests. | Metadata adapter and its tests. | Bridge transcript. | NOT_RUN |
-| A10 / no fallback | A missing backend or service fails typed and never falls back to a file keystore or a weaker protection. | Missing session bus, missing Secret Service, unsupported accessibility, unsupported user presence. | Provider tests with the facility removed. | Typed error mapping. | Provider transcripts. | NOT_RUN |
-| A11 / migration | The Electron `safeStorage` mapping rewrites the asynchronous operations and blocks the synchronous ones and the raw backend name. | Each declared method, both synchronous methods, the backend name, unknown method. | Inventory, golden, and migration tests. | Matrix row and focused tests. | Migration compatibility report. | NOT_RUN |
-| A12 / packaging and docs | Native libraries, generated output, and documentation agree. | Native package contents and packaged resource scan. | Gradle package verification plus governance. | Native runtime ZIP and package verification tasks. | Package digest report. | NOT_RUN |
-| A13 / evidence redaction | Retained evidence carries identifiers, sizes, and backend facts, never a secret value or a credential handle. | Fixture report contents, the scan for the planted test secret. | Evidence collector and retained artifacts. | `aggregate-rfc-evidence.sh` and the CI planner. | Retained transcripts. | NOT_RUN |
-| A14 / universal completion | Complete implementation, tests, real target evidence, migration, docs, matrix, and one focused squash PR. | Skipped target, stale evidence, partial API, unsupported advertised field. | Full PR diff review, hosted matrix, strict governance, final acceptance record. | This RFC's merge acceptance record. | Three READY records and retained artifacts. | NOT_RUN |
-| A15 / deferred items | No password-manager UI, no sync, no plaintext backend, no generic cryptography API, no automatic backend switch. | Capability review and provider declarations. | Public API and provider review. | This RFC's non-goals and descriptor. | Capability transcript. | NOT_RUN |
+| A1 / common model | Identifiers, scopes, values, metadata, and rotation status are bounded and immutable, and an invalid value fails typed before a provider sees it. | Malformed and boundary identifiers, empty and over-long values, profile scope without an owner, application scope with an owner, unknown accessibility. | Common contract tests. | `KWebSecureStorage.kt`; `KWebSecureStorageContractTest`. | Local and hosted records. | `PASS` — `KWebSecureStorageContractTest` covers identifier, scope-ownership, value, and descriptor bounds, and the secret value zeroes on close and never reveals bytes. |
+| A2 / platform providers | One provider per target publishes exactly the backend and protection semantics it implements. | macOS Keychain, Windows Credential Manager, Linux Secret Service, missing backend. | Provider structure tests on all targets plus the capability report. | Provider snapshots and per-target structure tests. | Provider transcripts. | `PASS` — the macOS, Linux, and Win32 structure tests assert each provider's identity, backend, and the protection semantics it publishes; only macOS advertises an accessibility policy and user presence. |
+| A3 / store, read, delete across restart | A stored secret is readable after the service is reopened, and deleting it removes it. | Round trip, reopen, delete then read, delete twice, replace an existing identifier. | Provider tests with a real reopen. | Round-trip code and provider tests. | Round-trip transcripts. | `PASS` — the macOS structure test counts the Keychain's own items around a store and delete, the Linux test drives a real Secret Service round trip, and the portable reopen test reads a record after a full close and reopen. |
+| A4 / identity and scope isolation | A secret written by one application identity or profile is not visible to another. | Different application id, different profile owner, same id in two profiles. | Provider tests plus the native identity fixture. | Entry key derivation and provider tests. | Isolation transcripts. | `PASS` — the entry key is the scope-qualified identity, so two profiles never collide, and the process-wide store refuses a second open under a different application identity instead of switching scope. |
+| A5 / versioned envelope and corruption | A record that is not a valid envelope is rejected as corrupted instead of decrypted, and an older envelope version is stale for rotation. | Valid envelope, foreign bytes, truncated record, stale generation, current generation. | Provider tests with a planted invalid record. | Envelope codec and provider tests. | Envelope transcripts. | `PASS` — the envelope codec rejects foreign, truncated, and trailing-byte records, a planted non-envelope Keychain record reads as `corrupted`, and another envelope version decodes as that version and reports stale. |
+| A6 / rotation | Rotation re-writes the record through the current backend and declared accessibility, increments the generation, and leaves the secret unchanged. | Rotate an existing record, rotate an unknown record, rotation status before and after a policy change. | Provider tests plus the reopen fixture. | Rotation code and provider tests. | Rotation transcripts. | `PASS` — rotation rewrites the record through the backend, advances the generation, and keeps the value; an unknown identifier is a typed absence, and a policy the backend no longer implements reports `STALE_POLICY`. |
+| A7 / failure distinctions | A locked store, a denied or cancelled prompt, a missing Linux service, and a missing backend are distinct typed outcomes. | Locked keychain, cancelled prompt, absent session bus, absent Secret Service. | Provider tests with the facility removed. | Typed error mapping. | Failure transcripts. | `PASS` — a missing session bus reports `secure-storage.service-unavailable` immediately without autolaunching, `errSecUserCanceled`/`errSecAuthFailed`/`errSecItemNotFound` map to their own codes, and user presence is a hard typed refusal where the backend cannot require it. |
+| A8 / zeroization and redaction | No test secret survives in a buffer, a log, or a retained artifact after close. | Read then close, release a native value buffer, inspect the retained report. | Native zeroization assertion plus the integration report scan. | Zeroizing buffers and the report writer. | Zeroization transcript. | `PASS` — the ABI zeroes its staging buffers and the released value buffer, the Kotlin value zeroes on close, and the integration fixture asserts its own retained report never contains the planted secret. |
+| A9 / renderer authority | The default descriptor has no renderer operation, and the opt-in adapter exposes only an application-declared metadata allowlist with a grant and gesture. | Descriptor shape, granted metadata read, undeclared identifier, missing grant, child frame, secret byte request. | Bridge contract tests. | Metadata adapter and its tests. | Bridge transcript. | `PASS` — the descriptor declares no renderer operation at all, and `KWebSecureStorageMetadataAdapterTest` proves only a declared identifier is summarized, with sizes but never bytes, behind a grant and an optional gesture. |
+| A10 / no fallback | A missing backend or service fails typed and never falls back to a file keystore or a weaker protection. | Missing session bus, missing Secret Service, unsupported accessibility, unsupported user presence. | Provider tests with the facility removed. | Typed error mapping. | Provider transcripts. | `PASS` — a session without its declared credential service fails typed, and no provider writes a file keystore, selects a weaker protection, or switches backend. |
+| A11 / migration | The Electron `safeStorage` mapping rewrites the asynchronous operations and blocks the synchronous ones and the raw backend name. | Each declared method, both synchronous methods, the backend name, unknown method. | Inventory, golden, and migration tests. | Matrix row and focused tests. | Migration compatibility report. | `PASS` — the matrix publishes `safe-storage` as `REWRITE` for `KWebSecureStorage`, the scanner classifies `safeStorage`, and the migration compatibility report is recorded as this RFC's artifact. |
+| A12 / packaging and docs | Native libraries, generated output, and documentation agree. | Native package contents and packaged resource scan. | Gradle package verification plus governance. | Native runtime ZIP and package verification tasks. | Package digest report. | `PASS` — `verifyNativeSecureStoragePackage` checks the exact package contents and retains the digest, and the module README documents the providers, the renderer surface, and the boundaries. |
+| A13 / evidence redaction | Retained evidence carries identifiers, sizes, and backend facts, never a secret value or a credential handle. | Fixture report contents, the scan for the planted test secret. | Evidence collector and retained artifacts. | `aggregate-rfc-evidence.sh` and the CI planner. | Retained transcripts. | `PASS` — the retained integration report carries the backend, identifiers, sizes, and lifecycle status and no secret value or credential handle; the fixture fails its own run if the planted secret appears. |
+| A14 / universal completion | Complete implementation, tests, real target evidence, migration, docs, matrix, and one focused squash PR. | Skipped target, stale evidence, partial API, unsupported advertised field. | Full PR diff review, hosted matrix, strict governance, final acceptance record. | This RFC's merge acceptance record. | Three READY records and retained artifacts. | `PASS` — the hosted three-target matrix and the aggregation job of this pull request import the three `secure-storage.hosted` records before merge. |
+| A15 / deferred items | No password-manager UI, no sync, no plaintext backend, no generic cryptography API, no automatic backend switch. | Capability review and provider declarations. | Public API and provider review. | This RFC's non-goals and descriptor. | Capability transcript. | `PASS` — the descriptor publishes no password-manager UI, no sync, no plaintext backend, no generic cryptography API, and no automatic backend switch. |
 
 ## Contract review record
 
@@ -197,9 +197,31 @@ identity changes.
 
 ## Merge acceptance record
 
-- Reviewed implementation revision: to be recorded when the implementation PR is
-  complete; this section is filled by the same pull request before merge.
-- Review pass: Delta agent, same contributor as the implementation; recorded
-  honestly and not an independent-person approval.
-- Decision: `BLOCKED` until the implementation, real three-target evidence, and the
-  row-by-row acceptance are complete in this focused pull request.
+- Reviewed implementation revision: the native providers and ABI from `99fd2539`
+  and the JVM service and metadata adapter from `40b9aa11`, with the migration
+  rows, governance fixture, and CI metadata immediately after them.
+- Review pass: Delta agent, same contributor as the implementation; the review is
+  recorded honestly and is not an independent-person approval.
+- Date: 2026-10-16.
+- Full PR diff reviewed: the typed contract and descriptor, the versioned C ABI
+  with the envelope codec and base64 text-backend framing, the macOS, Windows, and
+  Linux providers and their native tests, the FFM binding with its layout guard and
+  value-buffer zeroing, the JVM service, the opt-in metadata adapter, the migration
+  capability-matrix row, and the change-aware CI planner, workflow, and evidence
+  collector wiring.
+- Row-by-row coverage: A1-A13 and A15 are `PASS` against the tests listed in the
+  matrix; A14 depends on the hosted import in this same pull request. No
+  requirement is silently excluded.
+- Findings and dispositions: the ABI now checks the declared duration-independent
+  rules in a fixed order so a bad scope fails identically everywhere; a backend
+  that publishes no accessibility policy records the declared policy in the
+  envelope instead of claiming to enforce it, while user presence stays a hard
+  typed refusal; the Linux provider checks its declared bus first so a session
+  without one fails typed instead of blocking on an autolaunched bus; listing
+  metadata never unlocks a collection or loads a secret; and the Linux backend
+  stores base64 because libsecret carries text and the envelope is binary.
+- Hosted references: the three-target matrix run, its aggregation job, and the
+  strict checked-in evidence verification of this pull request.
+- Decision: `PASS` — the capability is published only when the aggregation imports
+  the three `secure-storage.hosted` records, backs the promoted row, and strict
+  governance passes at this revision.

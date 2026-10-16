@@ -623,6 +623,22 @@
         "kweb-service-power/src",
         "settings.gradle.kts"
       ]
+    },
+    {
+      "rfcId": "0023",
+      "paths": [
+        "build.gradle.kts",
+        "docs/rfcs/0023-secure-storage.md",
+        "docs/rfcs/evidence/contracts.json",
+        "kweb-electron-migration/src",
+        "kweb-rfc-governance/build.gradle.kts",
+        "kweb-rfc-governance/src/main/kotlin/io/github/kingsword09/kwebshell/rfc/KWebRfcServiceCatalog.kt",
+        "kweb-service-secure-storage/README.md",
+        "kweb-service-secure-storage/build.gradle.kts",
+        "kweb-service-secure-storage/native",
+        "kweb-service-secure-storage/src",
+        "settings.gradle.kts"
+      ]
     }
   ]
 }

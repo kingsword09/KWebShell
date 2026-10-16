@@ -652,6 +652,10 @@
     {
       "id": "power",
       "version": "1.0.0"
+    },
+    {
+      "id": "secure-storage",
+      "version": "1.0.0"
     }
   ],
   "windows": [

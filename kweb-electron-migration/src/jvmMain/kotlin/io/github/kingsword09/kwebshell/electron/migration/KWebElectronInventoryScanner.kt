@@ -127,6 +127,7 @@ public class KWebElectronInventoryScanner public constructor(
         "globalShortcut" -> "global-shortcut"
         "powerMonitor" -> "power-monitor"
         "powerSaveBlocker" -> "power-save-blocker"
+        "safeStorage" -> "safe-storage"
         "Menu", "MenuItem" -> "menu"
         "Tray" -> "tray"
         "nativeTheme" -> "native-theme"

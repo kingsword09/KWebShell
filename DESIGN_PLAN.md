@@ -2851,6 +2851,34 @@ evidence, documentation, the CI planner metadata, and the final acceptance revie
    change-aware CI planner, and every acceptance row is decided before the focused
    squash pull request is merged.
 
+### RFC 0022 implementation objective: power monitor and bounded blockers
+
+RFC 0022 publishes one application-scoped power service for Windows x64, macOS
+arm64, and Linux x64 that owns suspend/resume, lock/unlock, power-source, and
+thermal observation where the session provides it, and time-bounded sleep-blocker
+leases. The objective is complete only when the same PR lands the typed contract,
+the three declared providers, the renderer surface, the migration mapping, real
+three-target evidence, documentation, the CI planner metadata, and the final
+acceptance review:
+
+1. `kweb-service-power` publishes a bounded lease model with a required maximum
+duration, renewal, automatic expiry, deterministic composition of concurrent
+leases, a per-session capability report, ordered
+suspend/resume/lock/unlock/power-source/thermal/lease-expiry events, and stable
+`power.*` errors.
+2. Exactly one provider per target: Win32 power requests on a notification window
+   with `WM_POWERBROADCAST` and session change messages, macOS `IOPMAssertion`
+   with `NSWorkspace` and IOKit power sources, and the Linux logind/UPower contract
+   over the system bus. A missing facility fails typed instead of polling.
+3. The renderer surface may only acquire an application-declared lease profile
+   with a user gesture and consent, and event observation never creates a lease.
+4. The Electron `powerMonitor`/`powerSaveBlocker` mapping adapts the declared
+   events and blocker operations and blocks indefinite or unowned blockers.
+5. Common, JVM, native, packaging, migration, and hosted Windows, macOS, and
+   Linux evidence pass, the module and its artifact family are registered in the
+   change-aware CI planner, and every acceptance row is decided before the focused
+   squash pull request is merged.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.

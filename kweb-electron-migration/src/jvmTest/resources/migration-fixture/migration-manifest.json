@@ -648,6 +648,10 @@
     {
       "id": "shortcuts",
       "version": "1.0.0"
+    },
+    {
+      "id": "power",
+      "version": "1.0.0"
     }
   ],
   "windows": [

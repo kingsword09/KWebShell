@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="KWebShortcutsBridgeTest[jvm]" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-10-15T21:32:59.226Z" hostname="runnervm8k3b6" time="0.104">
+  <properties/>
+  <testcase name="dispatchRequiresAGestureAndOnlyDispatchesADeclaredCommand()[jvm]" classname="io.github.kingsword09.kwebshell.service.shortcuts.KWebShortcutsBridgeTest" time="0.083"/>
+  <testcase name="aGrantedRendererReadsOnlyTheSummaryItAskedFor()[jvm]" classname="io.github.kingsword09.kwebshell.service.shortcuts.KWebShortcutsBridgeTest" time="0.005"/>
+  <testcase name="unknownAndNonVisibleFactsAreRejectedWithStableCodes()[jvm]" classname="io.github.kingsword09.kwebshell.service.shortcuts.KWebShortcutsBridgeTest" time="0.001"/>
+  <testcase name="aMissingGrantOrAChildFrameIsDeniedBeforeAnythingHappens()[jvm]" classname="io.github.kingsword09.kwebshell.service.shortcuts.KWebShortcutsBridgeTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

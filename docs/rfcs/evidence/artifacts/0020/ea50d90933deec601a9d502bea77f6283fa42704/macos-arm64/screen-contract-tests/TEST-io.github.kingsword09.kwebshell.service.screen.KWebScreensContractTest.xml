@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="KWebScreensContractTest[jvm]" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-10-15T21:38:32.654Z" hostname="sat12-bq159-5949472b-3845-42a0-b7e1-c05c065cc9d1-DE0DF7017DF5.local" time="0.014">
+  <properties/>
+  <testcase name="descriptorPublishesHostOperationsAndReadOnlyRendererOperations()[jvm]" classname="io.github.kingsword09.kwebshell.service.screen.KWebScreensContractTest" time="0.002"/>
+  <testcase name="geometryHandlesNegativeOriginsAndHalfOpenEdges()[jvm]" classname="io.github.kingsword09.kwebshell.service.screen.KWebScreensContractTest" time="0.001"/>
+  <testcase name="topologyEventsRequireAReportedChangeAndKeepTheirSequence()[jvm]" classname="io.github.kingsword09.kwebshell.service.screen.KWebScreensContractTest" time="0.001"/>
+  <testcase name="displaysRejectWorkAreasOutsideTheirGeometryAndUnboundedFacts()[jvm]" classname="io.github.kingsword09.kwebshell.service.screen.KWebScreensContractTest" time="0.001"/>
+  <testcase name="errorCodesAreStableScreenCodes()[jvm]" classname="io.github.kingsword09.kwebshell.service.screen.KWebScreensContractTest" time="0.0"/>
+  <testcase name="topologyReportsTheFactsThatMoved()[jvm]" classname="io.github.kingsword09.kwebshell.service.screen.KWebScreensContractTest" time="0.002"/>
+  <testcase name="scalesStayExactAndBounded()[jvm]" classname="io.github.kingsword09.kwebshell.service.screen.KWebScreensContractTest" time="0.002"/>
+  <testcase name="capabilitiesDeclareOnlySupportedFactsAndSpaces()[jvm]" classname="io.github.kingsword09.kwebshell.service.screen.KWebScreensContractTest" time="0.001"/>
+  <testcase name="topologyPublishesOnlyItsOwnDisplaysAndResolvesWithoutGuessing()[jvm]" classname="io.github.kingsword09.kwebshell.service.screen.KWebScreensContractTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -17,6 +17,7 @@
     ":kweb-service-system-preferences": [":kweb-service-system-preferences:check"],
     ":kweb-service-screen": [":kweb-service-screen:check"],
     ":kweb-service-shortcuts": [":kweb-service-shortcuts:check"],
+    ":kweb-service-power": [":kweb-service-power:check"],
     ":kweb-electron-migration": [":kweb-electron-migration:check"],
     ":kweb-rfc-governance": [":kweb-rfc-governance:contractTest"],
     ":kweb-bridge": [":kweb-bridge:check"],
@@ -52,6 +53,7 @@
     "0019": {"modules": [":kweb-service-system-preferences", ":kweb-electron-migration"], "families": ["preferences-integration", "electron-migration"]},
     "0020": {"modules": [":kweb-service-screen", ":kweb-electron-migration"], "families": ["screen-integration", "electron-migration"]},
     "0021": {"modules": [":kweb-service-shortcuts", ":kweb-electron-migration"], "families": ["shortcuts-integration", "electron-migration"]},
+    "0022": {"modules": [":kweb-service-power", ":kweb-electron-migration"], "families": ["power-integration", "electron-migration"]},
     "0027": {"modules": [":kweb-service-image", ":kweb-electron-migration"], "families": ["image-integration", "electron-migration"]},
     "0030": {"modules": [":kweb-runtime-pack"], "families": ["application-package", "windows-launcher-smoke"]}
   },
@@ -68,6 +70,7 @@
     "preferences-integration": ":kweb-service-system-preferences:nativePreferencesIntegrationTest",
     "screen-integration": ":kweb-service-screen:nativeScreenIntegrationTest",
     "shortcuts-integration": ":kweb-service-shortcuts:nativeShortcutsIntegrationTest",
+    "power-integration": ":kweb-service-power:nativePowerIntegrationTest",
     "application-package": ":kweb-runtime-pack:applicationPackageIntegrationTest",
     "windows-launcher-smoke": ":kweb-runtime-pack:applicationPackageIntegrationTest",
     "application-lifecycle": ":kweb-service-application-lifecycle:applicationLifecycleIntegrationTest"

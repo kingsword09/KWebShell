@@ -12,6 +12,7 @@ Renderer origin: `app://migration-fixture`; profile: `default`.
 - [ ] Install `native-image` (version `1.0.0`)
 - [ ] Install `notifications` (version `1.0.0`)
 - [ ] Install `power` (version `1.0.0`)
+- [ ] Install `processes` (version `1.0.0`)
 - [ ] Install `screen` (version `1.0.0`)
 - [ ] Install `secure-storage` (version `1.0.0`)
 - [ ] Install `shell` (version `1.0.0`)

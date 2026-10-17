@@ -38,6 +38,7 @@
 #include "include/cef_keyboard_handler.h"
 #include "include/cef_jsdialog_handler.h"
 #include "include/cef_parser.h"
+#include "include/cef_permission_handler.h"
 #include "include/cef_request_context.h"
 #include "include/cef_request_context_handler.h"
 #include "include/cef_registration.h"
@@ -409,6 +410,7 @@ class SessionClient final : public CefClient,
                             public CefLoadHandler,
                             public CefDownloadHandler,
                             public CefContextMenuHandler,
+                            public CefPermissionHandler,
                             public CefRequestHandler {
 public:
   SessionClient(std::weak_ptr<BrowserSession> session,
@@ -451,6 +453,11 @@ public:
   bool CanDownload(CefRefPtr<CefBrowser> browser, const CefString &url,
                    const CefString &request_method) override;
   CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
+  CefRefPtr<CefPermissionHandler> GetPermissionHandler() override { return this; }
+  bool OnRequestMediaAccessPermission(
+      CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+      const CefString &requesting_origin, uint32_t requested_permissions,
+      CefRefPtr<CefMediaAccessCallback> callback) override;
   CefRefPtr<CefResourceRequestHandler> GetResourceRequestHandler(
       CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
       CefRefPtr<CefRequest> request, bool is_navigation, bool is_download,
@@ -984,6 +991,73 @@ public:
 
   bool CanDownload() const {
     return downloads_enabled_ && !closing_.load(std::memory_order_acquire);
+  }
+
+  /**
+   * Decides one media-access request and reports it as a typed event.
+   *
+   * The engine never grants desktop capture: this runtime carries no native
+   * source selection, so a desktop request is refused with its own reason
+   * instead of being answered with the whole desktop or a renderer-named
+   * source. Camera and microphone belong to RFC 0038 and are refused here with
+   * a separate reason until that policy exists, so no request is ever answered
+   * by a browser default that the application cannot see.
+   */
+  bool ResolveMediaPermission(CefRefPtr<CefFrame> frame,
+                              const std::string &requesting_origin,
+                              uint32_t requested_permissions,
+                              CefRefPtr<CefMediaAccessCallback> callback) {
+    CEF_REQUIRE_UI_THREAD();
+    if (!callback) return false;
+    const bool desktop_video =
+        (requested_permissions &
+         CEF_MEDIA_PERMISSION_DESKTOP_VIDEO_CAPTURE) != 0;
+    const bool desktop_audio =
+        (requested_permissions &
+         CEF_MEDIA_PERMISSION_DESKTOP_AUDIO_CAPTURE) != 0;
+    const bool device_video =
+        (requested_permissions & CEF_MEDIA_PERMISSION_DEVICE_VIDEO_CAPTURE) != 0;
+    const bool device_audio =
+        (requested_permissions & CEF_MEDIA_PERMISSION_DEVICE_AUDIO_CAPTURE) != 0;
+
+    const bool is_main_frame =
+        frame && browser_ && browser_->GetMainFrame() &&
+        frame->IsMain() && frame->GetIdentifier() ==
+                              browser_->GetMainFrame()->GetIdentifier();
+
+    uint32_t reason = KWEB_MEDIA_PERMISSION_REASON_NONE;
+    if (!is_main_frame) {
+      reason = KWEB_MEDIA_PERMISSION_REASON_FRAME_REFUSED;
+    } else if (desktop_video || desktop_audio) {
+      reason = KWEB_MEDIA_PERMISSION_REASON_DESKTOP_CAPTURE_UNSUPPORTED;
+    } else if (device_video || device_audio) {
+      reason = KWEB_MEDIA_PERMISSION_REASON_DEVICE_CAPTURE_NOT_GRANTED;
+    }
+
+    // The request is always answered, so no page can reach a browser default
+    // that the application never observed.
+    callback->Continue(CEF_MEDIA_PERMISSION_NONE);
+
+    auto details = CefDictionaryValue::Create();
+    details->SetInt("version", 1);
+    details->SetInt("requested", static_cast<int>(requested_permissions));
+    details->SetInt("granted", static_cast<int>(CEF_MEDIA_PERMISSION_NONE));
+    details->SetInt("reason", static_cast<int>(reason));
+    details->SetBool("mainFrame", is_main_frame);
+    details->SetBool("desktopVideo", desktop_video);
+    details->SetBool("desktopAudio", desktop_audio);
+    details->SetBool("deviceVideo", device_video);
+    details->SetBool("deviceAudio", device_audio);
+    auto value = CefValue::Create();
+    value->SetDictionary(details);
+    const std::string payload = CefWriteJSON(value, JSON_WRITER_DEFAULT).ToString();
+    const std::string frame_id =
+        frame ? frame->GetIdentifier().ToString() : std::string();
+    Emit(KWEB_BROWSER_EVENT_MEDIA_PERMISSION, 0, {}, 0, 0, 0, frame_id,
+         is_main_frame ? KWEB_BROWSER_FRAME_MAIN : KWEB_BROWSER_FRAME_SUBFRAME,
+         reason, 0, requesting_origin,
+         frame ? frame->GetURL().ToString() : std::string(), {}, payload, false);
+    return true;
   }
 
   void EmitNetworkEvent(std::string event) {
@@ -3071,10 +3145,29 @@ bool SessionClient::CanDownload(CefRefPtr<CefBrowser> browser,
   return false;
 }
 
+bool SessionClient::OnRequestMediaAccessPermission(
+    CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+    const CefString &requesting_origin, uint32_t requested_permissions,
+    CefRefPtr<CefMediaAccessCallback> callback) {
+  CEF_REQUIRE_UI_THREAD();
+  (void)browser;
+  if (!callback) return false;
+  auto session = session_.lock();
+  if (!session) {
+    // A request whose owner is already gone is refused rather than left to a
+    // browser default that would outlive the owner.
+    callback->Cancel();
+    return true;
+  }
+  return session->ResolveMediaPermission(frame, requesting_origin.ToString(),
+                                         requested_permissions, callback);
+}
+
 void SessionClient::OnAddressChange(CefRefPtr<CefBrowser> browser,
                                     CefRefPtr<CefFrame> frame,
                                     const CefString &url) {
   CEF_REQUIRE_UI_THREAD();
+  (void)browser;
   if (frame) {
     if (auto session = session_.lock()) {
       session->AddressChanged(frame, url.ToString());

@@ -77,6 +77,7 @@ internal enum class NativeBrowserEventType(val value: Int) {
     SECURITY_CHALLENGE(25),
     DOWNLOAD(26),
     CONTEXT_MENU(27),
+    MEDIA_PERMISSION(28),
     ;
 
     companion object {

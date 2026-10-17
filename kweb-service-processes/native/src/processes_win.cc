@@ -8,6 +8,7 @@
 #include "processes_internal.h"
 
 #include <windows.h>
+#include <psapi.h>
 
 #include <algorithm>
 #include <cstring>

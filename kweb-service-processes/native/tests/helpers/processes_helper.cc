@@ -10,6 +10,7 @@
 
 #if defined(_WIN32)
 #include <windows.h>
+#include <wchar.h>
 #else
 #include <signal.h>
 #include <unistd.h>

@@ -12,20 +12,19 @@ namespace {
 bool ReadProcField(int pid, const char *key, uint64_t *value) {
   char path[64];
   std::snprintf(path, sizeof(path), "/proc/%d/status", pid);
-  FILE *file = std::fopen(path, "rb");
-  if (file == nullptr) return false;
-  char line[256];
+  std::ifstream stream(path);
+  if (!stream.is_open()) return false;
+  std::string line;
   bool found = false;
-  while (std::fgets(line, sizeof(line), file) != nullptr) {
-    if (std::strncmp(line, key, std::strlen(key)) != 0) continue;
+  while (std::getline(stream, line)) {
+    if (line.rfind(key, 0) != 0) continue;
     unsigned long long parsed = 0;
-    if (std::sscanf(line + std::strlen(key), "%llu", &parsed) == 1) {
+    if (std::sscanf(line.c_str() + std::strlen(key), "%llu", &parsed) == 1) {
       *value = parsed;
       found = true;
     }
     break;
   }
-  std::fclose(file);
   return found;
 }
 
@@ -64,9 +63,8 @@ int RunPlatformNativeStructureTest() {
       KWEB_CHECK(kweb_processes_fixture::ProcessGroup(child) == child);
       char path[64];
       std::snprintf(path, sizeof(path), "/proc/%d/stat", child);
-      FILE *file = std::fopen(path, "rb");
-      KWEB_CHECK(file != nullptr);
-      if (file != nullptr) std::fclose(file);
+      std::ifstream stat(path);
+      KWEB_CHECK(stat.is_open());
     }
     const kweb_processes_termination terminated = kweb_processes_fixture::Terminate(process, 1);
     KWEB_CHECK(terminated.reason == KWEB_PROCESSES_REASON_OWNER_CLOSED);

@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <fstream>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -84,16 +85,18 @@ inline std::string NormalizedDirectory(const std::string &path) {
 inline uint8_t PatternByte(size_t index) { return static_cast<uint8_t>((index * 31u + 7u) & 0xffu); }
 
 inline std::string ReadFileDigest(const std::string &path) {
-  FILE *file = std::fopen(path.c_str(), "rb");
-  if (file == nullptr) return std::string();
+  std::ifstream stream(path, std::ios::binary);
+  if (!stream.is_open()) return std::string();
   kwebshell::processes::Sha256 hash;
-  std::vector<uint8_t> buffer(65536);
+  std::vector<char> buffer(65536);
   for (;;) {
-    const size_t read_bytes = std::fread(buffer.data(), 1, buffer.size(), file);
-    if (read_bytes > 0) hash.Update(buffer.data(), read_bytes);
-    if (read_bytes < buffer.size()) break;
+    stream.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+    const std::streamsize read_bytes = stream.gcount();
+    if (read_bytes > 0) {
+      hash.Update(reinterpret_cast<const uint8_t *>(buffer.data()), static_cast<size_t>(read_bytes));
+    }
+    if (read_bytes < static_cast<std::streamsize>(buffer.size())) break;
   }
-  std::fclose(file);
   uint8_t digest[32];
   hash.Finish(digest);
   return kwebshell::processes::ToHex(digest, sizeof(digest));

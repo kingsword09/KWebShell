@@ -235,7 +235,7 @@ class WindowsProvider final : public kwebshell::processes::PlatformProvider {
       return nullptr;
     }
 
-    const std::wstring command_line = BuildCommandLine(executable, options.arguments);
+    std::wstring command_line = BuildCommandLine(executable, options.arguments);
     std::wstring environment = BuildEnvironmentBlock(options.environment);
     const std::wstring working_directory = Widen(options.working_directory);
     STARTUPINFOEXW startup;

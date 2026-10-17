@@ -191,9 +191,15 @@ int Tree(const char *argv0) {
   memset(&startup, 0, sizeof(startup));
   startup.cb = sizeof(startup);
   memset(&process_info, 0, sizeof(process_info));
-  std::string command = "\"" + ExecutablePath(argv0) + "\" sleep 30";
-  std::wstring wide(command.begin(), command.end());
-  if (CreateProcessW(nullptr, wide.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup,
+  const std::string path = ExecutablePath(argv0);
+  std::wstring wide(path.begin(), path.end());
+  const int size = MultiByteToWideChar(CP_UTF8, 0, path.c_str(), static_cast<int>(path.size()), nullptr, 0);
+  if (size > 0) {
+    wide.assign(static_cast<size_t>(size), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, path.c_str(), static_cast<int>(path.size()), wide.data(), size);
+  }
+  std::wstring command = L"\"" + wide + L"\" sleep 30";
+  if (CreateProcessW(wide.c_str(), command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup,
                      &process_info) == 0) {
     return 4;
   }

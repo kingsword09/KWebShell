@@ -1,0 +1,1 @@
+{"schemaVersion":1,"target":"macos-arm64","archive":"kweb-service-processes-1.0.0-macos-arm64.zip","sha256":"28ccfa1b6ef38b4469e84f32861101f028b029c3f337a450dcd01e48073ee0eb","nativeLibrary":"libkwebshell_processes.dylib","exactContents":true}

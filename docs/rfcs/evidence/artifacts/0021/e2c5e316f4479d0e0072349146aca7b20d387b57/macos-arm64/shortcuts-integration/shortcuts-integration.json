@@ -1,0 +1,1 @@
+{"schemaVersion":1,"target":"macos-arm64","provider":"shortcuts.macos.carbon-hotkey","capabilities":"ATOMIC_REPLACEMENT,GLOBAL_REGISTRATION,INVOCATION_REPORTING","registrationCount":1,"status":"PASS","failures":[]}

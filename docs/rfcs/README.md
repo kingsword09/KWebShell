@@ -243,6 +243,7 @@ Agents may work in parallel only when dependencies do not overlap.
 | [0039](0039-credential-and-passkey-policy.md) | P2 | 0003, 0009, 0011 | WebAuthn/passkey and credential mediation |
 | [0041](0041-native-window-decoration.md) | P1 | 0007, 0017, 0019, 0020, 0027 | Typed title bars, materials, and hit-test regions |
 | [0042](0042-window-content-protection.md) | P1 | 0003, 0007, 0025 | Window capture protection and privacy state |
+| [0043](0043-media-access-decisions.md) | P1 | 0003, 0018, 0020 | Typed media-access decisions and desktop capture refusal |
 
 ### Wave 4 — platform delivery and migration proof
 

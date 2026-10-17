@@ -132,6 +132,7 @@ public class KWebElectronInventoryScanner public constructor(
         "Tray" -> "tray"
         "nativeTheme" -> "native-theme"
         "systemPreferences" -> "system-preferences"
+        "desktopCapturer" -> "desktop-capturer"
         "utilityProcess", "child_process" -> "process"
         "autoUpdater" -> "auto-updater"
         else -> null

@@ -120,7 +120,8 @@ reuse.
 
   The recommended split, in dependency order, is:
 
-  1. **Capture denial policy (complete, deliverable now):** a typed
+  1. **Capture denial policy (delivered as [RFC 0043](0043-media-access-decisions.md)):**
+     a typed
      `capture.*` policy in `kweb-desktop` that registers a
      `CefPermissionHandler`, denies `DESKTOP_VIDEO_CAPTURE` and
      `DESKTOP_AUDIO_CAPTURE` with a stable code, leaves camera/microphone to RFC

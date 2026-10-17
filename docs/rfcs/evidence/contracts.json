@@ -655,6 +655,19 @@
         "kweb-service-processes/src",
         "settings.gradle.kts"
       ]
+    },
+    {
+      "rfcId": "0043",
+      "paths": [
+        "docs/rfcs/0043-media-access-decisions.md",
+        "docs/rfcs/evidence/contracts.json",
+        "kweb-cef-native/include",
+        "kweb-cef-native/src",
+        "kweb-core/src",
+        "kweb-desktop/src",
+        "kweb-electron-migration/src",
+        "settings.gradle.kts"
+      ]
     }
   ]
 }

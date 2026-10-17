@@ -59,7 +59,8 @@
     "0023": {"modules": [":kweb-service-secure-storage", ":kweb-electron-migration"], "families": ["secure-storage-integration", "electron-migration"]},
     "0024": {"modules": [":kweb-service-processes", ":kweb-electron-migration"], "families": ["processes-integration", "electron-migration"]},
     "0027": {"modules": [":kweb-service-image", ":kweb-electron-migration"], "families": ["image-integration", "electron-migration"]},
-    "0030": {"modules": [":kweb-runtime-pack"], "families": ["application-package", "windows-launcher-smoke"]}
+    "0030": {"modules": [":kweb-runtime-pack"], "families": ["application-package", "windows-launcher-smoke"]},
+    "0043": {"modules": [":kweb-desktop", ":kweb-electron-migration"], "families": ["engine-integration", "electron-migration"]}
   },
   "families": {
     "rfc-governance": ":kweb-rfc-governance:contractTest",

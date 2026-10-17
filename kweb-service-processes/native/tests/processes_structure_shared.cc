@@ -42,7 +42,7 @@ void ScenarioReportRoundTrip(uint64_t service, const Fixture &fixture) {
                 reinterpret_cast<const char *>(outcome.stdout_bytes.data()));
   }
   KWEB_CHECK(child > 0);
-  KWEB_CHECK(outcome.StdoutContains("cwd " + HexPath(fixture.working_directory) + "\n"));
+  KWEB_CHECK(ReportedCwdMatches(outcome, fixture.working_directory));
   KWEB_CHECK(outcome.StdoutContains("argc 3\n"));
   KWEB_CHECK(outcome.StdoutContains("arg 0 " + HexText("report") + "\n"));
   KWEB_CHECK(outcome.StdoutContains("arg 1 " + HexText("h\xc3\xa9llo-processes") + "\n"));

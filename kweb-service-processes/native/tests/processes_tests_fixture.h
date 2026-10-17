@@ -4,6 +4,7 @@
 #include "kweb_processes.h"
 #include "processes_digest.h"
 
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <fstream>
@@ -375,6 +376,47 @@ inline int ReadAnnouncedChildPid(uint64_t process, int timeout_millis) {
     SleepMillis(20);
   }
   return 0;
+}
+
+/** Decodes one lowercase hex string into the bytes it names. */
+inline std::string Unhex(const std::string &hex) {
+  std::string decoded;
+  decoded.reserve(hex.size() / 2);
+  for (size_t index = 0; index + 1 < hex.size(); index += 2) {
+    const auto nibble = [](char character) -> int {
+      if (character >= '0' && character <= '9') return character - '0';
+      if (character >= 'a' && character <= 'f') return character - 'a' + 10;
+      return 0;
+    };
+    decoded.push_back(static_cast<char>((nibble(hex[index]) << 4) | nibble(hex[index + 1])));
+  }
+  return decoded;
+}
+
+/** Case-insensitive comparison for the declared working directory. */
+inline bool SameDirectory(const std::string &reported, const std::string &declared) {
+#if defined(_WIN32)
+  if (reported.size() != declared.size()) return false;
+  for (size_t index = 0; index < reported.size(); ++index) {
+    const char left = reported[index] == '/' ? '\\' : reported[index];
+    const char right = declared[index] == '/' ? '\\' : declared[index];
+    if (std::tolower(static_cast<unsigned char>(left)) != std::tolower(static_cast<unsigned char>(right))) {
+      return false;
+    }
+  }
+  return true;
+#else
+  return reported == declared;
+#endif
+}
+
+/** Whether the report transcript names exactly the declared working directory. */
+inline bool ReportedCwdMatches(const Outcome &outcome, const std::string &declared) {
+  for (const std::string &line : outcome.StdoutLines()) {
+    if (line.rfind("cwd ", 0) != 0) continue;
+    return SameDirectory(Unhex(line.substr(4)), declared);
+  }
+  return false;
 }
 
 /** Terminates one live tree and reports its single terminal result. */

@@ -9,6 +9,8 @@
 #include <string.h>
 
 #if defined(_WIN32)
+#include <fcntl.h>
+#include <io.h>
 #include <windows.h>
 #include <wchar.h>
 #else
@@ -235,6 +237,13 @@ int Tree(const char *argv0) {
 }  // namespace
 
 int main(int argc, char **argv) {
+#if defined(_WIN32)
+  // The declared streams are byte streams: a text-mode stdout would rewrite every
+  // 0x0a as 0x0d 0x0a and corrupt both the reported lines and binary payloads.
+  [[maybe_unused]] const int stdin_mode = _setmode(_fileno(stdin), _O_BINARY);
+  [[maybe_unused]] const int stdout_mode = _setmode(_fileno(stdout), _O_BINARY);
+  [[maybe_unused]] const int stderr_mode = _setmode(_fileno(stderr), _O_BINARY);
+#endif
   if (argc < 2) {
     fprintf(stderr, "usage: processes_helper <mode> [payload]\n");
     return 2;

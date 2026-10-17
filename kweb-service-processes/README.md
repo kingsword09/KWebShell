@@ -53,7 +53,7 @@ process.close()
 | working directory | required, host-declared, verified before launch |
 | timeout / CPU / memory | 1..3600 s, 1..3600 s, 16 MiB..16 GiB |
 | output quotas | 256 KiB..64 MiB per stream |
-| stream window | 4 KiB..1 MiB; a consumer's pace is the backpressure the child observes |
+| stream window | 4 KiB..1 MiB; a consumer's pace is the backpressure the child observes, so a duplex host drains `output` while it writes stdin |
 | stdin chunk | at most 64 KiB per call; a non-reading child reports a typed timeout |
 | live processes | at most 8 records |
 | isolation | the request must be a subset of the provider's declared set |

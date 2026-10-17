@@ -7,6 +7,8 @@ package io.github.kingsword09.kwebshell.service.processes
  * never a resolved path, an argument, a process id, or a raw handle.
  */
 import io.github.kingsword09.kwebshell.services.KWebServiceException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -133,7 +135,7 @@ public fun main() {
             )
             // The declared window is real backpressure: a consumer has to drain the
             // stream for the child to keep producing and reach its quota.
-            val quotaDrain = launch { runCatching { collectStreams(quota) } }
+            val quotaDrain = launch(Dispatchers.IO) { runCatching { collectStreams(quota) } }
             val quotaTermination = withTimeout(60_000) { quota.await() }
             check(quotaTermination.reason == KWebProcessTerminalReason.OUTPUT_LIMIT, "the output quota did not end the child")
             quotaDrain.cancelAndJoin()
@@ -169,6 +171,10 @@ public fun main() {
             // 6. A bounded stdin round trip: every accepted byte arrives once.
             val echoPayload = payload(96 * 1024)
             val echo = service.start(spec(id = "echo", arguments = listOf("echo")))
+            // A duplex host drains output while it writes stdin: the declared window
+            // is backpressure, so writing a large payload without a consumer would
+            // stall the child instead of streaming its answer.
+            val echoCollector = async(Dispatchers.IO) { collectStreams(echo) }
             var offset = 0
             while (offset < echoPayload.size) {
                 val take = minOf(32 * 1024, echoPayload.size - offset)
@@ -178,7 +184,7 @@ public fun main() {
                 offset += take
             }
             echo.closeStdin()
-            val echoedStreams = withTimeout(30_000) { collectStreams(echo) }
+            val echoedStreams = withTimeout(60_000) { echoCollector.await() }
             val echoed = echoedStreams.stdout
             withTimeout(30_000) { echo.await() }
             check(

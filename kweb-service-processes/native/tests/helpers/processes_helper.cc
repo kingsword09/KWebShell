@@ -236,7 +236,42 @@ int Tree(const char *argv0) {
 
 }  // namespace
 
+#if defined(_WIN32)
+/** Converts one UTF-16 argument into the UTF-8 form the service declares. */
+std::string Narrow(const wchar_t *value) {
+  if (value == nullptr) return std::string();
+  const int size = WideCharToMultiByte(CP_UTF8, 0, value, -1, nullptr, 0, nullptr, nullptr);
+  if (size <= 1) return std::string();
+  std::string narrowed(static_cast<size_t>(size - 1), '\0');
+  WideCharToMultiByte(CP_UTF8, 0, value, -1, narrowed.data(), size, nullptr, nullptr);
+  return narrowed;
+}
+#endif
+
+int RunHelper(std::vector<std::string> arguments);
+
+#if defined(_WIN32)
+int wmain(int argc, wchar_t **argv) {
+  std::vector<std::string> arguments;
+  arguments.reserve(static_cast<size_t>(argc));
+  for (int index = 0; index < argc; ++index) arguments.push_back(Narrow(argv[index]));
+  return RunHelper(std::move(arguments));
+}
+#else
 int main(int argc, char **argv) {
+  std::vector<std::string> arguments;
+  arguments.reserve(static_cast<size_t>(argc));
+  for (int index = 0; index < argc; ++index) arguments.emplace_back(argv[index] == nullptr ? "" : argv[index]);
+  return RunHelper(std::move(arguments));
+}
+#endif
+
+int RunHelper(std::vector<std::string> arguments) {
+  const int argc = static_cast<int>(arguments.size());
+  std::vector<char *> argv_storage;
+  argv_storage.reserve(arguments.size());
+  for (std::string &argument : arguments) argv_storage.push_back(argument.data());
+  char **argv = argv_storage.data();
 #if defined(_WIN32)
   // The declared streams are byte streams: a text-mode stdout would rewrite every
   // 0x0a as 0x0d 0x0a and corrupt both the reported lines and binary payloads.

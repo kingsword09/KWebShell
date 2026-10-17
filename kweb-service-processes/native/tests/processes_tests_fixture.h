@@ -106,7 +106,10 @@ inline std::string ReadFileDigest(const std::string &path) {
 /** Whether the operating system still knows this process id. */
 inline bool ProcessIsAlive(int pid) {
 #if defined(_WIN32)
-  const HANDLE handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, static_cast<DWORD>(pid));
+  // SYNCHRONIZE is required for WaitForSingleObject; without it the wait fails and
+  // a live process would be reported as ended.
+  const HANDLE handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE,
+                                    static_cast<DWORD>(pid));
   if (handle == nullptr) return false;
   const DWORD waited = WaitForSingleObject(handle, 0);
   CloseHandle(handle);

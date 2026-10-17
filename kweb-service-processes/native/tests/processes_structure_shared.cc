@@ -34,6 +34,13 @@ void ScenarioReportRoundTrip(uint64_t service, const Fixture &fixture) {
   KWEB_CHECK(outcome.termination.signal == 0);
 
   const int child = ReportedChildPid(outcome);
+  if (!outcome.StdoutContains("report-end\n")) {
+    // A truncated transcript is printed so the failure names the missing bytes
+    // instead of only the assertion that noticed them.
+    std::printf("report transcript (%zu bytes):\n%.*s\n", outcome.stdout_bytes.size(),
+                static_cast<int>(outcome.stdout_bytes.size()),
+                reinterpret_cast<const char *>(outcome.stdout_bytes.data()));
+  }
   KWEB_CHECK(child > 0);
   KWEB_CHECK(outcome.StdoutContains("cwd " + HexPath(fixture.working_directory) + "\n"));
   KWEB_CHECK(outcome.StdoutContains("argc 3\n"));

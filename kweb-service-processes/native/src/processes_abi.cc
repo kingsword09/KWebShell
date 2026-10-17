@@ -238,6 +238,11 @@ void ReadLoop(const std::shared_ptr<ProcessRecord> &record, uint32_t stream, int
       // A producer that stopped writing but keeps running is not an EOF yet.
       continue;
     }
+    if (readable < 0) {
+      // A failed wait is not an end of stream: the read below decides, and a
+      // handle that stays unreadable is reported instead of truncating silently.
+      std::this_thread::sleep_for(std::chrono::milliseconds(kMonitorPeriodMillis));
+    }
     // A readable *or* failed wait both attempt one read: the only true end of a
     // stream is a read that reports nothing, so buffered bytes are never dropped
     // because a pipe signalled its writer closed.

@@ -118,9 +118,14 @@ void SleepSeconds(long seconds) {
 }
 
 void Report() {
+  // Every line is flushed so a truncated transcript shows exactly where a provider
+  // lost output instead of hiding it in a stream buffer.
   printf("pid %d\n", ProcessId());
+  fflush(stdout);
   printf("ppid %d\n", ParentProcessId());
+  fflush(stdout);
   printf("cwd %s\n", Hex(CurrentDirectory()).c_str());
+  fflush(stdout);
   std::vector<std::string> entries = Environment();
   // Names only, sorted, so a test can prove the allowlist without printing a
   // value that could carry a host secret. Per-drive directory variables whose
@@ -140,7 +145,10 @@ void Report() {
       }
     }
   }
-  for (const std::string &name : names) printf("env-name %s\n", name.c_str());
+  for (const std::string &name : names) {
+    printf("env-name %s\n", name.c_str());
+    fflush(stdout);
+  }
 }
 
 int Burst(size_t bytes, FILE *stream) {
@@ -237,9 +245,13 @@ int main(int argc, char **argv) {
     // Every declared argument after the executable path is reported as its
     // exact hex form so a test can prove byte equality, including Unicode.
     printf("argc %d\n", argc - 1);
+    fflush(stdout);
     for (int index = 1; index < argc; ++index) {
       printf("arg %d %s\n", index - 1, Hex(std::string(argv[index])).c_str());
+      fflush(stdout);
     }
+    printf("report-end\n");
+    fflush(stdout);
     return 0;
   }
   if (mode == "announce") {

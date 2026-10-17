@@ -2908,6 +2908,43 @@ documentation, the CI planner metadata, and the final acceptance review:
    change-aware CI planner, and every acceptance row is decided before the focused
    squash pull request is merged.
 
+### RFC 0024 implementation objective: policy-controlled managed processes
+
+RFC 0024 publishes one application-scoped managed-process service for Windows x64,
+macOS arm64, and Linux x64 that runs application-declared packaged executables or
+JVM worker entry points under explicit policy, resource limits, typed streams, and
+owner shutdown. KWebShell ships no Node runtime and never executes
+renderer-provided code. The objective is complete only when the same PR lands the
+typed contract, the three declared providers, the migration mapping, real
+three-target evidence, documentation, the CI planner metadata, and the final
+acceptance review:
+
+1. `kweb-service-processes` publishes bounded process specifications (a packaged
+executable identifier, validated arguments, a declared environment allowlist, a
+required working directory, bounded stdin/stdout/stderr policies, timeout, CPU,
+resident-memory and output limits, and a required isolation set) plus the
+application-scoped closeable managed process, with stable `processes.*` errors and
+a descriptor that declares no renderer operation at all.
+2. Exactly one provider per target: a verified `execve` child in its own process
+group on macOS and Linux, and `CreateProcessW` inside a job object on Windows. The
+provider re-verifies the declared executable digest immediately before launch, so a
+`PATH` lookup, a relative path, a shell string, or a replaced file never starts.
+3. Every declared limit ends the whole tree with its own typed reason and no
+orphan: timeout, CPU quota, resident-memory cap, and per-stream output quotas. A
+provider that does not implement a requested isolation profile refuses it before
+launch instead of substituting a weaker mechanism.
+4. stdout and stderr are one ordered, bounded stream whose declared window is the
+real backpressure a consumer imposes on the child, stdin is bounded with typed
+timeout and closed outcomes, and a JVM worker entry point runs as an ordinary
+managed process.
+5. The Electron `utilityProcess`/`child_process` mapping rewrites declared
+request/response workflows to the typed service, and arbitrary Node modules,
+implicit messaging, and native addons remain blockers.
+6. Common, JVM, native, packaging, migration, and hosted Windows, macOS, and Linux
+evidence pass, the module and its artifact family are registered in the change-aware
+CI planner, and every acceptance row is decided before the focused squash pull
+request is merged.
+
 ## 12. Test Strategy
 
 Tests are part of each phase, not a final cleanup task.

@@ -654,6 +654,10 @@
       "version": "1.0.0"
     },
     {
+      "id": "processes",
+      "version": "1.0.0"
+    },
+    {
       "id": "secure-storage",
       "version": "1.0.0"
     }

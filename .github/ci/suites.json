@@ -19,6 +19,7 @@
     ":kweb-service-shortcuts": [":kweb-service-shortcuts:check"],
     ":kweb-service-power": [":kweb-service-power:check"],
     ":kweb-service-secure-storage": [":kweb-service-secure-storage:check"],
+    ":kweb-service-processes": [":kweb-service-processes:check"],
     ":kweb-electron-migration": [":kweb-electron-migration:check"],
     ":kweb-rfc-governance": [":kweb-rfc-governance:contractTest"],
     ":kweb-bridge": [":kweb-bridge:check"],
@@ -56,6 +57,7 @@
     "0021": {"modules": [":kweb-service-shortcuts", ":kweb-electron-migration"], "families": ["shortcuts-integration", "electron-migration"]},
     "0022": {"modules": [":kweb-service-power", ":kweb-electron-migration"], "families": ["power-integration", "electron-migration"]},
     "0023": {"modules": [":kweb-service-secure-storage", ":kweb-electron-migration"], "families": ["secure-storage-integration", "electron-migration"]},
+    "0024": {"modules": [":kweb-service-processes", ":kweb-electron-migration"], "families": ["processes-integration", "electron-migration"]},
     "0027": {"modules": [":kweb-service-image", ":kweb-electron-migration"], "families": ["image-integration", "electron-migration"]},
     "0030": {"modules": [":kweb-runtime-pack"], "families": ["application-package", "windows-launcher-smoke"]}
   },
@@ -74,6 +76,7 @@
     "shortcuts-integration": ":kweb-service-shortcuts:nativeShortcutsIntegrationTest",
     "power-integration": ":kweb-service-power:nativePowerIntegrationTest",
     "secure-storage-integration": ":kweb-service-secure-storage:nativeSecureStorageIntegrationTest",
+    "processes-integration": ":kweb-service-processes:nativeProcessesIntegrationTest",
     "application-package": ":kweb-runtime-pack:applicationPackageIntegrationTest",
     "windows-launcher-smoke": ":kweb-runtime-pack:applicationPackageIntegrationTest",
     "application-lifecycle": ":kweb-service-application-lifecycle:applicationLifecycleIntegrationTest"

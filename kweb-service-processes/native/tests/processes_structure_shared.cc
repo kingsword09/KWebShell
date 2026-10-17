@@ -283,9 +283,20 @@ void ScenarioKillTree(uint64_t service, const Fixture &fixture) {
   KWEB_CHECK(request.Start(service, &process, nullptr, nullptr) == KWEB_PROCESSES_STATUS_OK);
   const int child = ReadAnnouncedChildPid(process, 10000);
   KWEB_CHECK(child > 0);
+  if (child <= 0) {
+    // A child that never announced its pid has no tree to check; the outcome is
+    // still asserted so the missing announcement is visible in the transcript.
+    const kweb_processes_termination missing = Terminate(process, 0);
+    KWEB_CHECK(missing.reason == KWEB_PROCESSES_REASON_KILLED);
+    KWEB_CHECK(kweb_processes_release(process) == KWEB_PROCESSES_STATUS_OK);
+    return;
+  }
+#if !defined(_WIN32)
   // The whole tree shares one process group, and it is not the test's group: that
-  // is what makes a single kill reach every descendant.
+  // is what makes a single kill reach every descendant. Windows owns the tree in a
+  // job object instead, which the target structure test asserts directly.
   KWEB_CHECK(ProcessGroup(child) != ProcessGroup(CurrentProcessId()));
+#endif
   const kweb_processes_termination terminated = Terminate(process, 0);
   KWEB_CHECK(terminated.reason == KWEB_PROCESSES_REASON_KILLED);
   KWEB_CHECK(ProcessIsGone(child, 5000));
@@ -344,12 +355,16 @@ void ScenarioOwnerShutdownAndLiveLimit(uint64_t service, const Fixture &fixture)
   const int released_child = children.back();
   children.pop_back();
   KWEB_CHECK(ProcessIsGone(released_child, 5000));
-  for (int child : children) KWEB_CHECK(ProcessIsAlive(child));
+  for (int child : children) {
+    if (child > 0) KWEB_CHECK(ProcessIsAlive(child));
+  }
   KWEB_CHECK(fixture.LiveProcesses(service) == baseline + handles.size());
 
   // Closing the service terminates every remaining tree and releases its records.
   KWEB_CHECK(kweb_processes_close(service) == KWEB_PROCESSES_STATUS_OK);
-  for (int child : children) KWEB_CHECK(ProcessIsGone(child, 5000));
+  for (int child : children) {
+    if (child > 0) KWEB_CHECK(ProcessIsGone(child, 5000));
+  }
   KWEB_CHECK(ProcessIsGone(released_child, 5000));
 }
 

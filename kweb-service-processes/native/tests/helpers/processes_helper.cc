@@ -199,6 +199,9 @@ int Tree(const char *argv0) {
     MultiByteToWideChar(CP_UTF8, 0, path.c_str(), static_cast<int>(path.size()), wide.data(), size);
   }
   std::wstring command = L"\"" + wide + L"\" sleep 30";
+  // The helper runs inside the provider's job, and Windows keeps a grandchild in
+  // the same job unless it is created with CREATE_BREAKAWAY_FROM_JOB. This child is
+  // created without it, so terminating the job ends the whole tree.
   if (CreateProcessW(wide.c_str(), command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup,
                      &process_info) == 0) {
     return 4;

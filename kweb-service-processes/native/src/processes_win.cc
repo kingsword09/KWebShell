@@ -311,7 +311,12 @@ int WaitReadable(intptr_t handle, uint32_t timeout_millis) {
   const ULONGLONG deadline = GetTickCount64() + timeout_millis;
   for (;;) {
     DWORD available = 0;
-    if (PeekNamedPipe(pipe, nullptr, 0, nullptr, &available, nullptr) == 0) return -1;
+    if (PeekNamedPipe(pipe, nullptr, 0, nullptr, &available, nullptr) == 0) {
+      // A pipe whose writer has closed still holds the bytes the child already
+      // wrote, so it is reported readable: the caller reads them and sees a true
+      // end of stream only when the read returns nothing.
+      return GetLastError() == ERROR_BROKEN_PIPE ? 1 : -1;
+    }
     if (available > 0) return 1;
     if (GetTickCount64() >= deadline) return 0;
     Sleep(2);

@@ -234,16 +234,13 @@ void ReadLoop(const std::shared_ptr<ProcessRecord> &record, uint32_t stream, int
       lock.unlock();
     }
     const int readable = processes::WaitReadable(handle, kMonitorPeriodMillis);
-    if (readable < 0) {
-      std::lock_guard<std::mutex> lock(record->mutex);
-      record->stream_eof[index] = true;
-      record->changed.notify_all();
-      break;
-    }
     if (readable == 0) {
       // A producer that stopped writing but keeps running is not an EOF yet.
       continue;
     }
+    // A readable *or* failed wait both attempt one read: the only true end of a
+    // stream is a read that reports nothing, so buffered bytes are never dropped
+    // because a pipe signalled its writer closed.
     const int read = processes::ReadSome(handle, scratch.data(), scratch.size());
     std::unique_lock<std::mutex> lock(record->mutex);
     if (read <= 0) {

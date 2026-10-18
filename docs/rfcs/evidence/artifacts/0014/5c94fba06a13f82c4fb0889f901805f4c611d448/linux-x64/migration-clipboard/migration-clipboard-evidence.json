@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "target": "linux-x64",
+  "cefRuntime": "stock-cef-151",
+  "contractRevision": "2026-09-30.3",
+  "exactOriginMainFrame": true,
+  "childFrameTransportAbsent": true,
+  "crossOriginBridgeAbsent": true,
+  "gestureDeniedWithoutNativeInput": true,
+  "textPlainRoundTrip": true,
+  "lazyPayloadReadAndClose": true,
+  "clearCompleted": true,
+  "permissionDenied": true,
+  "unconfiguredBridgeAbsent": true,
+  "ownerClosed": true
+}

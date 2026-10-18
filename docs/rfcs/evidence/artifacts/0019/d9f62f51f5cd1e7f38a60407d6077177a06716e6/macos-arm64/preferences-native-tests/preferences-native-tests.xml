@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)"
+	tests="1"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname=""
+	time="0"
+	timestamp="2026-10-18T11:02:20"
+	>
+	<testcase name="kweb_preferences_tests" classname="kweb_preferences_tests" time="0.0652275" status="run">
+		<properties>
+			<property name="cmake_labels" value="abi;native;preferences"/>
+		</properties>
+		<system-out>kweb preferences native checks passed.
+</system-out>
+	</testcase>
+</testsuite>

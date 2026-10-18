@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="KWebSystemPreferencesContractTest[jvm]" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-10-18T11:02:16.084Z" hostname="sjc20-cw715-944fde9b-f410-4bea-8886-b117b6bfc068-D2ED1CF96907.local" time="0.025">
+  <properties/>
+  <testcase name="sensitiveKeysAreDeclaredPerOperatingSystem()[jvm]" classname="io.github.kingsword09.kwebshell.service.preferences.KWebSystemPreferencesContractTest" time="0.004"/>
+  <testcase name="errorCodesAreStablePreferenceCodes()[jvm]" classname="io.github.kingsword09.kwebshell.service.preferences.KWebSystemPreferencesContractTest" time="0.003"/>
+  <testcase name="snapshotPublishesExactlyTheFactsItCarries()[jvm]" classname="io.github.kingsword09.kwebshell.service.preferences.KWebSystemPreferencesContractTest" time="0.002"/>
+  <testcase name="textScaleEnforcesThePublishedBounds()[jvm]" classname="io.github.kingsword09.kwebshell.service.preferences.KWebSystemPreferencesContractTest" time="0.001"/>
+  <testcase name="snapshotsRejectAZeroSequenceAndReportOnlyAdjacentChanges()[jvm]" classname="io.github.kingsword09.kwebshell.service.preferences.KWebSystemPreferencesContractTest" time="0.002"/>
+  <testcase name="descriptorPublishesHostOperationsWithoutRendererPermissions()[jvm]" classname="io.github.kingsword09.kwebshell.service.preferences.KWebSystemPreferencesContractTest" time="0.002"/>
+  <testcase name="accentColorsAreBoundedAndFormatAsUppercaseHex()[jvm]" classname="io.github.kingsword09.kwebshell.service.preferences.KWebSystemPreferencesContractTest" time="0.001"/>
+  <testcase name="changeEventsRequireAChangedFactAndKeepTheSequence()[jvm]" classname="io.github.kingsword09.kwebshell.service.preferences.KWebSystemPreferencesContractTest" time="0.0"/>
+  <testcase name="capabilitiesRejectUndeclaredLiveFactsAndUnknownSensitiveKeys()[jvm]" classname="io.github.kingsword09.kwebshell.service.preferences.KWebSystemPreferencesContractTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="KWebImageContractTest[jvm]" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-10-18T11:00:38.928Z" hostname="sjc20-cw715-944fde9b-f410-4bea-8886-b117b6bfc068-D2ED1CF96907.local" time="0.008">
+  <properties/>
+  <testcase name="encodedBytesAreCopiedAndOnlyPublishedFormatsAreAccepted()[jvm]" classname="io.github.kingsword09.kwebshell.service.image.KWebImageContractTest" time="0.001"/>
+  <testcase name="resourceStoreRejectsDigestMismatchBeforeUse()[jvm]" classname="io.github.kingsword09.kwebshell.service.image.KWebImageContractTest" time="0.002"/>
+  <testcase name="variantsRequireMatchingLogicalDimensionsAndUniqueScales()[jvm]" classname="io.github.kingsword09.kwebshell.service.image.KWebImageContractTest" time="0.001"/>
+  <testcase name="resourceIdentifiersAndDigestsArePathSafe()[jvm]" classname="io.github.kingsword09.kwebshell.service.image.KWebImageContractTest" time="0.001"/>
+  <testcase name="descriptorPublishesApplicationOperationsAndTargets()[jvm]" classname="io.github.kingsword09.kwebshell.service.image.KWebImageContractTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

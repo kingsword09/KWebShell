@@ -1,0 +1,1 @@
+{"schemaVersion":1,"target":"linux-x64","provider":"jdk-print-service","serviceCount":0,"osCount":0,"osTool":"lpstat","matchesOs":true,"defaultMatches":true,"printersWithMediaFacts":0,"printersWithColorFacts":0,"printersWithDuplexFacts":0,"printers":[],"failure":""}

@@ -310,6 +310,13 @@ jobs:
             xvfb
           xdg-user-dirs-update
 
+      - name: Install Linux printer tooling
+        if: runner.os == 'Linux' && steps.scope.outputs['printers-integration'] == 'true'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes cups-client
+
       - name: Configure Linux shell provider fixture
         if: runner.os == 'Linux' && steps.scope.outputs.shell == 'true'
         shell: bash

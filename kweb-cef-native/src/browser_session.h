@@ -39,6 +39,15 @@ kweb_status ControlDownloadSession(kweb_browser_handle browser,
                                    uint64_t download_id, uint32_t operation);
 kweb_status StartDownloadSession(kweb_browser_handle browser,
                                  const std::string &url);
+kweb_status FindInPageSession(kweb_browser_handle browser, uint64_t session_id,
+                             const std::string &text, uint32_t direction,
+                             bool match_case, bool continuous);
+kweb_status StopFindingSession(kweb_browser_handle browser,
+                               bool keep_selection);
+kweb_status SetPageZoomLevelSession(kweb_browser_handle browser, double level,
+                                    double *level_out);
+kweb_status PageZoomLevelSession(kweb_browser_handle browser,
+                                  double *level_out);
 kweb_status ProfileDataSession(
     kweb_browser_handle browser, uint64_t request_id,
     kweb_profile_data_operation_type operation, const char *payload_utf8,

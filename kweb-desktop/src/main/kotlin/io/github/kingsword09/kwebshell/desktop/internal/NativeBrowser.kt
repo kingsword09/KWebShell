@@ -78,6 +78,7 @@ internal enum class NativeBrowserEventType(val value: Int) {
     DOWNLOAD(26),
     CONTEXT_MENU(27),
     MEDIA_PERMISSION(28),
+    FIND_RESULT(29),
     ;
 
     companion object {
@@ -110,6 +111,12 @@ internal data class NativeProfileDataResult(
     val status: Int,
     val payload: String,
 )
+
+/** The find direction literal the C ABI declares. */
+internal enum class NativeFindDirection(val value: Int) {
+    FORWARD(1),
+    BACKWARD(2),
+}
 
 internal enum class NativeBridgeEventType(val value: Int) {
     REQUEST(1),
@@ -229,6 +236,32 @@ internal class NativeBrowser private constructor(
     internal fun startDownload(url: String): Int {
         val handle = requireOpenHandle("start-download")
         return NativeBindings.browserStartDownload(handle, url)
+    }
+
+    internal fun find(
+        sessionId: Long,
+        text: String,
+        direction: NativeFindDirection,
+        matchCase: Boolean,
+        continuous: Boolean,
+    ): Int {
+        val handle = requireOpenHandle("find")
+        return NativeBindings.browserFind(handle, sessionId, text, direction.value, matchCase, continuous)
+    }
+
+    internal fun stopFinding(keepSelection: Boolean): Int {
+        val handle = requireOpenHandle("stop-finding")
+        return NativeBindings.browserStopFinding(handle, keepSelection)
+    }
+
+    internal fun setZoomLevel(level: Double): NativeZoomResult {
+        val handle = requireOpenHandle("set-zoom-level")
+        return NativeBindings.browserSetZoomLevel(handle, level)
+    }
+
+    internal fun zoomLevel(): NativeZoomResult {
+        val handle = requireOpenHandle("zoom-level")
+        return NativeBindings.browserZoomLevel(handle)
     }
 
     internal fun setBounds(x: Int, y: Int, width: Int, height: Int) {

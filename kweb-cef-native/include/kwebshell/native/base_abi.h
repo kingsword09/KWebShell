@@ -11,7 +11,7 @@
 #define KWEB_ABI_CALL
 #endif
 
-#define KWEB_ABI_VERSION ((uint32_t)19)
+#define KWEB_ABI_VERSION ((uint32_t)20)
 
 typedef uint32_t kweb_status;
 
@@ -106,5 +106,7 @@ typedef uint32_t kweb_status;
 #define KWEB_STATUS_CONTEXT_MENU_ALREADY_RESOLVED ((kweb_status)90)
 #define KWEB_STATUS_CONTEXT_MENU_DECISION_INVALID ((kweb_status)91)
 #define KWEB_STATUS_CONTEXT_MENU_CLOSING ((kweb_status)92)
+#define KWEB_STATUS_FIND_SESSION_STALE ((kweb_status)93)
+#define KWEB_STATUS_ZOOM_LEVEL_INVALID ((kweb_status)94)
 
 #endif // KWEBSHELL_NATIVE_BASE_ABI_H_

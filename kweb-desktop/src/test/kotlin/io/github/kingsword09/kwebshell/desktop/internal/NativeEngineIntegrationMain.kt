@@ -238,6 +238,7 @@ private enum class IntegrationMode(val argument: String) {
     DOWNLOADS("downloads"),
     CONTEXT_MENU("context-menu"),
     CAPTURE_PERMISSION("capture-permission"),
+    PAGE_UTILITIES("page-utilities"),
     THEME("theme"),
     FILES_WORKSPACE("files-workspace"),
     PAGE_LIFECYCLE("page-lifecycle"),
@@ -279,6 +280,7 @@ fun main(arguments: Array<String>) {
             IntegrationMode.DOWNLOADS -> runDownloadsIntegration()
             IntegrationMode.CONTEXT_MENU -> runContextMenuIntegration()
             IntegrationMode.CAPTURE_PERMISSION -> runCapturePermissionIntegration()
+            IntegrationMode.PAGE_UTILITIES -> runPageUtilitiesIntegration()
             IntegrationMode.THEME -> runThemeIntegration()
             IntegrationMode.FILES_WORKSPACE -> runFilesWorkspaceIntegration()
             IntegrationMode.PAGE_LIFECYCLE -> runPageLifecycleContract()
@@ -318,6 +320,7 @@ private fun runCoordinator() {
     runChildAndRequireSuccess(IntegrationMode.DOWNLOADS, root.resolve("downloads"))
     runChildAndRequireSuccess(IntegrationMode.CONTEXT_MENU, root.resolve("context-menu"))
     runChildAndRequireSuccess(IntegrationMode.CAPTURE_PERMISSION, root.resolve("capture-permission"))
+    runChildAndRequireSuccess(IntegrationMode.PAGE_UTILITIES, root.resolve("page-utilities"))
     runChildAndRequireSuccess(IntegrationMode.THEME, root.resolve("theme"))
     runChildAndRequireSuccess(IntegrationMode.FILES_WORKSPACE, root.resolve("files-workspace"))
     runChildAndRequireSuccess(IntegrationMode.RENDERER_CRASH, root.resolve("renderer-crash"))
@@ -1486,6 +1489,355 @@ private fun runCapturePermissionIntegration() {
         StandardCharsets.UTF_8,
     )
     println("KWebShell RFC0025 capture refusal passed: decisions=$decisionCount.")
+}
+
+/** Two static pages whose text occurrence counts are fixed by construction. */
+private class PageUtilitiesFixture : AutoCloseable {
+    private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    val alphaUrl: String = "http://127.0.0.1:${server.address.port}/alpha"
+    val betaUrl: String = "http://localhost:${server.address.port}/beta"
+
+    init {
+        server.createContext("/alpha") { exchange ->
+            respond(
+                exchange,
+                "<html><body>" +
+                    "<p>needle one needle two</p>" +
+                    "<p>NEEDLE upper</p>" +
+                    "<p>needle three</p>" +
+                    "</body></html>",
+            )
+        }
+        server.createContext("/beta") { exchange ->
+            respond(exchange, "<html><body><p>unrelated beta page</p></body></html>")
+        }
+        server.start()
+    }
+
+    private fun respond(exchange: com.sun.net.httpserver.HttpExchange, html: String) {
+        val body = html.toByteArray(StandardCharsets.UTF_8)
+        exchange.responseHeaders.add("Content-Type", "text/html; charset=utf-8")
+        exchange.sendResponseHeaders(200, body.size.toLong())
+        exchange.responseBody.use { it.write(body) }
+    }
+
+    override fun close() {
+        server.stop(0)
+    }
+}
+
+/**
+ * RFC 0044 probe: real Chromium find sessions and page zoom.
+ *
+ * Every assertion below is a Chromium observation, not a local echo: find counts
+ * come from the renderer's own scan (including a DOM mutation performed through
+ * CDP), and zoom is read back from Chromium after it was applied.
+ */
+private fun runPageUtilitiesIntegration() {
+    val configured = runtimeConfiguration()
+    val root = requiredPathProperty(INTEGRATION_ROOT_PROPERTY)
+    val fixture = PageUtilitiesFixture()
+    val engine = KWebDesktop.openEngine(
+        KWebDesktopEngineConfiguration(
+            cefRuntime = configured.cefRuntime,
+            browserSubprocess = configured.browserSubprocess,
+            resources = configured.resources,
+            locales = configured.locales,
+            rootCache = configured.rootCache,
+            log = configured.log,
+            remoteDebuggingPort = configured.remoteDebuggingPort,
+        ),
+    )
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val updates = CopyOnWriteArrayList<io.github.kingsword09.kwebshell.core.KWebFindResult>()
+    var collector: kotlinx.coroutines.Job? = null
+    var profileA: io.github.kingsword09.kwebshell.core.KWebProfile? = null
+    var profileB: io.github.kingsword09.kwebshell.core.KWebProfile? = null
+    val pages = CopyOnWriteArrayList<io.github.kingsword09.kwebshell.core.KWebPage>()
+    val surfaces = CopyOnWriteArrayList<ComposeBrowserSurface>()
+    var probeFailure: Throwable? = null
+    var caseSensitiveMatches = 0
+    var firstOrdinal = 0
+    var selectionWidth = 0
+    var selectionHeight = 0
+    var selectedMatchWidth = 0
+    var nextOrdinal = 0
+    var caseInsensitiveMatches = 0
+    var backwardOrdinal = 0
+    var dynamicMatches = 0
+    var finalUpdateCount = 0
+    var stopMatches = 0
+    var staleRejected = false
+    var initialLevel = 0.0
+    var appliedLevel = 0.0
+    var appliedFactor = 0.0
+    var sharedOriginLevel = 0.0
+    var otherOriginLevel = 0.0
+    var otherProfileLevel = 0.0
+    var resetLevel = 0.0
+    var outOfRangeRejected = false
+    try {
+        kotlinx.coroutines.runBlocking {
+            require(KWebCapability.PAGE_UTILITIES in engine.capabilities) {
+                "The engine did not declare the page utility capability it implements."
+            }
+            profileA = engine.openProfile("rfc0044-a")
+            profileB = engine.openProfile("rfc0044-b")
+            val liveA = requireNotNull(profileA)
+            val liveB = requireNotNull(profileB)
+            suspend fun openPage(
+                profile: io.github.kingsword09.kwebshell.core.KWebProfile,
+                url: String,
+            ): io.github.kingsword09.kwebshell.core.KWebPage {
+                val surface = NativeEngine.onAwtEventDispatchThread {
+                    ComposeBrowserSurface.create(700, 520)
+                }
+                surfaces += surface
+                val page = profile.openPage(
+                    KWebDesktop.composeWindowHost(surface.window),
+                    url,
+                    KWebRect(0, 0, 700, 520),
+                )
+                page.setSurfaceState(visible = true, focused = true)
+                pages += page
+                return page
+            }
+            val first = openPage(liveA, fixture.alphaUrl)
+            val second = openPage(liveA, fixture.alphaUrl + "?same-origin-second")
+            val otherOrigin = openPage(liveA, fixture.betaUrl)
+            val otherProfile = openPage(liveB, fixture.alphaUrl + "?other-profile")
+            val cdp = CdpClient(configured.remoteDebuggingPort)
+            cdp.awaitPage(fixture.alphaUrl)
+            collector = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                first.utilities.findResults.collect { updates += it }
+            }
+
+            // 1. A case-sensitive first search reports the renderer's own count.
+            val sensitive = first.utilities.find(
+                io.github.kingsword09.kwebshell.core.KWebFindRequest(
+                    text = "needle",
+                    direction = io.github.kingsword09.kwebshell.core.KWebFindDirection.FORWARD,
+                    matchCase = true,
+                ),
+            )
+            require(sensitive.matches == 3) {
+                "The case-sensitive find reported ${sensitive.matches} matches instead of 3."
+            }
+            require(sensitive.activeMatchOrdinal == null) {
+                "A fresh search reported an active match before selecting one: ${sensitive.activeMatchOrdinal}."
+            }
+            require(sensitive.finalUpdate) { "The awaited find result was not final." }
+            val selection = requireNotNull(sensitive.selection) {
+                "The first find reported no selection rectangle."
+            }
+            require(selection.width >= 0 && selection.height >= 0) {
+                "The reported match rectangle was negative: $selection"
+            }
+            caseSensitiveMatches = sensitive.matches
+            selectionWidth = selection.width
+            selectionHeight = selection.height
+
+            // 2. Continuing the session selects and advances the active match.
+            val next = first.utilities.findNext()
+            require(next.sessionId == sensitive.sessionId) {
+                "findNext did not continue the active session."
+            }
+            require(next.matches == 3) { "findNext changed the match count to ${next.matches}." }
+            require(next.activeMatchOrdinal == 0) {
+                "findNext did not select the first match: ${next.activeMatchOrdinal}."
+            }
+            firstOrdinal = requireNotNull(next.activeMatchOrdinal)
+            val advanced = first.utilities.findNext()
+            require(advanced.activeMatchOrdinal == 1) {
+                "A second findNext did not advance the active match: ${advanced.activeMatchOrdinal}."
+            }
+            nextOrdinal = requireNotNull(advanced.activeMatchOrdinal)
+            val selected = requireNotNull(advanced.selection) {
+                "The selected match reported no rectangle."
+            }
+            require(selected.width > 0 && selected.height > 0) {
+                "Chromium reported an empty rectangle for the selected match: $selected"
+            }
+            selectedMatchWidth = selected.width
+
+            // 3. A new request replaces the session; the case policy is honored.
+            val insensitive = first.utilities.find(
+                io.github.kingsword09.kwebshell.core.KWebFindRequest(
+                    text = "needle",
+                    direction = io.github.kingsword09.kwebshell.core.KWebFindDirection.BACKWARD,
+                    matchCase = false,
+                ),
+            )
+            require(insensitive.sessionId != sensitive.sessionId) {
+                "A replacement find reused the previous session identifier."
+            }
+            require(insensitive.matches == 4) {
+                "The case-insensitive find reported ${insensitive.matches} matches instead of 4."
+            }
+            require(insensitive.selection != null) { "The backward find reported no selection." }
+            caseInsensitiveMatches = insensitive.matches
+            backwardOrdinal = insensitive.activeMatchOrdinal ?: -1
+
+            // 4. A DOM mutation is visible to the next search request. Chromium
+            //    rescans when a new search starts, not when a session continues.
+            val paragraphCount = cdp.evaluate(
+                "document.body.insertAdjacentHTML('beforeend','<p>needle four</p>');" +
+                    " document.querySelectorAll('p').length",
+            )
+            require(paragraphCount == "4") {
+                "The DOM mutation did not add a fourth paragraph: $paragraphCount"
+            }
+            val afterMutation = first.utilities.find(
+                io.github.kingsword09.kwebshell.core.KWebFindRequest(
+                    text = "needle",
+                    direction = io.github.kingsword09.kwebshell.core.KWebFindDirection.FORWARD,
+                    matchCase = false,
+                ),
+            )
+            require(afterMutation.matches == 5) {
+                "The new search did not observe the mutated DOM: ${afterMutation.matches}."
+            }
+            dynamicMatches = afterMutation.matches
+            val afterMutationNext = first.utilities.findNext()
+            require(afterMutationNext.matches == 5) {
+                "The continued session lost matches after mutation: ${afterMutationNext.matches}."
+            }
+
+            // 5. Stopping ends the session exactly once and refuses continuation.
+            val stopped = first.utilities.stopFinding(keepSelection = true)
+            require(stopped.outcome == io.github.kingsword09.kwebshell.core.KWebFindStopOutcome.STOPPED) {
+                "Stopping an active session reported ${stopped.outcome}."
+            }
+            require(stopped.sessionId == afterMutation.sessionId) {
+                "Stopping reported a different session identifier."
+            }
+            require(stopped.matches == 5) { "Stopping reported ${stopped.matches} matches." }
+            stopMatches = stopped.matches
+            require(first.utilities.activeFind.value == null) {
+                "The stopped page still reports an active find session."
+            }
+            require(
+                first.utilities.stopFinding().outcome ==
+                    io.github.kingsword09.kwebshell.core.KWebFindStopOutcome.NO_ACTIVE_SESSION,
+            ) { "Stopping without a session did not report the declared outcome." }
+            val stale = runCatching { first.utilities.findNext() }.exceptionOrNull()
+            require(
+                stale is io.github.kingsword09.kwebshell.core.KWebPageUtilityException &&
+                    stale.code == io.github.kingsword09.kwebshell.core.KWebPageUtilityErrorCode.FIND_SESSION_STALE,
+            ) { "findNext after a stop did not fail with the declared stale-session error: $stale" }
+            staleRejected = true
+
+            // 6. Ordered updates: strictly increasing sequences, one final update
+            //    per request, and every final update matches its awaited result.
+            require(updates.isNotEmpty()) { "The page published no find update." }
+            updates.zipWithNext { earlier, later ->
+                require(later.sequence > earlier.sequence) {
+                    "Find updates were not ordered: ${earlier.sequence} then ${later.sequence}."
+                }
+            }
+            finalUpdateCount = updates.count { it.finalUpdate }
+            require(finalUpdateCount == 6) {
+                "Expected one final update for each of six requests, observed $finalUpdateCount."
+            }
+            require(updates.last().sessionId == afterMutation.sessionId) {
+                "The last published update did not belong to the last session."
+            }
+
+            // 7. Zoom is applied and read back; it follows Chromium's
+            //    per-profile, per-origin host-zoom map.
+            initialLevel = first.utilities.zoom().level
+            require(initialLevel == 0.0) { "A fresh page did not start at zoom level 0.0: $initialLevel" }
+            val applied = first.utilities.setZoomLevel(2.0)
+            appliedLevel = applied.level
+            appliedFactor = applied.factor
+            require(appliedLevel == 2.0) { "Chromium applied zoom level $appliedLevel instead of 2.0." }
+            require(kotlin.math.abs(appliedFactor - 1.44) < 1e-9) {
+                "The derived zoom factor was $appliedFactor instead of 1.44."
+            }
+            sharedOriginLevel = second.utilities.zoom().level
+            require(sharedOriginLevel == 2.0) {
+                "A same-origin page did not observe the profile+origin zoom level: $sharedOriginLevel"
+            }
+            otherOriginLevel = otherOrigin.utilities.zoom().level
+            require(otherOriginLevel == 0.0) {
+                "A different origin inherited the zoom level: $otherOriginLevel"
+            }
+            otherProfileLevel = otherProfile.utilities.zoom().level
+            require(otherProfileLevel == 0.0) {
+                "Another profile inherited the zoom level: $otherProfileLevel"
+            }
+            val factor = first.utilities.setZoomFactor(1.5)
+            require(kotlin.math.abs(factor.factor - 1.5) < 1e-9) {
+                "The observed factor ${factor.factor} does not match the requested 1.5."
+            }
+            resetLevel = first.utilities.setZoomFactor(1.0).level
+            require(resetLevel == 0.0) { "Resetting the zoom factor reported level $resetLevel." }
+            val outOfRange = runCatching { first.utilities.setZoomFactor(9.0) }.exceptionOrNull()
+            require(
+                outOfRange is io.github.kingsword09.kwebshell.core.KWebPageUtilityException &&
+                    outOfRange.code == io.github.kingsword09.kwebshell.core.KWebPageUtilityErrorCode.ZOOM_OUT_OF_RANGE,
+            ) { "An out-of-range zoom factor was not refused: $outOfRange" }
+            val hugeLevel = runCatching { first.utilities.setZoomLevel(100.0) }.exceptionOrNull()
+            require(
+                hugeLevel is io.github.kingsword09.kwebshell.core.KWebPageUtilityException &&
+                    hugeLevel.code == io.github.kingsword09.kwebshell.core.KWebPageUtilityErrorCode.ZOOM_OUT_OF_RANGE,
+            ) { "An out-of-range zoom level was not refused: $hugeLevel" }
+            outOfRangeRejected = true
+            println("KWEBSHELL_PAGE_UTILITIES_PROBE:find-and-zoom")
+        }
+    } catch (error: Throwable) {
+        probeFailure = error
+        throw error
+    } finally {
+        collector?.cancel()
+        pages.asReversed().forEach { page -> runCatching { page.close() } }
+        runCatching { profileA?.close() }
+        runCatching { profileB?.close() }
+        runCatching { engine.close() }
+        surfaces.asReversed().forEach { surface ->
+            NativeEngine.onAwtEventDispatchThread { runCatching { surface.close() } }
+        }
+        runCatching { fixture.close() }
+        scope.cancel()
+    }
+    require(NativeBrowser.liveNativeBrowserCount() == 0L)
+    require(NativeEngine.liveNativeEngineCount() == 0L)
+    val evidence = buildJsonObject {
+        put("schemaVersion", 1)
+        put("target", currentTargetId())
+        put("cefRuntime", "stock-cef-151")
+        put("contractRevision", "2026-10-18.1")
+        put("engineAbiVersion", 20)
+        put("pageUtilitiesCapability", true)
+        put("caseSensitiveMatches", caseSensitiveMatches)
+        put("firstOrdinal", firstOrdinal)
+        put("matchSelectionWidth", selectionWidth)
+        put("matchSelectionHeight", selectionHeight)
+        put("selectedMatchWidth", selectedMatchWidth)
+        put("nextOrdinal", nextOrdinal)
+        put("caseInsensitiveMatches", caseInsensitiveMatches)
+        put("backwardOrdinal", backwardOrdinal)
+        put("dynamicMatches", dynamicMatches)
+        put("orderedUpdates", updates.size)
+        put("finalUpdates", finalUpdateCount)
+        put("stopMatches", stopMatches)
+        put("staleSessionRejected", staleRejected)
+        put("initialLevel", initialLevel)
+        put("appliedLevel", appliedLevel)
+        put("appliedFactor", appliedFactor)
+        put("sharedOriginLevel", sharedOriginLevel)
+        put("otherOriginLevel", otherOriginLevel)
+        put("otherProfileLevel", otherProfileLevel)
+        put("resetLevel", resetLevel)
+        put("outOfRangeRejected", outOfRangeRejected)
+        put("failure", probeFailure?.let { it::class.simpleName } ?: "")
+    }
+    Files.writeString(
+        root.resolve("page-utilities-evidence.json"),
+        evidence.toString() + "\n",
+        StandardCharsets.UTF_8,
+    )
+    println("KWebShell RFC0044 page utilities passed: finals=$finalUpdateCount.")
 }
 
 private fun runFilesWorkspaceIntegration() {
@@ -6767,6 +7119,7 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
             mode == IntegrationMode.FILES_WORKSPACE ||
             mode == IntegrationMode.CONTEXT_MENU ||
             mode == IntegrationMode.CAPTURE_PERMISSION ||
+            mode == IntegrationMode.PAGE_UTILITIES ||
             mode == IntegrationMode.THEME ||
             mode == IntegrationMode.EXTENSION_LIFECYCLE_CRASH ||
             mode.name.startsWith("EXTENSION_LIFECYCLE_STAGE")

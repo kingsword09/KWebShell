@@ -8,4 +8,5 @@ public enum class KWebCapability(public val id: String) {
     DEVTOOLS("devtools"),
     CDP("cdp"),
     DOWNLOADS("downloads"),
+    PAGE_UTILITIES("page-utilities"),
 }

@@ -7,8 +7,14 @@
 
 _Static_assert(KWEB_INVALID_ENGINE_HANDLE == 0,
                "the invalid engine handle must remain zero");
-_Static_assert(KWEB_ABI_VERSION == 19,
-               "media access decisions require ABI version 19");
+_Static_assert(KWEB_ABI_VERSION == 20,
+               "page find and zoom require ABI version 20");
+_Static_assert(KWEB_BROWSER_EVENT_FIND_RESULT == 29,
+               "the page find result browser event type is ABI-stable");
+_Static_assert(KWEB_FIND_START == 1 && KWEB_FIND_CONTINUE == 2,
+               "the page find request modes are ABI-stable");
+_Static_assert(KWEB_FIND_FORWARD == 1 && KWEB_FIND_BACKWARD == 2,
+               "the page find directions are ABI-stable");
 _Static_assert(KWEB_BROWSER_EVENT_MEDIA_PERMISSION == 28,
                "the media permission browser event type is ABI-stable");
 _Static_assert(KWEB_MEDIA_PERMISSION_ALL == 15,

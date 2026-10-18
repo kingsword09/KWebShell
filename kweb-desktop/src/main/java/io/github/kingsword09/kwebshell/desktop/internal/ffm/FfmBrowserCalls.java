@@ -209,6 +209,78 @@ final class FfmBrowserCalls {
         }
     }
 
+    static int find(
+        long handle,
+        long sessionId,
+        String text,
+        int direction,
+        boolean matchCase,
+        boolean continuous
+    ) {
+        try (Arena arena = Arena.ofConfined()) {
+            FfmMemory.EncodedUtf8 encoded = FfmMemory.encode(
+                text, arena, FfmMemory.MAXIMUM_FIND_QUERY_SIZE
+            );
+            return (int) library().handle("kweb_browser_find")
+                .invokeExact(
+                    handle,
+                    sessionId,
+                    encoded.segment(),
+                    encoded.size(),
+                    direction,
+                    matchCase ? 1 : 0,
+                    continuous ? 2 : 1
+                );
+        } catch (FfmTextException error) {
+            return error.status();
+        } catch (OutOfMemoryError error) {
+            return FfmStatus.ALLOCATION_FAILED;
+        } catch (Throwable error) {
+            return FfmStatus.INTERNAL_ERROR;
+        }
+    }
+
+    static int stopFinding(long handle, boolean keepSelection) {
+        try {
+            return (int) library().handle("kweb_browser_stop_finding")
+                .invokeExact(handle, keepSelection ? 1 : 0);
+        } catch (Throwable error) {
+            return FfmStatus.INTERNAL_ERROR;
+        }
+    }
+
+    /** The observed page zoom level, or a typed native status when it failed. */
+    public record ZoomResult(int status, double level) {
+    }
+
+    /**
+     * Applies one page zoom level and reports the level Chromium observed.
+     */
+    static ZoomResult setZoomLevel(long handle, double level) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment observed = arena.allocate(FfmLayouts.DOUBLE);
+            observed.set(FfmLayouts.DOUBLE, 0, Double.NaN);
+            int status = (int) library().handle("kweb_browser_set_zoom_level")
+                .invokeExact(handle, level, observed);
+            return new ZoomResult(status, observed.get(FfmLayouts.DOUBLE, 0));
+        } catch (Throwable error) {
+            return new ZoomResult(FfmStatus.INTERNAL_ERROR, Double.NaN);
+        }
+    }
+
+    /** Reads the page zoom level Chromium currently observes. */
+    static ZoomResult zoomLevel(long handle) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment observed = arena.allocate(FfmLayouts.DOUBLE);
+            observed.set(FfmLayouts.DOUBLE, 0, Double.NaN);
+            int status = (int) library().handle("kweb_browser_zoom_level")
+                .invokeExact(handle, observed);
+            return new ZoomResult(status, observed.get(FfmLayouts.DOUBLE, 0));
+        } catch (Throwable error) {
+            return new ZoomResult(FfmStatus.INTERNAL_ERROR, Double.NaN);
+        }
+    }
+
     static long liveCount() {
         try {
             return (long) library().handle("kweb_live_browser_count").invokeExact();

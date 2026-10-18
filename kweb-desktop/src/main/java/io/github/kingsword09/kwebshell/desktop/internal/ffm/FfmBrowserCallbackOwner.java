@@ -5,10 +5,25 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.BiConsumer;
 
 final class FfmBrowserCallbackOwner extends FfmCallbackOwner {
     private static final int CLOSED_EVENT = 10;
+
+    /**
+     * Browser event types that carry a request or session identifier in
+     * {@code request_id}. Every other event must leave it zero, so a new
+     * request-scoped event joins this set instead of widening a literal list.
+     */
+    private static final Set<Integer> REQUEST_CARRYING_EVENTS = Set.of(
+        18, // before-unload request
+        19, // popup request
+        25, // security challenge
+        26, // download
+        27, // context menu
+        29  // page find result
+    );
     private static final MethodHandle BROWSER_TARGET = callbackTarget("receiveBrowser");
     private static final MethodHandle BRIDGE_TARGET = callbackTarget("receiveBridge");
     private static final MethodHandle PROFILE_DATA_TARGET = callbackTarget("receiveProfileData");
@@ -130,11 +145,10 @@ final class FfmBrowserCallbackOwner extends FfmCallbackOwner {
             if (structureSize < FfmLayouts.BROWSER_EVENT.byteSize()
                 || abiVersion != FfmAbi.VERSION
                 || type < 1
-                || type > 28
+                || type > 29
                 || (frameScope != 1 && frameScope != 2)
                 || reason > 9
-                || ((type == 18 || type == 19 || type == 25 || type == 26 || type == 27)
-                    != (requestId > 0))
+                || (REQUEST_CARRYING_EVENTS.contains(type) != (requestId > 0))
                 || engine <= 0
                 || browser <= 0
                 || sequence <= 0) {

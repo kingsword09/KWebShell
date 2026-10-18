@@ -15,6 +15,8 @@ final class FfmMemory {
     static final long MAXIMUM_TEXT_SIZE = 1024L * 1024L;
     static final long MAXIMUM_PROFILE_DATA_OUTPUT_SIZE = 4L * 1024L * 1024L;
     static final long MAXIMUM_PATH_SIZE = 32768L;
+    /** The RFC 0044 find query bound, enforced before the native call. */
+    static final long MAXIMUM_FIND_QUERY_SIZE = 512L;
 
     private static final long STRING_DATA_OFFSET = FfmLayouts.offset(FfmLayouts.STRING_VIEW, "data");
     private static final long STRING_SIZE_OFFSET = FfmLayouts.offset(FfmLayouts.STRING_VIEW, "size");

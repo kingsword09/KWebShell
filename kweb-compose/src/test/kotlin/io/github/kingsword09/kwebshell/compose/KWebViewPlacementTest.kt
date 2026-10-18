@@ -37,11 +37,17 @@ import io.github.kingsword09.kwebshell.core.KWebProfileFlushResult
 import io.github.kingsword09.kwebshell.core.KWebNetworkPolicy
 import io.github.kingsword09.kwebshell.core.KWebNetworkRequestEvent
 import io.github.kingsword09.kwebshell.core.KWebSpellcheckConfiguration
+import io.github.kingsword09.kwebshell.core.KWebFindRequest
+import io.github.kingsword09.kwebshell.core.KWebFindResult
+import io.github.kingsword09.kwebshell.core.KWebFindSession
+import io.github.kingsword09.kwebshell.core.KWebFindStopResult
+import io.github.kingsword09.kwebshell.core.KWebPageUtilities
+import io.github.kingsword09.kwebshell.core.KWebZoomState
 import io.github.kingsword09.kwebshell.core.KWebSpellcheckState
 import io.github.kingsword09.kwebshell.core.KWebStorageUsage
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -141,6 +147,7 @@ private class RecordingPage : KWebPage {
     override val lifecycle = mutableLifecycle
     override val events: Flow<KWebPageEvent> = emptyFlow()
     override val profile: KWebProfile = RecordingProfile()
+    override val utilities: KWebPageUtilities = RecordingPageUtilities()
 
     override suspend fun navigate(url: String) {
         require(url.isNotBlank())
@@ -180,6 +187,28 @@ private class RecordingPage : KWebPage {
         closeCalls += 1
         mutableLifecycle.value = KWebLifecycleState.CLOSED
     }
+}
+
+private class RecordingPageUtilities : KWebPageUtilities {
+    override val activeFind: StateFlow<KWebFindSession?> = MutableStateFlow(null)
+    override val findResults: Flow<KWebFindResult> = emptyFlow()
+
+    override suspend fun find(request: KWebFindRequest): KWebFindResult = unused("find")
+
+    override suspend fun findNext(): KWebFindResult = unused("findNext")
+
+    override suspend fun stopFinding(keepSelection: Boolean): KWebFindStopResult = unused("stopFinding")
+
+    override suspend fun zoom(): KWebZoomState = unused("zoom")
+
+    override suspend fun setZoomLevel(level: Double): KWebZoomState = unused("setZoomLevel")
+
+    override suspend fun setZoomFactor(factor: Double): KWebZoomState = unused("setZoomFactor")
+
+    /** The placement test never reaches page utilities; it must fail loudly if it does. */
+    private fun unused(operation: String): Nothing = throw IllegalStateException(
+        "The Compose placement test does not exercise page utilities ('$operation').",
+    )
 }
 
 private class RecordingProfile : KWebProfile {

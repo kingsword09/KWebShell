@@ -2,7 +2,7 @@ package io.github.kingsword09.kwebshell.desktop.internal
 
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 
-internal const val NATIVE_ABI_VERSION: Int = 19
+internal const val NATIVE_ABI_VERSION: Int = 20
 
 internal enum class NativeStatus(
     val value: Int,
@@ -99,6 +99,8 @@ internal enum class NativeStatus(
     CONTEXT_MENU_ALREADY_RESOLVED(90, "context-menu-already-resolved"),
     CONTEXT_MENU_DECISION_INVALID(91, "context-menu-decision-invalid"),
     CONTEXT_MENU_CLOSING(92, "context-menu-closing"),
+    FIND_SESSION_STALE(93, "find-session-stale"),
+    ZOOM_LEVEL_INVALID(94, "zoom-level-invalid"),
     ;
 
     companion object {
@@ -154,6 +156,25 @@ internal fun contextMenuStatusException(
         code = code,
         details = details + mapOf("operation" to operation, "status" to value.toString()),
         message = "Native page context-menu operation '$operation' failed with '$code'.",
+    )
+}
+
+internal fun pageUtilityStatusException(
+    operation: String,
+    value: Int,
+    details: Map<String, String> = emptyMap(),
+): KWebNativeException {
+    val code = when (value) {
+        NativeStatus.FIND_SESSION_STALE.value -> "page.find-session-stale"
+        NativeStatus.ZOOM_LEVEL_INVALID.value -> "page.zoom-level-invalid"
+        NativeStatus.BROWSER_CLOSING.value,
+        NativeStatus.BROWSER_NOT_READY.value -> "page.closed"
+        else -> return nativeStatusException(operation, value, details)
+    }
+    return KWebNativeException(
+        code = code,
+        details = details + mapOf("operation" to operation, "status" to value.toString()),
+        message = "Native page utility operation '$operation' failed with '$code'.",
     )
 }
 

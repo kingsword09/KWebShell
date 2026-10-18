@@ -252,6 +252,24 @@ internal object NativeBindings {
     internal fun browserStartDownload(handle: Long, url: String): Int =
         FfmBindings.browserStartDownload(handle, url)
 
+    internal fun browserFind(
+        handle: Long,
+        sessionId: Long,
+        text: String,
+        direction: Int,
+        matchCase: Boolean,
+        continuous: Boolean,
+    ): Int = FfmBindings.browserFind(handle, sessionId, text, direction, matchCase, continuous)
+
+    internal fun browserStopFinding(handle: Long, keepSelection: Boolean): Int =
+        FfmBindings.browserStopFinding(handle, keepSelection)
+
+    internal fun browserSetZoomLevel(handle: Long, level: Double): NativeZoomResult =
+        FfmBindings.browserSetZoomLevel(handle, level).let { NativeZoomResult(it.status(), it.level()) }
+
+    internal fun browserZoomLevel(handle: Long): NativeZoomResult =
+        FfmBindings.browserZoomLevel(handle).let { NativeZoomResult(it.status(), it.level()) }
+
     internal fun releaseBrowserOwner(handle: Long): Throwable? =
         releaseOwner("browser", handle) { FfmBindings.releaseBrowserOwner(handle) }
 
@@ -294,6 +312,11 @@ internal object NativeBindings {
         )
     }
 }
+
+internal data class NativeZoomResult(
+    val status: Int,
+    val level: Double,
+)
 
 internal class NativeEngineEventSink(
     private val failureCallback: (String, String, Throwable) -> Unit = ::throwNativeCallbackFailure,

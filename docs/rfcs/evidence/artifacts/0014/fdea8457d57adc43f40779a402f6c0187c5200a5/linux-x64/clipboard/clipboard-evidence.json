@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "contractRevision": "2026-09-30.3",
+  "provider": "linux.GTK.CLIPBOARD",
+  "runtime": "JDK-25",
+  "target": "linux-x64",
+  "formatIds": ["text/plain", "text/html", "text/rtf", "text/uri-list"],
+  "roundTripSizes": {"text/plain":24, "text/html":38, "text/rtf":27, "text/uri-list":51},
+  "roundTripSha256": {"text/plain":"1fa94067135007b7b3951f084a0e1b5d36171b5f0aa91ff5197a18a31f4482ae", "text/html":"aa493a9384076bb851ebcef10f857c12700bab4cd2d3cddf9b5215a0fb1e53a7", "text/rtf":"61fd6b015847c374f08887dc92dc331e81fdbb31f8080ab8a3162e6ad1d0840f", "text/uri-list":"b8abbaf6a906b9919955b02faa5a6d12552e3a1ebd22556b32d65b127a30e7bd"},
+  "payloadExpiredAfterWrite": true,
+  "independentReaderCount": 4,
+  "ownershipTransition": "foreign",
+  "emptyAfterClear": true,
+  "emptyPlainTextRoundTrip": true,
+  "absolutePathsRetained": false
+}

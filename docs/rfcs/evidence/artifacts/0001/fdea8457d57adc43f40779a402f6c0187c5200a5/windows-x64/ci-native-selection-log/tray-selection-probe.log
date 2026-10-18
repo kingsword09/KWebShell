@@ -1,0 +1,347 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.7.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Calculating task graph as no cached configuration is available for tasks: :kweb-rfc-governance:contractTest :kweb-service-tray:check
+> Task :kweb-bridge:kmpPartiallyResolvedDependenciesChecker
+> Task :kweb-bridge:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :kweb-bridge:compileKotlinJvm FROM-CACHE
+> Task :kweb-bridge:compileJvmMainJava NO-SOURCE
+> Task :kweb-bridge:jvmProcessResources NO-SOURCE
+> Task :kweb-bridge:processJvmMainResources SKIPPED
+> Task :kweb-bridge:jvmMainClasses UP-TO-DATE
+> Task :kweb-bridge:jvmJar
+> Task :kweb-core:kmpPartiallyResolvedDependenciesChecker
+> Task :kweb-core:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :kweb-core:compileKotlinJvm
+> Task :kweb-core:compileJvmMainJava NO-SOURCE
+> Task :kweb-core:jvmProcessResources NO-SOURCE
+> Task :kweb-core:processJvmMainResources SKIPPED
+> Task :kweb-core:jvmMainClasses
+> Task :kweb-core:jvmJar
+> Task :kweb-electron-migration:kmpPartiallyResolvedDependenciesChecker
+> Task :kweb-electron-migration:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :kweb-services-core:kmpPartiallyResolvedDependenciesChecker
+> Task :kweb-services-core:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :kweb-services-core:compileKotlinJvm
+> Task :kweb-services-core:compileJvmMainJava NO-SOURCE
+> Task :kweb-services-core:jvmProcessResources NO-SOURCE
+> Task :kweb-services-core:processJvmMainResources SKIPPED
+> Task :kweb-services-core:jvmMainClasses
+> Task :kweb-services-core:jvmJar
+
+> Task :kweb-electron-migration:compileKotlinJvm
+Problem found: Kotlin compiler warning (id: kotlin:compiler:warning:compiler-warning)
+  Kotlin compiler warning
+    Duplicate branch condition in 'when'.
+    Location: D:/a/KWebShell/KWebShell/kweb-electron-migration/src/jvmMain/kotlin/io/github/kingsword09/kwebshell/electron/migration/KWebElectronInventoryScanner.kt line 133
+
+> Task :kweb-electron-migration:compileJvmMainJava NO-SOURCE
+> Task :kweb-electron-migration:jvmProcessResources
+> Task :kweb-electron-migration:processJvmMainResources SKIPPED
+> Task :kweb-electron-migration:jvmMainClasses
+> Task :kweb-electron-migration:jvmJar
+> Task :kweb-rfc-governance:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :kweb-service-app-paths:kmpPartiallyResolvedDependenciesChecker
+> Task :kweb-service-app-paths:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :kweb-bridge-codegen:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :kweb-bridge-codegen:compileKotlin FROM-CACHE
+> Task :kweb-bridge-codegen:compileJava NO-SOURCE
+> Task :kweb-bridge-codegen:processResources NO-SOURCE
+> Task :kweb-bridge-codegen:classes UP-TO-DATE
+> Task :kweb-bridge-codegen:jar
+
+> Task :kweb-service-app-paths:generateAppPathsBridge
+D:\a\KWebShell\KWebShell\kweb-service-app-paths\build\generated\kwebBridge\appPaths\AppPathsBridgeBridge.kt
+D:\a\KWebShell\KWebShell\kweb-service-app-paths\build\generated\kwebBridge\appPaths\AppPathsBridgeBridge.ts
+D:\a\KWebShell\KWebShell\kweb-service-app-paths\build\generated\kwebBridge\appPaths\AppPathsBridgeBridge.js
+
+> Task :kweb-service-app-paths:compileKotlinJvm
+> Task :kweb-service-app-paths:compileJvmMainJava
+> Task :kweb-service-app-paths:jvmProcessResources NO-SOURCE
+> Task :kweb-service-app-paths:processJvmMainResources SKIPPED
+> Task :kweb-service-app-paths:jvmMainClasses
+> Task :kweb-service-app-paths:jvmJar
+> Task :kweb-service-clipboard:kmpPartiallyResolvedDependenciesChecker
+> Task :kweb-service-clipboard:checkKotlinGradlePluginConfigurationErrors SKIPPED
+
+> Task :kweb-service-clipboard:generateClipboardBridge
+D:\a\KWebShell\KWebShell\kweb-service-clipboard\build\generated\kwebBridge\clipboard\ClipboardBridgeBridge.kt
+D:\a\KWebShell\KWebShell\kweb-service-clipboard\build\generated\kwebBridge\clipboard\ClipboardBridgeBridge.ts
+D:\a\KWebShell\KWebShell\kweb-service-clipboard\build\generated\kwebBridge\clipboard\ClipboardBridgeBridge.js
+
+> Task :kweb-service-clipboard:compileKotlinJvm
+> Task :kweb-service-clipboard:compileJvmMainJava
+> Task :kweb-service-clipboard:jvmProcessResources NO-SOURCE
+> Task :kweb-service-clipboard:processJvmMainResources SKIPPED
+> Task :kweb-service-clipboard:jvmMainClasses
+> Task :kweb-service-clipboard:jvmJar
+> Task :kweb-service-dialogs:kmpPartiallyResolvedDependenciesChecker
+> Task :kweb-service-dialogs:checkKotlinGradlePluginConfigurationErrors SKIPPED
+
+> Task :kweb-service-dialogs:generateDialogsBridge
+D:\a\KWebShell\KWebShell\kweb-service-dialogs\build\generated\kwebBridge\dialogs\DialogsBridgeBridge.kt
+D:\a\KWebShell\KWebShell\kweb-service-dialogs\build\generated\kwebBridge\dialogs\DialogsBridgeBridge.ts
+D:\a\KWebShell\KWebShell\kweb-service-dialogs\build\generated\kwebBridge\dialogs\DialogsBridgeBridge.js
+
+> Task :kweb-service-dialogs:compileKotlinJvm
+> Task :kweb-service-dialogs:compileJvmMainJava
+> Task :kweb-service-dialogs:jvmProcessResources NO-SOURCE
+> Task :kweb-service-dialogs:processJvmMainResources SKIPPED
+> Task :kweb-service-dialogs:jvmMainClasses
+> Task :kweb-service-dialogs:jvmJar
+> Task :kweb-service-files:kmpPartiallyResolvedDependenciesChecker
+> Task :kweb-service-files:checkKotlinGradlePluginConfigurationErrors SKIPPED
+
+> Task :kweb-service-files:generateFilesBridge
+D:\a\KWebShell\KWebShell\kweb-service-files\build\generated\kwebBridge\files\FilesBridgeBridge.kt
+D:\a\KWebShell\KWebShell\kweb-service-files\build\generated\kwebBridge\files\FilesBridgeBridge.ts
+D:\a\KWebShell\KWebShell\kweb-service-files\build\generated\kwebBridge\files\FilesBridgeBridge.js
+
+> Task :kweb-service-files:compileKotlinJvm
+> Task :kweb-service-files:compileJvmMainJava NO-SOURCE
+> Task :kweb-service-files:jvmProcessResources NO-SOURCE
+> Task :kweb-service-files:processJvmMainResources SKIPPED
+> Task :kweb-service-files:jvmMainClasses
+> Task :kweb-service-files:jvmJar
+> Task :kweb-service-image:kmpPartiallyResolvedDependenciesChecker
+> Task :kweb-service-image:checkKotlinGradlePluginConfigurationErrors SKIPPED
+
+> Task :kweb-service-image:generateImageBridge
+D:\a\KWebShell\KWebShell\kweb-service-image\build\generated\kwebBridge\image\ImageBridgeBridge.kt
+D:\a\KWebShell\KWebShell\kweb-service-image\build\generated\kwebBridge\image\ImageBridgeBridge.ts
+D:\a\KWebShell\KWebShell\kweb-service-image\build\generated\kwebBridge\image\ImageBridgeBridge.js
+
+> Task :kweb-service-image:compileKotlinJvm
+> Task :kweb-service-image:compileJvmMainJava
+> Task :kweb-service-image:jvmProcessResources NO-SOURCE
+> Task :kweb-service-image:processJvmMainResources SKIPPED
+> Task :kweb-service-image:jvmMainClasses
+> Task :kweb-service-image:jvmJar
+> Task :kweb-service-menus:kmpPartiallyResolvedDependenciesChecker
+> Task :kweb-service-menus:checkKotlinGradlePluginConfigurationErrors SKIPPED
+
+> Task :kweb-service-menus:generateMenusBridge
+D:\a\KWebShell\KWebShell\kweb-service-menus\build\generated\kwebBridge\menus\MenusBridgeBridge.kt
+D:\a\KWebShell\KWebShell\kweb-service-menus\build\generated\kwebBridge\menus\MenusBridgeBridge.ts
+D:\a\KWebShell\KWebShell\kweb-service-menus\build\generated\kwebBridge\menus\MenusBridgeBridge.js
+
+> Task :kweb-service-menus:compileKotlinJvm
+> Task :kweb-service-menus:compileJvmMainJava
+> Task :kweb-service-menus:jvmProcessResources NO-SOURCE
+> Task :kweb-service-menus:processJvmMainResources SKIPPED
+> Task :kweb-service-menus:jvmMainClasses
+> Task :kweb-service-menus:jvmJar
+> Task :kweb-service-notifications:kmpPartiallyResolvedDependenciesChecker
+> Task :kweb-service-notifications:checkKotlinGradlePluginConfigurationErrors SKIPPED
+
+> Task :kweb-service-notifications:generateNotificationsBridge
+D:\a\KWebShell\KWebShell\kweb-service-notifications\build\generated\kwebBridge\notifications\NotificationsBridgeBridge.kt
+D:\a\KWebShell\KWebShell\kweb-service-notifications\build\generated\kwebBridge\notifications\NotificationsBridgeBridge.ts
+D:\a\KWebShell\KWebShell\kweb-service-notifications\build\generated\kwebBridge\notifications\NotificationsBridgeBridge.js
+
+> Task :kweb-service-notifications:compileKotlinJvm
+> Task :kweb-service-notifications:compileJvmMainJava
+> Task :kweb-service-notifications:jvmProcessResources NO-SOURCE
+> Task :kweb-service-notifications:processJvmMainResources SKIPPED
+> Task :kweb-service-notifications:jvmMainClasses
+> Task :kweb-service-notifications:jvmJar
+> Task :kweb-service-power:kmpPartiallyResolvedDependenciesChecker
+> Task :kweb-service-power:checkKotlinGradlePluginConfigurationErrors SKIPPED
+
+> Task :kweb-service-power:generatePowerBridge
+D:\a\KWebShell\KWebShell\kweb-service-power\build\generated\kwebBridge\power\PowerBridgeBridge.kt
+D:\a\KWebShell\KWebShell\kweb-service-power\build\generated\kwebBridge\power\PowerBridgeBridge.ts
+D:\a\KWebShell\KWebShell\kweb-service-power\build\generated\kwebBridge\power\PowerBridgeBridge.js
+
+> Task :kweb-service-power:compileKotlinJvm
+> Task :kweb-service-power:compileJvmMainJava
+> Task :kweb-service-power:jvmProcessResources NO-SOURCE
+> Task :kweb-service-power:processJvmMainResources SKIPPED
+> Task :kweb-service-power:jvmMainClasses
+> Task :kweb-service-power:jvmJar
+> Task :kweb-service-processes:kmpPartiallyResolvedDependenciesChecker
+> Task :kweb-service-processes:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :kweb-service-processes:compileKotlinJvm
+> Task :kweb-service-processes:compileJvmMainJava
+> Task :kweb-service-processes:jvmProcessResources NO-SOURCE
+> Task :kweb-service-processes:processJvmMainResources SKIPPED
+> Task :kweb-service-processes:jvmMainClasses
+> Task :kweb-service-processes:jvmJar
+> Task :kweb-service-screen:kmpPartiallyResolvedDependenciesChecker
+> Task :kweb-service-screen:checkKotlinGradlePluginConfigurationErrors SKIPPED
+
+> Task :kweb-service-screen:generateScreenBridge
+D:\a\KWebShell\KWebShell\kweb-service-screen\build\generated\kwebBridge\screen\ScreenBridgeBridge.kt
+D:\a\KWebShell\KWebShell\kweb-service-screen\build\generated\kwebBridge\screen\ScreenBridgeBridge.ts
+D:\a\KWebShell\KWebShell\kweb-service-screen\build\generated\kwebBridge\screen\ScreenBridgeBridge.js
+
+> Task :kweb-service-screen:compileKotlinJvm
+> Task :kweb-service-screen:compileJvmMainJava
+> Task :kweb-service-screen:jvmProcessResources NO-SOURCE
+> Task :kweb-service-screen:processJvmMainResources SKIPPED
+> Task :kweb-service-screen:jvmMainClasses
+> Task :kweb-service-screen:jvmJar
+> Task :kweb-service-secure-storage:kmpPartiallyResolvedDependenciesChecker
+> Task :kweb-service-secure-storage:checkKotlinGradlePluginConfigurationErrors SKIPPED
+
+> Task :kweb-service-secure-storage:generateSecureStorageBridge
+D:\a\KWebShell\KWebShell\kweb-service-secure-storage\build\generated\kwebBridge\secure-storage\SecureStorageBridgeBridge.kt
+D:\a\KWebShell\KWebShell\kweb-service-secure-storage\build\generated\kwebBridge\secure-storage\SecureStorageBridgeBridge.ts
+D:\a\KWebShell\KWebShell\kweb-service-secure-storage\build\generated\kwebBridge\secure-storage\SecureStorageBridgeBridge.js
+
+> Task :kweb-service-secure-storage:compileKotlinJvm
+> Task :kweb-service-secure-storage:compileJvmMainJava
+> Task :kweb-service-secure-storage:jvmProcessResources NO-SOURCE
+> Task :kweb-service-secure-storage:processJvmMainResources SKIPPED
+> Task :kweb-service-secure-storage:jvmMainClasses
+> Task :kweb-service-secure-storage:jvmJar
+> Task :kweb-service-shell:kmpPartiallyResolvedDependenciesChecker
+> Task :kweb-service-shell:checkKotlinGradlePluginConfigurationErrors SKIPPED
+
+> Task :kweb-service-shell:generateShellBridge
+D:\a\KWebShell\KWebShell\kweb-service-shell\build\generated\kwebBridge\shell\ShellBridgeBridge.kt
+D:\a\KWebShell\KWebShell\kweb-service-shell\build\generated\kwebBridge\shell\ShellBridgeBridge.ts
+D:\a\KWebShell\KWebShell\kweb-service-shell\build\generated\kwebBridge\shell\ShellBridgeBridge.js
+
+> Task :kweb-service-shell:compileKotlinJvm
+> Task :kweb-service-shell:compileJvmMainJava
+> Task :kweb-service-shell:jvmProcessResources NO-SOURCE
+> Task :kweb-service-shell:processJvmMainResources SKIPPED
+> Task :kweb-service-shell:jvmMainClasses
+> Task :kweb-service-shell:jvmJar
+> Task :kweb-service-shortcuts:kmpPartiallyResolvedDependenciesChecker
+> Task :kweb-service-shortcuts:checkKotlinGradlePluginConfigurationErrors SKIPPED
+
+> Task :kweb-service-shortcuts:generateShortcutsBridge
+D:\a\KWebShell\KWebShell\kweb-service-shortcuts\build\generated\kwebBridge\shortcuts\ShortcutsBridgeBridge.kt
+D:\a\KWebShell\KWebShell\kweb-service-shortcuts\build\generated\kwebBridge\shortcuts\ShortcutsBridgeBridge.ts
+D:\a\KWebShell\KWebShell\kweb-service-shortcuts\build\generated\kwebBridge\shortcuts\ShortcutsBridgeBridge.js
+
+> Task :kweb-service-shortcuts:compileKotlinJvm
+> Task :kweb-service-shortcuts:compileJvmMainJava
+> Task :kweb-service-shortcuts:jvmProcessResources NO-SOURCE
+> Task :kweb-service-shortcuts:processJvmMainResources SKIPPED
+> Task :kweb-service-shortcuts:jvmMainClasses
+> Task :kweb-service-shortcuts:jvmJar
+> Task :kweb-service-system-preferences:kmpPartiallyResolvedDependenciesChecker
+> Task :kweb-service-system-preferences:checkKotlinGradlePluginConfigurationErrors SKIPPED
+
+> Task :kweb-service-system-preferences:generatePreferencesBridge
+D:\a\KWebShell\KWebShell\kweb-service-system-preferences\build\generated\kwebBridge\preferences\PreferencesBridgeBridge.kt
+D:\a\KWebShell\KWebShell\kweb-service-system-preferences\build\generated\kwebBridge\preferences\PreferencesBridgeBridge.ts
+D:\a\KWebShell\KWebShell\kweb-service-system-preferences\build\generated\kwebBridge\preferences\PreferencesBridgeBridge.js
+
+> Task :kweb-service-system-preferences:compileKotlinJvm
+> Task :kweb-service-system-preferences:compileJvmMainJava
+> Task :kweb-service-system-preferences:jvmProcessResources NO-SOURCE
+> Task :kweb-service-system-preferences:processJvmMainResources SKIPPED
+> Task :kweb-service-system-preferences:jvmMainClasses
+> Task :kweb-service-system-preferences:jvmJar
+> Task :kweb-service-tray:kmpPartiallyResolvedDependenciesChecker
+> Task :kweb-service-tray:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :kweb-service-tray:compileKotlinJvm
+> Task :kweb-service-tray:compileJvmMainJava
+> Task :kweb-service-tray:jvmProcessResources NO-SOURCE
+> Task :kweb-service-tray:processJvmMainResources SKIPPED
+> Task :kweb-service-tray:jvmMainClasses
+> Task :kweb-service-tray:jvmJar
+> Task :kweb-service-window-controls:kmpPartiallyResolvedDependenciesChecker
+> Task :kweb-service-window-controls:checkKotlinGradlePluginConfigurationErrors SKIPPED
+
+> Task :kweb-service-window-controls:generateWindowControlsBridge
+D:\a\KWebShell\KWebShell\kweb-service-window-controls\build\generated\kwebBridge\windowControls\WindowControlsBridgeBridge.kt
+D:\a\KWebShell\KWebShell\kweb-service-window-controls\build\generated\kwebBridge\windowControls\WindowControlsBridgeBridge.ts
+D:\a\KWebShell\KWebShell\kweb-service-window-controls\build\generated\kwebBridge\windowControls\WindowControlsBridgeBridge.js
+
+> Task :kweb-service-window-controls:compileKotlinJvm
+> Task :kweb-service-window-controls:compileJvmMainJava
+> Task :kweb-service-window-controls:jvmProcessResources NO-SOURCE
+> Task :kweb-service-window-controls:processJvmMainResources SKIPPED
+> Task :kweb-service-window-controls:jvmMainClasses
+> Task :kweb-service-window-controls:jvmJar
+> Task :kweb-rfc-governance:compileKotlin
+> Task :kweb-rfc-governance:compileJava NO-SOURCE
+> Task :kweb-rfc-governance:processResources
+> Task :kweb-rfc-governance:classes
+> Task :kweb-rfc-governance:jar
+> Task :kweb-rfc-governance:compileTestKotlin
+> Task :kweb-rfc-governance:compileTestJava NO-SOURCE
+
+> Task :kweb-rfc-governance:rfcCatalogCheck
+RFC catalog valid: 44 documents.
+
+> Task :kweb-rfc-governance:processTestResources NO-SOURCE
+> Task :kweb-rfc-governance:testClasses UP-TO-DATE
+> Task :kweb-rfc-governance:contractTest
+> Task :kweb-example-support:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :kweb-example-support:compileKotlin FROM-CACHE
+> Task :kweb-example-support:compileJava NO-SOURCE
+> Task :kweb-example-support:processResources NO-SOURCE
+> Task :kweb-example-support:classes UP-TO-DATE
+> Task :kweb-example-support:jar
+> Task :kweb-service-tray:compileTestKotlinJvm
+> Task :kweb-service-tray:compileJvmTestJava NO-SOURCE
+> Task :kweb-service-tray:jvmTestProcessResources NO-SOURCE
+> Task :kweb-service-tray:processJvmTestResources SKIPPED
+> Task :kweb-service-tray:jvmTestClasses
+> Task :kweb-service-tray:jvmTest
+> Task :kweb-service-tray:allTests
+
+> Task :kweb-service-tray:configureNative
+-- The C compiler identification is MSVC 19.44.35229.0
+-- The CXX compiler identification is MSVC 19.44.35229.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Configuring done (1.3s)
+-- Generating done (0.0s)
+-- Build files have been written to: D:/a/KWebShell/KWebShell/kweb-service-tray/build/native
+
+> Task :kweb-service-tray:buildNative
+[1/8] Building CXX object CMakeFiles\kweb_tray_abi.dir\src\tray_win.cc.obj
+[2/8] Building CXX object CMakeFiles\kweb_tray_tests.dir\src\tray_abi.cc.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[3/8] Building CXX object CMakeFiles\kweb_tray_tests.dir\tests\tray_tests.cc.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[4/8] Building CXX object CMakeFiles\kweb_tray_tests.dir\tests\tray_structure_win.cc.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[5/8] Building CXX object CMakeFiles\kweb_tray_abi.dir\src\tray_abi.cc.obj
+[6/8] Building CXX object CMakeFiles\kweb_tray_tests.dir\src\tray_win.cc.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[7/8] Linking CXX shared library contract\kwebshell_tray.dll
+[8/8] Linking CXX executable contract\kweb_tray_tests.exe
+
+> Task :kweb-service-tray:nativeTest
+Internal ctest changing into directory: D:/a/KWebShell/KWebShell/kweb-service-tray/build/native
+Test project D:/a/KWebShell/KWebShell/kweb-service-tray/build/native
+    Start 1: kweb_tray_tests
+1/1 Test #1: kweb_tray_tests ..................   Passed    0.10 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+abi       =   0.10 sec*proc (1 test)
+native    =   0.10 sec*proc (1 test)
+tray      =   0.10 sec*proc (1 test)
+
+Total Test time (real) =   0.11 sec
+
+> Task :kweb-service-tray:nativeTrayIntegrationTest
+The tray integration fixture passed: D:\a\KWebShell\KWebShell\kweb-service-tray\build\reports\tray-integration\tray-integration.json
+
+> Task :kweb-service-tray:nativeTrayRuntimeZip
+> Task :kweb-service-tray:verifyNativeTrayPackage
+> Task :kweb-service-tray:check
+gradle/actions: Writing build results to D:\a\_temp\.gradle-actions\build-results\__run_9-1792290049131.json
+
+[Incubating] Problems report is available at: file:///D:/a/KWebShell/KWebShell/build/reports/problems/problems-report.html
+
+BUILD SUCCESSFUL in 1m 47s
+109 actionable tasks: 106 executed, 3 from cache
+Configuration cache entry stored.

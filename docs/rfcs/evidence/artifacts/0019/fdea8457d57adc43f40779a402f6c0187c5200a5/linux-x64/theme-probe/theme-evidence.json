@@ -1,0 +1,1 @@
+{"schemaVersion":1,"target":"linux-x64","cefRuntime":"stock-cef-151","startupObservations":"dark=false,light=true,contrast=true,reduced-motion=true,forced-colors=true","platformColorScheme":"LIGHT","contentColorSchemeFollowsPlatform":true,"restartRequiredPreferences":{"HIGH_CONTRAST":true,"REDUCED_MOTION":true}}

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="KWebSecureStorageContractTest[jvm]" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-10-18T02:44:35.612Z" hostname="sat12-bq147-8cef0a38-215c-4f41-a423-fe302f559d0d-3A39FD9AC20F.local" time="0.048">
+  <properties/>
+  <testcase name="secretValuesZeroOnCloseAndNeverRevealBytes()[jvm]" classname="io.github.kingsword09.kwebshell.service.securestorage.KWebSecureStorageContractTest" time="0.028"/>
+  <testcase name="valuesAreBounded()[jvm]" classname="io.github.kingsword09.kwebshell.service.securestorage.KWebSecureStorageContractTest" time="0.002"/>
+  <testcase name="identifiersAreBoundedAndStable()[jvm]" classname="io.github.kingsword09.kwebshell.service.securestorage.KWebSecureStorageContractTest" time="0.001"/>
+  <testcase name="capabilityReportAnswersDeclaredQueries()[jvm]" classname="io.github.kingsword09.kwebshell.service.securestorage.KWebSecureStorageContractTest" time="0.004"/>
+  <testcase name="scopeOwnershipIsExclusive()[jvm]" classname="io.github.kingsword09.kwebshell.service.securestorage.KWebSecureStorageContractTest" time="0.001"/>
+  <testcase name="descriptorPublishesHostOperationsOnly()[jvm]" classname="io.github.kingsword09.kwebshell.service.securestorage.KWebSecureStorageContractTest" time="0.005"/>
+  <testcase name="requestsCompareByValueContent()[jvm]" classname="io.github.kingsword09.kwebshell.service.securestorage.KWebSecureStorageContractTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

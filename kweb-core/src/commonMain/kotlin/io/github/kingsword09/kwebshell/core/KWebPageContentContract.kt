@@ -61,7 +61,7 @@ public data class KWebPageContentRequest(
  */
 public data class KWebPageContent(
     public val kind: KWebPageContentKind,
-    
+
     /** The frame URL Chromium reported with the delivered document. */
     public val url: String,
     public val text: String,

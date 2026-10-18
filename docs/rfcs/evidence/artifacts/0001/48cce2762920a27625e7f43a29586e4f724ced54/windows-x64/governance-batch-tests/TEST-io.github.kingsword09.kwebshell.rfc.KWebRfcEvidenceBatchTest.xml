@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="io.github.kingsword09.kwebshell.rfc.KWebRfcEvidenceBatchTest" tests="12" skipped="0" failures="0" errors="0" timestamp="2026-10-18T07:24:28.939Z" hostname="runnervmgnbhw" time="6.304">
+  <properties/>
+  <testcase name="lastRecordFailureDoesNotPublishEarlierRecordsOrArtifacts()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcEvidenceBatchTest" time="0.259"/>
+  <testcase name="ioFailureAfterPublishingAnArtifactKeepsManifestAndAllowsRetry()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcEvidenceBatchTest" time="0.514"/>
+  <testcase name="batchEqualsSequentialRecordingAcrossTargetsAndKeepsHistoricalRecords()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcEvidenceBatchTest" time="0.94"/>
+  <testcase name="packagedSchemaMatchesBatchFieldsAndBoundaries()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcEvidenceBatchTest" time="0.139"/>
+  <testcase name="outputDirectoryFailsWithStructuredPublishErrorAndPreservesManifest()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcEvidenceBatchTest" time="0.127"/>
+  <testcase name="twoProvidersCannotPublishConflictingBytesAtTheSameRetainedPath()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcEvidenceBatchTest" time="0.211"/>
+  <testcase name="existingArtifactsCannotBeOverwrittenAndIdenticalRerunIsSafe()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcEvidenceBatchTest" time="0.313"/>
+  <testcase name="batchRetainsCompatibilityBytesAndRejectsWrongTargetOrRuntime()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcEvidenceBatchTest" time="0.248"/>
+  <testcase name="unsafePathsAndInvalidSourceRevisionNeverEscapeStaging()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcEvidenceBatchTest" time="0.131"/>
+  <testcase name="linkedSourceDirectoryIsRejectedOnEveryHost()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcEvidenceBatchTest" time="0.152"/>
+  <testcase name="strictSchemaRejectsUnknownFieldsWrongTypesVersionsAndSizeBoundaries()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcEvidenceBatchTest" time="0.196"/>
+  <testcase name="actualCliRecordsFromHostedEnvironmentAndRejectsLocalAndInvalidOptions()" classname="io.github.kingsword09.kwebshell.rfc.KWebRfcEvidenceBatchTest" time="3.061"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

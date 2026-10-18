@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="KWebMenusBridgeTest[jvm]" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-10-18T07:24:29.582Z" hostname="iad20-fj925-b522557f-1d34-4377-ad9b-4511ad824171-B2F1823BF972.local" time="0.127">
+  <properties/>
+  <testcase name="aGrantedGestureBoundRendererRequestPresentsTheDeclaredPageMenuOnly()[jvm]" classname="io.github.kingsword09.kwebshell.service.menus.KWebMenusBridgeTest" time="0.102"/>
+  <testcase name="aMissingGestureIsRejectedAndAMalformedRequestNeverReachesTheService()[jvm]" classname="io.github.kingsword09.kwebshell.service.menus.KWebMenusBridgeTest" time="0.005"/>
+  <testcase name="aMissingGrantOrChildFrameIsDeniedBeforeDispatch()[jvm]" classname="io.github.kingsword09.kwebshell.service.menus.KWebMenusBridgeTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

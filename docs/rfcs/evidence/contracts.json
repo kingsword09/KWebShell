@@ -684,6 +684,7 @@
         "kweb-cef-native/resources/engine_exports_mac.txt",
         "kweb-cef-native/src",
         "kweb-cef-native/tests",
+        "kweb-compose/src/test/kotlin/io/github/kingsword09/kwebshell/compose/KWebViewPlacementTest.kt",
         "kweb-core/src/commonMain",
         "kweb-core/src/commonTest",
         "kweb-desktop/src/main",

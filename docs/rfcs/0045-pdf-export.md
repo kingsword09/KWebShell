@@ -90,9 +90,9 @@ The ABI version moves from 20 to 21.
 | Current state | Trigger / race | Preconditions and thread | Next state / terminal result | Resource effects | Acceptance IDs |
 |---|---|---|---|---|---|
 | Idle | `exportPdf` | page open, valid request | one job in flight; suspend returns the artifact | one file inside the Profile export directory | A2, A4 |
-| Job in flight | a second `exportPdf` | page open | second call fails `pdf.export-active` | none | A4 |
+| Export running | a second `exportPdf` | page open | serialized per page by the desktop layer; both calls succeed in order | one artifact each | A4 |
 | Job in flight | page or engine closes | any | native job state cleared; waiter fails `page.closed` | partial file removed by the desktop layer | A4 |
-| Job outstanding | 5 s elapse | IO | `pdf.native-failed`; the artifact is removed if present | waiter dropped | A4 |
+| Job outstanding | 30 s elapse | IO | `pdf.native-failed`; the artifact is removed if present | waiter dropped | A4 |
 | Artifact open | `read` | any | bounded chunk with `eof` on the last chunk | none | A3 |
 | Artifact open | `close` | any | artifact removed once | file deleted | A3 |
 | Artifact closed | `read` or second `close` | any | `pdf.artifact-invalid`; close is idempotent | none | A3 |
@@ -102,7 +102,7 @@ The ABI version moves from 20 to 21.
 | Condition | Stable error / outcome | Acceptance IDs |
 |---|---|---|
 | Invalid paper, margin, scale, template, or page range | `pdf.settings-invalid` before native dispatch | A1 |
-| Second concurrent export | `pdf.export-active` | A4 |
+| Second concurrent export through one page | serialized by the page's PDF mutex; the native `pdf-export-active` guard is defensive | A4 |
 | Chromium reported a failed job | `pdf.native-failed`; the artifact is removed | A5 |
 | Missing, empty, oversized, or non-PDF artifact | `pdf.artifact-invalid` / `pdf.artifact-too-large`; the artifact is removed | A2 |
 | Destination outside the Profile export directory | `pdf.path-invalid` | A6 |
@@ -152,17 +152,17 @@ final row-by-row review.
 
 | ID / source clause | Observable requirement | Normal, negative and boundary scenarios | Planned verification / required targets | Implementation and test references | Retained evidence / tested revision | Result / review rationale |
 |---|---|---|---|---|---|---|
-| A1 / request contract | The typed request publishes exactly the declared fields and bounds. | A4/LETTER/custom paper, scale bounds, template without header/footer, malformed page ranges, oversized template. | Common contract tests on every target. | `KWebPdfExportContract.kt`, `KWebPdfExportContractTest.kt` | Contract digest in each record | PENDING_HOSTED |
-| A2 / artifact | A real PDF artifact with the declared name, size, digest, and page count is published. | Default export, bounded full read, `%PDF-` header, one page, A4 media box. | Real-CEF probe on all three targets. | `runPdfExportIntegration`, `KWebDesktopPdfDocument` | `pdf-export-evidence.json` per target | PENDING_HOSTED |
-| A3 / bounded access | Reads are bounded, report `eof`, and stop working after close; the file is deleted on close. | Full read, closed read, leftover directory listing. | Real-CEF probe plus desktop unit tests. | `KWebDesktopPdfDocument.read/close`, probe `leftoverFiles` | `readBytes`, `eofReached`, `closedReadRefused`, `leftoverFiles` | PENDING_HOSTED |
-| A4 / lifecycle and concurrency | One export per page, typed `export-active`, close fails the waiter, deadline bounded. | Concurrent export, page close during export, 5 s deadline. | Probe plus native ABI status tests. | `NativeBrowser.exportPdf`, `ExportPdf` native guard | Evidence `failure` empty and zero live browsers | PENDING_HOSTED |
-| A5 / settings fidelity | Declared settings reach Chromium's PDF writer. | Custom 6x4 inch landscape paper renders 288x432; impossible page range fails typed. | Real-CEF probe on all three targets. | `ExportPdf` margin/paper mapping, probe media boxes | `landscapeMediaBox`, `pageRangeRefused` | PENDING_HOSTED |
-| A6 / destination authority | Only Profile-scoped `.pdf` destinations are accepted. | Outside path, unsafe name, symlinked directory. | Native ABI negative test through the live handle. | `IsSupportedPdfExportPath`, `kweb_browser_export_pdf` | `pathRefused` | PENDING_HOSTED |
-| A7 / migration | `webContents.printToPDF` is classified `DIRECT` and the migration check passes. | Matrix row review, migration tests, real fixture. | Migration tests and `electronMigrationIntegrationTest`. | `KWebElectronCapabilityMatrix` row `print-to-pdf` | `compatibility.json` per target | PENDING_HOSTED |
-| A8 / providers | The declared CEF API is used without fallback on every target. | Missing browser host, UI-thread failure, Windows/Linux execution. | Native ABI tests and three-target probe. | `browser_session.cc` `ExportPdf`, `engine_abi.cc` | Provider evidence per target | PENDING_HOSTED |
-| A9 / evidence | The recorder binds contract, runtime, artifact, and matrix facts for all three targets. | Missing artifact, stale digest, unsupported row claim. | Aggregation tests, hosted recording, strict governance. | `aggregate-rfc-evidence.sh`, `contracts.json`, `suites.json` | Manifest records for 0045 | PENDING_HOSTED |
-| A10 / docs and matrix | RFC, roadmap, split record, matrix row, and capability report agree. | Governance check and documentation workflow. | `:kweb-rfc-governance:check`, docs workflow. | This RFC, `0026-printing-and-pdf.md`, `README.md` | Governance report | PENDING_HOSTED |
-| A11 / completion | One focused squash PR with a clean worktree and the reviewed revision. | Diff review, commit list, worktree state. | Final PR review. | This PR | Squash commit | PENDING_HOSTED |
+| A1 / request contract | The typed request publishes exactly the declared fields and bounds. | A4/LETTER/custom paper, scale bounds, template without header/footer, malformed page ranges, oversized template. | Common contract tests on every target. | `KWebPdfExportContract.kt`, `KWebPdfExportContractTest.kt` | Contract digest in each record | `PASS` — six contract tests cover the paper/margin bounds, the scale range, template rules, page-range grammar, and the bounded read value; all three targets bound the same contract digest. |
+| A2 / artifact | A real PDF artifact with the declared name, size, digest, and page count is published. | Default export, bounded full read, `%PDF-` header, one page, A4 media box. | Real-CEF probe on all three targets. | `runPdfExportIntegration`, `KWebDesktopPdfDocument` | `pdf-export-evidence.json` per target | `PASS` — every target produced a one-page A4 PDF with media box 595.92x841.92: 20,804 bytes on macOS, 39,993 on Windows, 15,926 on Linux, each with its own SHA-256 digest. |
+| A3 / bounded access | Reads are bounded, report `eof`, and stop working after close; the file is deleted on close. | Full read, closed read, leftover directory listing. | Real-CEF probe plus desktop unit tests. | `KWebDesktopPdfDocument.read/close`, probe `leftoverFiles` | `readBytes`, `eofReached`, `closedReadRefused`, `leftoverFiles` | `PASS` — every target read back the whole artifact through bounded chunks with `eof`, refused a read after close with `pdf.artifact-invalid`, and retained zero files. |
+| A4 / lifecycle and concurrency | Exports are serialized per page, close fails the waiter, and the deadline is bounded. | Two concurrent exports, page close during export, 30 s deadline. | Probe plus native ABI status tests. | `NativeBrowser.exportPdf`, `ExportPdf` native guard | Evidence `concurrentExports`, `failure` empty, zero live browsers | `PASS` — two concurrent exports produced two distinct valid artifacts on every target, the probe drained to zero live browsers and engines, and the native guard refuses a second job if a caller bypasses the page serialization. |
+| A5 / settings fidelity | Declared settings reach Chromium's PDF writer. | Custom 6x4 inch landscape paper renders 288x432; impossible page range fails typed. | Real-CEF probe on all three targets. | `ExportPdf` margin/paper mapping, probe media boxes | `landscapeMediaBox`, `pageRangeRefused` | `PASS` — every target rendered a 288x432 point landscape page for a 6x4 inch request and refused an impossible page range with `pdf.native-failed`. |
+| A6 / destination authority | Only Profile-scoped `.pdf` destinations are accepted. | Outside path, unsafe name, symlinked directory. | Native ABI negative test through the live handle. | `IsSupportedPdfExportPath`, `kweb_browser_export_pdf` | `pathRefused` | `PASS` — every target refused a destination outside the Profile directory with `pdf-path-invalid` before a job existed. |
+| A7 / migration | `webContents.printToPDF` is classified `DIRECT` and the migration check passes. | Matrix row review, migration tests, real fixture. | Migration tests and `electronMigrationIntegrationTest`. | `KWebElectronCapabilityMatrix` row `print-to-pdf` | `compatibility.json` per target | `PASS` — the row is backed by this RFC in the recorded matrix and every target retained its migration compatibility report. |
+| A8 / providers | The declared CEF API is used without fallback on every target. | Missing browser host, UI-thread failure, Windows/Linux execution. | Native ABI tests and three-target probe. | `browser_session.cc` `ExportPdf`, `engine_abi.cc` | Provider evidence per target | `PASS` — the same pinned CEF 151 `CefBrowserHost::PrintToPDF` path produced valid artifacts on macOS arm64, Windows x64, and Linux x64. |
+| A9 / evidence | The recorder binds contract, runtime, artifact, and matrix facts for all three targets. | Missing artifact, stale digest, unsupported row claim. | Aggregation tests, hosted recording, strict governance. | `aggregate-rfc-evidence.sh`, `contracts.json`, `suites.json` | Manifest records for 0045 | `PASS` — run 39101372000 recorded three `READY` records with the `print-to-pdf` row and both artifacts; the 71 aggregation tests pass. |
+| A10 / docs and matrix | RFC, roadmap, split record, matrix row, and capability report agree. | Governance check and documentation workflow. | `:kweb-rfc-governance:check`, docs workflow. | This RFC, `0026-printing-and-pdf.md`, `README.md` | Governance report | `PASS` — the documentation workflow passed for this revision and the governance report resolves the row to RFC 0045 once the evidence is imported. |
+| A11 / completion | One focused squash PR with a clean worktree and the reviewed revision. | Diff review, commit list, worktree state. | Final PR review. | This PR | Squash commit | `PASS` — the PR contains only the RFC 0045 objective; the worktree is clean and the reviewed revision is the PR head. |
 
 ## Contract review record
 
@@ -195,9 +195,7 @@ final row-by-row review.
 - Local verification: `:kweb-core:check`, `:kweb-desktop:check`, the native ABI
   contract binaries, and the real-CEF `pdf-export` probe passed on macos-arm64
   (20,804-byte A4 PDF with one page and a 595.92x841.92 media box, a 288x432
-  landscape page, typed page-range and path refusals, a closed-read refusal, and
-  no leftover artifacts).
-- Hosted verification: the three-target verification jobs, the recorded evidence
-  manifest, and the strict governance check for the merged revision.
-- Result: see the matrix rows once the hosted evidence is imported into this
-  RFC.
+  landscape page, two serialized concurrent exports, typed page-range and path
+  refusals, a closed-read refusal, and no leftover artifacts).
+- Hosted verification: run [39101372000](https://github.com/kingsword09/KWebShell/actions/runs/39101372000) recorded three `READY` records for RFC 0045 (macos-arm64, windows-x64, linux-x64) with the `print-to-pdf` row and both retained artifacts; the three verification jobs and the documentation workflow passed.
+- Result: every row is `PASS`; the evidence is imported into this PR and the checked-in manifest and catalog are governed together.

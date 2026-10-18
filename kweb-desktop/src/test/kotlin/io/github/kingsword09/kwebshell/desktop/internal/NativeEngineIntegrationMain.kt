@@ -1874,6 +1874,7 @@ private fun runPdfExportIntegration() {
     var pathRefused = false
     var closedReadRefused = false
     var leftoverFiles = -1
+    var concurrentExports = 0
     try {
         kotlinx.coroutines.runBlocking {
             require(KWebCapability.PDF_EXPORT in engine.capabilities) {
@@ -1953,7 +1954,29 @@ private fun runPdfExportIntegration() {
             }
             landscape.close()
 
-            // 3. A page range outside the document is refused by Chromium.
+            // 3. Concurrent exports are serialized per page: both produce a valid
+            //    artifact and neither inherits the other's job.
+            val (firstDocument, secondDocument) = kotlinx.coroutines.coroutineScope {
+                val firstExport = async { livePage.utilities.exportPdf() }
+                val secondExport = async { livePage.utilities.exportPdf() }
+                firstExport.await() to secondExport.await()
+            }
+            require(firstDocument.sizeBytes > 0L && secondDocument.sizeBytes > 0L) {
+                "A concurrent export produced an empty artifact."
+            }
+            require(firstDocument.name != secondDocument.name) {
+                "Concurrent exports reused one artifact name."
+            }
+            val firstContent = readAll(firstDocument)
+            val secondContent = readAll(secondDocument)
+            require(String(firstContent, Charsets.ISO_8859_1).startsWith("%PDF-") &&
+                String(secondContent, Charsets.ISO_8859_1).startsWith("%PDF-")
+            ) { "A concurrent export produced an invalid artifact." }
+            firstDocument.close()
+            secondDocument.close()
+            concurrentExports = 2
+
+            // 4. A page range outside the document is refused by Chromium.
             val refused = runCatching {
                 livePage.utilities.exportPdf(
                     io.github.kingsword09.kwebshell.core.KWebPdfExportRequest(pageRanges = "7"),
@@ -1965,7 +1988,7 @@ private fun runPdfExportIntegration() {
             ) { "An impossible page range did not fail with the declared error: $refused" }
             pageRangeRefused = true
 
-            // 4. The engine refuses a destination outside the Profile directory.
+            // 5. The engine refuses a destination outside the Profile directory.
             val outside = NativeBindings.browserExportPdf(
                 (livePage as KWebDesktopPage).requireNativeHandle("pdf-path-probe"),
                 77,
@@ -2018,6 +2041,7 @@ private fun runPdfExportIntegration() {
         put("pageRangeRefused", pageRangeRefused)
         put("pathRefused", pathRefused)
         put("closedReadRefused", closedReadRefused)
+        put("concurrentExports", concurrentExports)
         put("leftoverFiles", leftoverFiles)
         put("failure", probeFailure?.let { it::class.simpleName } ?: "")
     }

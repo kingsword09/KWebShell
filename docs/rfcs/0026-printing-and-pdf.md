@@ -22,19 +22,44 @@ the current page as a bounded, engine-owned PDF artifact through Chromium's
 PDF pipeline, with typed paper, scale, margin, header/footer, page-range, and
 background settings.
 
-The remaining objectives stay here and are not implemented by RFC 0045:
+The remaining objectives stay here:
 
-1. interactive printing through the platform print path (Linux
-   `CefPrintHandler` dialogs, the macOS print panel, and the Windows spooler),
-   including `window.print()` behavior on every target;
-2. printer discovery and capability facts (media, duplex, color);
+1. printer discovery and capability facts, delivered as
+   [RFC 0046](0046-printer-discovery.md);
+2. interactive printing through the platform print path, including
+   `window.print()` behavior on every target;
 3. silent print jobs under a separately audited application policy;
 4. job state, cancellation, and shutdown semantics for real spooler jobs.
 
-Those objectives need their own readiness review, and their evidence requires a
-real print queue per platform. RFC 0045's contract must not be extended in
-place: a change to its PDF settings or artifact rules is a new reviewed
-objective.
+### Blocked print-submission remainder (2026-10-18)
+
+Objectives 2-4 are recorded as blocked by the pinned runtime, not as pending
+work:
+
+- `CefBrowserHost::Print()` disables print preview whenever the runtime style is
+  Alloy (`CefBrowserPlatformDelegate::IsPrintPreviewSupported` returns false for
+  `IsAlloyStyle()` unless the command line enables preview explicitly). The
+  Windows and macOS paths therefore fall back to the operating system's own
+  modal print dialog, which a hosted verification job cannot drive or cancel and
+  whose outcome cannot be retained as evidence.
+- On Linux the same call needs an application-provided `CefPrintHandler`:
+  `CefPrintDialogLinux::ShowDialog` invokes `OnPrintDialog` and `OnPrintJob`, so
+  the application must render the dialog and submit the job to a real queue
+  itself. That is a complete platform objective of its own, not a slice of this
+  RFC, and it still cannot produce cross-platform evidence.
+- A silent job has no cross-platform hook: `CefPrintHandler` is documented and
+  implemented for Linux only, so no Windows or macOS path accepts an
+  application-chosen queue without a Chromium patch series of its own.
+
+Publishing `print()` or a silent job API under these constraints would either
+promise behavior the runtime cannot deliver or require hosting native dialogs as
+verified evidence. The RFC therefore stays `Proposed` for these objectives, and
+the capability matrix keeps `webContents.print` unclaimed. A future objective
+that patches Chromium's print path, or that declares a Linux-only print contract
+with an application-owned dialog, must start with its own readiness review.
+
+RFC 0045's and RFC 0046's contracts must not be extended in place: a change to
+their settings, artifact, or snapshot rules is a new reviewed objective.
 
 ## Contract
 

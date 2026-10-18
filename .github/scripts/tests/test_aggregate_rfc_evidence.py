@@ -29,7 +29,7 @@ TARGETS = ("macos-arm64", "windows-x64", "linux-x64")
 IMPLEMENTED = {
     "0001", "0002", "0003", "0004", "0006", "0007", "0008", "0009",
     "0010", "0011", "0012", "0013", "0014", "0015", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0027", "0030", "0043",
-    "0044", "0045",
+    "0044", "0045", "0046",
 }
 ARTIFACTS = {
     "rfc-governance": ["TEST-io.github.kingsword09.kwebshell.rfc.KWebRfcGovernanceCheckerTest.xml",
@@ -50,6 +50,7 @@ ARTIFACTS = {
         "capture-permission-evidence.json", "page-utilities-evidence.json",
         "pdf-export-evidence.json",
     ],
+    "printers-integration": ["printers-integration.json"],
     "electron-migration": [
         "compatibility.json", "migration-clipboard-evidence.json", "migration-shell-evidence.json",
     ],

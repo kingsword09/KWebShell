@@ -11,6 +11,7 @@ import io.github.kingsword09.kwebshell.service.image.KWebNativeImage
 import io.github.kingsword09.kwebshell.service.menus.KWebMenus
 import io.github.kingsword09.kwebshell.service.preferences.KWebSystemPreferences
 import io.github.kingsword09.kwebshell.service.power.KWebPower
+import io.github.kingsword09.kwebshell.service.printers.KWebPrinters
 import io.github.kingsword09.kwebshell.service.processes.KWebProcesses
 import io.github.kingsword09.kwebshell.service.securestorage.KWebSecureStorage
 import io.github.kingsword09.kwebshell.service.screen.KWebScreens
@@ -63,6 +64,10 @@ public object KWebRfcServiceCatalog {
         KWebRfcServiceContract(
             KWebProcesses.DESCRIPTOR.id,
             KWebProcesses.DESCRIPTOR.version.toString(),
+        ),
+        KWebRfcServiceContract(
+            KWebPrinters.DESCRIPTOR.id,
+            KWebPrinters.DESCRIPTOR.version.toString(),
         ),
     )
 

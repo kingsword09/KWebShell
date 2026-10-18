@@ -239,6 +239,7 @@ private enum class IntegrationMode(val argument: String) {
     CONTEXT_MENU("context-menu"),
     CAPTURE_PERMISSION("capture-permission"),
     PAGE_UTILITIES("page-utilities"),
+    PAGE_CONTENT("page-content"),
     PDF_EXPORT("pdf-export"),
     THEME("theme"),
     FILES_WORKSPACE("files-workspace"),
@@ -282,6 +283,7 @@ fun main(arguments: Array<String>) {
             IntegrationMode.CONTEXT_MENU -> runContextMenuIntegration()
             IntegrationMode.CAPTURE_PERMISSION -> runCapturePermissionIntegration()
             IntegrationMode.PAGE_UTILITIES -> runPageUtilitiesIntegration()
+            IntegrationMode.PAGE_CONTENT -> runPageContentIntegration()
             IntegrationMode.PDF_EXPORT -> runPdfExportIntegration()
             IntegrationMode.THEME -> runThemeIntegration()
             IntegrationMode.FILES_WORKSPACE -> runFilesWorkspaceIntegration()
@@ -323,6 +325,7 @@ private fun runCoordinator() {
     runChildAndRequireSuccess(IntegrationMode.CONTEXT_MENU, root.resolve("context-menu"))
     runChildAndRequireSuccess(IntegrationMode.CAPTURE_PERMISSION, root.resolve("capture-permission"))
     runChildAndRequireSuccess(IntegrationMode.PAGE_UTILITIES, root.resolve("page-utilities"))
+    runChildAndRequireSuccess(IntegrationMode.PAGE_CONTENT, root.resolve("page-content"))
     runChildAndRequireSuccess(IntegrationMode.PDF_EXPORT, root.resolve("pdf-export"))
     runChildAndRequireSuccess(IntegrationMode.THEME, root.resolve("theme"))
     runChildAndRequireSuccess(IntegrationMode.FILES_WORKSPACE, root.resolve("files-workspace"))
@@ -1842,6 +1845,385 @@ private fun runPageUtilitiesIntegration() {
     )
     println("KWebShell RFC0044 page utilities passed: finals=$finalUpdateCount.")
 }
+
+/** A controlled document set for the page content probe. */
+private class PageContentFixture : AutoCloseable {
+    private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    private val port = server.address.port
+    val pageUrl: String = "http://127.0.0.1:$port/content"
+    val emptyUrl: String = "http://127.0.0.1:$port/empty"
+    val unicodeUrl: String = "http://127.0.0.1:$port/unicode"
+    val frameUrl: String = "http://127.0.0.1:$port/frame"
+    val subframeUrl: String = "http://localhost:$port/subframe"
+
+    init {
+        server.createContext("/content") { exchange ->
+            respond(
+                exchange,
+                "<!DOCTYPE html><html><head><title>content page</title></head><body>" +
+                    "<p id=\"marker\">original marker</p>" +
+                    "<p>second paragraph</p>" +
+                    "</body></html>",
+            )
+        }
+        server.createContext("/empty") { exchange ->
+            respond(exchange, "<!DOCTYPE html><html><body></body></html>")
+        }
+        server.createContext("/unicode") { exchange ->
+            respond(exchange, "<!DOCTYPE html><html><body><p>\u4f60\u597d\u4e16\u754c</p></body></html>")
+        }
+        server.createContext("/frame") { exchange ->
+            respond(
+                exchange,
+                "<!DOCTYPE html><html><body><p>outer document</p>" +
+                    "<iframe src=\"$subframeUrl\"></iframe></body></html>",
+            )
+        }
+        server.createContext("/subframe") { exchange ->
+            respond(exchange, "<!DOCTYPE html><html><body><p>subframe-only-marker</p></body></html>")
+        }
+        server.start()
+    }
+
+    private fun respond(exchange: com.sun.net.httpserver.HttpExchange, body: String) {
+        val bytes = body.toByteArray(StandardCharsets.UTF_8)
+        exchange.responseHeaders.add("Content-Type", "text/html; charset=utf-8")
+        exchange.sendResponseHeaders(200, bytes.size.toLong())
+        exchange.responseBody.use { it.write(bytes) }
+    }
+
+    override fun close() {
+        server.stop(0)
+    }
+}
+
+/**
+ * RFC 0047 probe: real Chromium page source and rendered text reads.
+ *
+ * Every assertion is a Chromium observation: the source reflects a DOM mutation
+ * performed through CDP, the text is compared with the renderer's own
+ * `innerText`, the declared bound is checked against a document that is longer
+ * than it, and a cross-origin subframe's content never appears in either view.
+ */
+private fun runPageContentIntegration() {
+    val configured = runtimeConfiguration()
+    val root = requiredPathProperty(INTEGRATION_ROOT_PROPERTY)
+    val fixture = PageContentFixture()
+    val engine = KWebDesktop.openEngine(
+        KWebDesktopEngineConfiguration(
+            cefRuntime = configured.cefRuntime,
+            browserSubprocess = configured.browserSubprocess,
+            resources = configured.resources,
+            locales = configured.locales,
+            rootCache = configured.rootCache,
+            log = configured.log,
+            remoteDebuggingPort = configured.remoteDebuggingPort,
+        ),
+    )
+    val surfaces = CopyOnWriteArrayList<ComposeBrowserSurface>()
+    var profile: io.github.kingsword09.kwebshell.core.KWebProfile? = null
+    val pages = CopyOnWriteArrayList<io.github.kingsword09.kwebshell.core.KWebPage>()
+    var probeFailure: Throwable? = null
+    var sourceBytes = 0
+    var sourceStartsWithDoctype = false
+    var sourceHasMarkup = false
+    var sourceSawMutation = false
+    var sourceSawOriginalMarker = true
+    var textBytes = 0
+    var textMatchesInnerText = false
+    var textHasMarkup = false
+    var textSawMutation = false
+    var truncatedBytes = 0
+    var truncatedTotalBytes = 0L
+    var truncatedPrefixMatches = false
+    var truncatedFlag = false
+    var unicodeBytes = 0
+    var unicodeDeliveredBytes = 0
+    var unicodeBoundaryHeld = false
+    var emptyTextBytes = 0
+    var emptyTruncated = true
+    var subframeSourceLeaked = true
+    var subframeTextLeaked = true
+    var concurrentReads = 0
+    var closedPageRefused = false
+    try {
+        kotlinx.coroutines.runBlocking {
+            require(KWebCapability.PAGE_CONTENT in engine.capabilities) {
+                "The engine did not declare the page content capability it implements."
+            }
+            profile = engine.openProfile("rfc0047-page-content")
+            val liveProfile = requireNotNull(profile)
+            suspend fun openPage(url: String): io.github.kingsword09.kwebshell.core.KWebPage {
+                val surface = NativeEngine.onAwtEventDispatchThread {
+                    ComposeBrowserSurface.create(720, 540)
+                }
+                surfaces += surface
+                val page = liveProfile.openPage(
+                    KWebDesktop.composeWindowHost(surface.window),
+                    url,
+                    KWebRect(0, 0, 720, 540),
+                )
+                page.setSurfaceState(visible = true, focused = true)
+                pages += page
+                kotlinx.coroutines.withTimeout(30_000) {
+                    page.events.first { it.type == KWebPageEventType.LOAD_ENDED && it.url == url }
+                }
+                return page
+            }
+            val page = openPage(fixture.pageUrl)
+            val cdp = CdpClient(configured.remoteDebuggingPort)
+            cdp.awaitPage(fixture.pageUrl)
+
+            // 1. The source is the document's serialized HTML.
+            val source = page.utilities.content(
+                io.github.kingsword09.kwebshell.core.KWebPageContentRequest(
+                    kind = io.github.kingsword09.kwebshell.core.KWebPageContentKind.SOURCE,
+                ),
+            )
+            require(source.kind == io.github.kingsword09.kwebshell.core.KWebPageContentKind.SOURCE) {
+                "The source read reported ${source.kind}."
+            }
+            require(source.url == fixture.pageUrl) {
+                "The source read reported the URL '${source.url}' instead of '${fixture.pageUrl}'."
+            }
+            sourceBytes = source.text.encodeToByteArray().size
+            require(source.totalBytes == sourceBytes.toLong()) {
+                "A complete source read reported ${source.totalBytes} bytes for $sourceBytes delivered bytes."
+            }
+            require(!source.truncated) { "A source read below its bound reported truncation." }
+            sourceStartsWithDoctype = source.text.startsWith("<!DOCTYPE html>")
+            require(sourceStartsWithDoctype) {
+                "The source read did not start with the document's doctype: '${source.text.take(64)}'"
+            }
+            sourceHasMarkup = source.text.contains("<p id=\"marker\">") && source.text.contains("</html>")
+            require(sourceHasMarkup) { "The source read carried no markup: '${source.text}'" }
+            sourceSawOriginalMarker = source.text.contains("original marker")
+            require(sourceSawOriginalMarker) { "The source read lost the document's first paragraph." }
+
+            // 2. The read observes the live DOM, not the served bytes.
+            cdp.evaluate(
+                "document.getElementById('marker').textContent = 'mutated marker'; 'ok'",
+            )
+            val mutated = page.utilities.content(
+                io.github.kingsword09.kwebshell.core.KWebPageContentRequest(
+                    kind = io.github.kingsword09.kwebshell.core.KWebPageContentKind.SOURCE,
+                ),
+            )
+            sourceSawMutation = mutated.text.contains("mutated marker")
+            require(sourceSawMutation) {
+                "The source read did not observe the DOM mutation: '${mutated.text}'"
+            }
+            sourceSawOriginalMarker = mutated.text.contains("original marker")
+            require(!sourceSawOriginalMarker) {
+                "The source read still carried the replaced text after the mutation."
+            }
+
+            // 3. The text read is the renderer's own display text.
+            val text = page.utilities.content(
+                io.github.kingsword09.kwebshell.core.KWebPageContentRequest(
+                    kind = io.github.kingsword09.kwebshell.core.KWebPageContentKind.TEXT,
+                ),
+            )
+            require(text.kind == io.github.kingsword09.kwebshell.core.KWebPageContentKind.TEXT) {
+                "The text read reported ${text.kind}."
+            }
+            textBytes = text.text.encodeToByteArray().size
+            textHasMarkup = text.text.contains("<p") || text.text.contains("</body>")
+            require(!textHasMarkup) { "The text read carried markup: '${text.text}'" }
+            textSawMutation = text.text.contains("mutated marker")
+            require(textSawMutation) { "The text read did not observe the DOM mutation." }
+            val innerText = cdp.evaluate("document.body.innerText")
+            textMatchesInnerText = normalizeWhitespace(text.text) == normalizeWhitespace(innerText)
+            require(textMatchesInnerText) {
+                "The text read '${text.text}' does not match the renderer innerText '$innerText'."
+            }
+
+            // 4. A declared bound shortens the document and reports its full size.
+            val boundedLimit = 64
+            val bounded = page.utilities.content(
+                io.github.kingsword09.kwebshell.core.KWebPageContentRequest(
+                    kind = io.github.kingsword09.kwebshell.core.KWebPageContentKind.SOURCE,
+                    maximumBytes = boundedLimit,
+                ),
+            )
+            truncatedBytes = bounded.text.encodeToByteArray().size
+            truncatedTotalBytes = bounded.totalBytes
+            truncatedFlag = bounded.truncated
+            require(truncatedFlag) {
+                "A bound of $boundedLimit bytes reported a complete document of $truncatedTotalBytes bytes."
+            }
+            require(truncatedBytes <= boundedLimit) {
+                "A $boundedLimit-byte bound delivered $truncatedBytes bytes."
+            }
+            require(truncatedTotalBytes == mutated.text.encodeToByteArray().size.toLong()) {
+                "The truncated read reported $truncatedTotalBytes bytes for a ${mutated.text.encodeToByteArray().size}-byte document."
+            }
+            truncatedPrefixMatches = mutated.text.startsWith(bounded.text)
+            require(truncatedPrefixMatches) { "The truncated read is not a prefix of the document." }
+
+            // 5. A bound that lands inside a multi-byte character is backed off
+            //    to the character boundary instead of splitting the sequence.
+            val unicodePage = openPage(fixture.unicodeUrl)
+            val unicodeFull = unicodePage.utilities.content(
+                io.github.kingsword09.kwebshell.core.KWebPageContentRequest(
+                    kind = io.github.kingsword09.kwebshell.core.KWebPageContentKind.SOURCE,
+                ),
+            )
+            unicodeBytes = unicodeFull.text.encodeToByteArray().size
+            val unicodeRaw = unicodeFull.text.encodeToByteArray()
+            val firstMultiByte = unicodeRaw.indexOfFirst { it.toInt() and 0x80 != 0 }
+            require(firstMultiByte > 0) { "The unicode fixture carried no multi-byte character." }
+            val splitLimit = firstMultiByte + 1
+            val split = unicodePage.utilities.content(
+                io.github.kingsword09.kwebshell.core.KWebPageContentRequest(
+                    kind = io.github.kingsword09.kwebshell.core.KWebPageContentKind.SOURCE,
+                    maximumBytes = splitLimit,
+                ),
+            )
+            unicodeDeliveredBytes = split.text.encodeToByteArray().size
+            unicodeBoundaryHeld = unicodeDeliveredBytes == firstMultiByte && split.truncated
+            require(unicodeBoundaryHeld) {
+                "A $splitLimit-byte bound delivered $unicodeDeliveredBytes bytes instead of the " +
+                    "$firstMultiByte-byte character boundary."
+            }
+
+            // 6. An empty document is a complete empty read, not a failure.
+            val emptyPage = openPage(fixture.emptyUrl)
+            val empty = emptyPage.utilities.content(
+                io.github.kingsword09.kwebshell.core.KWebPageContentRequest(
+                    kind = io.github.kingsword09.kwebshell.core.KWebPageContentKind.TEXT,
+                ),
+            )
+            emptyTextBytes = empty.text.encodeToByteArray().size
+            emptyTruncated = empty.truncated
+            require(emptyTextBytes == 0) { "An empty document delivered $emptyTextBytes text bytes." }
+            require(!emptyTruncated) { "An empty document reported truncation." }
+
+            // 7. A cross-origin subframe's content never appears in the read.
+            val framePage = openPage(fixture.frameUrl)
+            val frameCdp = CdpClient(configured.remoteDebuggingPort)
+            frameCdp.awaitPage(fixture.frameUrl)
+            frameCdp.awaitExpression(
+                "document.querySelector('iframe') !== null",
+            )
+            val frameSource = framePage.utilities.content(
+                io.github.kingsword09.kwebshell.core.KWebPageContentRequest(
+                    kind = io.github.kingsword09.kwebshell.core.KWebPageContentKind.SOURCE,
+                ),
+            )
+            require(frameSource.text.contains("<iframe")) {
+                "The frame fixture source lost its iframe element: '${frameSource.text}'"
+            }
+            subframeSourceLeaked = frameSource.text.contains("subframe-only-marker")
+            require(!subframeSourceLeaked) { "The source read carried a subframe's document." }
+            val frameText = framePage.utilities.content(
+                io.github.kingsword09.kwebshell.core.KWebPageContentRequest(
+                    kind = io.github.kingsword09.kwebshell.core.KWebPageContentKind.TEXT,
+                ),
+            )
+            subframeTextLeaked = frameText.text.contains("subframe-only-marker")
+            require(!subframeTextLeaked) { "The text read carried a subframe's display text." }
+
+            // 8. Concurrent reads are serialized per page and both succeed.
+            val (firstRead, secondRead) = kotlinx.coroutines.coroutineScope {
+                val first = async {
+                    page.utilities.content(
+                        io.github.kingsword09.kwebshell.core.KWebPageContentRequest(
+                            kind = io.github.kingsword09.kwebshell.core.KWebPageContentKind.SOURCE,
+                        ),
+                    )
+                }
+                val second = async {
+                    page.utilities.content(
+                        io.github.kingsword09.kwebshell.core.KWebPageContentRequest(
+                            kind = io.github.kingsword09.kwebshell.core.KWebPageContentKind.TEXT,
+                        ),
+                    )
+                }
+                first.await() to second.await()
+            }
+            require(firstRead.text.isNotEmpty() && secondRead.text.isNotEmpty()) {
+                "A concurrent content read delivered an empty document."
+            }
+            require(
+                firstRead.kind == io.github.kingsword09.kwebshell.core.KWebPageContentKind.SOURCE &&
+                    secondRead.kind == io.github.kingsword09.kwebshell.core.KWebPageContentKind.TEXT,
+            ) { "Concurrent reads returned another read's document view." }
+            concurrentReads = 2
+
+            // 9. A closed page refuses a read with a typed error.
+            val closing = openPage(fixture.pageUrl + "?closed-read")
+            closing.close()
+            val refused = runCatching {
+                closing.utilities.content(
+                    io.github.kingsword09.kwebshell.core.KWebPageContentRequest(
+                        kind = io.github.kingsword09.kwebshell.core.KWebPageContentKind.SOURCE,
+                    ),
+                )
+            }.exceptionOrNull()
+            require(
+                refused is io.github.kingsword09.kwebshell.core.KWebNativeException &&
+                    refused.code == "native.browser.closed",
+            ) { "A closed page did not refuse the read with a typed error: $refused" }
+            closedPageRefused = true
+            println("KWEBSHELL_PAGE_CONTENT_PROBE:source-and-text")
+        }
+    } catch (error: Throwable) {
+        probeFailure = error
+        throw error
+    } finally {
+        pages.asReversed().forEach { page -> runCatching { page.close() } }
+        runCatching { profile?.close() }
+        runCatching { engine.close() }
+        surfaces.asReversed().forEach { surface ->
+            NativeEngine.onAwtEventDispatchThread { runCatching { surface.close() } }
+        }
+        runCatching { fixture.close() }
+    }
+    require(NativeBrowser.liveNativeBrowserCount() == 0L)
+    require(NativeEngine.liveNativeEngineCount() == 0L)
+    val evidence = buildJsonObject {
+        put("schemaVersion", 1)
+        put("target", currentTargetId())
+        put("cefRuntime", "stock-cef-151")
+        put("contractRevision", "2026-10-18.3")
+        put("engineAbiVersion", 22)
+        put("pageContentCapability", true)
+        put("sourceBytes", sourceBytes)
+        put("sourceStartsWithDoctype", sourceStartsWithDoctype)
+        put("sourceHasMarkup", sourceHasMarkup)
+        put("sourceSawMutation", sourceSawMutation)
+        put("sourceSawOriginalMarker", sourceSawOriginalMarker)
+        put("textBytes", textBytes)
+        put("textMatchesInnerText", textMatchesInnerText)
+        put("textHasMarkup", textHasMarkup)
+        put("textSawMutation", textSawMutation)
+        put("truncatedBytes", truncatedBytes)
+        put("truncatedTotalBytes", truncatedTotalBytes)
+        put("truncatedFlag", truncatedFlag)
+        put("truncatedPrefixMatches", truncatedPrefixMatches)
+        put("unicodeBytes", unicodeBytes)
+        put("unicodeDeliveredBytes", unicodeDeliveredBytes)
+        put("unicodeBoundaryHeld", unicodeBoundaryHeld)
+        put("emptyTextBytes", emptyTextBytes)
+        put("emptyTruncated", emptyTruncated)
+        put("subframeSourceLeaked", subframeSourceLeaked)
+        put("subframeTextLeaked", subframeTextLeaked)
+        put("concurrentReads", concurrentReads)
+        put("closedPageRefused", closedPageRefused)
+        put("failure", probeFailure?.let { it::class.simpleName } ?: "")
+    }
+    Files.writeString(
+        root.resolve("page-content-evidence.json"),
+        evidence.toString() + "\n",
+        StandardCharsets.UTF_8,
+    )
+    println("KWebShell RFC0047 page content passed: sourceBytes=$sourceBytes textBytes=$textBytes.")
+}
+
+/** Collapses runs of whitespace so renderer text and CDP text compare by content. */
+private fun normalizeWhitespace(value: String): String =
+    value.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" ")
 
 private fun runPdfExportIntegration() {
     val configured = runtimeConfiguration()
@@ -7380,6 +7762,7 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
             mode == IntegrationMode.CONTEXT_MENU ||
             mode == IntegrationMode.CAPTURE_PERMISSION ||
             mode == IntegrationMode.PAGE_UTILITIES ||
+            mode == IntegrationMode.PAGE_CONTENT ||
             mode == IntegrationMode.THEME ||
             mode == IntegrationMode.EXTENSION_LIFECYCLE_CRASH ||
             mode.name.startsWith("EXTENSION_LIFECYCLE_STAGE")

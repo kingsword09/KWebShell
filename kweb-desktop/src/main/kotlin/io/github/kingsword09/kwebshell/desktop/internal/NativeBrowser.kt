@@ -80,6 +80,7 @@ internal enum class NativeBrowserEventType(val value: Int) {
     MEDIA_PERMISSION(28),
     FIND_RESULT(29),
     PDF_EXPORT(30),
+    PAGE_CONTENT(31),
     ;
 
     companion object {
@@ -263,6 +264,15 @@ internal class NativeBrowser private constructor(
     internal fun stopFinding(keepSelection: Boolean): Int {
         val handle = requireOpenHandle("stop-finding")
         return NativeBindings.browserStopFinding(handle, keepSelection)
+    }
+
+    /**
+     * Starts one bounded page content read. The terminal observation arrives as
+     * a page event, so the caller owns the waiter and this call only dispatches.
+     */
+    internal fun pageContent(requestId: Long, kind: Int, maximumBytes: Int): Int {
+        val handle = requireOpenHandle("page-content")
+        return NativeBindings.browserPageContent(handle, requestId, kind, maximumBytes)
     }
 
     internal fun setZoomLevel(level: Double): NativeZoomResult {

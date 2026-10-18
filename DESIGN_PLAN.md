@@ -2945,8 +2945,40 @@ evidence pass, the module and its artifact family are registered in the change-a
 CI planner, and every acceptance row is decided before the focused squash pull
 request is merged.
 
-## 12. Test Strategy
+### RFC 0047 implementation objective: page source and rendered text export
 
+RFC 0047 publishes the two page document views Chromium itself exposes — the
+serialized HTML `SOURCE` and the display `TEXT` — for macOS arm64, Windows x64,
+and Linux x64, as one bounded, host-only read of the application's own main
+frame. The objective is complete only when the same PR lands the typed contract,
+the native frame read and its ABI, the desktop page utilities, the migration
+mapping, real three-target evidence, documentation, the CI planner metadata, and
+the final acceptance review:
+
+1. `KWebPageUtilities.content` publishes one request with the declared document
+   view and a 1 byte .. 1 MiB transfer bound, and one result that reports the
+   delivered prefix, the full size Chromium produced, and an explicit truncation
+   flag that cannot disagree with those sizes.
+2. The engine reads the main frame through `CefFrame::GetSource` and
+   `CefFrame::GetText`, cuts the delivered prefix at a UTF-8 character boundary, and
+   publishes the bytes unchanged with their metadata, so no JSON escaping
+   re-encodes the document.
+3. Only the main frame of the page the application owns is readable: no subframe,
+   no cross-document read, no injected script, no DOM object transport, and no
+   artifact on disk. The read adds no renderer surface and no renderer grant.
+4. Every refusal is typed before a document exists — an out-of-range bound, an
+   unknown view, a zero request id, a malformed payload, a closed page, and a
+   deadline — and a late observation for an ended request is dropped instead of
+   being attributed to another read.
+5. The Electron HTML-source and rendered-text extraction rewrite to the typed
+   read, while `HTMLComplete`/MHTML save, file writing, and arbitrary
+   `executeJavaScript` remain blocked in the migration matrix.
+6. Common, desktop, native ABI, migration, and hosted Windows, macOS, and Linux
+   evidence pass, the RFC's artifact and matrix rows are registered in the
+   change-aware CI planner, and every acceptance row is decided before the focused
+   squash pull request is merged.
+
+## 12. Test Strategy
 Tests are part of each phase, not a final cleanup task.
 
 Required layers:

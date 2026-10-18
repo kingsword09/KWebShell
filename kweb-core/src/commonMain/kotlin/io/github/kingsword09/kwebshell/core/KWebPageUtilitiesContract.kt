@@ -175,7 +175,7 @@ public data class KWebZoomState(
 }
 
 /**
- * The page's find and zoom operations.
+ * The page's find, zoom, PDF, and content operations.
  *
  * Every call is page-scoped and serialized per page. A find call resolves with
  * the final update of its own request, while [findResults] publishes every
@@ -205,6 +205,13 @@ public interface KWebPageUtilities {
 
     /** Applies an absolute zoom factor. */
     public suspend fun setZoomFactor(factor: Double): KWebZoomState
+
+    /**
+     * Reads the page's HTML source or its rendered text, bounded by the
+     * request's declared byte limit. The read observes the live document: a
+     * script mutation performed before the call is part of the result.
+     */
+    public suspend fun content(request: KWebPageContentRequest): KWebPageContent
 
     /**
      * Writes the current page as a PDF artifact. The artifact is engine-owned:

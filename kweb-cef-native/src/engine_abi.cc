@@ -886,6 +886,8 @@ const char *KWEB_ABI_CALL kweb_status_name(kweb_status status) {
     return "pdf-export-failed";
   case KWEB_STATUS_PDF_PATH_INVALID:
     return "pdf-path-invalid";
+  case KWEB_STATUS_PAGE_CONTENT_INVALID:
+    return "page-content-invalid";
   default:
     return "unknown-status";
   }
@@ -1152,6 +1154,13 @@ kweb_status KWEB_ABI_CALL kweb_browser_export_pdf(
   }
   return kwebshell::ExportPdfSession(browser, request_id, path_utf8, path_size,
                                      settings_utf8, settings_size);
+}
+
+kweb_status KWEB_ABI_CALL kweb_browser_page_content(
+    kweb_browser_handle browser, uint64_t request_id, uint32_t kind,
+    size_t maximum_bytes) {
+  return kwebshell::PageContentSession(browser, request_id, kind,
+                                       maximum_bytes);
 }
 
 kweb_status KWEB_ABI_CALL kweb_browser_profile_data(

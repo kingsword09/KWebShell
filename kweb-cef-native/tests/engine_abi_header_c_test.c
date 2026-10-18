@@ -7,8 +7,16 @@
 
 _Static_assert(KWEB_INVALID_ENGINE_HANDLE == 0,
                "the invalid engine handle must remain zero");
-_Static_assert(KWEB_ABI_VERSION == 21,
-               "PDF export requires ABI version 21");
+_Static_assert(KWEB_ABI_VERSION == 22,
+               "page content requires ABI version 22");
+_Static_assert(KWEB_BROWSER_EVENT_PAGE_CONTENT == 31,
+               "the page content browser event type is ABI-stable");
+_Static_assert(KWEB_PAGE_CONTENT_SOURCE == 1 && KWEB_PAGE_CONTENT_TEXT == 2,
+               "the page content kinds are ABI-stable");
+_Static_assert(KWEB_PAGE_CONTENT_MAXIMUM_BYTES == 1048576,
+               "the page content transfer ceiling is ABI-stable");
+_Static_assert(KWEB_STATUS_PAGE_CONTENT_INVALID == 99,
+               "the invalid page content status is ABI-stable");
 _Static_assert(KWEB_BROWSER_EVENT_PDF_EXPORT == 30,
                "the PDF export browser event type is ABI-stable");
 _Static_assert(KWEB_PDF_EXPORT_SUCCEEDED == 1 && KWEB_PDF_EXPORT_FAILED == 2,

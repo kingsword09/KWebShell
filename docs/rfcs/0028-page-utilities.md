@@ -19,29 +19,35 @@ This RFC describes a multi-objective capability and must be split before
 implementation. [RFC 0044](0044-page-find-and-zoom.md) delivers its first
 publishable objective — page find sessions and page zoom — completely on its own
 terms, with real three-target evidence and its own acceptance matrix.
+[RFC 0047](0047-page-source-and-text.md) delivers the second: the bounded page
+source and rendered-text reads of the page the application owns.
 
-The remaining objectives stay here and are not implemented by RFC 0044:
+The remaining objectives stay here and are not implemented by RFC 0044 or
+RFC 0047:
 
 1. viewport/page capture into RFC 0027 image values, including clipping, scale,
-   and pixel evidence across the GPU contracts;
+   and pixel evidence across the GPU contracts; CEF exposes no capture API on the
+   Alloy window path, so this needs its own feasibility review first;
 2. save/export of the current page into RFC 0013 handles, with format and
    metadata normalization;
-3. page source and DOM diagnostics under an explicit byte limit and trusted
-   policy;
+3. DOM diagnostics beyond the two document views RFC 0047 publishes, which would
+   require a renderer-object contract;
 4. visibility, minimized, and occluded behavior facts;
 5. durable zoom persistence per profile and host, which RFC 0044 explicitly
    leaves out.
 
 Each of those needs its own readiness review before coding. RFC 0044's contract
 must not be extended in place: a change to its find or zoom semantics is a new
-reviewed objective.
+reviewed objective. Source and text reads are delivered by RFC 0047, which
+publishes its own bounded contract instead of extending this one.
 
 ## Contract
 
 Each operation is typed and Page-scoped. Find has an owned session and ordered
 match updates. Zoom distinguishes factor/level and origin persistence. Capture
 declares viewport rectangle/scale and returns RFC 0027 data. Save/export returns
-RFC 0013 handles. Source access has explicit byte limit and trusted policy.
+RFC 0013 handles. RFC 0047 publishes the source and rendered-text reads with an
+explicit byte limit, a typed truncation, and a host-only policy.
 
 ## Acceptance
 

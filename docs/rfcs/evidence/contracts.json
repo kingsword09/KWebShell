@@ -684,6 +684,7 @@
         "kweb-cef-native/resources/engine_exports_mac.txt",
         "kweb-cef-native/src",
         "kweb-cef-native/tests",
+        "kweb-compose/src/test/kotlin/io/github/kingsword09/kwebshell/compose/KWebViewPlacementTest.kt",
         "kweb-core/src/commonMain",
         "kweb-core/src/commonTest",
         "kweb-desktop/src/main",
@@ -729,6 +730,28 @@
         "docs/rfcs/evidence/contracts.json",
         "kweb-service-printers",
         "settings.gradle.kts"
+      ]
+    },
+    {
+      "rfcId": "0047",
+      "paths": [
+        ".github/ci/suites.json",
+        ".github/scripts/aggregate-rfc-evidence.sh",
+        "docs/rfcs/0028-page-utilities.md",
+        "docs/rfcs/0047-page-source-and-text.md",
+        "docs/rfcs/README.md",
+        "docs/rfcs/evidence/contracts.json",
+        "kweb-cef-native/include",
+        "kweb-cef-native/resources/engine_exports_linux.map",
+        "kweb-cef-native/resources/engine_exports_mac.txt",
+        "kweb-cef-native/src",
+        "kweb-cef-native/tests",
+        "kweb-core/src/commonMain",
+        "kweb-core/src/commonTest",
+        "kweb-desktop/src/main",
+        "kweb-desktop/src/test/kotlin/io/github/kingsword09/kwebshell/desktop/KWebDesktopPageUtilitiesTest.kt",
+        "kweb-desktop/src/test/kotlin/io/github/kingsword09/kwebshell/desktop/internal/NativeEngineIntegrationMain.kt",
+        "kweb-electron-migration/src"
       ]
     }
   ]

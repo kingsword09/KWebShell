@@ -169,6 +169,31 @@ int main() {
   Check(std::strcmp(kweb_status_name(KWEB_STATUS_PDF_PATH_INVALID),
                     "pdf-path-invalid") == 0,
         "invalid PDF path status must have a stable name");
+  Check(std::strcmp(kweb_status_name(KWEB_STATUS_PAGE_CONTENT_INVALID),
+                    "page-content-invalid") == 0,
+        "invalid page content status must have a stable name");
+  {
+    Check(kweb_browser_page_content(KWEB_INVALID_BROWSER_HANDLE, 0,
+                                    KWEB_PAGE_CONTENT_SOURCE, 1024) ==
+              KWEB_STATUS_PAGE_CONTENT_INVALID,
+          "a content read without a request id must fail before browser lookup");
+    Check(kweb_browser_page_content(KWEB_INVALID_BROWSER_HANDLE, 1, 7, 1024) ==
+              KWEB_STATUS_PAGE_CONTENT_INVALID,
+          "an unknown content kind must fail before browser lookup");
+    Check(kweb_browser_page_content(KWEB_INVALID_BROWSER_HANDLE, 1,
+                                    KWEB_PAGE_CONTENT_TEXT, 0) ==
+              KWEB_STATUS_PAGE_CONTENT_INVALID,
+          "an empty content bound must fail before browser lookup");
+    Check(kweb_browser_page_content(KWEB_INVALID_BROWSER_HANDLE, 1,
+                                    KWEB_PAGE_CONTENT_TEXT,
+                                    KWEB_PAGE_CONTENT_MAXIMUM_BYTES + 1) ==
+              KWEB_STATUS_PAGE_CONTENT_INVALID,
+          "a content bound above the transfer ceiling must fail before browser lookup");
+    Check(kweb_browser_page_content(KWEB_INVALID_BROWSER_HANDLE, 1,
+                                    KWEB_PAGE_CONTENT_TEXT, 1024) ==
+              KWEB_STATUS_INVALID_HANDLE,
+          "a valid content read must require a live browser");
+  }
   {
     const char *settings =
         "{\"version\":1,\"paperWidthInches\":8.5,\"paperHeightInches\":11,"

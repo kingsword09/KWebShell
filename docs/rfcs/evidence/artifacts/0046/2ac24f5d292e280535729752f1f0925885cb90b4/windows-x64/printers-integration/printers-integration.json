@@ -1,0 +1,1 @@
+{"schemaVersion":1,"target":"windows-x64","provider":"jdk-print-service","serviceCount":2,"osCount":2,"osTool":"Get-Printer","matchesOs":true,"defaultMatches":true,"printersWithMediaFacts":2,"printersWithColorFacts":2,"printersWithDuplexFacts":0,"printers":["Microsoft XPS Document Writer","Microsoft Print to PDF"],"failure":""}

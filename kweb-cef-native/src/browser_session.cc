@@ -584,6 +584,8 @@ public:
   kweb_status ProfileData(kweb_browser_handle handle, uint64_t request_id,
                           kweb_profile_data_operation_type operation,
                           std::string payload);
+  kweb_status PageContent(kweb_browser_handle handle, uint64_t request_id,
+                          uint32_t kind, size_t maximum_bytes);
   kweb_status ExtensionContext(kweb_browser_handle handle,
                                kweb_engine_handle *engine_out,
                                std::filesystem::path *profile_path_out) const;
@@ -835,6 +837,27 @@ private:
   const uint64_t request_id_;
   const std::string path_;
   IMPLEMENT_REFCOUNTING(PdfExportCallback);
+};
+
+/// Receives one frame document Chromium serialized for a content read.
+class PageContentVisitor final : public CefStringVisitor {
+public:
+  PageContentVisitor(std::weak_ptr<BrowserSession> session,
+                     uint64_t request_id, uint32_t kind,
+                     size_t maximum_bytes)
+      : session_(std::move(session)),
+        request_id_(request_id),
+        kind_(kind),
+        maximum_bytes_(maximum_bytes) {}
+
+  void Visit(const CefString &string) override;
+
+private:
+  const std::weak_ptr<BrowserSession> session_;
+  const uint64_t request_id_;
+  const uint32_t kind_;
+  const size_t maximum_bytes_;
+  IMPLEMENT_REFCOUNTING(PageContentVisitor);
 };
 
 class ProfileDataDevToolsObserver final : public CefDevToolsMessageObserver {
@@ -1467,6 +1490,98 @@ public:
                    std::move(self), settings, path, request_id))
                ? KWEB_STATUS_OK
                : KWEB_STATUS_CEF_UI_TASK_FAILED;
+  }
+
+  /**
+   * Reads one document view of the main frame as a bounded prefix.
+   *
+   * Chromium serializes the whole document before the engine observes it, so the
+   * declared bound applies to what this engine publishes, not to Chromium's own
+   * allocation. The read never executes script and never reaches a subframe: the
+   * main frame of this browser is the only readable document.
+   */
+  kweb_status PageContent(uint64_t request_id, uint32_t kind,
+                          size_t maximum_bytes) {
+    if (closing_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_BROWSER_CLOSING;
+    }
+    if (!ready_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_BROWSER_NOT_READY;
+    }
+    if (request_id == 0 ||
+        (kind != KWEB_PAGE_CONTENT_SOURCE && kind != KWEB_PAGE_CONTENT_TEXT) ||
+        maximum_bytes == 0 ||
+        maximum_bytes > KWEB_PAGE_CONTENT_MAXIMUM_BYTES) {
+      return KWEB_STATUS_PAGE_CONTENT_INVALID;
+    }
+    auto self = shared_from_this();
+    return CefPostTask(
+               TID_UI,
+               base::BindOnce(
+                   [](std::shared_ptr<BrowserSession> session,
+                      uint64_t content_request_id, uint32_t content_kind,
+                      size_t content_limit) {
+                     if (session->closing_.load(std::memory_order_acquire) ||
+                         !session->browser_) {
+                       return;
+                     }
+                     CefRefPtr<CefFrame> frame =
+                         session->browser_->GetMainFrame();
+                     if (!frame) {
+                       return;
+                     }
+                     CefRefPtr<PageContentVisitor> visitor =
+                         new PageContentVisitor(session, content_request_id,
+                                                content_kind, content_limit);
+                     if (content_kind == KWEB_PAGE_CONTENT_SOURCE) {
+                       frame->GetSource(visitor);
+                     } else {
+                       frame->GetText(visitor);
+                     }
+                   },
+                   std::move(self), request_id, kind, maximum_bytes))
+               ? KWEB_STATUS_OK
+               : KWEB_STATUS_CEF_UI_TASK_FAILED;
+  }
+
+  /**
+   * Publishes one bounded document prefix with the size Chromium produced.
+   *
+   * The delivered prefix is cut at a UTF-8 character boundary so the application
+   * always receives valid text, and the event reports the full size so a
+   * shortened document is distinguishable from a complete one.
+   */
+  void PageContentReady(uint64_t request_id, uint32_t kind,
+                        size_t maximum_bytes, const std::string &document) {
+    CEF_REQUIRE_UI_THREAD();
+    if (closing_.load(std::memory_order_acquire)) {
+      return;
+    }
+    std::string url;
+    if (browser_ && browser_->GetMainFrame()) {
+      url = browser_->GetMainFrame()->GetURL().ToString();
+    }
+    size_t delivered = std::min(maximum_bytes, document.size());
+    while (delivered > 0 && delivered < document.size() &&
+           (static_cast<unsigned char>(document[delivered]) & 0xC0) == 0x80) {
+      --delivered;
+    }
+    const std::string content = document.substr(0, delivered);
+    auto metadata = CefDictionaryValue::Create();
+    metadata->SetInt("version", 1);
+    metadata->SetInt("kind", static_cast<int>(kind));
+    metadata->SetInt("totalBytes", static_cast<int>(std::min<size_t>(
+                                         document.size(),
+                                         static_cast<size_t>(
+                                             (std::numeric_limits<int32_t>::max)()))));
+    metadata->SetBool("truncated", delivered < document.size());
+    metadata->SetString("url", url);
+    auto value = CefValue::Create();
+    value->SetDictionary(metadata);
+    const std::string payload = CefWriteJSON(value, JSON_WRITER_DEFAULT).ToString();
+    Emit(KWEB_BROWSER_EVENT_PAGE_CONTENT, 0, payload, 0, 0, 0, {},
+         KWEB_BROWSER_FRAME_MAIN, KWEB_BROWSER_REASON_NONE, request_id, {},
+         url, {}, content, false);
   }
 
   /**
@@ -4069,6 +4184,18 @@ void CookieFlushCallback::OnComplete() {
   session->FlushCompleted();
 }
 
+void PageContentVisitor::Visit(const CefString &string) {
+  CEF_REQUIRE_UI_THREAD();
+  auto session = session_.lock();
+  if (!session) {
+    return;
+  }
+  // Chromium delivers one complete document; the bound is applied by the
+  // session, which publishes the prefix and the full size together.
+  session->PageContentReady(request_id_, kind_, maximum_bytes_,
+                            string.ToString());
+}
+
 void PdfExportCallback::OnPdfPrintFinished(const CefString &path, bool ok) {
   CEF_REQUIRE_UI_THREAD();
   auto session = session_.lock();
@@ -4535,6 +4662,14 @@ kweb_status SessionRegistry::ProfileData(
                  : KWEB_STATUS_INVALID_HANDLE;
 }
 
+kweb_status SessionRegistry::PageContent(kweb_browser_handle handle,
+                                         uint64_t request_id, uint32_t kind,
+                                         size_t maximum_bytes) {
+  auto session = Lookup(handle);
+  return session ? session->PageContent(request_id, kind, maximum_bytes)
+                 : KWEB_STATUS_INVALID_HANDLE;
+}
+
 kweb_status SessionRegistry::ExtensionContext(
     kweb_browser_handle handle, kweb_engine_handle *engine_out,
     std::filesystem::path *profile_path_out) const {
@@ -4693,6 +4828,17 @@ kweb_status ExportPdfSession(kweb_browser_handle browser, uint64_t request_id,
                                 std::string(path_utf8, path_size),
                                 std::string(settings_utf8, settings_size));
   });
+}
+
+kweb_status PageContentSession(kweb_browser_handle browser, uint64_t request_id,
+                               uint32_t kind, size_t maximum_bytes) {
+  if (request_id == 0 ||
+      (kind != KWEB_PAGE_CONTENT_SOURCE && kind != KWEB_PAGE_CONTENT_TEXT) ||
+      maximum_bytes == 0 || maximum_bytes > KWEB_PAGE_CONTENT_MAXIMUM_BYTES) {
+    return KWEB_STATUS_PAGE_CONTENT_INVALID;
+  }
+  return GuardStatus(
+      [&] { return Registry().PageContent(browser, request_id, kind, maximum_bytes); });
 }
 
 kweb_status CreateBrowserSession(const kweb_browser_config *config,

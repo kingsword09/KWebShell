@@ -42,6 +42,8 @@ import io.github.kingsword09.kwebshell.core.KWebFindResult
 import io.github.kingsword09.kwebshell.core.KWebFindSession
 import io.github.kingsword09.kwebshell.core.KWebFindStopResult
 import io.github.kingsword09.kwebshell.core.KWebPageUtilities
+import io.github.kingsword09.kwebshell.core.KWebPageContent
+import io.github.kingsword09.kwebshell.core.KWebPageContentRequest
 import io.github.kingsword09.kwebshell.core.KWebPdfDocument
 import io.github.kingsword09.kwebshell.core.KWebPdfExportRequest
 import io.github.kingsword09.kwebshell.core.KWebZoomState
@@ -209,6 +211,9 @@ private class RecordingPageUtilities : KWebPageUtilities {
 
     override suspend fun exportPdf(request: KWebPdfExportRequest): KWebPdfDocument =
         unused("exportPdf")
+
+    override suspend fun content(request: KWebPageContentRequest): KWebPageContent =
+        unused("content")
 
     /** The placement test never reaches page utilities; it must fail loudly if it does. */
     private fun unused(operation: String): Nothing = throw IllegalStateException(

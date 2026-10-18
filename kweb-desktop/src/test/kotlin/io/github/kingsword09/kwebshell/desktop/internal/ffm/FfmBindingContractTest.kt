@@ -10,10 +10,11 @@ import kotlin.test.assertTrue
 
 class FfmBindingContractTest {
     @Test
-    fun productionInventoryMatchesAbiVersionTwentyOne() {
-        // Version 21 adds the PDF export command and its terminal event.
-        assertEquals(21, FfmAbi.VERSION)
-        assertEquals(36, FfmAbi.FUNCTIONS.size)
+    fun productionInventoryMatchesAbiVersionTwentyTwo() {
+        // Version 22 adds the bounded page content read.
+        assertEquals(22, FfmAbi.VERSION)
+        assertEquals(37, FfmAbi.FUNCTIONS.size)
+        assertTrue(FfmAbi.FUNCTIONS.any { it.name() == "kweb_browser_page_content" })
         assertTrue(FfmAbi.FUNCTIONS.any { it.name() == "kweb_browser_export_pdf" })
         assertTrue(FfmAbi.FUNCTIONS.any { it.name() == "kweb_browser_find" })
         assertTrue(FfmAbi.FUNCTIONS.any { it.name() == "kweb_browser_stop_finding" })

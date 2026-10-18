@@ -208,6 +208,10 @@ public final class FfmBindings {
         return FfmBrowserCalls.exportPdf(handle, requestId, path, settingsJson);
     }
 
+    public static int browserPageContent(long handle, long requestId, int kind, int maximumBytes) {
+        return FfmBrowserCalls.pageContent(handle, requestId, kind, maximumBytes);
+    }
+
     public static Throwable releaseBrowserOwner(long handle) {
         return FfmBrowserCalls.release(handle);
     }

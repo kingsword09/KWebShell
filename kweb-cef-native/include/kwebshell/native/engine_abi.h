@@ -79,6 +79,18 @@ typedef uint32_t kweb_profile_data_operation_type;
  * the failure code when the export failed. On success details is
  * {"version":1,"bytes":N}. */
 #define KWEB_BROWSER_EVENT_PDF_EXPORT ((kweb_browser_event_type)30)
+/* One bounded page content read. request_id identifies the read, text carries
+ * the metadata JSON described with kweb_browser_page_content, and details
+ * carries the delivered document bytes unchanged. */
+#define KWEB_BROWSER_EVENT_PAGE_CONTENT ((kweb_browser_event_type)31)
+
+/* The document views a page content read can return. */
+#define KWEB_PAGE_CONTENT_SOURCE ((uint32_t)1)
+#define KWEB_PAGE_CONTENT_TEXT ((uint32_t)2)
+
+/* The largest document prefix one event can deliver. The engine refuses a
+ * larger request instead of shortening it past the caller's declared bound. */
+#define KWEB_PAGE_CONTENT_MAXIMUM_BYTES ((size_t)1048576)
 
 typedef uint32_t kweb_pdf_export_result_type;
 
@@ -474,6 +486,23 @@ KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL kweb_browser_zoom_level(
 KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL kweb_browser_export_pdf(
     kweb_browser_handle browser, uint64_t request_id, const char *path_utf8,
     size_t path_size, const char *settings_utf8, size_t settings_size);
+
+/* Reads the main frame's HTML source or display text as one bounded document
+ * prefix and reports it through KWEB_BROWSER_EVENT_PAGE_CONTENT.
+ *
+ * |request_id| is a positive, page-owned identifier echoed by the terminal
+ * event. |kind| is KWEB_PAGE_CONTENT_SOURCE or KWEB_PAGE_CONTENT_TEXT, and
+ * |maximum_bytes| must be 1..KWEB_PAGE_CONTENT_MAXIMUM_BYTES. The event's
+ * details field carries the delivered bytes unchanged, cut at a UTF-8 character
+ * boundary, and its text field carries
+ * {"version":1,"kind":N,"totalBytes":N,"truncated":true|false,"url":"..."}
+ * where totalBytes is the size of the whole document Chromium produced. Only the
+ * main frame of the browser is readable, no script is executed to obtain either
+ * value, and a read the engine cannot dispatch is refused with
+ * KWEB_STATUS_PAGE_CONTENT_INVALID. */
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL kweb_browser_page_content(
+    kweb_browser_handle browser, uint64_t request_id, uint32_t kind,
+    size_t maximum_bytes);
 
 KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
 kweb_browser_profile_data(

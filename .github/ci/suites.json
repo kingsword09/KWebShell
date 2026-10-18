@@ -64,7 +64,8 @@
     "0043": {"modules": [":kweb-desktop", ":kweb-electron-migration"], "families": ["engine-integration", "electron-migration"]},
     "0044": {"modules": [":kweb-core", ":kweb-desktop", ":kweb-electron-migration"], "families": ["engine-integration", "electron-migration"]},
     "0045": {"modules": [":kweb-core", ":kweb-desktop", ":kweb-electron-migration"], "families": ["engine-integration", "electron-migration"]},
-    "0046": {"modules": [":kweb-service-printers"], "families": ["printers-integration"]}
+    "0046": {"modules": [":kweb-service-printers"], "families": ["printers-integration"]},
+    "0047": {"modules": [":kweb-core", ":kweb-desktop", ":kweb-electron-migration"], "families": ["engine-integration", "electron-migration"]}
   },
   "families": {
     "rfc-governance": ":kweb-rfc-governance:contractTest",

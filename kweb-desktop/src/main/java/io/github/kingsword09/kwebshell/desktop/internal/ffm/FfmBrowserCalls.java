@@ -307,6 +307,22 @@ final class FfmBrowserCalls {
         }
     }
 
+    /**
+     * Starts one bounded page content read. The declared bound is checked here so
+     * an oversized request never reaches the engine.
+     */
+    static int pageContent(long handle, long requestId, int kind, int maximumBytes) {
+        if (maximumBytes < 1 || maximumBytes > FfmMemory.MAXIMUM_PAGE_CONTENT_SIZE) {
+            return FfmStatus.PAGE_CONTENT_INVALID;
+        }
+        try {
+            return (int) library().handle("kweb_browser_page_content")
+                .invokeExact(handle, requestId, kind, (long) maximumBytes);
+        } catch (Throwable error) {
+            return FfmStatus.INTERNAL_ERROR;
+        }
+    }
+
     static long liveCount() {
         try {
             return (long) library().handle("kweb_live_browser_count").invokeExact();

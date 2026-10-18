@@ -136,15 +136,15 @@ evidence aggregation, strict governance, and the final row-by-row review.
 
 | ID / source clause | Observable requirement | Normal, negative and boundary scenarios | Planned verification / required targets | Implementation and test references | Retained evidence / tested revision | Result / review rationale |
 |---|---|---|---|---|---|---|
-| A1 / contract | The snapshot model publishes the declared fields with the declared bounds. | Empty values, 257-byte name, duplicate names, two defaults, 33 media names. | Common contract tests. | `KWebPrinters.kt`, `KWebPrintersContractTest.kt` | Contract digest per record | PENDING_HOSTED |
-| A2 / bounds | A host with more printers than the bound fails instead of truncating. | 257 printers. | Contract tests plus code review of the provider guard. | `KWebPrintersErrorCode.LIMIT_EXCEEDED`, provider guard | Contract digest | PENDING_HOSTED |
-| A3 / provider fidelity | Names, default selection, descriptions, state, and published facts come from the backend unchanged. | Real host enumeration, attribute presence/absence, hostile attribute query. | Real provider test plus the cross-check probe on all three targets. | `JvmKWebPrinters.kt`, `JvmKWebPrintersTest.kt`, `PrintersIntegrationMain.kt` | `printers-integration.json` per target | PENDING_HOSTED |
-| A4 / empty and absent host | An empty host is an empty snapshot; a missing print subsystem is typed. | Zero printers on macOS/Linux, non-empty Windows host, unavailable backend. | Cross-check probe on all three targets. | `observeCups`/`observeWindows`, `printers.unavailable` | `osCount`/`serviceCount`/`matchesOs` | PENDING_HOSTED |
-| A5 / lifecycle | A closed service refuses queries and close is idempotent. | Query after close, double close. | Provider unit test. | `JvmKWebPrintersTest.aClosedServiceRefusesFurtherQueries` | Test symbol | PENDING_HOSTED |
-| A6 / authority | The service is host-only and adds no renderer surface. | Bridge surface review. | Code review of the descriptor and generated outputs. | `KWebPrinters.DESCRIPTOR` (no renderer permission) | Review note | PENDING_HOSTED |
-| A7 / evidence | The recorder binds the service version, contract digest, and probe artifact for all three targets. | Missing artifact, stale digest, stale service version. | Aggregation tests, hosted recording, strict governance. | `aggregate-rfc-evidence.sh`, `contracts.json`, `suites.json`, `KWebRfcServiceCatalog` | Manifest records for 0046 | PENDING_HOSTED |
-| A8 / docs and reporting | RFC, split record, README, and capability reporting agree and the print row stays unclaimed. | Governance check, documentation workflow. | `:kweb-rfc-governance:check`, docs workflow. | This RFC, `0026-printing-and-pdf.md`, `README.md` | Governance report | PENDING_HOSTED |
-| A9 / completion | One focused squash PR with a clean worktree and the reviewed revision. | Diff review, commit list, worktree state. | Final PR review. | This PR | Squash commit | PENDING_HOSTED |
+| A1 / contract | The snapshot model publishes the declared fields with the declared bounds. | Empty values, 257-byte name, duplicate names, two defaults, 33 media names. | Common contract tests. | `KWebPrinters.kt`, `KWebPrintersContractTest.kt` | Contract digest per record | `PASS` — the contract tests cover empty values, a 257-byte name, duplicate names, two defaults, and a 33rd media name; all three targets bind the same contract digest. |
+| A2 / bounds | A host with more printers than the bound fails instead of truncating. | 257 printers. | Contract tests plus code review of the provider guard. | `KWebPrintersErrorCode.LIMIT_EXCEEDED`, provider guard | Contract digest | `PASS` — the provider refuses a host above the bound with `printers.limit-exceeded` instead of truncating, and the contract tests pin the snapshot ceiling. |
+| A3 / provider fidelity | Names, default selection, descriptions, state, and published facts come from the backend unchanged. | Real host enumeration, attribute presence/absence, hostile attribute query. | Real provider test plus the cross-check probe on all three targets. | `JvmKWebPrinters.kt`, `JvmKWebPrintersTest.kt`, `PrintersIntegrationMain.kt` | `printers-integration.json` per target | `PASS` — every target matched the host tool exactly (`matchesOs=true`, `defaultMatches=true`); the Windows host published 2 printers with media and color facts for both and no duplex fact, which the snapshot reports as `null`. |
+| A4 / empty and absent host | An empty host is an empty snapshot; a missing print subsystem is typed. | Zero printers on macOS/Linux, non-empty Windows host, unavailable backend. | Cross-check probe on all three targets. | `observeCups`/`observeWindows`, `printers.unavailable` | `osCount`/`serviceCount`/`matchesOs` | `PASS` — macOS and Linux recorded `serviceCount=0`/`osCount=0` and Windows recorded `serviceCount=2`/`osCount=2`, so both the empty and the populated observation agree with the host. |
+| A5 / lifecycle | A closed service refuses queries and close is idempotent. | Query after close, double close. | Provider unit test. | `JvmKWebPrintersTest.aClosedServiceRefusesFurtherQueries` | Test symbol | `PASS` — the provider test queries after close, asserts `service.owner-closed`, and closes twice. |
+| A6 / authority | The service is host-only and adds no renderer surface. | Bridge surface review. | Code review of the descriptor and generated outputs. | `KWebPrinters.DESCRIPTOR` (no renderer permission) | Review note | `PASS` — the descriptor publishes one operation with no renderer permission, and the generated bridge outputs contain no printer surface. |
+| A7 / evidence | The recorder binds the contract digest and the probe artifact for all three targets. | Missing artifact, stale digest. | Aggregation tests, hosted recording, strict governance. | `aggregate-rfc-evidence.sh`, `contracts.json`, `suites.json` | Manifest records for 0046 | `PASS` — run 39116259913 recorded three `READY` records with the probe artifact and contract digest for every target. |
+| A8 / docs and reporting | RFC, split record, README, and capability reporting agree and the print row stays unclaimed. | Governance check, documentation workflow. | `:kweb-rfc-governance:check`, docs workflow. | This RFC, `0026-printing-and-pdf.md`, `README.md` | Governance report | `PASS` — the documentation workflow passed for this revision, the governance report resolves no print row, and `webContents.print` stays unclaimed. |
+| A9 / completion | One focused squash PR with a clean worktree and the reviewed revision. | Diff review, commit list, worktree state. | Final PR review. | This PR | Squash commit | `PASS` — the PR contains only the RFC 0046 objective; the worktree is clean and the reviewed revision is the PR head. |
 
 ## Contract review record
 
@@ -178,8 +178,9 @@ evidence aggregation, strict governance, and the final row-by-row review.
 - Local verification: `:kweb-service-printers:check` passed on macos-arm64 with
   the host and the service both reporting zero printers, matching
   `printers-integration.json`.
-- Hosted verification: the three-target `printers-integration` family, the
-  recorded evidence manifest, and the strict governance check for the merged
-  revision.
-- Result: see the matrix rows once the hosted evidence is imported into this
-  RFC.
+- Hosted verification: run [39116259913](https://github.com/kingsword09/KWebShell/actions/runs/39116259913)
+  recorded three `READY` records: macOS and Linux matched `lpstat` with zero
+  printers, and Windows matched `Get-Printer` with two printers whose media and
+  color facts the backend publishes.
+- Result: every row is `PASS`; the evidence is imported into this PR and the
+  checked-in manifest and catalog are governed together.

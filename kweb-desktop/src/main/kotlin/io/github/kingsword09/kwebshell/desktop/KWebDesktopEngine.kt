@@ -173,6 +173,7 @@ public class KWebDesktopEngine private constructor(
         add(KWebCapability.DEVTOOLS)
         add(KWebCapability.PAGE_UTILITIES)
         add(KWebCapability.PDF_EXPORT)
+        add(KWebCapability.PAGE_CONTENT)
         if (configuration.remoteDebuggingPort != 0) {
             add(KWebCapability.CDP)
         }
@@ -586,6 +587,8 @@ internal class KWebDesktopProfile(
                             }
                         } else if (event.type == NativeBrowserEventType.FIND_RESULT) {
                             utilities.onFindResult(event)
+                        } else if (event.type == NativeBrowserEventType.PAGE_CONTENT) {
+                            utilities.onPageContent(event)
                         } else if (event.type == NativeBrowserEventType.PDF_EXPORT) {
                             // The native browser already resolved the export waiter;
                             // the terminal result is not a page event.
@@ -1810,6 +1813,8 @@ private fun NativeBrowserEvent.toPublicEvent(
             throw IllegalStateException("The page find result reached the page mapping.")
         NativeBrowserEventType.PDF_EXPORT ->
             throw IllegalStateException("The PDF export result reached the page mapping.")
+        NativeBrowserEventType.PAGE_CONTENT ->
+            throw IllegalStateException("The page content result reached the page mapping.")
     }
     val flags = buildSet {
         if (this@toPublicEvent.flags and 1 != 0) add(KWebPageEventFlag.LOADING)

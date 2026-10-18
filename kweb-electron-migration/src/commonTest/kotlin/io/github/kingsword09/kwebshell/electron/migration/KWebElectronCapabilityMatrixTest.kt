@@ -123,6 +123,16 @@ class KWebElectronCapabilityMatrixTest {
             KWebElectronCapabilityMatrix.find("screen")?.status,
         )
         assertEquals("KWebScreens", KWebElectronCapabilityMatrix.find("screen")?.kweb)
+        mapOf(
+            "web-contents-source" to "KWebPage.utilities.content(SOURCE)",
+            "web-contents-text" to "KWebPage.utilities.content(TEXT)",
+        ).forEach { (id, kweb) ->
+            assertEquals(
+                KWebElectronMappingStatus.REWRITE,
+                KWebElectronCapabilityMatrix.find(id)?.status,
+            )
+            assertEquals(kweb, KWebElectronCapabilityMatrix.find(id)?.kweb)
+        }
         assertTrue(KWebElectronCapabilityMatrix.entries.size >= 18)
     }
 }

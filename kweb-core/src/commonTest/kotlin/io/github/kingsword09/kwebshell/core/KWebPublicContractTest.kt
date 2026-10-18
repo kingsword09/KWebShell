@@ -39,6 +39,7 @@ class KWebPublicContractTest {
                 "downloads",
                 "page-utilities",
                 "pdf-export",
+                "page-content",
             ),
             KWebCapability.entries.map { it.id },
         )

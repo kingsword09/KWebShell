@@ -23,7 +23,8 @@ final class FfmBrowserCallbackOwner extends FfmCallbackOwner {
         26, // download
         27, // context menu
         29, // page find result
-        30  // PDF export result
+        30, // PDF export result
+        31  // page content read
     );
     private static final MethodHandle BROWSER_TARGET = callbackTarget("receiveBrowser");
     private static final MethodHandle BRIDGE_TARGET = callbackTarget("receiveBridge");
@@ -146,7 +147,7 @@ final class FfmBrowserCallbackOwner extends FfmCallbackOwner {
             if (structureSize < FfmLayouts.BROWSER_EVENT.byteSize()
                 || abiVersion != FfmAbi.VERSION
                 || type < 1
-                || type > 30
+                || type > 31
                 || (frameScope != 1 && frameScope != 2)
                 || reason > 9
                 || (REQUEST_CARRYING_EVENTS.contains(type) != (requestId > 0))

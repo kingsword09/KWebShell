@@ -11,7 +11,7 @@
 #define KWEB_ABI_CALL
 #endif
 
-#define KWEB_ABI_VERSION ((uint32_t)21)
+#define KWEB_ABI_VERSION ((uint32_t)22)
 
 typedef uint32_t kweb_status;
 
@@ -112,5 +112,6 @@ typedef uint32_t kweb_status;
 #define KWEB_STATUS_PDF_EXPORT_ACTIVE ((kweb_status)96)
 #define KWEB_STATUS_PDF_EXPORT_FAILED ((kweb_status)97)
 #define KWEB_STATUS_PDF_PATH_INVALID ((kweb_status)98)
+#define KWEB_STATUS_PAGE_CONTENT_INVALID ((kweb_status)99)
 
 #endif // KWEBSHELL_NATIVE_BASE_ABI_H_

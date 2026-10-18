@@ -37,6 +37,7 @@ public final class FfmStatus {
     public static final int DOWNLOAD_PROFILE_CLOSING = 86;
     public static final int DOWNLOAD_CAPABILITY_MISSING = 87;
     public static final int DOWNLOAD_LIMIT_EXCEEDED = 88;
+    public static final int PAGE_CONTENT_INVALID = 99;
 
     private FfmStatus() {
     }

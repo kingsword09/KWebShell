@@ -273,6 +273,9 @@ internal object NativeBindings {
     internal fun browserExportPdf(handle: Long, requestId: Long, path: String, settingsJson: String): Int =
         FfmBindings.browserExportPdf(handle, requestId, path, settingsJson)
 
+    internal fun browserPageContent(handle: Long, requestId: Long, kind: Int, maximumBytes: Int): Int =
+        FfmBindings.browserPageContent(handle, requestId, kind, maximumBytes)
+
     internal fun releaseBrowserOwner(handle: Long): Throwable? =
         releaseOwner("browser", handle) { FfmBindings.releaseBrowserOwner(handle) }
 

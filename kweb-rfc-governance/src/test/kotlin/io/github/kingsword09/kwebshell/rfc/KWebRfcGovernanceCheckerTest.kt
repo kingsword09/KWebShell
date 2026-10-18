@@ -34,7 +34,8 @@ class KWebRfcGovernanceCheckerTest {
                     entry.id in RFC_0024_ROWS ||
                     entry.id in RFC_0027_ROWS ||
                     entry.id in RFC_0044_ROWS ||
-                    entry.id in RFC_0045_ROWS
+                    entry.id in RFC_0045_ROWS ||
+                    entry.id in RFC_0047_ROWS
                 ) {
                     entry.copy(status = KWebElectronMappingStatus.UNSUPPORTED, kweb = "")
                 } else {
@@ -76,6 +77,7 @@ class KWebRfcGovernanceCheckerTest {
         val RFC_0027_ROWS: Set<String> = setOf("native-image")
         val RFC_0044_ROWS: Set<String> = setOf("web-contents-find", "web-contents-zoom")
         val RFC_0045_ROWS: Set<String> = setOf("print-to-pdf")
+        val RFC_0047_ROWS: Set<String> = setOf("web-contents-source", "web-contents-text")
     }
 
     private fun implementedCatalog(): List<KWebRfcDocument> = listOf(

@@ -10,6 +10,11 @@ import io.github.kingsword09.kwebshell.core.KWebFindStopResult
 import io.github.kingsword09.kwebshell.core.KWebPageUtilityErrorCode
 import io.github.kingsword09.kwebshell.core.KWebPageUtilityException
 import io.github.kingsword09.kwebshell.core.KWebPageUtilities
+import io.github.kingsword09.kwebshell.core.KWebPageContent
+import io.github.kingsword09.kwebshell.core.KWebPageContentErrorCode
+import io.github.kingsword09.kwebshell.core.KWebPageContentException
+import io.github.kingsword09.kwebshell.core.KWebPageContentKind
+import io.github.kingsword09.kwebshell.core.KWebPageContentRequest
 import io.github.kingsword09.kwebshell.core.KWebPdfDocument
 import io.github.kingsword09.kwebshell.core.KWebPdfErrorCode
 import io.github.kingsword09.kwebshell.core.KWebPdfExportException
@@ -44,6 +49,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -52,26 +58,65 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * RFC 0044 page utilities over the native child engine.
+ * The page content waits one page owns.
+ *
+ * A waiter is registered before the engine is asked to read, taken exactly once
+ * by the terminal observation, and failed together when the page reaches a
+ * terminal state. Keeping this state explicit makes the terminal path testable
+ * without a live engine.
+ */
+internal class KWebContentWaiters {
+    private val pending = ConcurrentHashMap<Long, CompletableDeferred<KWebPageContent>>()
+
+    /** Registers one read and returns its waiter. */
+    fun register(requestId: Long): CompletableDeferred<KWebPageContent> {
+        val waiter = CompletableDeferred<KWebPageContent>()
+        val previous = pending.putIfAbsent(requestId, waiter)
+        check(previous == null) { "The page content request id $requestId is already active." }
+        return waiter
+    }
+
+    /** Removes and returns the waiter for one request, or null when it is gone. */
+    fun take(requestId: Long): CompletableDeferred<KWebPageContent>? = pending.remove(requestId)
+
+    /** Fails every outstanding waiter exactly once. */
+    fun failAll(error: KWebPageContentException) {
+        val waiters = pending.values.toList()
+        pending.clear()
+        waiters.forEach { waiter -> waiter.completeExceptionally(error) }
+    }
+
+    /** The number of reads that have not reached a terminal observation. */
+    val size: Int get() = pending.size
+}
+
+/**
+ * RFC 0044 page utilities over the native child engine, plus the RFC 0047 page
+ * content read.
  *
  * One find session is active per page. The session identifier is page-owned and
  * monotonic; the native find handler echoes it, so an update that belongs to a
  * replaced session is never attributed to the replacement. Zoom is applied and
- * read back through the engine instead of echoing the requested value.
+ * read back through the engine instead of echoing the requested value. A content
+ * read is one page-owned request whose terminal observation carries the document
+ * prefix and the size Chromium produced.
  */
 internal class KWebDesktopPageUtilities(
     private val native: NativeBrowser,
 ) : KWebPageUtilities {
     private val mutex = Mutex()
     private val pdfMutex = Mutex()
+    private val contentMutex = Mutex()
     private val mutableActiveFind = MutableStateFlow<KWebFindSession?>(null)
     private val mutableFindResults = MutableSharedFlow<KWebFindResult>(
         replay = 0,
         extraBufferCapacity = FIND_RESULT_BUFFER,
     )
     private val pendingFinal = ConcurrentHashMap<Long, CompletableDeferred<KWebFindResult>>()
+    private val pendingContent = KWebContentWaiters()
     private var nextSessionId = 0L
     private var nextPdfRequestId = 0L
+    private var nextContentRequestId = 0L
 
     /** Written on the browser callback thread, read by `stopFinding`. */
     @Volatile
@@ -139,6 +184,71 @@ internal class KWebDesktopPageUtilities(
         withContext(Dispatchers.IO) {
             pdfMutex.withLock { exportPdfLocked(request) }
         }
+
+    override suspend fun content(request: KWebPageContentRequest): KWebPageContent =
+        withContext(Dispatchers.IO) {
+            contentMutex.withLock { contentLocked(request) }
+        }
+
+    private suspend fun contentLocked(request: KWebPageContentRequest): KWebPageContent {
+        val requestId = ++nextContentRequestId
+        val waiter = pendingContent.register(requestId)
+        val status = native.pageContent(
+            requestId = requestId,
+            kind = when (request.kind) {
+                KWebPageContentKind.SOURCE -> NATIVE_PAGE_CONTENT_SOURCE
+                KWebPageContentKind.TEXT -> NATIVE_PAGE_CONTENT_TEXT
+            },
+            maximumBytes = request.maximumBytes,
+        )
+        if (status != NativeStatus.OK.value) {
+            pendingContent.take(requestId)
+            throw pageUtilityStatusException(
+                "page-content",
+                status,
+                mapOf("requestId" to requestId.toString()),
+            )
+        }
+        val content = withTimeoutOrNull(CONTENT_TIMEOUT_MILLIS) { waiter.await() }
+            ?: run {
+                pendingContent.take(requestId)
+                throw KWebPageContentException(
+                    code = KWebPageContentErrorCode.TIMEOUT,
+                    details = mapOf("requestId" to requestId.toString()),
+                    message = "Chromium did not deliver the requested document in time.",
+                )
+            }
+        pendingContent.take(requestId)
+        if (content.kind != request.kind) {
+            throw KWebPageContentException(
+                code = KWebPageContentErrorCode.CONTRACT_INVALID,
+                details = mapOf(
+                    "field" to "kind",
+                    "requested" to request.kind.id,
+                    "delivered" to content.kind.id,
+                ),
+                message = "The engine delivered a different document view than the read requested.",
+            )
+        }
+        if (content.text.encodeToByteArray().size > request.maximumBytes) {
+            throw KWebPageContentException(
+                code = KWebPageContentErrorCode.CONTRACT_INVALID,
+                details = mapOf("field" to "maximumBytes"),
+                message = "The engine delivered more bytes than the read declared.",
+            )
+        }
+        return content
+    }
+
+    /** Called for every native page content observation while the page is live. */
+    internal fun onPageContent(event: NativeBrowserEvent) {
+        val waiter = pendingContent.take(event.requestId) ?: return
+        try {
+            waiter.complete(KWebDesktopPageContentJson.parse(event))
+        } catch (error: Throwable) {
+            waiter.completeExceptionally(error)
+        }
+    }
 
     private suspend fun exportPdfLocked(request: KWebPdfExportRequest): KWebPdfDocument {
         val directory = native.profileDirectory.resolve(PDF_EXPORT_DIRECTORY)
@@ -305,12 +415,20 @@ internal class KWebDesktopPageUtilities(
         }
     }
 
-    /** Resolves an in-flight find call when its page reached a terminal state. */
+    /** Resolves in-flight calls when the page reached a terminal state. */
     internal fun onPageClosed(error: KWebPageUtilityException) {
         val active = mutableActiveFind.value
         mutableActiveFind.value = null
         active?.let { pendingFinal.remove(it.id)?.completeExceptionally(error) }
         pendingFinal.clear()
+        pendingContent.failAll(
+            KWebPageContentException(
+                code = error.code,
+                details = error.details,
+                message = "The page closed before the content read completed.",
+                cause = error,
+            ),
+        )
     }
 
     private suspend fun startSessionLocked(request: KWebFindRequest): KWebFindResult {
@@ -388,9 +506,69 @@ internal class KWebDesktopPageUtilities(
     private companion object {
         const val FIND_RESULT_BUFFER = 64
         const val FIND_TIMEOUT_MILLIS = 5_000L
+        const val CONTENT_TIMEOUT_MILLIS = 10_000L
         const val PDF_EXPORT_DIRECTORY = "pdf-exports"
         const val PDF_HEADER = "%PDF-"
+        const val NATIVE_PAGE_CONTENT_SOURCE = 1
+        const val NATIVE_PAGE_CONTENT_TEXT = 2
     }
+}
+
+/** Parses the bounded page content payload the engine publishes. */
+internal object KWebDesktopPageContentJson {
+    private val json = Json {
+        explicitNulls = false
+        ignoreUnknownKeys = false
+        isLenient = false
+    }
+
+    /**
+     * The engine reports the metadata JSON in `text` and the delivered document
+     * bytes unchanged in `details`, so the document is never re-encoded through
+     * JSON escaping.
+     */
+    internal fun parse(event: NativeBrowserEvent): KWebPageContent {
+        val root = try {
+            json.parseToJsonElement(event.text).jsonObject
+        } catch (error: IllegalArgumentException) {
+            throw invalid("metadata", error)
+        }
+        if (requiredInt(root, "version") != 1) invalid("version")
+        val kind = when (val raw = requiredInt(root, "kind")) {
+            1 -> KWebPageContentKind.SOURCE
+            2 -> KWebPageContentKind.TEXT
+            else -> invalid("kind", details = mapOf("kind" to raw.toString()))
+        }
+        val totalBytes = requiredLong(root, "totalBytes")
+        if (totalBytes < 0L) invalid("totalBytes")
+        return KWebPageContent(
+            kind = kind,
+            url = root["url"]?.jsonPrimitive?.content ?: invalid("url"),
+            text = event.details,
+            totalBytes = totalBytes,
+            truncated = requiredBoolean(root, "truncated"),
+        )
+    }
+
+    private fun requiredInt(root: JsonObject, name: String): Int =
+        root[name]?.jsonPrimitive?.intOrNull ?: throw invalid(name)
+
+    private fun requiredLong(root: JsonObject, name: String): Long =
+        root[name]?.jsonPrimitive?.longOrNull ?: throw invalid(name)
+
+    private fun requiredBoolean(root: JsonObject, name: String): Boolean =
+        root[name]?.jsonPrimitive?.booleanOrNull ?: throw invalid(name)
+
+    private fun invalid(
+        name: String,
+        cause: Throwable? = null,
+        details: Map<String, String> = emptyMap(),
+    ): Nothing = throw KWebPageContentException(
+        code = KWebPageContentErrorCode.CONTRACT_INVALID,
+        details = details + mapOf("field" to name),
+        message = "The engine page content field '$name' is invalid.",
+        cause = cause,
+    )
 }
 
 /** Parses the bounded find-result payload the engine publishes. */

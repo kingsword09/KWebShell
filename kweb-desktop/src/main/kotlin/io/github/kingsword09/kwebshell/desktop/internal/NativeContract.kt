@@ -2,7 +2,7 @@ package io.github.kingsword09.kwebshell.desktop.internal
 
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 
-internal const val NATIVE_ABI_VERSION: Int = 21
+internal const val NATIVE_ABI_VERSION: Int = 22
 
 internal enum class NativeStatus(
     val value: Int,
@@ -105,6 +105,7 @@ internal enum class NativeStatus(
     PDF_EXPORT_ACTIVE(96, "pdf-export-active"),
     PDF_EXPORT_FAILED(97, "pdf-export-failed"),
     PDF_PATH_INVALID(98, "pdf-path-invalid"),
+    PAGE_CONTENT_INVALID(99, "page-content-invalid"),
     ;
 
     companion object {
@@ -192,6 +193,7 @@ internal fun pageUtilityStatusException(
     val code = when (value) {
         NativeStatus.FIND_SESSION_STALE.value -> "page.find-session-stale"
         NativeStatus.ZOOM_LEVEL_INVALID.value -> "page.zoom-level-invalid"
+        NativeStatus.PAGE_CONTENT_INVALID.value -> "page.content-request-invalid"
         NativeStatus.BROWSER_CLOSING.value,
         NativeStatus.BROWSER_NOT_READY.value -> "page.closed"
         else -> return nativeStatusException(operation, value, details)

@@ -1,0 +1,1 @@
+{"schemaVersion":1,"target":"linux-x64","provider":"secure-storage.linux.secret-service","backend":"linux_secret_service","capabilities":"PROFILE_SCOPE,ROTATION","roundTrip":"not-attempted","rotation":"not-attempted","storedSizeBytes":0,"sessionBoundary":"secure-storage.service-unavailable","liveHandlesAfterClose":0,"status":"PASS","failures":[]}

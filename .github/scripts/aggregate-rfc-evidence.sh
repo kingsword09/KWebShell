@@ -146,9 +146,7 @@ record() {
   if [ "$rfc" = "0045" ]; then
     arguments+=(--matrix-row print-to-pdf)
   fi
-  if [ "$rfc" = "0046" ]; then
-    arguments+=(--service printers)
-  fi
+
   if [ "$rfc" = "0013" ]; then
     arguments+=(--matrix-row node-fs)
   fi

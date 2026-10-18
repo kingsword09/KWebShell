@@ -37,7 +37,6 @@ dependencies {
     implementation(project(":kweb-service-power"))
     implementation(project(":kweb-service-secure-storage"))
     implementation(project(":kweb-service-processes"))
-    implementation(project(":kweb-service-printers"))
 }
 
 tasks.withType<Test>().configureEach {

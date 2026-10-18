@@ -727,8 +727,6 @@
         "docs/rfcs/0046-printer-discovery.md",
         "docs/rfcs/README.md",
         "docs/rfcs/evidence/contracts.json",
-        "kweb-rfc-governance/build.gradle.kts",
-        "kweb-rfc-governance/src/main/kotlin/io/github/kingsword09/kwebshell/rfc/KWebRfcServiceCatalog.kt",
         "kweb-service-printers",
         "settings.gradle.kts"
       ]

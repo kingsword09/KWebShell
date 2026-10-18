@@ -281,6 +281,32 @@ final class FfmBrowserCalls {
         }
     }
 
+    static int exportPdf(long handle, long requestId, String path, String settingsJson) {
+        try (Arena arena = Arena.ofConfined()) {
+            FfmMemory.EncodedUtf8 encodedPath = FfmMemory.encode(
+                path, arena, FfmMemory.MAXIMUM_PATH_SIZE
+            );
+            FfmMemory.EncodedUtf8 encodedSettings = FfmMemory.encode(
+                settingsJson, arena, FfmMemory.MAXIMUM_TEXT_SIZE
+            );
+            return (int) library().handle("kweb_browser_export_pdf")
+                .invokeExact(
+                    handle,
+                    requestId,
+                    encodedPath.segment(),
+                    encodedPath.size(),
+                    encodedSettings.segment(),
+                    encodedSettings.size()
+                );
+        } catch (FfmTextException error) {
+            return error.status();
+        } catch (OutOfMemoryError error) {
+            return FfmStatus.ALLOCATION_FAILED;
+        } catch (Throwable error) {
+            return FfmStatus.INTERNAL_ERROR;
+        }
+    }
+
     static long liveCount() {
         try {
             return (long) library().handle("kweb_live_browser_count").invokeExact();

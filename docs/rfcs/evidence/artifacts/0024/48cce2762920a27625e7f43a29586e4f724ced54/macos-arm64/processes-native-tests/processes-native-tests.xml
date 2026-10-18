@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)"
+	tests="1"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname=""
+	time="7"
+	timestamp="2026-10-18T07:25:07"
+	>
+	<testcase name="kweb_processes_tests" classname="kweb_processes_tests" time="7.72276" status="run">
+		<properties>
+			<property name="cmake_labels" value="abi;native;processes"/>
+		</properties>
+		<system-out>cpu scenario: reason=4 cpu_millis=845 signal=24 exit=-1 duration=1024
+memory scenario: reason=5 peak_bytes=269615104 signal=9 exit=-1 duration=284 out=held 256
+
+PASS: the RFC 0024 process ABI, validation, and provider structure tests passed.
+</system-out>
+	</testcase>
+</testsuite>

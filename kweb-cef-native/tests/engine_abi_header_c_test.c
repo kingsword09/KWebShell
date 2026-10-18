@@ -7,8 +7,12 @@
 
 _Static_assert(KWEB_INVALID_ENGINE_HANDLE == 0,
                "the invalid engine handle must remain zero");
-_Static_assert(KWEB_ABI_VERSION == 20,
-               "page find and zoom require ABI version 20");
+_Static_assert(KWEB_ABI_VERSION == 21,
+               "PDF export requires ABI version 21");
+_Static_assert(KWEB_BROWSER_EVENT_PDF_EXPORT == 30,
+               "the PDF export browser event type is ABI-stable");
+_Static_assert(KWEB_PDF_EXPORT_SUCCEEDED == 1 && KWEB_PDF_EXPORT_FAILED == 2,
+               "the PDF export result values are ABI-stable");
 _Static_assert(KWEB_BROWSER_EVENT_FIND_RESULT == 29,
                "the page find result browser event type is ABI-stable");
 _Static_assert(KWEB_FIND_START == 1 && KWEB_FIND_CONTINUE == 2,

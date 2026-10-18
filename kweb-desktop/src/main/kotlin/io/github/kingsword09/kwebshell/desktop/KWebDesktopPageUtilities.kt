@@ -10,6 +10,13 @@ import io.github.kingsword09.kwebshell.core.KWebFindStopResult
 import io.github.kingsword09.kwebshell.core.KWebPageUtilityErrorCode
 import io.github.kingsword09.kwebshell.core.KWebPageUtilityException
 import io.github.kingsword09.kwebshell.core.KWebPageUtilities
+import io.github.kingsword09.kwebshell.core.KWebPdfDocument
+import io.github.kingsword09.kwebshell.core.KWebPdfErrorCode
+import io.github.kingsword09.kwebshell.core.KWebPdfExportException
+import io.github.kingsword09.kwebshell.core.KWebPdfExportRequest
+import io.github.kingsword09.kwebshell.core.KWebPdfMargins
+import io.github.kingsword09.kwebshell.core.KWebPdfReadResult
+import io.github.kingsword09.kwebshell.core.KWEB_PDF_MAXIMUM_READ_BYTES
 import io.github.kingsword09.kwebshell.core.KWebZoomState
 import io.github.kingsword09.kwebshell.core.kWebZoomFactorForLevel
 import io.github.kingsword09.kwebshell.core.kWebZoomLevelForFactor
@@ -20,6 +27,7 @@ import io.github.kingsword09.kwebshell.desktop.internal.NativeFindDirection
 import io.github.kingsword09.kwebshell.desktop.internal.NativeStatus
 import io.github.kingsword09.kwebshell.desktop.internal.pageUtilityStatusException
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -38,6 +46,10 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import java.nio.file.Files
+import java.nio.file.Path
 
 /**
  * RFC 0044 page utilities over the native child engine.
@@ -51,6 +63,7 @@ internal class KWebDesktopPageUtilities(
     private val native: NativeBrowser,
 ) : KWebPageUtilities {
     private val mutex = Mutex()
+    private val pdfMutex = Mutex()
     private val mutableActiveFind = MutableStateFlow<KWebFindSession?>(null)
     private val mutableFindResults = MutableSharedFlow<KWebFindResult>(
         replay = 0,
@@ -58,6 +71,7 @@ internal class KWebDesktopPageUtilities(
     )
     private val pendingFinal = ConcurrentHashMap<Long, CompletableDeferred<KWebFindResult>>()
     private var nextSessionId = 0L
+    private var nextPdfRequestId = 0L
 
     /** Written on the browser callback thread, read by `stopFinding`. */
     @Volatile
@@ -120,6 +134,146 @@ internal class KWebDesktopPageUtilities(
             val level = kWebZoomLevelForFactor(factor)
             mutex.withLock { applyZoomLocked(level) }
         }
+
+    override suspend fun exportPdf(request: KWebPdfExportRequest): KWebPdfDocument =
+        withContext(Dispatchers.IO) {
+            pdfMutex.withLock { exportPdfLocked(request) }
+        }
+
+    private suspend fun exportPdfLocked(request: KWebPdfExportRequest): KWebPdfDocument {
+        val directory = native.profileDirectory.resolve(PDF_EXPORT_DIRECTORY)
+        try {
+            Files.createDirectories(directory)
+        } catch (error: Throwable) {
+            throw KWebPdfExportException(
+                code = KWebPdfErrorCode.PATH_INVALID,
+                details = mapOf("directory" to PDF_EXPORT_DIRECTORY),
+                message = "The Profile PDF export directory could not be created.",
+                cause = error,
+            )
+        }
+        if (Files.isSymbolicLink(directory) || !Files.isDirectory(directory)) {
+            throw KWebPdfExportException(
+                code = KWebPdfErrorCode.PATH_INVALID,
+                details = mapOf("directory" to PDF_EXPORT_DIRECTORY),
+                message = "The Profile PDF export directory must be a real directory.",
+            )
+        }
+        val name = "pdf-${java.util.UUID.randomUUID()}.pdf"
+        val target = directory.resolve(name)
+        val requestId = ++nextPdfRequestId
+        try {
+            val result = native.exportPdf(requestId, target.toString(), pdfSettingsPayload(request))
+            if (!result.succeeded) {
+                throw KWebPdfExportException(
+                    code = KWebPdfErrorCode.NATIVE_FAILED,
+                    details = mapOf(
+                        "failure" to result.failure.ifEmpty { "unknown" },
+                        "requestId" to requestId.toString(),
+                    ),
+                    message = "Chromium did not produce the requested PDF export.",
+                )
+            }
+            val size = try {
+                Files.size(target)
+            } catch (error: Throwable) {
+                throw KWebPdfExportException(
+                    code = KWebPdfErrorCode.ARTIFACT_INVALID,
+                    details = mapOf("name" to name),
+                    message = "The exported PDF artifact is missing.",
+                    cause = error,
+                )
+            }
+            if (size <= 0L) {
+                throw KWebPdfExportException(
+                    code = KWebPdfErrorCode.ARTIFACT_INVALID,
+                    details = mapOf("name" to name, "sizeBytes" to size.toString()),
+                    message = "The exported PDF artifact is empty.",
+                )
+            }
+            if (size > KWebPdfDocument.MAXIMUM_SIZE_BYTES) {
+                throw KWebPdfExportException(
+                    code = KWebPdfErrorCode.ARTIFACT_TOO_LARGE,
+                    details = mapOf("name" to name, "sizeBytes" to size.toString()),
+                    message = "The exported PDF exceeds the declared artifact size.",
+                )
+            }
+            if (!hasPdfHeader(target)) {
+                throw KWebPdfExportException(
+                    code = KWebPdfErrorCode.ARTIFACT_INVALID,
+                    details = mapOf("name" to name),
+                    message = "The exported artifact is not a PDF document.",
+                )
+            }
+            return KWebDesktopPdfDocument(
+                name = name,
+                path = target,
+                sizeBytes = size,
+                sha256 = sha256Of(target),
+            )
+        } catch (error: Throwable) {
+            runCatching { Files.deleteIfExists(target) }
+            throw error
+        }
+    }
+
+    private fun pdfSettingsPayload(request: KWebPdfExportRequest): String =
+        buildJsonObject {
+            put("version", 1)
+            put("paperWidthInches", request.paper.widthInches)
+            put("paperHeightInches", request.paper.heightInches)
+            put("landscape", request.landscape)
+            put("printBackground", request.printBackground)
+            put("scale", request.scale)
+            put(
+                "marginType",
+                when (request.margins) {
+                    KWebPdfMargins.DEFAULT -> 0
+                    KWebPdfMargins.NONE -> 1
+                    is KWebPdfMargins.Custom -> 2
+                },
+            )
+            val margins = request.margins
+            if (margins is KWebPdfMargins.Custom) {
+                put("marginTopInches", margins.topInches)
+                put("marginRightInches", margins.rightInches)
+                put("marginBottomInches", margins.bottomInches)
+                put("marginLeftInches", margins.leftInches)
+            }
+            put("displayHeaderFooter", request.displayHeaderFooter)
+            put("headerTemplate", request.headerTemplate)
+            put("footerTemplate", request.footerTemplate)
+            put("pageRanges", request.pageRanges)
+            put("preferCssPageSize", request.preferCssPageSize)
+        }.toString()
+
+    private fun hasPdfHeader(path: Path): Boolean {
+        val header = ByteArray(5)
+        val read = Files.newInputStream(path).use { stream ->
+            var total = 0
+            while (total < header.size) {
+                val count = stream.read(header, total, header.size - total)
+                if (count < 0) break
+                total += count
+            }
+            total
+        }
+        return read == header.size &&
+            header.decodeToString() == PDF_HEADER
+    }
+
+    private fun sha256Of(path: Path): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        Files.newInputStream(path).use { stream ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val count = stream.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+    }
 
     /** Called for every native find update while the page is live. */
     internal fun onFindResult(event: NativeBrowserEvent) {
@@ -234,6 +388,8 @@ internal class KWebDesktopPageUtilities(
     private companion object {
         const val FIND_RESULT_BUFFER = 64
         const val FIND_TIMEOUT_MILLIS = 5_000L
+        const val PDF_EXPORT_DIRECTORY = "pdf-exports"
+        const val PDF_HEADER = "%PDF-"
     }
 }
 
@@ -296,4 +452,85 @@ internal object KWebDesktopFindJson {
             message = "The engine find result field '$name' is invalid.",
             cause = cause,
         )
+}
+
+/**
+ * The engine-owned PDF artifact published by RFC 0026.
+ *
+ * The file lives inside the Profile's PDF export directory; bounded reads are
+ * the only access, and closing the document removes the artifact.
+ */
+internal class KWebDesktopPdfDocument(
+    override val name: String,
+    private val path: Path,
+    override val sizeBytes: Long,
+    override val sha256: String,
+) : KWebPdfDocument {
+    private val closed = AtomicBoolean(false)
+
+    init {
+        if (!NAME_PATTERN.matches(name) || !name.endsWith(".pdf")) {
+            throw KWebPdfExportException(
+                code = KWebPdfErrorCode.ARTIFACT_INVALID,
+                details = mapOf("name" to name),
+                message = "A PDF artifact name must be a safe .pdf file name.",
+            )
+        }
+        if (sizeBytes <= 0L || sizeBytes > KWebPdfDocument.MAXIMUM_SIZE_BYTES) {
+            throw KWebPdfExportException(
+                code = KWebPdfErrorCode.ARTIFACT_INVALID,
+                details = mapOf("sizeBytes" to sizeBytes.toString()),
+                message = "A PDF artifact size must be positive and bounded.",
+            )
+        }
+        if (!SHA256_PATTERN.matches(sha256)) {
+            throw KWebPdfExportException(
+                code = KWebPdfErrorCode.ARTIFACT_INVALID,
+                details = mapOf("field" to "sha256"),
+                message = "A PDF artifact digest must be a lower-case SHA-256 value.",
+            )
+        }
+    }
+
+    override suspend fun read(offset: Long, length: Int): KWebPdfReadResult =
+        withContext(Dispatchers.IO) {
+            if (closed.get()) {
+                throw KWebPdfExportException(
+                    code = KWebPdfErrorCode.ARTIFACT_INVALID,
+                    details = mapOf("name" to name, "reason" to "closed"),
+                    message = "A closed PDF artifact cannot be read.",
+                )
+            }
+            if (offset < 0L || offset >= sizeBytes) {
+                throw KWebPdfExportException(
+                    code = KWebPdfErrorCode.ARTIFACT_INVALID,
+                    details = mapOf("offset" to offset.toString(), "sizeBytes" to sizeBytes.toString()),
+                    message = "A PDF artifact read offset must be inside the artifact.",
+                )
+            }
+            if (length <= 0 || length > KWEB_PDF_MAXIMUM_READ_BYTES) {
+                throw KWebPdfExportException(
+                    code = KWebPdfErrorCode.ARTIFACT_INVALID,
+                    details = mapOf("length" to length.toString()),
+                    message = "A PDF artifact read must be bounded by $KWEB_PDF_MAXIMUM_READ_BYTES bytes.",
+                )
+            }
+            val available = minOf(length.toLong(), sizeBytes - offset).toInt()
+            val bytes = java.io.RandomAccessFile(path.toFile(), "r").use { file ->
+                file.seek(offset)
+                ByteArray(available).also(file::readFully)
+            }
+            KWebPdfReadResult(bytes = bytes, eof = offset + available >= sizeBytes)
+        }
+
+    override fun close() {
+        if (closed.compareAndSet(false, true)) {
+            runCatching { Files.deleteIfExists(path) }
+        }
+    }
+
+    private companion object {
+        val NAME_PATTERN = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+        val SHA256_PATTERN = Regex("[0-9a-f]{64}")
+    }
 }

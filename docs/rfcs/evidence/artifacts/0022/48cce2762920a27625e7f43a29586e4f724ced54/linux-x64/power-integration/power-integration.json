@@ -1,0 +1,1 @@
+{"schemaVersion":1,"target":"linux-x64","provider":"power.linux.logind-upower","capabilities":"DISPLAY_SLEEP_BLOCKER,LEASE_RENEWAL,LOCK_EVENTS,SUSPEND_EVENTS,SYSTEM_SLEEP_BLOCKER","facts":"","peakLeases":0,"expiredLeases":0,"profileAcquired":false,"leaseLifecycle":"session-denied","sessionBoundary":"power.native-failed","liveLeasesAfterClose":0,"status":"PASS","failures":[]}

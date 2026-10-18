@@ -74,6 +74,16 @@ typedef uint32_t kweb_profile_data_operation_type;
  * page-owned session id and details carries the bounded JSON payload described
  * with kweb_browser_find below. */
 #define KWEB_BROWSER_EVENT_FIND_RESULT ((kweb_browser_event_type)29)
+/* The terminal result of one PDF export. request_id identifies the export,
+ * status_code is one of the kweb_pdf_export_result_type values and text carries
+ * the failure code when the export failed. On success details is
+ * {"version":1,"bytes":N}. */
+#define KWEB_BROWSER_EVENT_PDF_EXPORT ((kweb_browser_event_type)30)
+
+typedef uint32_t kweb_pdf_export_result_type;
+
+#define KWEB_PDF_EXPORT_SUCCEEDED ((kweb_pdf_export_result_type)1)
+#define KWEB_PDF_EXPORT_FAILED ((kweb_pdf_export_result_type)2)
 
 /* Page context-menu decisions. The decision payload is JSON:
  * {"decision":"continue","commandId":"chromium.copy"} when the application
@@ -446,6 +456,24 @@ KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL kweb_browser_set_zoom_level(
 /* Reports the page zoom level Chromium currently observes. */
 KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL kweb_browser_zoom_level(
     kweb_browser_handle browser, double *level_out);
+
+/* Writes the current page as a PDF to |path_utf8| and reports the terminal
+ * result through KWEB_BROWSER_EVENT_PDF_EXPORT.
+ *
+ * |path_utf8| must be an absolute, normalized path inside the session's Profile
+ * directory with a .pdf extension and no symbolic link on its existing parents;
+ * arbitrary filesystem destinations are refused. |settings_utf8| is the bounded
+ * JSON object
+ * {"version":1,"paperWidthInches":N,"paperHeightInches":N,"landscape":b,
+ *  "printBackground":b,"scale":N,"marginType":0|1|2,
+ *  "marginTopInches":N,"marginRightInches":N,"marginBottomInches":N,
+ *  "marginLeftInches":N,"displayHeaderFooter":b,"headerTemplate":s,
+ *  "footerTemplate":s,"pageRanges":s,"preferCssPageSize":b}
+ * where marginType 0 is the Chromium default, 1 removes every margin, and 2
+ * uses the four custom values. Only one export may be in flight per browser. */
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL kweb_browser_export_pdf(
+    kweb_browser_handle browser, uint64_t request_id, const char *path_utf8,
+    size_t path_size, const char *settings_utf8, size_t settings_size);
 
 KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
 kweb_browser_profile_data(

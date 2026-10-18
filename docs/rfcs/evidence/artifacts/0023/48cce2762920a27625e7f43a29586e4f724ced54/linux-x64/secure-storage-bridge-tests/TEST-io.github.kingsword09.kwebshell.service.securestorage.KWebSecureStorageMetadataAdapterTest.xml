@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="KWebSecureStorageMetadataAdapterTest[jvm]" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-10-18T07:21:10.927Z" hostname="runnervm8k3b6" time="0.094">
+  <properties/>
+  <testcase name="onlyDeclaredIdentifiersAreSummarizedWithoutSecretBytes()[jvm]" classname="io.github.kingsword09.kwebshell.service.securestorage.KWebSecureStorageMetadataAdapterTest" time="0.08"/>
+  <testcase name="anUndeclaredIdentifierIsDenied()[jvm]" classname="io.github.kingsword09.kwebshell.service.securestorage.KWebSecureStorageMetadataAdapterTest" time="0.002"/>
+  <testcase name="aMissingGrantOrAChildFrameIsDenied()[jvm]" classname="io.github.kingsword09.kwebshell.service.securestorage.KWebSecureStorageMetadataAdapterTest" time="0.002"/>
+  <testcase name="aGestureIsRequiredWhenTheAdapterDeclaresOne()[jvm]" classname="io.github.kingsword09.kwebshell.service.securestorage.KWebSecureStorageMetadataAdapterTest" time="0.007"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -79,6 +79,7 @@ internal enum class NativeBrowserEventType(val value: Int) {
     CONTEXT_MENU(27),
     MEDIA_PERMISSION(28),
     FIND_RESULT(29),
+    PDF_EXPORT(30),
     ;
 
     companion object {
@@ -110,6 +111,14 @@ internal data class NativeProfileDataResult(
     val operation: Int,
     val status: Int,
     val payload: String,
+)
+
+/** One terminal PDF export observation reported by the native callback. */
+internal data class NativePdfExportResult(
+    val requestId: Long,
+    val succeeded: Boolean,
+    val failure: String,
+    val bytes: Long,
 )
 
 /** The find direction literal the C ABI declares. */
@@ -172,6 +181,7 @@ internal class NativeBrowser private constructor(
     private val profileDataSink = NativeProfileDataEventSink(::receiveNativeProfileData)
     private val nextProfileDataRequestId = AtomicLong(1)
     private val profileDataRequests = ConcurrentHashMap<Long, CompletableDeferred<NativeProfileDataResult>>()
+    private val pdfExportRequests = ConcurrentHashMap<Long, CompletableDeferred<NativePdfExportResult>>()
     private val extensionCoordinator: JvmKWebExtensionLifecycleCoordinator by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         JvmKWebExtensionLifecycleCoordinator.open(
             storeRoot = profilePath.resolve(EXTENSION_STORE_DIRECTORY),
@@ -180,6 +190,7 @@ internal class NativeBrowser private constructor(
     }
 
     internal val lifecycle: StateFlow<KWebLifecycleState> = mutableLifecycle.asStateFlow()
+    internal val profileDirectory: Path get() = profilePath
     internal val rendererHasTerminated: Boolean
         get() = rendererTerminated.get()
 
@@ -262,6 +273,44 @@ internal class NativeBrowser private constructor(
     internal fun zoomLevel(): NativeZoomResult {
         val handle = requireOpenHandle("zoom-level")
         return NativeBindings.browserZoomLevel(handle)
+    }
+
+    /**
+     * Starts one PDF export and waits for its terminal native observation.
+     */
+    internal suspend fun exportPdf(
+        requestId: Long,
+        path: String,
+        settingsJson: String,
+    ): NativePdfExportResult {
+        val handle = requireOpenHandle("export-pdf")
+        val response = CompletableDeferred<NativePdfExportResult>()
+        if (pdfExportRequests.putIfAbsent(requestId, response) != null) {
+            throw KWebNativeException(
+                code = "pdf.export-active",
+                details = mapOf("requestId" to requestId.toString()),
+                message = "The PDF export request identifier is already active.",
+            )
+        }
+        val status = NativeBindings.browserExportPdf(handle, requestId, path, settingsJson)
+        if (status != NativeStatus.OK.value) {
+            pdfExportRequests.remove(requestId)
+            throw pdfExportStatusException(
+                "export-pdf",
+                status,
+                mapOf("requestId" to requestId.toString()),
+            )
+        }
+        val result = withTimeoutOrNull(CALLBACK_TIMEOUT.toMillis()) { response.await() } ?: run {
+            pdfExportRequests.remove(requestId)
+            throw KWebNativeException(
+                code = "pdf.native-failed",
+                details = mapOf("requestId" to requestId.toString()),
+                message = "Chromium did not finish the PDF export in time.",
+            )
+        }
+        pdfExportRequests.remove(requestId)
+        return result
     }
 
     internal fun setBounds(x: Int, y: Int, width: Int, height: Int) {
@@ -454,6 +503,10 @@ internal class NativeBrowser private constructor(
                 it.cancel(CancellationException("The native browser is closing."))
             }
             profileDataRequests.clear()
+            pdfExportRequests.values.forEach {
+                it.cancel(CancellationException("The native browser is closing."))
+            }
+            pdfExportRequests.clear()
             callbackExecutor.shutdown()
             closeBridgeScope()
             dispatcherTerminated = awaitExecutorTermination()
@@ -951,6 +1004,24 @@ internal class NativeBrowser private constructor(
                 if (callbackFailure.get() == null) {
                     mutableLifecycle.value = KWebLifecycleState.CLOSED
                 }
+            }
+            NativeBrowserEventType.PDF_EXPORT -> {
+                val succeeded = event.statusCode == 1
+                val bytes = if (succeeded) {
+                    event.details.substringAfter("\"bytes\":", "0")
+                        .takeWhile { it.isDigit() }
+                        .toLongOrNull() ?: -1L
+                } else {
+                    0L
+                }
+                pdfExportRequests.remove(event.requestId)?.complete(
+                    NativePdfExportResult(
+                        requestId = event.requestId,
+                        succeeded = succeeded,
+                        failure = event.text,
+                        bytes = bytes,
+                    ),
+                )
             }
             else -> Unit
         }

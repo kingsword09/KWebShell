@@ -204,6 +204,10 @@ public final class FfmBindings {
         return new ZoomResult(result.status(), result.level());
     }
 
+    public static int browserExportPdf(long handle, long requestId, String path, String settingsJson) {
+        return FfmBrowserCalls.exportPdf(handle, requestId, path, settingsJson);
+    }
+
     public static Throwable releaseBrowserOwner(long handle) {
         return FfmBrowserCalls.release(handle);
     }

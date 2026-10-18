@@ -157,6 +157,38 @@ int main() {
   Check(std::strcmp(kweb_status_name(KWEB_STATUS_ZOOM_LEVEL_INVALID),
                     "zoom-level-invalid") == 0,
         "invalid page zoom status must have a stable name");
+  Check(std::strcmp(kweb_status_name(KWEB_STATUS_PDF_EXPORT_INVALID),
+                    "pdf-export-invalid") == 0,
+        "invalid PDF settings status must have a stable name");
+  Check(std::strcmp(kweb_status_name(KWEB_STATUS_PDF_EXPORT_ACTIVE),
+                    "pdf-export-active") == 0,
+        "active PDF export status must have a stable name");
+  Check(std::strcmp(kweb_status_name(KWEB_STATUS_PDF_EXPORT_FAILED),
+                    "pdf-export-failed") == 0,
+        "failed PDF export status must have a stable name");
+  Check(std::strcmp(kweb_status_name(KWEB_STATUS_PDF_PATH_INVALID),
+                    "pdf-path-invalid") == 0,
+        "invalid PDF path status must have a stable name");
+  {
+    const char *settings =
+        "{\"version\":1,\"paperWidthInches\":8.5,\"paperHeightInches\":11,"
+        "\"landscape\":false,\"printBackground\":false,\"scale\":1,"
+        "\"marginType\":0,\"displayHeaderFooter\":false,"
+        "\"headerTemplate\":\"\",\"footerTemplate\":\"\","
+        "\"pageRanges\":\"\",\"preferCssPageSize\":false}";
+    Check(kweb_browser_export_pdf(KWEB_INVALID_BROWSER_HANDLE, 0, "/tmp/a.pdf",
+                                 10, settings, std::strlen(settings)) ==
+              KWEB_STATUS_PDF_EXPORT_INVALID,
+          "a PDF export without a request id must fail before browser lookup");
+    Check(kweb_browser_export_pdf(KWEB_INVALID_BROWSER_HANDLE, 1, nullptr, 0,
+                                  settings, std::strlen(settings)) ==
+              KWEB_STATUS_PDF_EXPORT_INVALID,
+          "a PDF export without a path must fail before browser lookup");
+    Check(kweb_browser_export_pdf(KWEB_INVALID_BROWSER_HANDLE, 1, "/tmp/a.pdf",
+                                  10, settings, std::strlen(settings)) ==
+              KWEB_STATUS_INVALID_HANDLE,
+          "a valid PDF export must require a live browser");
+  }
   {
     double observed = -1.0;
     Check(kweb_browser_find(KWEB_INVALID_BROWSER_HANDLE, 0, "text", 4,

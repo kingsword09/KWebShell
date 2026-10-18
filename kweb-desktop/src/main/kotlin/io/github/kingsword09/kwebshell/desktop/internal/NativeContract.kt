@@ -2,7 +2,7 @@ package io.github.kingsword09.kwebshell.desktop.internal
 
 import io.github.kingsword09.kwebshell.core.KWebNativeException
 
-internal const val NATIVE_ABI_VERSION: Int = 20
+internal const val NATIVE_ABI_VERSION: Int = 21
 
 internal enum class NativeStatus(
     val value: Int,
@@ -101,6 +101,10 @@ internal enum class NativeStatus(
     CONTEXT_MENU_CLOSING(92, "context-menu-closing"),
     FIND_SESSION_STALE(93, "find-session-stale"),
     ZOOM_LEVEL_INVALID(94, "zoom-level-invalid"),
+    PDF_EXPORT_INVALID(95, "pdf-export-invalid"),
+    PDF_EXPORT_ACTIVE(96, "pdf-export-active"),
+    PDF_EXPORT_FAILED(97, "pdf-export-failed"),
+    PDF_PATH_INVALID(98, "pdf-path-invalid"),
     ;
 
     companion object {
@@ -156,6 +160,27 @@ internal fun contextMenuStatusException(
         code = code,
         details = details + mapOf("operation" to operation, "status" to value.toString()),
         message = "Native page context-menu operation '$operation' failed with '$code'.",
+    )
+}
+
+internal fun pdfExportStatusException(
+    operation: String,
+    value: Int,
+    details: Map<String, String> = emptyMap(),
+): KWebNativeException {
+    val code = when (value) {
+        NativeStatus.PDF_EXPORT_INVALID.value -> "pdf.settings-invalid"
+        NativeStatus.PDF_EXPORT_ACTIVE.value -> "pdf.export-active"
+        NativeStatus.PDF_EXPORT_FAILED.value -> "pdf.native-failed"
+        NativeStatus.PDF_PATH_INVALID.value -> "pdf.path-invalid"
+        NativeStatus.BROWSER_CLOSING.value,
+        NativeStatus.BROWSER_NOT_READY.value -> "page.closed"
+        else -> return nativeStatusException(operation, value, details)
+    }
+    return KWebNativeException(
+        code = code,
+        details = details + mapOf("operation" to operation, "status" to value.toString()),
+        message = "Native PDF export operation '$operation' failed with '$code'.",
     )
 }
 

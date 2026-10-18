@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="KWebShortcutsContractTest[jvm]" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-10-18T11:02:09.026Z" hostname="sjc20-cw715-944fde9b-f410-4bea-8886-b117b6bfc068-D2ED1CF96907.local" time="0.014">
+  <properties/>
+  <testcase name="resultsAreImmutableRecords()[jvm]" classname="io.github.kingsword09.kwebshell.service.shortcuts.KWebShortcutsContractTest" time="0.002"/>
+  <testcase name="eventsCarryAStrictlyOrderedIdentity()[jvm]" classname="io.github.kingsword09.kwebshell.service.shortcuts.KWebShortcutsContractTest" time="0.005"/>
+  <testcase name="namedKeysRequireAModifierAndMediaKeysDoNot()[jvm]" classname="io.github.kingsword09.kwebshell.service.shortcuts.KWebShortcutsContractTest" time="0.001"/>
+  <testcase name="identifiersAreBoundedAndStable()[jvm]" classname="io.github.kingsword09.kwebshell.service.shortcuts.KWebShortcutsContractTest" time="0.0"/>
+  <testcase name="capabilityReportAnswersDeclaredQueries()[jvm]" classname="io.github.kingsword09.kwebshell.service.shortcuts.KWebShortcutsContractTest" time="0.0"/>
+  <testcase name="acceleratorsCompareByModifiersAndKey()[jvm]" classname="io.github.kingsword09.kwebshell.service.shortcuts.KWebShortcutsContractTest" time="0.001"/>
+  <testcase name="descriptorPublishesHostAndPolicyGatedRendererOperations()[jvm]" classname="io.github.kingsword09.kwebshell.service.shortcuts.KWebShortcutsContractTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

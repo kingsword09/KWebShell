@@ -1,0 +1,1 @@
+{"schemaVersion":1,"target":"macos-arm64","provider":"secure-storage.macos.keychain","backend":"macos_keychain","capabilities":"ACCESSIBILITY_POLICY,PROFILE_SCOPE,ROTATION,USER_PRESENCE","roundTrip":"verified","rotation":"verified","storedSizeBytes":28,"sessionBoundary":"","liveHandlesAfterClose":0,"status":"PASS","failures":[]}

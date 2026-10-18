@@ -246,6 +246,7 @@ Agents may work in parallel only when dependencies do not overlap.
 | [0043](0043-media-access-decisions.md) | P1 | 0003, 0018, 0020 | Typed media-access decisions and desktop capture refusal |
 | [0044](0044-page-find-and-zoom.md) | P1 | 0004, 0008 | Page find sessions and page zoom |
 | [0045](0045-pdf-export.md) | P1 | 0004, 0008 | Page PDF export artifact |
+| [0046](0046-printer-discovery.md) | P1 | 0002, 0003 | Printer discovery and supported facts |
 
 ### Wave 4 — platform delivery and migration proof
 
@@ -288,7 +289,7 @@ intentional rather than accidental.
 | `safeStorage` | 0023 |
 | `utilityProcess`, Node `child_process` | 0024; arbitrary Node execution remains unsupported |
 | `desktopCapturer` | 0025 |
-| Printing APIs | 0026; PDF export is delivered as 0045, and interactive printing/printer enumeration stay with 0026 |
+| Printing APIs | 0026; PDF export is delivered as 0045 and printer discovery as 0046, and print submission remains blocked there |
 | `nativeImage` | 0027 |
 | `contentTracing`, `crashReporter`, `netLog`, app metrics | 0032 |
 | Dock, taskbar, Jump List, login items, recent documents | 0029 |

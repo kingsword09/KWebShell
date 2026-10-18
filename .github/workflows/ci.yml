@@ -310,6 +310,13 @@ jobs:
             xvfb
           xdg-user-dirs-update
 
+      - name: Install Linux printer tooling
+        if: runner.os == 'Linux' && steps.scope.outputs['printers-integration'] == 'true'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes cups-client
+
       - name: Configure Linux shell provider fixture
         if: runner.os == 'Linux' && steps.scope.outputs.shell == 'true'
         shell: bash
@@ -573,6 +580,17 @@ jobs:
           unset DISPLAY
           GDK_BACKEND=wayland WAYLAND_DISPLAY=kweb-screen \
             kweb-service-screen/build/native/contract/kweb_screen_tests | tee "$transcript"
+
+      - name: Upload printers evidence
+        if: always() && steps.scope.outputs['printers-integration'] == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: printers-integration-${{ matrix.target }}-${{ github.sha }}
+          path: |
+            kweb-service-printers/build/printers-integration/
+            kweb-service-printers/build/test-results/jvmTest/*.xml
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload screen evidence
         if: always() && steps.scope.outputs['screen-integration'] == 'true'

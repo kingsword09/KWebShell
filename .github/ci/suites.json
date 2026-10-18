@@ -20,6 +20,7 @@
     ":kweb-service-power": [":kweb-service-power:check"],
     ":kweb-service-secure-storage": [":kweb-service-secure-storage:check"],
     ":kweb-service-processes": [":kweb-service-processes:check"],
+    ":kweb-service-printers": [":kweb-service-printers:check"],
     ":kweb-electron-migration": [":kweb-electron-migration:check"],
     ":kweb-rfc-governance": [":kweb-rfc-governance:contractTest"],
     ":kweb-bridge": [":kweb-bridge:check"],
@@ -62,7 +63,8 @@
     "0030": {"modules": [":kweb-runtime-pack"], "families": ["application-package", "windows-launcher-smoke"]},
     "0043": {"modules": [":kweb-desktop", ":kweb-electron-migration"], "families": ["engine-integration", "electron-migration"]},
     "0044": {"modules": [":kweb-core", ":kweb-desktop", ":kweb-electron-migration"], "families": ["engine-integration", "electron-migration"]},
-    "0045": {"modules": [":kweb-core", ":kweb-desktop", ":kweb-electron-migration"], "families": ["engine-integration", "electron-migration"]}
+    "0045": {"modules": [":kweb-core", ":kweb-desktop", ":kweb-electron-migration"], "families": ["engine-integration", "electron-migration"]},
+    "0046": {"modules": [":kweb-service-printers"], "families": ["printers-integration"]}
   },
   "families": {
     "rfc-governance": ":kweb-rfc-governance:contractTest",
@@ -80,6 +82,7 @@
     "power-integration": ":kweb-service-power:nativePowerIntegrationTest",
     "secure-storage-integration": ":kweb-service-secure-storage:nativeSecureStorageIntegrationTest",
     "processes-integration": ":kweb-service-processes:nativeProcessesIntegrationTest",
+    "printers-integration": ":kweb-service-printers:printersIntegrationTest",
     "application-package": ":kweb-runtime-pack:applicationPackageIntegrationTest",
     "windows-launcher-smoke": ":kweb-runtime-pack:applicationPackageIntegrationTest",
     "application-lifecycle": ":kweb-service-application-lifecycle:applicationLifecycleIntegrationTest"

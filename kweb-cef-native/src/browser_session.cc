@@ -94,6 +94,191 @@ struct ZoomWaitState {
   double level = 0.0;
 };
 
+constexpr size_t kMaximumPdfTemplateBytes = 8 * 1024;
+constexpr size_t kMaximumPdfPageRangesBytes = 256;
+constexpr double kMaximumPdfPaperInches = 100.0;
+constexpr double kMaximumPdfMarginInches = 10.0;
+constexpr double kMinimumPdfScale = 0.1;
+constexpr double kMaximumPdfScale = 2.0;
+
+/// One validated PDF export request, exactly as the application declared it.
+struct PdfExportSettings {
+  double paper_width = 8.5;
+  double paper_height = 11.0;
+  bool landscape = false;
+  bool print_background = false;
+  double scale = 1.0;
+  uint32_t margin_type = PDF_PRINT_MARGIN_DEFAULT;
+  double margin_top = 0.0;
+  double margin_right = 0.0;
+  double margin_bottom = 0.0;
+  double margin_left = 0.0;
+  bool display_header_footer = false;
+  std::string header_template;
+  std::string footer_template;
+  std::string page_ranges;
+  bool prefer_css_page_size = false;
+};
+
+bool ReadPdfDouble(const CefRefPtr<CefDictionaryValue> &dictionary,
+                   const char *key, double minimum, double maximum,
+                   double *out) {
+  if (!dictionary->HasKey(key)) return false;
+  const auto type = dictionary->GetType(key);
+  double value = 0.0;
+  if (type == VTYPE_DOUBLE) {
+    value = dictionary->GetDouble(key);
+  } else if (type == VTYPE_INT) {
+    value = static_cast<double>(dictionary->GetInt(key));
+  } else {
+    return false;
+  }
+  if (!std::isfinite(value) || value < minimum || value > maximum) return false;
+  *out = value;
+  return true;
+}
+
+bool ReadPdfBool(const CefRefPtr<CefDictionaryValue> &dictionary,
+                 const char *key, bool *out) {
+  if (!dictionary->HasKey(key) || dictionary->GetType(key) != VTYPE_BOOL) {
+    return false;
+  }
+  *out = dictionary->GetBool(key);
+  return true;
+}
+
+bool ReadPdfString(const CefRefPtr<CefDictionaryValue> &dictionary,
+                   const char *key, size_t maximum_bytes, std::string *out) {
+  if (!dictionary->HasKey(key) || dictionary->GetType(key) != VTYPE_STRING) {
+    return false;
+  }
+  const std::string value = dictionary->GetString(key).ToString();
+  if (value.size() > maximum_bytes) return false;
+  *out = value;
+  return true;
+}
+
+bool IsValidPageRanges(const std::string &ranges) {
+  if (ranges.empty()) return true;
+  if (ranges.size() > kMaximumPdfPageRangesBytes) return false;
+  bool expect_digit = true;
+  size_t index = 0;
+  while (index < ranges.size()) {
+    const char c = ranges[index];
+    if (c >= '0' && c <= '9') {
+      expect_digit = false;
+    } else if (c == '-') {
+      // A range end is required after the separator.
+      if (expect_digit) return false;
+      expect_digit = true;
+    } else if (c == ',') {
+      if (expect_digit) return false;
+      expect_digit = true;
+    } else if (c != ' ') {
+      return false;
+    }
+    index += 1;
+  }
+  return !expect_digit;
+}
+
+/// Validates the bounded JSON object declared by kweb_browser_export_pdf.
+bool ParsePdfExportSettings(const std::string &payload,
+                            PdfExportSettings *settings) {
+  if (payload.empty() || payload.size() > 64 * 1024) return false;
+  CefRefPtr<CefValue> parsed = CefParseJSON(CefString(payload), JSON_PARSER_RFC);
+  if (!parsed || parsed->GetType() != VTYPE_DICTIONARY) return false;
+  CefRefPtr<CefDictionaryValue> dictionary = parsed->GetDictionary();
+  if (!dictionary) return false;
+  int version = 0;
+  if (!dictionary->HasKey("version") ||
+      dictionary->GetType("version") != VTYPE_INT ||
+      (version = dictionary->GetInt("version")) != 1) {
+    return false;
+  }
+  if (!ReadPdfDouble(dictionary, "paperWidthInches", 1.0,
+                     kMaximumPdfPaperInches, &settings->paper_width) ||
+      !ReadPdfDouble(dictionary, "paperHeightInches", 1.0,
+                     kMaximumPdfPaperInches, &settings->paper_height) ||
+      !ReadPdfDouble(dictionary, "scale", kMinimumPdfScale, kMaximumPdfScale,
+                     &settings->scale) ||
+      !ReadPdfBool(dictionary, "landscape", &settings->landscape) ||
+      !ReadPdfBool(dictionary, "printBackground",
+                   &settings->print_background) ||
+      !ReadPdfBool(dictionary, "displayHeaderFooter",
+                   &settings->display_header_footer) ||
+      !ReadPdfBool(dictionary, "preferCssPageSize",
+                   &settings->prefer_css_page_size) ||
+      !ReadPdfString(dictionary, "headerTemplate", kMaximumPdfTemplateBytes,
+                     &settings->header_template) ||
+      !ReadPdfString(dictionary, "footerTemplate", kMaximumPdfTemplateBytes,
+                     &settings->footer_template) ||
+      !ReadPdfString(dictionary, "pageRanges", kMaximumPdfPageRangesBytes,
+                     &settings->page_ranges)) {
+    return false;
+  }
+  if (!IsValidPageRanges(settings->page_ranges)) return false;
+  int margin_type = 0;
+  if (!dictionary->HasKey("marginType") ||
+      dictionary->GetType("marginType") != VTYPE_INT ||
+      (margin_type = dictionary->GetInt("marginType")) <
+          PDF_PRINT_MARGIN_DEFAULT ||
+      margin_type > PDF_PRINT_MARGIN_CUSTOM) {
+    return false;
+  }
+  settings->margin_type = static_cast<uint32_t>(margin_type);
+  if (settings->margin_type == PDF_PRINT_MARGIN_CUSTOM) {
+    if (!ReadPdfDouble(dictionary, "marginTopInches", 0.0,
+                       kMaximumPdfMarginInches, &settings->margin_top) ||
+        !ReadPdfDouble(dictionary, "marginRightInches", 0.0,
+                       kMaximumPdfMarginInches, &settings->margin_right) ||
+        !ReadPdfDouble(dictionary, "marginBottomInches", 0.0,
+                       kMaximumPdfMarginInches, &settings->margin_bottom) ||
+        !ReadPdfDouble(dictionary, "marginLeftInches", 0.0,
+                       kMaximumPdfMarginInches, &settings->margin_left)) {
+      return false;
+    }
+  }
+  if (!settings->display_header_footer &&
+      (!settings->header_template.empty() ||
+       !settings->footer_template.empty())) {
+    // A template the export would ignore is a contract violation, not a value
+    // to drop silently.
+    return false;
+  }
+  return true;
+}
+
+/// True when |path| is a safe PDF artifact inside |profile_path|.
+bool IsSupportedPdfExportPath(const std::filesystem::path &profile_path,
+                              const std::filesystem::path &path) {
+  if (!path.is_absolute() || path != path.lexically_normal()) return false;
+  if (path.extension() != ".pdf") return false;
+  const std::string name = path.filename().string();
+  if (name.size() <= 4 || name.size() > 128) return false;
+  for (const char c : name) {
+    const bool safe =
+        (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+        (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-';
+    if (!safe) return false;
+  }
+  const auto parent = path.parent_path();
+  std::error_code error;
+  const auto status = std::filesystem::symlink_status(parent, error);
+  if (error || std::filesystem::is_symlink(status) ||
+      !std::filesystem::is_directory(status)) {
+    return false;
+  }
+  const auto relative = parent.lexically_relative(profile_path);
+  if (relative.empty() || relative.is_absolute() || relative == ".") {
+    return false;
+  }
+  for (const auto &part : relative) {
+    if (part == ".." || part == ".") return false;
+  }
+  return true;
+}
+
 // Opt-in diagnostics for the browser close chain; enabled with the
 // KWEBSHELL_TRACE_CLOSE environment variable.
 void TraceCloseStage(kweb_browser_handle browser, const char *stage) {
@@ -393,6 +578,9 @@ public:
   kweb_status StopFinding(kweb_browser_handle handle, bool keep_selection);
   kweb_status ApplyZoomLevel(kweb_browser_handle handle, bool set_level,
                              double level, double *level_out);
+  kweb_status ExportPdf(kweb_browser_handle handle, uint64_t request_id,
+                        const std::string &path,
+                        const std::string &settings_json);
   kweb_status ProfileData(kweb_browser_handle handle, uint64_t request_id,
                           kweb_profile_data_operation_type operation,
                           std::string payload);
@@ -629,6 +817,24 @@ public:
 private:
   std::shared_ptr<BrowserSession> session_;
   IMPLEMENT_REFCOUNTING(CookieFlushCallback);
+};
+
+/// Completes one PDF export on the browser process UI thread.
+class PdfExportCallback final : public CefPdfPrintCallback {
+public:
+  PdfExportCallback(std::weak_ptr<BrowserSession> session,
+                    uint64_t request_id, std::string path)
+      : session_(std::move(session)),
+        request_id_(request_id),
+        path_(std::move(path)) {}
+
+  void OnPdfPrintFinished(const CefString &path, bool ok) override;
+
+private:
+  const std::weak_ptr<BrowserSession> session_;
+  const uint64_t request_id_;
+  const std::string path_;
+  IMPLEMENT_REFCOUNTING(PdfExportCallback);
 };
 
 class ProfileDataDevToolsObserver final : public CefDevToolsMessageObserver {
@@ -1165,6 +1371,102 @@ public:
       *observed_out = state->level;
     }
     return state->status;
+  }
+
+  /**
+   * Writes the current page as a PDF into a Profile-scoped artifact path.
+   *
+   * The application owns the file name; the engine owns the containment rule.
+   * Only one export may be in flight per browser because Chromium runs one PDF
+   * print job per WebContents at a time.
+   */
+  kweb_status ExportPdf(uint64_t request_id, const std::string &path_text,
+                        const std::string &settings_json) {
+    if (closing_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_BROWSER_CLOSING;
+    }
+    if (!ready_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_BROWSER_NOT_READY;
+    }
+    if (request_id == 0 || path_text.empty() || settings_json.empty()) {
+      return KWEB_STATUS_INVALID_ARGUMENT;
+    }
+    PdfExportSettings settings;
+    if (!ParsePdfExportSettings(settings_json, &settings)) {
+      return KWEB_STATUS_PDF_EXPORT_INVALID;
+    }
+    std::filesystem::path path;
+    try {
+      path = PathFromUtf8(path_text.data(), path_text.size());
+    } catch (...) {
+      return KWEB_STATUS_PDF_PATH_INVALID;
+    }
+    if (!IsSupportedPdfExportPath(profile_path_, path)) {
+      return KWEB_STATUS_PDF_PATH_INVALID;
+    }
+    {
+      std::lock_guard lock(pdf_export_mutex_);
+      if (pdf_export_active_) {
+        return KWEB_STATUS_PDF_EXPORT_ACTIVE;
+      }
+      pdf_export_active_ = true;
+      pdf_export_request_id_ = request_id;
+    }
+    auto self = shared_from_this();
+    return CefPostTask(
+               TID_UI,
+               base::BindOnce(
+                   [](std::shared_ptr<BrowserSession> session,
+                      PdfExportSettings export_settings,
+                      std::filesystem::path target, uint64_t export_id) {
+                     if (session->closing_.load(std::memory_order_acquire) ||
+                         !session->browser_) {
+                       session->PdfExportFinished(export_id, "", false,
+                                                  "browser-closing");
+                       return;
+                     }
+                     CefPdfPrintSettings cef_settings;
+                     cef_settings.landscape =
+                         export_settings.landscape ? 1 : 0;
+                     cef_settings.print_background =
+                         export_settings.print_background ? 1 : 0;
+                     cef_settings.scale = export_settings.scale;
+                     cef_settings.paper_width = export_settings.paper_width;
+                     cef_settings.paper_height = export_settings.paper_height;
+                     cef_settings.prefer_css_page_size =
+                         export_settings.prefer_css_page_size ? 1 : 0;
+                     cef_settings.margin_type =
+                         static_cast<cef_pdf_print_margin_type_t>(
+                             export_settings.margin_type);
+                     if (export_settings.margin_type ==
+                         PDF_PRINT_MARGIN_CUSTOM) {
+                       cef_settings.margin_top =
+                           export_settings.margin_top;
+                       cef_settings.margin_right =
+                           export_settings.margin_right;
+                       cef_settings.margin_bottom =
+                           export_settings.margin_bottom;
+                       cef_settings.margin_left =
+                           export_settings.margin_left;
+                     }
+                     CefString(&cef_settings.page_ranges) =
+                         CefString(export_settings.page_ranges);
+                     cef_settings.display_header_footer =
+                         export_settings.display_header_footer ? 1 : 0;
+                     CefString(&cef_settings.header_template) =
+                         CefString(export_settings.header_template);
+                     CefString(&cef_settings.footer_template) =
+                         CefString(export_settings.footer_template);
+                     CefRefPtr<PdfExportCallback> callback =
+                         new PdfExportCallback(session, export_id,
+                                               PathToUtf8(target));
+                     session->browser_->GetHost()->PrintToPDF(
+                         CefString(PathToUtf8(target)), cef_settings,
+                         callback);
+                   },
+                   std::move(self), settings, path, request_id))
+               ? KWEB_STATUS_OK
+               : KWEB_STATUS_CEF_UI_TASK_FAILED;
   }
 
   /**
@@ -2245,6 +2547,7 @@ private:
   friend class ProfileDataCompletionCallback;
   friend class ProfileDataDevToolsObserver;
   friend class SessionClient;
+  friend class PdfExportCallback;
 
   std::map<uint32_t, DownloadRecord>::iterator FindDownloadLocked(
       uint64_t download_id) {
@@ -2771,6 +3074,53 @@ private:
     }
   }
 
+  /** Completes one PDF export exactly once, on the browser process UI thread. */
+  void PdfExportFinished(uint64_t request_id, const std::string &path,
+                         bool ok, const std::string &failure) {
+    CEF_REQUIRE_UI_THREAD();
+    {
+      std::lock_guard lock(pdf_export_mutex_);
+      if (!pdf_export_active_ || pdf_export_request_id_ != request_id) {
+        return;
+      }
+      pdf_export_active_ = false;
+      pdf_export_request_id_ = 0;
+    }
+    if (!ok || path.empty()) {
+      if (!path.empty()) {
+        std::error_code remove_error;
+        std::filesystem::remove(PathFromUtf8(path.data(), path.size()),
+                                remove_error);
+      }
+      Emit(KWEB_BROWSER_EVENT_PDF_EXPORT, 0,
+           failure.empty() ? "print-failed" : failure,
+           KWEB_PDF_EXPORT_FAILED, 0, 0, {}, KWEB_BROWSER_FRAME_MAIN,
+           KWEB_BROWSER_REASON_NONE, request_id);
+      return;
+    }
+    std::error_code error;
+    const auto bytes =
+        std::filesystem::file_size(PathFromUtf8(path.data(), path.size()),
+                                   error);
+    if (error) {
+      Emit(KWEB_BROWSER_EVENT_PDF_EXPORT, 0, "artifact-missing",
+           KWEB_PDF_EXPORT_FAILED, 0, 0, {}, KWEB_BROWSER_FRAME_MAIN,
+           KWEB_BROWSER_REASON_NONE, request_id);
+      return;
+    }
+    auto details = CefDictionaryValue::Create();
+    details->SetInt("version", 1);
+    details->SetInt("bytes", static_cast<int>(std::min<int64_t>(
+                                   bytes, std::numeric_limits<int32_t>::max())));
+    auto value = CefValue::Create();
+    value->SetDictionary(details);
+    const std::string payload =
+        CefWriteJSON(value, JSON_WRITER_DEFAULT).ToString();
+    Emit(KWEB_BROWSER_EVENT_PDF_EXPORT, 0, {}, KWEB_PDF_EXPORT_SUCCEEDED, 0, 0,
+         {}, KWEB_BROWSER_FRAME_MAIN, KWEB_BROWSER_REASON_NONE, request_id, {},
+         {}, {}, payload, false);
+  }
+
   /** Applies or reads the page zoom level on the browser process UI thread. */
   kweb_status ZoomOnUiThread(bool set_level, double requested,
                              double *observed_out) {
@@ -2797,6 +3147,13 @@ private:
     TraceCloseStage(handle_, "begin-close");
     closing_.store(true, std::memory_order_release);
     ready_.store(false, std::memory_order_release);
+    {
+      // An export whose callback never arrives must not leave a live job that
+      // a later page could inherit.
+      std::lock_guard lock(pdf_export_mutex_);
+      pdf_export_active_ = false;
+      pdf_export_request_id_ = 0;
+    }
     CancelDownloads();
     CancelContextMenuRequests();
     if (security_registry_) {
@@ -3044,6 +3401,9 @@ private:
   std::mutex find_mutex_;
   bool find_active_ = false;
   uint64_t find_session_id_ = 0;
+  std::mutex pdf_export_mutex_;
+  bool pdf_export_active_ = false;
+  uint64_t pdf_export_request_id_ = 0;
   uint64_t sequence_ = 0;
   std::atomic<bool> ready_ = false;
   std::atomic<bool> closing_ = false;
@@ -3709,6 +4069,22 @@ void CookieFlushCallback::OnComplete() {
   session->FlushCompleted();
 }
 
+void PdfExportCallback::OnPdfPrintFinished(const CefString &path, bool ok) {
+  CEF_REQUIRE_UI_THREAD();
+  auto session = session_.lock();
+  if (!session) {
+    return;
+  }
+  // The callback reports the path Chromium wrote, which must be the one this
+  // export declared.
+  const std::string reported = path.ToString();
+  if (!reported.empty() && reported != path_) {
+    session->PdfExportFinished(request_id_, path_, false, "path-mismatch");
+    return;
+  }
+  session->PdfExportFinished(request_id_, path_, ok, {});
+}
+
 void ProfileDataDevToolsObserver::OnDevToolsMethodResult(
     CefRefPtr<CefBrowser> browser, int message_id, bool success,
     const void *result, size_t result_size) {
@@ -4141,6 +4517,15 @@ kweb_status SessionRegistry::ApplyZoomLevel(kweb_browser_handle handle,
                  : KWEB_STATUS_INVALID_HANDLE;
 }
 
+kweb_status SessionRegistry::ExportPdf(kweb_browser_handle handle,
+                                       uint64_t request_id,
+                                       const std::string &path,
+                                       const std::string &settings_json) {
+  auto session = Lookup(handle);
+  return session ? session->ExportPdf(request_id, path, settings_json)
+                 : KWEB_STATUS_INVALID_HANDLE;
+}
+
 kweb_status SessionRegistry::ProfileData(
     kweb_browser_handle handle, uint64_t request_id,
     kweb_profile_data_operation_type operation, std::string payload) {
@@ -4289,6 +4674,24 @@ kweb_status PageZoomLevelSession(kweb_browser_handle browser,
   }
   return GuardStatus([&] {
     return Registry().ApplyZoomLevel(browser, false, 0.0, level_out);
+  });
+}
+
+kweb_status ExportPdfSession(kweb_browser_handle browser, uint64_t request_id,
+                             const char *path_utf8, size_t path_size,
+                             const char *settings_utf8, size_t settings_size) {
+  if (request_id == 0 || path_utf8 == nullptr || path_size == 0 ||
+      settings_utf8 == nullptr || settings_size == 0) {
+    return KWEB_STATUS_INVALID_ARGUMENT;
+  }
+  if (!IsValidUtf8(path_utf8, path_size) ||
+      !IsValidUtf8(settings_utf8, settings_size)) {
+    return KWEB_STATUS_INVALID_TEXT_ENCODING;
+  }
+  return GuardStatus([&] {
+    return Registry().ExportPdf(browser, request_id,
+                                std::string(path_utf8, path_size),
+                                std::string(settings_utf8, settings_size));
   });
 }
 

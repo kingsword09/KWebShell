@@ -12,6 +12,30 @@
 Print a `KWebPage` through Chromium's print pipeline with native dialog/user
 selection, typed settings, progress/cancellation, and scoped PDF output.
 
+## Delivery split (2026-10-18)
+
+This RFC is a multi-objective backlog entry and must be split before
+implementation.
+
+[RFC 0045](0045-pdf-export.md) delivers its first publishable objective: writing
+the current page as a bounded, engine-owned PDF artifact through Chromium's
+PDF pipeline, with typed paper, scale, margin, header/footer, page-range, and
+background settings.
+
+The remaining objectives stay here and are not implemented by RFC 0045:
+
+1. interactive printing through the platform print path (Linux
+   `CefPrintHandler` dialogs, the macOS print panel, and the Windows spooler),
+   including `window.print()` behavior on every target;
+2. printer discovery and capability facts (media, duplex, color);
+3. silent print jobs under a separately audited application policy;
+4. job state, cancellation, and shutdown semantics for real spooler jobs.
+
+Those objectives need their own readiness review, and their evidence requires a
+real print queue per platform. RFC 0045's contract must not be extended in
+place: a change to its PDF settings or artifact rules is a new reviewed
+objective.
+
 ## Contract
 
 Define page range, media, margins, orientation, color, duplex, copies, scale,

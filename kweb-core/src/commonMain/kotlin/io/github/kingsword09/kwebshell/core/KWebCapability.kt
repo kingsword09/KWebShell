@@ -9,4 +9,5 @@ public enum class KWebCapability(public val id: String) {
     CDP("cdp"),
     DOWNLOADS("downloads"),
     PAGE_UTILITIES("page-utilities"),
+    PDF_EXPORT("pdf-export"),
 }

@@ -239,6 +239,7 @@ private enum class IntegrationMode(val argument: String) {
     CONTEXT_MENU("context-menu"),
     CAPTURE_PERMISSION("capture-permission"),
     PAGE_UTILITIES("page-utilities"),
+    PDF_EXPORT("pdf-export"),
     THEME("theme"),
     FILES_WORKSPACE("files-workspace"),
     PAGE_LIFECYCLE("page-lifecycle"),
@@ -281,6 +282,7 @@ fun main(arguments: Array<String>) {
             IntegrationMode.CONTEXT_MENU -> runContextMenuIntegration()
             IntegrationMode.CAPTURE_PERMISSION -> runCapturePermissionIntegration()
             IntegrationMode.PAGE_UTILITIES -> runPageUtilitiesIntegration()
+            IntegrationMode.PDF_EXPORT -> runPdfExportIntegration()
             IntegrationMode.THEME -> runThemeIntegration()
             IntegrationMode.FILES_WORKSPACE -> runFilesWorkspaceIntegration()
             IntegrationMode.PAGE_LIFECYCLE -> runPageLifecycleContract()
@@ -321,6 +323,7 @@ private fun runCoordinator() {
     runChildAndRequireSuccess(IntegrationMode.CONTEXT_MENU, root.resolve("context-menu"))
     runChildAndRequireSuccess(IntegrationMode.CAPTURE_PERMISSION, root.resolve("capture-permission"))
     runChildAndRequireSuccess(IntegrationMode.PAGE_UTILITIES, root.resolve("page-utilities"))
+    runChildAndRequireSuccess(IntegrationMode.PDF_EXPORT, root.resolve("pdf-export"))
     runChildAndRequireSuccess(IntegrationMode.THEME, root.resolve("theme"))
     runChildAndRequireSuccess(IntegrationMode.FILES_WORKSPACE, root.resolve("files-workspace"))
     runChildAndRequireSuccess(IntegrationMode.RENDERER_CRASH, root.resolve("renderer-crash"))
@@ -1838,6 +1841,239 @@ private fun runPageUtilitiesIntegration() {
         StandardCharsets.UTF_8,
     )
     println("KWebShell RFC0044 page utilities passed: finals=$finalUpdateCount.")
+}
+
+private fun runPdfExportIntegration() {
+    val configured = runtimeConfiguration()
+    val root = requiredPathProperty(INTEGRATION_ROOT_PROPERTY)
+    val fixture = PdfExportFixture()
+    val profileName = "rfc0026-pdf"
+    val engine = KWebDesktop.openEngine(
+        KWebDesktopEngineConfiguration(
+            cefRuntime = configured.cefRuntime,
+            browserSubprocess = configured.browserSubprocess,
+            resources = configured.resources,
+            locales = configured.locales,
+            rootCache = configured.rootCache,
+            log = configured.log,
+            remoteDebuggingPort = configured.remoteDebuggingPort,
+        ),
+    )
+    val surfaces = CopyOnWriteArrayList<ComposeBrowserSurface>()
+    var profile: io.github.kingsword09.kwebshell.core.KWebProfile? = null
+    var page: io.github.kingsword09.kwebshell.core.KWebPage? = null
+    var probeFailure: Throwable? = null
+    var defaultBytes = 0L
+    var defaultPages = 0
+    var defaultMediaBox = ""
+    var readBytes = 0L
+    var eofReached = false
+    var artifactDigest = ""
+    var landscapeMediaBox = ""
+    var pageRangeRefused = false
+    var pathRefused = false
+    var closedReadRefused = false
+    var leftoverFiles = -1
+    try {
+        kotlinx.coroutines.runBlocking {
+            require(KWebCapability.PDF_EXPORT in engine.capabilities) {
+                "The engine did not declare the PDF export capability it implements."
+            }
+            profile = engine.openProfile(profileName)
+            val liveProfile = requireNotNull(profile)
+            val surface = NativeEngine.onAwtEventDispatchThread {
+                ComposeBrowserSurface.create(900, 640)
+            }
+            surfaces += surface
+            page = liveProfile.openPage(
+                KWebDesktop.composeWindowHost(surface.window),
+                fixture.pageUrl,
+                KWebRect(0, 0, 900, 640),
+            )
+            val livePage = requireNotNull(page)
+            kotlinx.coroutines.withTimeout(30_000) {
+                livePage.events.first {
+                    it.type == KWebPageEventType.LOAD_ENDED && it.url == fixture.pageUrl
+                }
+            }
+
+            // 1. The default request produces a real PDF artifact with one page.
+            val defaults = livePage.utilities.exportPdf()
+            defaultBytes = defaults.sizeBytes
+            artifactDigest = defaults.sha256
+            require(defaultBytes > 0L) { "The default export produced an empty artifact." }
+            require(defaultBytes <= io.github.kingsword09.kwebshell.core.KWebPdfDocument.MAXIMUM_SIZE_BYTES) {
+                "The default export exceeded the declared artifact size: $defaultBytes"
+            }
+            val content = readAll(defaults)
+            readBytes = content.size.toLong()
+            eofReached = readBytes == defaults.sizeBytes
+            require(readBytes == defaultBytes) {
+                "Bounded reads returned $readBytes bytes for a $defaultBytes byte artifact."
+            }
+            val text = String(content, Charsets.ISO_8859_1)
+            require(text.startsWith("%PDF-")) { "The artifact does not start with a PDF header." }
+            defaultPages = PAGE_OBJECT.findAll(text).count()
+            require(defaultPages == 1) { "The default export produced $defaultPages pages instead of 1." }
+            defaultMediaBox = MEDIA_BOX.find(text)?.groupValues?.drop(1)?.joinToString("x") ?: ""
+            require(defaultMediaBox.isNotEmpty()) { "The default export carried no media box." }
+            // A4 stays within rounding distance of 595 x 842 points.
+            val defaultMediaBoxValues = MEDIA_BOX.find(text)?.groupValues?.drop(1)?.map(String::toDouble)
+            require(
+                defaultMediaBoxValues != null &&
+                    defaultMediaBoxValues[0] in 590.0..600.0 &&
+                    defaultMediaBoxValues[1] in 835.0..850.0,
+            ) {
+                "The default A4 export reported media box '$defaultMediaBox' outside A4 points."
+            }
+            defaults.close()
+            val closedRead = runCatching {
+                defaults.read(0, 16)
+            }.exceptionOrNull()
+            require(
+                closedRead is io.github.kingsword09.kwebshell.core.KWebPdfExportException &&
+                    closedRead.code == io.github.kingsword09.kwebshell.core.KWebPdfErrorCode.ARTIFACT_INVALID,
+            ) { "Reading a closed artifact did not fail with the declared error: $closedRead" }
+            closedReadRefused = true
+
+            // 2. An explicit landscape paper size reaches Chromium's PDF writer.
+            val landscape = livePage.utilities.exportPdf(
+                io.github.kingsword09.kwebshell.core.KWebPdfExportRequest(
+                    paper = io.github.kingsword09.kwebshell.core.KWebPdfPaper.Custom(6.0, 4.0),
+                    landscape = true,
+                    margins = io.github.kingsword09.kwebshell.core.KWebPdfMargins.NONE,
+                ),
+            )
+            val landscapeText = String(readAll(landscape), Charsets.ISO_8859_1)
+            landscapeMediaBox = MEDIA_BOX.find(landscapeText)?.groupValues?.drop(1)?.joinToString("x") ?: ""
+            // Chromium rotates the declared paper for a landscape export, so a 6x4
+            // inch request renders a 4x6 inch page.
+            require(landscapeMediaBox == "288x432") {
+                "The custom 6x4 inch landscape export reported media box '$landscapeMediaBox' instead of '288x432'."
+            }
+            landscape.close()
+
+            // 3. A page range outside the document is refused by Chromium.
+            val refused = runCatching {
+                livePage.utilities.exportPdf(
+                    io.github.kingsword09.kwebshell.core.KWebPdfExportRequest(pageRanges = "7"),
+                )
+            }.exceptionOrNull()
+            require(
+                refused is io.github.kingsword09.kwebshell.core.KWebPdfExportException &&
+                    refused.code == io.github.kingsword09.kwebshell.core.KWebPdfErrorCode.NATIVE_FAILED,
+            ) { "An impossible page range did not fail with the declared error: $refused" }
+            pageRangeRefused = true
+
+            // 4. The engine refuses a destination outside the Profile directory.
+            val outside = NativeBindings.browserExportPdf(
+                (livePage as KWebDesktopPage).requireNativeHandle("pdf-path-probe"),
+                77,
+                java.io.File(System.getProperty("java.io.tmpdir"), "outside.pdf").absolutePath,
+                PDF_SETTINGS_PROBE,
+            )
+            require(outside == NativeStatus.PDF_PATH_INVALID.value) {
+                "An out-of-Profile PDF path was accepted with status $outside."
+            }
+            pathRefused = true
+            println("KWEBSHELL_PDF_EXPORT_PROBE:default-and-landscape")
+        }
+    } catch (error: Throwable) {
+        probeFailure = error
+        throw error
+    } finally {
+        runCatching { page?.close() }
+        runCatching { profile?.close() }
+        runCatching { engine.close() }
+        surfaces.asReversed().forEach { surface ->
+            NativeEngine.onAwtEventDispatchThread { runCatching { surface.close() } }
+        }
+        runCatching { fixture.close() }
+        leftoverFiles = runCatching {
+            val directory = configured.rootCache.resolve(profileName).resolve("pdf-exports")
+            if (Files.isDirectory(directory)) {
+                Files.list(directory).use { stream -> stream.count().toInt() }
+            } else {
+                0
+            }
+        }.getOrDefault(-1)
+    }
+    require(NativeBrowser.liveNativeBrowserCount() == 0L)
+    require(NativeEngine.liveNativeEngineCount() == 0L)
+    require(leftoverFiles == 0) { "The PDF export directory retained $leftoverFiles artifact(s)." }
+    val evidence = buildJsonObject {
+        put("schemaVersion", 1)
+        put("target", currentTargetId())
+        put("cefRuntime", "stock-cef-151")
+        put("contractRevision", "2026-10-18.2")
+        put("engineAbiVersion", 21)
+        put("pdfExportCapability", true)
+        put("defaultBytes", defaultBytes)
+        put("defaultPages", defaultPages)
+        put("defaultMediaBox", defaultMediaBox)
+        put("readBytes", readBytes)
+        put("eofReached", eofReached)
+        put("artifactDigest", artifactDigest)
+        put("landscapeMediaBox", landscapeMediaBox)
+        put("pageRangeRefused", pageRangeRefused)
+        put("pathRefused", pathRefused)
+        put("closedReadRefused", closedReadRefused)
+        put("leftoverFiles", leftoverFiles)
+        put("failure", probeFailure?.let { it::class.simpleName } ?: "")
+    }
+    Files.writeString(
+        root.resolve("pdf-export-evidence.json"),
+        evidence.toString() + "\n",
+        StandardCharsets.UTF_8,
+    )
+    println("KWebShell RFC0026 PDF export passed: bytes=$defaultBytes.")
+}
+
+private val PAGE_OBJECT = Regex("/Type\\s*/Page[^s]")
+private val MEDIA_BOX = Regex("/MediaBox\\s*\\[\\s*0\\s+0\\s+([0-9.]+)\\s+([0-9.]+)\\s*\\]")
+
+private const val PDF_SETTINGS_PROBE =
+    "{\"version\":1,\"paperWidthInches\":8.27,\"paperHeightInches\":11.69," +
+        "\"landscape\":false,\"printBackground\":false,\"scale\":1," +
+        "\"marginType\":0,\"displayHeaderFooter\":false," +
+        "\"headerTemplate\":\"\",\"footerTemplate\":\"\",\"pageRanges\":\"\"," +
+        "\"preferCssPageSize\":false}"
+
+/** Reads one PDF artifact through its declared bounded reads. */
+private suspend fun readAll(document: io.github.kingsword09.kwebshell.core.KWebPdfDocument): ByteArray {
+    val chunks = java.io.ByteArrayOutputStream()
+    var offset = 0L
+    while (offset < document.sizeBytes) {
+        val result = document.read(offset, 256 * 1024)
+        require(result.bytes.isNotEmpty()) { "A PDF read returned no bytes before the end of the artifact." }
+        chunks.write(result.bytes)
+        offset += result.bytes.size
+        if (result.eof) break
+    }
+    return chunks.toByteArray()
+}
+
+/** A minimal one-page fixture whose exported size is stable. */
+private class PdfExportFixture : AutoCloseable {
+    private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    val pageUrl: String = "http://127.0.0.1:${server.address.port}/pdf"
+
+    init {
+        server.createContext("/pdf") { exchange ->
+            val body = (
+                "<html><body><h1>KWebShell PDF export</h1>" +
+                    "<p>One controlled page with deterministic text.</p></body></html>"
+                ).toByteArray(StandardCharsets.UTF_8)
+            exchange.responseHeaders.add("Content-Type", "text/html; charset=utf-8")
+            exchange.sendResponseHeaders(200, body.size.toLong())
+            exchange.responseBody.use { it.write(body) }
+        }
+        server.start()
+    }
+
+    override fun close() {
+        server.stop(0)
+    }
 }
 
 private fun runFilesWorkspaceIntegration() {

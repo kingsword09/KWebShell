@@ -11,7 +11,7 @@
 #define KWEB_ABI_CALL
 #endif
 
-#define KWEB_ABI_VERSION ((uint32_t)20)
+#define KWEB_ABI_VERSION ((uint32_t)21)
 
 typedef uint32_t kweb_status;
 
@@ -108,5 +108,9 @@ typedef uint32_t kweb_status;
 #define KWEB_STATUS_CONTEXT_MENU_CLOSING ((kweb_status)92)
 #define KWEB_STATUS_FIND_SESSION_STALE ((kweb_status)93)
 #define KWEB_STATUS_ZOOM_LEVEL_INVALID ((kweb_status)94)
+#define KWEB_STATUS_PDF_EXPORT_INVALID ((kweb_status)95)
+#define KWEB_STATUS_PDF_EXPORT_ACTIVE ((kweb_status)96)
+#define KWEB_STATUS_PDF_EXPORT_FAILED ((kweb_status)97)
+#define KWEB_STATUS_PDF_PATH_INVALID ((kweb_status)98)
 
 #endif // KWEBSHELL_NATIVE_BASE_ABI_H_

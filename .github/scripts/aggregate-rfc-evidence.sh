@@ -24,7 +24,7 @@ if [[ -n "$selection" ]]; then
     echo "No RFC evidence refresh selected."
     exit 0
   fi
-  jq -e '.refreshRfcs - ["0001","0002","0003","0004","0006","0007","0008","0009","0010","0011","0012","0013","0014","0015","0017","0018","0019","0020","0021","0022","0023","0024","0027","0030","0043","0044"] | length == 0' "$selection" > /dev/null
+  jq -e '.refreshRfcs - ["0001","0002","0003","0004","0006","0007","0008","0009","0010","0011","0012","0013","0014","0015","0017","0018","0019","0020","0021","0022","0023","0024","0027","0030","0043","0044","0045"] | length == 0' "$selection" > /dev/null
 fi
 
 selected() {
@@ -142,6 +142,9 @@ record() {
   if [ "$rfc" = "0044" ]; then
     arguments+=(--matrix-row web-contents-find)
     arguments+=(--matrix-row web-contents-zoom)
+  fi
+  if [ "$rfc" = "0045" ]; then
+    arguments+=(--matrix-row print-to-pdf)
   fi
   if [ "$rfc" = "0013" ]; then
     arguments+=(--matrix-row node-fs)
@@ -336,6 +339,7 @@ for target in macos-arm64 windows-x64 linux-x64; do
     "0021|shortcuts.hosted|shortcuts-integration|shortcuts-integration.json|shortcuts-integration|compatibility|compatibility.json|electron-migration"
     "0022|power.hosted|power-integration|power-integration.json|power-integration|compatibility|compatibility.json|electron-migration"
     "0044|page.utilities.hosted|page-utilities-evidence|page-utilities-evidence.json|engine-integration|compatibility|compatibility.json|electron-migration"
+    "0045|page.pdf.hosted|pdf-export-evidence|pdf-export-evidence.json|engine-integration|compatibility|compatibility.json|electron-migration"
     "0023|secure-storage.hosted|secure-storage-integration|secure-storage-integration.json|secure-storage-integration|compatibility|compatibility.json|electron-migration"
     "0024|processes.hosted|processes-integration|processes-integration.json|processes-integration|compatibility|compatibility.json|electron-migration"
     "0043|media-access.hosted|capture-permission-evidence|capture-permission-evidence.json|engine-integration|compatibility|compatibility.json|electron-migration"

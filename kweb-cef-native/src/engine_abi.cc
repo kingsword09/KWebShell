@@ -878,6 +878,14 @@ const char *KWEB_ABI_CALL kweb_status_name(kweb_status status) {
     return "find-session-stale";
   case KWEB_STATUS_ZOOM_LEVEL_INVALID:
     return "zoom-level-invalid";
+  case KWEB_STATUS_PDF_EXPORT_INVALID:
+    return "pdf-export-invalid";
+  case KWEB_STATUS_PDF_EXPORT_ACTIVE:
+    return "pdf-export-active";
+  case KWEB_STATUS_PDF_EXPORT_FAILED:
+    return "pdf-export-failed";
+  case KWEB_STATUS_PDF_PATH_INVALID:
+    return "pdf-path-invalid";
   default:
     return "unknown-status";
   }
@@ -1133,6 +1141,17 @@ kweb_status KWEB_ABI_CALL kweb_browser_zoom_level(
     return KWEB_STATUS_INVALID_ARGUMENT;
   }
   return kwebshell::PageZoomLevelSession(browser, level_out);
+}
+
+kweb_status KWEB_ABI_CALL kweb_browser_export_pdf(
+    kweb_browser_handle browser, uint64_t request_id, const char *path_utf8,
+    size_t path_size, const char *settings_utf8, size_t settings_size) {
+  if (request_id == 0 || path_utf8 == nullptr || path_size == 0 ||
+      path_size > 32768 || settings_utf8 == nullptr || settings_size == 0) {
+    return KWEB_STATUS_PDF_EXPORT_INVALID;
+  }
+  return kwebshell::ExportPdfSession(browser, request_id, path_utf8, path_size,
+                                     settings_utf8, settings_size);
 }
 
 kweb_status KWEB_ABI_CALL kweb_browser_profile_data(

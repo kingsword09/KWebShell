@@ -270,6 +270,9 @@ internal object NativeBindings {
     internal fun browserZoomLevel(handle: Long): NativeZoomResult =
         FfmBindings.browserZoomLevel(handle).let { NativeZoomResult(it.status(), it.level()) }
 
+    internal fun browserExportPdf(handle: Long, requestId: Long, path: String, settingsJson: String): Int =
+        FfmBindings.browserExportPdf(handle, requestId, path, settingsJson)
+
     internal fun releaseBrowserOwner(handle: Long): Throwable? =
         releaseOwner("browser", handle) { FfmBindings.releaseBrowserOwner(handle) }
 

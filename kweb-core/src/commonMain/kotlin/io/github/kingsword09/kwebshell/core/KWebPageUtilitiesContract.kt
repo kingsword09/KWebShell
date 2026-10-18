@@ -205,6 +205,14 @@ public interface KWebPageUtilities {
 
     /** Applies an absolute zoom factor. */
     public suspend fun setZoomFactor(factor: Double): KWebZoomState
+
+    /**
+     * Writes the current page as a PDF artifact. The artifact is engine-owned:
+     * it lives inside the Profile directory and [KWebPdfDocument.close] removes it.
+     */
+    public suspend fun exportPdf(
+        request: KWebPdfExportRequest = KWebPdfExportRequest(),
+    ): KWebPdfDocument
 }
 
 /** Stable page utility error identifiers. */

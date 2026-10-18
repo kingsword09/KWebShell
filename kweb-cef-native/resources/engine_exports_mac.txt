@@ -19,6 +19,7 @@ _kweb_browser_find
 _kweb_browser_stop_finding
 _kweb_browser_set_zoom_level
 _kweb_browser_zoom_level
+_kweb_browser_export_pdf
 _kweb_browser_profile_data
 _kweb_engine_abi_version
 _kweb_engine_close

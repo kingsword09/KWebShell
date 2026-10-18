@@ -48,6 +48,9 @@ kweb_status SetPageZoomLevelSession(kweb_browser_handle browser, double level,
                                     double *level_out);
 kweb_status PageZoomLevelSession(kweb_browser_handle browser,
                                   double *level_out);
+kweb_status ExportPdfSession(kweb_browser_handle browser, uint64_t request_id,
+                             const char *path_utf8, size_t path_size,
+                             const char *settings_utf8, size_t settings_size);
 kweb_status ProfileDataSession(
     kweb_browser_handle browser, uint64_t request_id,
     kweb_profile_data_operation_type operation, const char *payload_utf8,

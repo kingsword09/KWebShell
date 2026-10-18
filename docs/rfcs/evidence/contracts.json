@@ -668,6 +668,30 @@
         "kweb-electron-migration/src",
         "settings.gradle.kts"
       ]
+    },
+    {
+      "rfcId": "0044",
+      "paths": [
+        ".github/ci/suites.json",
+        ".github/scripts/aggregate-rfc-evidence.sh",
+        ".github/workflows/ci.yml",
+        "docs/rfcs/0028-page-utilities.md",
+        "docs/rfcs/0044-page-find-and-zoom.md",
+        "docs/rfcs/README.md",
+        "docs/rfcs/evidence/contracts.json",
+        "kweb-cef-native/include",
+        "kweb-cef-native/resources/engine_exports_linux.map",
+        "kweb-cef-native/resources/engine_exports_mac.txt",
+        "kweb-cef-native/src",
+        "kweb-cef-native/tests",
+        "kweb-core/src/commonMain",
+        "kweb-core/src/commonTest",
+        "kweb-desktop/src/main",
+        "kweb-desktop/src/test/kotlin/io/github/kingsword09/kwebshell/desktop/KWebDesktopPageUtilitiesTest.kt",
+        "kweb-desktop/src/test/kotlin/io/github/kingsword09/kwebshell/desktop/internal/NativeEngineIntegrationMain.kt",
+        "kweb-desktop/src/test/kotlin/io/github/kingsword09/kwebshell/desktop/internal/ffm/FfmBindingContractTest.kt",
+        "kweb-electron-migration/src"
+      ]
     }
   ]
 }

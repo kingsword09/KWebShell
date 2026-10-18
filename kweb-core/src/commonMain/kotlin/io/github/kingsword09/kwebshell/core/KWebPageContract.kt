@@ -255,6 +255,9 @@ public interface KWebPage : AutoCloseable {
     public val events: Flow<KWebPageEvent>
     public val profile: KWebProfile
 
+    /** The page's RFC 0044 find and zoom operations. */
+    public val utilities: KWebPageUtilities
+
     public suspend fun navigate(url: String)
 
     public suspend fun reload(mode: KWebReloadMode = KWebReloadMode.NORMAL): KWebReloadResult

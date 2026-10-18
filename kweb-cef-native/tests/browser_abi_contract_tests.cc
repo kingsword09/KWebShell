@@ -151,6 +151,43 @@ int main() {
   Check(std::strcmp(kweb_status_name(KWEB_STATUS_SECURITY_CHALLENGE_NOT_FOUND),
                     "security-challenge-not-found") == 0,
         "security challenge status names must be stable");
+  Check(std::strcmp(kweb_status_name(KWEB_STATUS_FIND_SESSION_STALE),
+                    "find-session-stale") == 0,
+        "stale find session status must have a stable name");
+  Check(std::strcmp(kweb_status_name(KWEB_STATUS_ZOOM_LEVEL_INVALID),
+                    "zoom-level-invalid") == 0,
+        "invalid page zoom status must have a stable name");
+  {
+    double observed = -1.0;
+    Check(kweb_browser_find(KWEB_INVALID_BROWSER_HANDLE, 0, "text", 4,
+                            KWEB_FIND_FORWARD, 0, KWEB_FIND_START) ==
+              KWEB_STATUS_INVALID_ARGUMENT,
+          "a find request without a session id must fail before browser lookup");
+    Check(kweb_browser_find(KWEB_INVALID_BROWSER_HANDLE, 1, "", 0,
+                            KWEB_FIND_FORWARD, 0, KWEB_FIND_START) ==
+              KWEB_STATUS_INVALID_ARGUMENT,
+          "an empty find query must fail before browser lookup");
+    Check(kweb_browser_find(KWEB_INVALID_BROWSER_HANDLE, 1, "x", 1,
+                            KWEB_FIND_FORWARD, 0, 7) ==
+              KWEB_STATUS_INVALID_ARGUMENT,
+          "an unknown find mode must fail before browser lookup");
+    Check(kweb_browser_find(KWEB_INVALID_BROWSER_HANDLE, 1, "text", 4,
+                            KWEB_FIND_FORWARD, 0, KWEB_FIND_START) ==
+              KWEB_STATUS_INVALID_HANDLE,
+          "a valid find request must require a live browser");
+    Check(kweb_browser_stop_finding(KWEB_INVALID_BROWSER_HANDLE, 7) ==
+              KWEB_STATUS_INVALID_ARGUMENT,
+          "an unknown find stop mode must fail before browser lookup");
+    Check(kweb_browser_set_zoom_level(KWEB_INVALID_BROWSER_HANDLE, 1.0,
+                                      nullptr) == KWEB_STATUS_ZOOM_LEVEL_INVALID,
+          "a zoom request without an output level must fail");
+    Check(kweb_browser_set_zoom_level(KWEB_INVALID_BROWSER_HANDLE, 0.0,
+                                      &observed) == KWEB_STATUS_INVALID_HANDLE,
+          "a valid zoom request must require a live browser");
+    Check(kweb_browser_zoom_level(KWEB_INVALID_BROWSER_HANDLE, &observed) ==
+              KWEB_STATUS_INVALID_HANDLE,
+          "reading the page zoom must require a live browser");
+  }
   Check(kweb_live_browser_count() == 0,
         "browser ABI contract must not own a browser in its unit process");
   kweb_extension_operation_handle extension_operation = 99;

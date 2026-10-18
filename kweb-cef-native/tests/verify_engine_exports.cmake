@@ -21,6 +21,10 @@ set(expected
   kweb_browser_security_respond
   kweb_browser_download_control
   kweb_browser_start_download
+  kweb_browser_find
+  kweb_browser_stop_finding
+  kweb_browser_set_zoom_level
+  kweb_browser_zoom_level
   kweb_engine_abi_version
   kweb_engine_clear_profile_network_policy
   kweb_engine_close

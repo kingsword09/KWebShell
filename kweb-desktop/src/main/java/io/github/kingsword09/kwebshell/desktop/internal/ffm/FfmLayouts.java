@@ -11,6 +11,7 @@ public final class FfmLayouts {
     public static final ValueLayout.OfInt UINT32 = ValueLayout.JAVA_INT;
     public static final ValueLayout.OfInt INT32 = ValueLayout.JAVA_INT;
     public static final ValueLayout.OfLong UINT64 = ValueLayout.JAVA_LONG;
+    public static final ValueLayout.OfDouble DOUBLE = ValueLayout.JAVA_DOUBLE;
     public static final AddressLayout POINTER = ValueLayout.ADDRESS;
     public static final ValueLayout.OfLong SIZE_T = nativeSizeT();
 

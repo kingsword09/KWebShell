@@ -1,6 +1,10 @@
 package io.github.kingsword09.kwebshell.desktop.internal.ffm;
 
 public final class FfmBindings {
+    /** One native page zoom read-back: the observed level or a typed native status. */
+    public record ZoomResult(int status, double level) {
+    }
+
     public static int loadEngineLibrary(String enginePath, String cefRuntimePath) {
         return FfmEngineLibrary.load(enginePath, cefRuntimePath);
     }
@@ -173,6 +177,31 @@ public final class FfmBindings {
 
     public static int browserStartDownload(long handle, String url) {
         return FfmBrowserCalls.startDownload(handle, url);
+    }
+
+    public static int browserFind(
+        long handle,
+        long sessionId,
+        String text,
+        int direction,
+        boolean matchCase,
+        boolean continuous
+    ) {
+        return FfmBrowserCalls.find(handle, sessionId, text, direction, matchCase, continuous);
+    }
+
+    public static int browserStopFinding(long handle, boolean keepSelection) {
+        return FfmBrowserCalls.stopFinding(handle, keepSelection);
+    }
+
+    public static ZoomResult browserSetZoomLevel(long handle, double level) {
+        FfmBrowserCalls.ZoomResult result = FfmBrowserCalls.setZoomLevel(handle, level);
+        return new ZoomResult(result.status(), result.level());
+    }
+
+    public static ZoomResult browserZoomLevel(long handle) {
+        FfmBrowserCalls.ZoomResult result = FfmBrowserCalls.zoomLevel(handle);
+        return new ZoomResult(result.status(), result.level());
     }
 
     public static Throwable releaseBrowserOwner(long handle) {

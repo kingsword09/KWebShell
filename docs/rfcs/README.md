@@ -244,6 +244,7 @@ Agents may work in parallel only when dependencies do not overlap.
 | [0041](0041-native-window-decoration.md) | P1 | 0007, 0017, 0019, 0020, 0027 | Typed title bars, materials, and hit-test regions |
 | [0042](0042-window-content-protection.md) | P1 | 0003, 0007, 0025 | Window capture protection and privacy state |
 | [0043](0043-media-access-decisions.md) | P1 | 0003, 0018, 0020 | Typed media-access decisions and desktop capture refusal |
+| [0044](0044-page-find-and-zoom.md) | P1 | 0004, 0008 | Page find sessions and page zoom |
 
 ### Wave 4 — platform delivery and migration proof
 
@@ -266,7 +267,7 @@ intentional rather than accidental.
 |---|---|
 | `app` | 0006, 0029, 0030 |
 | `BaseWindow`, `BrowserWindow`, `View`, `WebContentsView` | Delivered Compose host plus 0007, 0041, and 0042; Electron View identity is rewritten as Compose ownership |
-| `webContents`, `webFrameMain`, renderer `webFrame` | Delivered `KWebPage` plus 0008 and 0028 |
+| `webContents`, `webFrameMain`, renderer `webFrame` | Delivered `KWebPage` plus 0008 and 0044 for find and zoom; 0028 remains the capture, save, source, and diagnostics objective |
 | `session` | Delivered `KWebProfile` and MV3 package/runtime foundations plus 0009–0012, 0025, 0038, and 0039 |
 | `session.extensions` | Existing `kweb-extensions` capability matrix; lifecycle/UI/API gaps remain separate MV3 objectives |
 | Chromium Service Worker management | Existing MV3 lifecycle work plus 0008/0009; no Electron object identity |

@@ -28,6 +28,7 @@ import io.github.kingsword09.kwebshell.core.KWebPageEventReason
 import io.github.kingsword09.kwebshell.core.KWebPageEventType
 import io.github.kingsword09.kwebshell.core.KWebPageFrameScope
 import io.github.kingsword09.kwebshell.core.KWebPageHost
+import io.github.kingsword09.kwebshell.core.KWebPageUtilityException
 import io.github.kingsword09.kwebshell.core.KWebBeforeUnloadDecision
 import io.github.kingsword09.kwebshell.core.KWebBeforeUnloadRequest
 import io.github.kingsword09.kwebshell.core.KWebBeforeUnloadResult
@@ -170,6 +171,7 @@ public class KWebDesktopEngine private constructor(
         add(KWebCapability.NAVIGATION)
         add(KWebCapability.RESIZE)
         add(KWebCapability.DEVTOOLS)
+        add(KWebCapability.PAGE_UTILITIES)
         if (configuration.remoteDebuggingPort != 0) {
             add(KWebCapability.CDP)
         }
@@ -411,6 +413,7 @@ internal class KWebDesktopProfile(
                     )
                 }
                 val eventStream = KWebPageEventStream(pageId, name, gestureContext)
+                lateinit var utilities: KWebDesktopPageUtilities
                 lateinit var nativePage: NativeBrowser
                 nativePage = NativeBrowser.open(
                     engine = engine.nativeEngine(),
@@ -580,12 +583,15 @@ internal class KWebDesktopProfile(
                                 )
                                 download.markOwnerClosed()
                             }
+                        } else if (event.type == NativeBrowserEventType.FIND_RESULT) {
+                            utilities.onFindResult(event)
                         } else {
                             eventStream.accept(event)
                         }
                     },
                 )
-                val page = KWebDesktopPage(this@KWebDesktopProfile, nativePage, eventStream, pageId)
+                utilities = KWebDesktopPageUtilities(nativePage)
+                val page = KWebDesktopPage(this@KWebDesktopProfile, nativePage, eventStream, pageId, utilities)
                 pages += page
                 page.trackTerminalOwnership()
                 page
@@ -1345,6 +1351,7 @@ internal class KWebDesktopPage(
     private val native: NativeBrowser,
     private val eventStream: KWebPageEventStream,
     override val id: String,
+    override val utilities: KWebDesktopPageUtilities,
 ) : KWebPage {
     private val closeLock = Any()
 
@@ -1569,6 +1576,7 @@ internal class KWebDesktopPage(
         synchronized(closeLock) {
             if (lifecycle.value == KWebLifecycleState.CLOSED) {
                 eventStream.onPageClosed()
+                utilities.onPageClosed(closedPageError())
                 return
             }
             try {
@@ -1576,6 +1584,7 @@ internal class KWebDesktopPage(
             } finally {
                 if (lifecycle.value == KWebLifecycleState.CLOSED) {
                     eventStream.onPageClosed()
+                    utilities.onPageClosed(closedPageError())
                 }
             }
         }
@@ -1583,8 +1592,14 @@ internal class KWebDesktopPage(
 
     internal fun onEngineClosed() {
         eventStream.onPageClosed()
+        utilities.onPageClosed(closedPageError())
     }
 
+    private fun closedPageError(): KWebPageUtilityException = KWebPageUtilityException(
+        code = "page.closed",
+        details = mapOf("pageId" to id),
+        message = "The page closed before the find request completed.",
+    )
     internal fun requireNativeHandle(operation: String): Long = native.requireLiveHandle(operation)
 
     private fun requireOpen(operation: String) {
@@ -1787,6 +1802,8 @@ private fun NativeBrowserEvent.toPublicEvent(
             throw IllegalStateException("The Profile context-menu event reached the page mapping.")
         NativeBrowserEventType.MEDIA_PERMISSION ->
             throw IllegalStateException("The Profile media permission event reached the page mapping.")
+        NativeBrowserEventType.FIND_RESULT ->
+            throw IllegalStateException("The page find result reached the page mapping.")
     }
     val flags = buildSet {
         if (this@toPublicEvent.flags and 1 != 0) add(KWebPageEventFlag.LOADING)

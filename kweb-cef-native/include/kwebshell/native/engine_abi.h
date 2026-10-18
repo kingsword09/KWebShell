@@ -70,6 +70,10 @@ typedef uint32_t kweb_profile_data_operation_type;
 /* One media-access decision. The event carries the requesting origin and the
  * JSON payload documented with kweb_media_permission_type below. */
 #define KWEB_BROWSER_EVENT_MEDIA_PERMISSION ((kweb_browser_event_type)28)
+/* One ordered find update for the active find session. request_id carries the
+ * page-owned session id and details carries the bounded JSON payload described
+ * with kweb_browser_find below. */
+#define KWEB_BROWSER_EVENT_FIND_RESULT ((kweb_browser_event_type)29)
 
 /* Page context-menu decisions. The decision payload is JSON:
  * {"decision":"continue","commandId":"chromium.copy"} when the application
@@ -93,6 +97,19 @@ typedef uint32_t kweb_profile_data_operation_type;
 #define KWEB_DOWNLOAD_CONTROL_CANCEL ((uint32_t)1)
 #define KWEB_DOWNLOAD_CONTROL_PAUSE ((uint32_t)2)
 #define KWEB_DOWNLOAD_CONTROL_RESUME ((uint32_t)3)
+
+/* Find direction and request mode. A CONTINUE request continues the active
+ * session and requires its identifier; START always begins a new search. */
+#define KWEB_FIND_FORWARD ((uint32_t)1)
+#define KWEB_FIND_BACKWARD ((uint32_t)2)
+#define KWEB_FIND_START ((uint32_t)1)
+#define KWEB_FIND_CONTINUE ((uint32_t)2)
+
+/* Chromium's page-zoom factor range. A level outside the derived level range is
+ * refused instead of being clamped silently. */
+#define KWEB_PAGE_ZOOM_MINIMUM_FACTOR (0.25)
+#define KWEB_PAGE_ZOOM_MAXIMUM_FACTOR (5.0)
+#define KWEB_PAGE_ZOOM_FACTOR_STEP (1.2)
 
 #define KWEB_BROWSER_FRAME_MAIN ((uint32_t)1)
 #define KWEB_BROWSER_FRAME_SUBFRAME ((uint32_t)2)
@@ -402,6 +419,33 @@ kweb_browser_download_control(kweb_browser_handle browser, uint64_t download_id,
 KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
 kweb_browser_start_download(kweb_browser_handle browser, const char *url_utf8,
                             size_t url_size);
+
+/* Starts one page find session or continues the active session.
+ *
+ * |session_id| is a positive, page-owned identifier supplied by the caller and
+ * echoed by every KWEB_BROWSER_EVENT_FIND_RESULT of that session. |text_utf8|
+ * must be 1..512 UTF-8 bytes and must not contain NUL. KWEB_FIND_CONTINUE
+ * requires the active session with this identifier; KWEB_FIND_START begins a
+ * new search. The details JSON of each result is
+ * {"version":1,"matches":N,"active":N,"final":true|false,
+ * "selection":{"x":N,"y":N,"width":N,"height":N}} in device-independent
+ * window coordinates. */
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL kweb_browser_find(
+    kweb_browser_handle browser, uint64_t session_id, const char *text_utf8,
+    size_t text_size, uint32_t direction, uint32_t match_case, uint32_t mode);
+
+/* Ends the active find session. A non-zero |keep_selection| keeps the visible
+ * match selection; Chromium clears it otherwise. */
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL kweb_browser_stop_finding(
+    kweb_browser_handle browser, uint32_t keep_selection);
+
+/* Applies a page zoom level and reports the level Chromium observed. */
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL kweb_browser_set_zoom_level(
+    kweb_browser_handle browser, double level, double *level_out);
+
+/* Reports the page zoom level Chromium currently observes. */
+KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL kweb_browser_zoom_level(
+    kweb_browser_handle browser, double *level_out);
 
 KWEB_ENGINE_ABI_EXPORT kweb_status KWEB_ABI_CALL
 kweb_browser_profile_data(

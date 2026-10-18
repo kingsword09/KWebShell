@@ -3,6 +3,7 @@
 #include <atomic>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -873,6 +874,10 @@ const char *KWEB_ABI_CALL kweb_status_name(kweb_status status) {
     return "download-capability-missing";
   case KWEB_STATUS_DOWNLOAD_LIMIT_EXCEEDED:
     return "download-limit-exceeded";
+  case KWEB_STATUS_FIND_SESSION_STALE:
+    return "find-session-stale";
+  case KWEB_STATUS_ZOOM_LEVEL_INVALID:
+    return "zoom-level-invalid";
   default:
     return "unknown-status";
   }
@@ -1082,6 +1087,52 @@ kweb_status KWEB_ABI_CALL kweb_browser_start_download(
   }
   return kwebshell::StartDownloadSession(
       browser, std::string(url_utf8, url_size));
+}
+
+kweb_status KWEB_ABI_CALL kweb_browser_find(
+    kweb_browser_handle browser, uint64_t session_id, const char *text_utf8,
+    size_t text_size, uint32_t direction, uint32_t match_case, uint32_t mode) {
+  if (session_id == 0 || text_utf8 == nullptr || text_size == 0) {
+    return KWEB_STATUS_INVALID_ARGUMENT;
+  }
+  if (text_size > 512) {
+    return KWEB_STATUS_TEXT_TOO_LARGE;
+  }
+  if (!kwebshell::IsValidUtf8(text_utf8, text_size)) {
+    return KWEB_STATUS_INVALID_TEXT_ENCODING;
+  }
+  if ((direction != KWEB_FIND_FORWARD && direction != KWEB_FIND_BACKWARD) ||
+      (match_case != 0 && match_case != 1) ||
+      (mode != KWEB_FIND_START && mode != KWEB_FIND_CONTINUE)) {
+    return KWEB_STATUS_INVALID_ARGUMENT;
+  }
+  return kwebshell::FindInPageSession(
+      browser, session_id, std::string(text_utf8, text_size), direction,
+      match_case != 0, mode == KWEB_FIND_CONTINUE);
+}
+
+kweb_status KWEB_ABI_CALL kweb_browser_stop_finding(
+    kweb_browser_handle browser, uint32_t keep_selection) {
+  if (keep_selection != 0 && keep_selection != 1) {
+    return KWEB_STATUS_INVALID_ARGUMENT;
+  }
+  return kwebshell::StopFindingSession(browser, keep_selection != 0);
+}
+
+kweb_status KWEB_ABI_CALL kweb_browser_set_zoom_level(
+    kweb_browser_handle browser, double level, double *level_out) {
+  if (level_out == nullptr || !std::isfinite(level)) {
+    return KWEB_STATUS_ZOOM_LEVEL_INVALID;
+  }
+  return kwebshell::SetPageZoomLevelSession(browser, level, level_out);
+}
+
+kweb_status KWEB_ABI_CALL kweb_browser_zoom_level(
+    kweb_browser_handle browser, double *level_out) {
+  if (level_out == nullptr) {
+    return KWEB_STATUS_INVALID_ARGUMENT;
+  }
+  return kwebshell::PageZoomLevelSession(browser, level_out);
 }
 
 kweb_status KWEB_ABI_CALL kweb_browser_profile_data(

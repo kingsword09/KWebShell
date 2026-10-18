@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <cctype>
 #include <cstdio>
@@ -35,6 +36,7 @@
 #include "include/cef_devtools_message_observer.h"
 #include "include/cef_cookie.h"
 #include "include/cef_download_handler.h"
+#include "include/cef_find_handler.h"
 #include "include/cef_keyboard_handler.h"
 #include "include/cef_jsdialog_handler.h"
 #include "include/cef_parser.h"
@@ -67,6 +69,30 @@ constexpr kweb_browser_handle kMaximumBrowserHandle =
     static_cast<kweb_browser_handle>(std::numeric_limits<int64_t>::max());
 constexpr size_t kMaximumLiveDownloads = 64;
 constexpr size_t kMaximumDownloadHistory = 256;
+constexpr size_t kMaximumFindTextBytes = 512;
+constexpr auto kZoomWaitTimeout = std::chrono::seconds(5);
+
+/// Chromium's page-zoom factor range and the factor step of one zoom level.
+constexpr double kMinimumZoomFactor = 0.25;
+constexpr double kMaximumZoomFactor = 5.0;
+constexpr double kZoomFactorStep = 1.2;
+
+/// A page zoom level whose factor stays inside Chromium's declared range.
+bool IsSupportedZoomLevel(double level) {
+  if (!std::isfinite(level)) return false;
+  const double factor = std::pow(kZoomFactorStep, level);
+  return std::isfinite(factor) && factor >= kMinimumZoomFactor &&
+         factor <= kMaximumZoomFactor;
+}
+
+/// One synchronous browser-process UI task result.
+struct ZoomWaitState {
+  std::mutex mutex;
+  std::condition_variable condition;
+  bool completed = false;
+  kweb_status status = KWEB_STATUS_INTERNAL_ERROR;
+  double level = 0.0;
+};
 
 // Opt-in diagnostics for the browser close chain; enabled with the
 // KWEBSHELL_TRACE_CLOSE environment variable.
@@ -361,6 +387,12 @@ public:
   kweb_status DownloadControl(kweb_browser_handle handle, uint64_t download_id,
                               uint32_t operation);
   kweb_status StartDownload(kweb_browser_handle handle, std::string url);
+  kweb_status FindInPage(kweb_browser_handle handle, uint64_t session_id,
+                         std::string text, bool forward, bool match_case,
+                         bool continuous);
+  kweb_status StopFinding(kweb_browser_handle handle, bool keep_selection);
+  kweb_status ApplyZoomLevel(kweb_browser_handle handle, bool set_level,
+                             double level, double *level_out);
   kweb_status ProfileData(kweb_browser_handle handle, uint64_t request_id,
                           kweb_profile_data_operation_type operation,
                           std::string payload);
@@ -410,6 +442,7 @@ class SessionClient final : public CefClient,
                             public CefLoadHandler,
                             public CefDownloadHandler,
                             public CefContextMenuHandler,
+                            public CefFindHandler,
                             public CefPermissionHandler,
                             public CefRequestHandler {
 public:
@@ -454,6 +487,10 @@ public:
                    const CefString &request_method) override;
   CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
   CefRefPtr<CefPermissionHandler> GetPermissionHandler() override { return this; }
+  CefRefPtr<CefFindHandler> GetFindHandler() override { return this; }
+  void OnFindResult(CefRefPtr<CefBrowser> browser, int identifier, int count,
+                    const CefRect &selection_rect, int active_match_ordinal,
+                    bool final_update) override;
   bool OnRequestMediaAccessPermission(
       CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
       const CefString &requesting_origin, uint32_t requested_permissions,
@@ -991,6 +1028,143 @@ public:
 
   bool CanDownload() const {
     return downloads_enabled_ && !closing_.load(std::memory_order_acquire);
+  }
+
+  /**
+   * Starts or continues the page's single find session.
+   *
+   * CEF serializes find requests per browser: a session is identified by the
+   * page-owned |session_id| and continues only with the same identifier, text
+   * and case policy. A first request replaces any previous session, so stale
+   * results for a replaced session are dropped instead of being attributed to
+   * the new one.
+   */
+  kweb_status FindInPage(uint64_t session_id, const std::string &text,
+                         bool forward, bool match_case, bool continuous) {
+    if (closing_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_BROWSER_CLOSING;
+    }
+    if (!ready_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_BROWSER_NOT_READY;
+    }
+    if (session_id == 0 || text.empty() || text.size() > kMaximumFindTextBytes) {
+      return KWEB_STATUS_INVALID_ARGUMENT;
+    }
+    {
+      std::lock_guard lock(find_mutex_);
+      if (continuous) {
+        if (!find_active_ || find_session_id_ != session_id) {
+          return KWEB_STATUS_FIND_SESSION_STALE;
+        }
+      } else {
+        find_session_id_ = session_id;
+        find_active_ = true;
+      }
+    }
+    auto self = shared_from_this();
+    const CefString query(text);
+    return CefPostTask(
+               TID_UI,
+               base::BindOnce(
+                   [](std::shared_ptr<BrowserSession> session,
+                      CefString search_text, bool search_forward,
+                      bool case_sensitive, bool find_next) {
+                     if (session->closing_.load(std::memory_order_acquire) ||
+                         !session->browser_) {
+                       return;
+                     }
+                     CefRefPtr<CefBrowserHost> host =
+                         session->browser_->GetHost();
+                     if (!find_next) {
+                       // CEF forwards only find replies that differ from the
+                       // previous one, so a restart with an unchanged count
+                       // would be invisible. Ending the previous search first
+                       // makes the new scan observable without inventing a
+                       // result.
+                       host->StopFinding(/*clearSelection=*/false);
+                     }
+                     host->Find(search_text, search_forward, case_sensitive,
+                                find_next);
+                   },
+                   std::move(self), query, forward, match_case, continuous))
+               ? KWEB_STATUS_OK
+               : KWEB_STATUS_CEF_UI_TASK_FAILED;
+  }
+
+  /**
+   * Ends the page's find session. Chromium keeps no find state when no search
+   * is active, so this is idempotent at the native boundary; the application
+   * layer owns the distinction between a stopped and an absent session.
+   */
+  kweb_status StopFinding(bool keep_selection) {
+    if (closing_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_BROWSER_CLOSING;
+    }
+    {
+      std::lock_guard lock(find_mutex_);
+      find_active_ = false;
+      find_session_id_ = 0;
+    }
+    auto self = shared_from_this();
+    return CefPostTask(
+               TID_UI,
+               base::BindOnce(
+                   [](std::shared_ptr<BrowserSession> session,
+                      bool clear_selection) {
+                     if (session->closing_.load(std::memory_order_acquire) ||
+                         !session->browser_) {
+                       return;
+                     }
+                     session->browser_->GetHost()->StopFinding(clear_selection);
+                   },
+                   std::move(self), !keep_selection))
+               ? KWEB_STATUS_OK
+               : KWEB_STATUS_CEF_UI_TASK_FAILED;
+  }
+
+  /** Applies and observes the page zoom level on the browser process UI thread. */
+  kweb_status ApplyZoomLevel(bool set_level, double requested,
+                             double *observed_out) {
+    if (observed_out == nullptr) {
+      return KWEB_STATUS_INVALID_ARGUMENT;
+    }
+    if (set_level && !IsSupportedZoomLevel(requested)) {
+      return KWEB_STATUS_ZOOM_LEVEL_INVALID;
+    }
+    if (CefCurrentlyOn(TID_UI)) {
+      return ZoomOnUiThread(set_level, requested, observed_out);
+    }
+    auto state = std::make_shared<ZoomWaitState>();
+    auto self = shared_from_this();
+    if (!CefPostTask(
+            TID_UI,
+            base::BindOnce(
+                [](std::shared_ptr<BrowserSession> session,
+                   std::shared_ptr<ZoomWaitState> waiter, bool apply,
+                   double level) {
+                  double observed = 0.0;
+                  const kweb_status status =
+                      session->ZoomOnUiThread(apply, level, &observed);
+                  {
+                    std::lock_guard lock(waiter->mutex);
+                    waiter->status = status;
+                    waiter->level = observed;
+                    waiter->completed = true;
+                  }
+                  waiter->condition.notify_all();
+                },
+                std::move(self), state, set_level, requested))) {
+      return KWEB_STATUS_CEF_UI_TASK_FAILED;
+    }
+    std::unique_lock lock(state->mutex);
+    if (!state->condition.wait_for(lock, kZoomWaitTimeout,
+                                   [&state] { return state->completed; })) {
+      return KWEB_STATUS_CEF_UI_TASK_FAILED;
+    }
+    if (state->status == KWEB_STATUS_OK) {
+      *observed_out = state->level;
+    }
+    return state->status;
   }
 
   /**
@@ -1707,6 +1881,9 @@ public:
              canonical_url);
         TitleChanged("");
         FaviconChanged({});
+        // A committed document ends the previous page's find session: the
+        // renderer's match list no longer describes the current page.
+        ResetFindSession();
       }
       current_main_url_ = canonical_url;
       main_frame_committed_ = true;
@@ -2067,6 +2244,7 @@ public:
 private:
   friend class ProfileDataCompletionCallback;
   friend class ProfileDataDevToolsObserver;
+  friend class SessionClient;
 
   std::map<uint32_t, DownloadRecord>::iterator FindDownloadLocked(
       uint64_t download_id) {
@@ -2414,6 +2592,51 @@ private:
     }
   }
 
+  /**
+   * Publishes one ordered find update for the active session.
+   *
+   * CEF's own identifier is transport-internal: only the page-owned session id
+   * is exposed, so a result that arrives after its session was replaced or
+   * stopped is dropped instead of being attributed to another session.
+   */
+  void PublishFindResult(int count, const CefRect &selection_rect,
+                         int active_match_ordinal, bool final_update) {
+    CEF_REQUIRE_UI_THREAD();
+    uint64_t session_id = 0;
+    {
+      std::lock_guard lock(find_mutex_);
+      if (!find_active_) {
+        return;
+      }
+      session_id = find_session_id_;
+    }
+    auto details = CefDictionaryValue::Create();
+    details->SetInt("version", 1);
+    details->SetInt("matches", count);
+    details->SetInt("active", active_match_ordinal);
+    details->SetBool("final", final_update);
+    auto selection = CefDictionaryValue::Create();
+    selection->SetInt("x", selection_rect.x);
+    selection->SetInt("y", selection_rect.y);
+    selection->SetInt("width", selection_rect.width);
+    selection->SetInt("height", selection_rect.height);
+    details->SetDictionary("selection", selection);
+    auto value = CefValue::Create();
+    value->SetDictionary(details);
+    const std::string payload =
+        CefWriteJSON(value, JSON_WRITER_DEFAULT).ToString();
+    Emit(KWEB_BROWSER_EVENT_FIND_RESULT, 0, {}, 0, 0, 0, {},
+         KWEB_BROWSER_FRAME_MAIN, KWEB_BROWSER_REASON_NONE, session_id, {}, {},
+         {}, payload, false);
+  }
+
+  /** Clears find state after a document navigation commits. */
+  void ResetFindSession() {
+    std::lock_guard lock(find_mutex_);
+    find_active_ = false;
+    find_session_id_ = 0;
+  }
+
   void ShowDevToolsOnUiThread() {
     CEF_REQUIRE_UI_THREAD();
     if (closing_.load(std::memory_order_acquire) || !browser_) {
@@ -2546,6 +2769,27 @@ private:
     if (status != KWEB_STATUS_OK) {
       Fatal(status, "native-set-surface-state-verification-failed");
     }
+  }
+
+  /** Applies or reads the page zoom level on the browser process UI thread. */
+  kweb_status ZoomOnUiThread(bool set_level, double requested,
+                             double *observed_out) {
+    CEF_REQUIRE_UI_THREAD();
+    if (closing_.load(std::memory_order_acquire)) {
+      return KWEB_STATUS_BROWSER_CLOSING;
+    }
+    if (!browser_) {
+      return KWEB_STATUS_BROWSER_NOT_READY;
+    }
+    CefRefPtr<CefBrowserHost> host = browser_->GetHost();
+    if (!host) {
+      return KWEB_STATUS_BROWSER_NOT_READY;
+    }
+    if (set_level) {
+      host->SetZoomLevel(requested);
+    }
+    *observed_out = host->GetZoomLevel();
+    return KWEB_STATUS_OK;
   }
 
   void BeginClose() {
@@ -2797,6 +3041,9 @@ private:
   std::map<uint64_t, CefRefPtr<CefJSDialogCallback>> before_unload_requests_;
   std::map<uint64_t, bool> pending_popups_;
   uint64_t next_page_request_id_ = 1;
+  std::mutex find_mutex_;
+  bool find_active_ = false;
+  uint64_t find_session_id_ = 0;
   uint64_t sequence_ = 0;
   std::atomic<bool> ready_ = false;
   std::atomic<bool> closing_ = false;
@@ -3368,6 +3615,20 @@ void SessionClient::OnResetDialogState(CefRefPtr<CefBrowser> browser) {
   }
 }
 
+void SessionClient::OnFindResult(CefRefPtr<CefBrowser> browser, int identifier,
+                                 int count, const CefRect &selection_rect,
+                                 int active_match_ordinal, bool final_update) {
+  CEF_REQUIRE_UI_THREAD();
+  (void)browser;
+  // Chromium's find identifier is a transport detail; the page-owned session
+  // id is the only value the application observes.
+  (void)identifier;
+  if (auto session = session_.lock()) {
+    session->PublishFindResult(count, selection_rect, active_match_ordinal,
+                               final_update);
+  }
+}
+
 void DevToolsClient::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
   CEF_REQUIRE_UI_THREAD();
   if (auto session = session_.lock()) {
@@ -3855,6 +4116,31 @@ kweb_status SessionRegistry::StartDownload(kweb_browser_handle handle,
                  : KWEB_STATUS_INVALID_HANDLE;
 }
 
+kweb_status SessionRegistry::FindInPage(kweb_browser_handle handle,
+                                        uint64_t session_id, std::string text,
+                                        bool forward, bool match_case,
+                                        bool continuous) {
+  auto session = Lookup(handle);
+  return session ? session->FindInPage(session_id, text, forward, match_case,
+                                       continuous)
+                 : KWEB_STATUS_INVALID_HANDLE;
+}
+
+kweb_status SessionRegistry::StopFinding(kweb_browser_handle handle,
+                                         bool keep_selection) {
+  auto session = Lookup(handle);
+  return session ? session->StopFinding(keep_selection)
+                 : KWEB_STATUS_INVALID_HANDLE;
+}
+
+kweb_status SessionRegistry::ApplyZoomLevel(kweb_browser_handle handle,
+                                            bool set_level, double level,
+                                            double *level_out) {
+  auto session = Lookup(handle);
+  return session ? session->ApplyZoomLevel(set_level, level, level_out)
+                 : KWEB_STATUS_INVALID_HANDLE;
+}
+
 kweb_status SessionRegistry::ProfileData(
     kweb_browser_handle handle, uint64_t request_id,
     kweb_profile_data_operation_type operation, std::string payload) {
@@ -3966,6 +4252,44 @@ kweb_status StartDownloadSession(kweb_browser_handle browser,
   const auto validated = ValidateUrl(url.data(), url.size(), false);
   if (!validated) return KWEB_STATUS_NAVIGATION_INVALID;
   return GuardStatus([&] { return Registry().StartDownload(browser, *validated); });
+}
+
+kweb_status FindInPageSession(kweb_browser_handle browser, uint64_t session_id,
+                              const std::string &text, uint32_t direction,
+                              bool match_case, bool continuous) {
+  if (direction != KWEB_FIND_FORWARD && direction != KWEB_FIND_BACKWARD) {
+    return KWEB_STATUS_INVALID_ARGUMENT;
+  }
+  const bool forward = direction == KWEB_FIND_FORWARD;
+  return GuardStatus([&] {
+    return Registry().FindInPage(browser, session_id, text, forward,
+                                 match_case, continuous);
+  });
+}
+
+kweb_status StopFindingSession(kweb_browser_handle browser,
+                               bool keep_selection) {
+  return GuardStatus([&] { return Registry().StopFinding(browser, keep_selection); });
+}
+
+kweb_status SetPageZoomLevelSession(kweb_browser_handle browser, double level,
+                                    double *level_out) {
+  if (level_out == nullptr) {
+    return KWEB_STATUS_INVALID_ARGUMENT;
+  }
+  return GuardStatus([&] {
+    return Registry().ApplyZoomLevel(browser, true, level, level_out);
+  });
+}
+
+kweb_status PageZoomLevelSession(kweb_browser_handle browser,
+                                 double *level_out) {
+  if (level_out == nullptr) {
+    return KWEB_STATUS_INVALID_ARGUMENT;
+  }
+  return GuardStatus([&] {
+    return Registry().ApplyZoomLevel(browser, false, 0.0, level_out);
+  });
 }
 
 kweb_status CreateBrowserSession(const kweb_browser_config *config,

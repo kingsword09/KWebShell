@@ -1,0 +1,1 @@
+{"schemaVersion":1,"target":"windows-x64","provider":"secure-storage.windows.credential-manager","backend":"windows_credential_manager","capabilities":"PROFILE_SCOPE,ROTATION","roundTrip":"verified","rotation":"verified","storedSizeBytes":28,"sessionBoundary":"","liveHandlesAfterClose":0,"status":"PASS","failures":[]}

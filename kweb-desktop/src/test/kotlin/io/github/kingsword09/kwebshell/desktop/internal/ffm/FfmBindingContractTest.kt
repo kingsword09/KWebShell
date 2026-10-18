@@ -10,8 +10,10 @@ import kotlin.test.assertTrue
 
 class FfmBindingContractTest {
     @Test
-    fun productionInventoryMatchesAbiVersionSeventeen() {
-        assertEquals(18, FfmAbi.VERSION)
+    fun productionInventoryMatchesAbiVersionNineteen() {
+        // Version 19 adds the media-access decision event, so the engine can report
+        // a capture refusal the application observes.
+        assertEquals(19, FfmAbi.VERSION)
         assertEquals(31, FfmAbi.FUNCTIONS.size)
         assertTrue(FfmAbi.FUNCTIONS.any { it.name() == "kweb_browser_context_menu_respond" })
         assertEquals(16, FfmLayouts.STRING_VIEW.byteSize())

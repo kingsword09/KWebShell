@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="KWebProcessesContractTest[jvm]" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-10-17T23:07:37.069Z" hostname="iad20-gt1019-3aa25d96-40e4-4030-8e6b-79446c0ab2cf-DAF4FC406123.local" time="0.049">
+  <properties/>
+  <testcase name="anOutputChunkIsImmutableAndNeverLeaksBytesThroughToString()[jvm]" classname="io.github.kingsword09.kwebshell.service.processes.KWebProcessesContractTest" time="0.018"/>
+  <testcase name="aSpecificationAlwaysRequiresItsProcessTree()[jvm]" classname="io.github.kingsword09.kwebshell.service.processes.KWebProcessesContractTest" time="0.015"/>
+  <testcase name="theCapabilityReportAnswersDeclaredIsolation()[jvm]" classname="io.github.kingsword09.kwebshell.service.processes.KWebProcessesContractTest" time="0.001"/>
+  <testcase name="identifiersAcceptThePublishedFormAndRejectEverythingElse()[jvm]" classname="io.github.kingsword09.kwebshell.service.processes.KWebProcessesContractTest" time="0.001"/>
+  <testcase name="anArgumentOrEnvironmentEntryBeyondItsBoundFailsBeforeAProviderSeesIt()[jvm]" classname="io.github.kingsword09.kwebshell.service.processes.KWebProcessesContractTest" time="0.003"/>
+  <testcase name="theDescriptorPublishesHostOperationsOnly()[jvm]" classname="io.github.kingsword09.kwebshell.service.processes.KWebProcessesContractTest" time="0.004"/>
+  <testcase name="limitsAndStreamWindowsAreRequiredAndBounded()[jvm]" classname="io.github.kingsword09.kwebshell.service.processes.KWebProcessesContractTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

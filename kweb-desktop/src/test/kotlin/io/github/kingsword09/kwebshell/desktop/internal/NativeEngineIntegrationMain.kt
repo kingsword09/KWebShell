@@ -237,6 +237,7 @@ private enum class IntegrationMode(val argument: String) {
     SECURITY_CHALLENGES_MTLS("security-challenges-mtls"),
     DOWNLOADS("downloads"),
     CONTEXT_MENU("context-menu"),
+    CAPTURE_PERMISSION("capture-permission"),
     THEME("theme"),
     FILES_WORKSPACE("files-workspace"),
     PAGE_LIFECYCLE("page-lifecycle"),
@@ -277,6 +278,7 @@ fun main(arguments: Array<String>) {
             IntegrationMode.SECURITY_CHALLENGES_MTLS -> runClientCertificateIntegration()
             IntegrationMode.DOWNLOADS -> runDownloadsIntegration()
             IntegrationMode.CONTEXT_MENU -> runContextMenuIntegration()
+            IntegrationMode.CAPTURE_PERMISSION -> runCapturePermissionIntegration()
             IntegrationMode.THEME -> runThemeIntegration()
             IntegrationMode.FILES_WORKSPACE -> runFilesWorkspaceIntegration()
             IntegrationMode.PAGE_LIFECYCLE -> runPageLifecycleContract()
@@ -315,6 +317,7 @@ private fun runCoordinator() {
     runChildAndRequireSuccess(IntegrationMode.SECURITY_CHALLENGES_MTLS, root.resolve("security-challenges-mtls"))
     runChildAndRequireSuccess(IntegrationMode.DOWNLOADS, root.resolve("downloads"))
     runChildAndRequireSuccess(IntegrationMode.CONTEXT_MENU, root.resolve("context-menu"))
+    runChildAndRequireSuccess(IntegrationMode.CAPTURE_PERMISSION, root.resolve("capture-permission"))
     runChildAndRequireSuccess(IntegrationMode.THEME, root.resolve("theme"))
     runChildAndRequireSuccess(IntegrationMode.FILES_WORKSPACE, root.resolve("files-workspace"))
     runChildAndRequireSuccess(IntegrationMode.RENDERER_CRASH, root.resolve("renderer-crash"))
@@ -1282,6 +1285,207 @@ private class ContextMenuFixture : AutoCloseable {
     override fun close() {
         server.stop(0)
     }
+}
+
+/**
+ * The RFC 0025 capture probe page. It calls `getDisplayMedia` and `getUserMedia`
+ * from a trusted gesture and reports what each call produced, so the probe can
+ * assert that no stream was handed to the page.
+ */
+private class CaptureFixture : AutoCloseable {
+    private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    val pageUrl: String = "http://127.0.0.1:${server.address.port}/capture"
+    val origin: String = "http://127.0.0.1:${server.address.port}/"
+
+    init {
+        server.createContext("/capture") { exchange ->
+            val body = (
+                "<html><body><script>" +
+                    "globalThis.__kwebCaptureResults = {};" +
+                    "globalThis.__kwebProbeDisplay = async () => {" +
+                    "  try {" +
+                    "    const stream = await navigator.mediaDevices.getDisplayMedia({video: true});" +
+                    "    globalThis.__kwebCaptureResults.display = 'granted:' + stream.getTracks().length;" +
+                    "    stream.getTracks().forEach(t => t.stop());" +
+                    "  } catch (error) {" +
+                    "    globalThis.__kwebCaptureResults.display = 'rejected:' + error.name;" +
+                    "  }" +
+                    "  return globalThis.__kwebCaptureResults.display;" +
+                    "};" +
+                    "globalThis.__kwebProbeCamera = async () => {" +
+                    "  try {" +
+                    "    const stream = await navigator.mediaDevices.getUserMedia({video: true});" +
+                    "    globalThis.__kwebCaptureResults.camera = 'granted:' + stream.getTracks().length;" +
+                    "    stream.getTracks().forEach(t => t.stop());" +
+                    "  } catch (error) {" +
+                    "    globalThis.__kwebCaptureResults.camera = 'rejected:' + error.name;" +
+                    "  }" +
+                    "  return globalThis.__kwebCaptureResults.camera;" +
+                    "};" +
+                    "</script></body></html>"
+                ).toByteArray(StandardCharsets.UTF_8)
+            exchange.responseHeaders.add("Content-Type", "text/html; charset=utf-8")
+            exchange.sendResponseHeaders(200, body.size.toLong())
+            exchange.responseBody.use { it.write(body) }
+        }
+        server.start()
+    }
+
+    override fun close() {
+        server.stop(0)
+    }
+}
+
+private fun runCapturePermissionIntegration() {
+    val configured = runtimeConfiguration()
+    val root = requiredPathProperty(INTEGRATION_ROOT_PROPERTY)
+    val fixture = CaptureFixture()
+    val engine = KWebDesktop.openEngine(
+        KWebDesktopEngineConfiguration(
+            cefRuntime = configured.cefRuntime,
+            browserSubprocess = configured.browserSubprocess,
+            resources = configured.resources,
+            locales = configured.locales,
+            rootCache = configured.rootCache,
+            log = configured.log,
+            remoteDebuggingPort = configured.remoteDebuggingPort,
+        ),
+    )
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val decisions = LinkedBlockingQueue<io.github.kingsword09.kwebshell.core.KWebCapturePermissionEvent>()
+    var collector: kotlinx.coroutines.Job? = null
+    var profile: io.github.kingsword09.kwebshell.core.KWebProfile? = null
+    var page: io.github.kingsword09.kwebshell.core.KWebPage? = null
+    var surface: ComposeBrowserSurface? = null
+    var displayResult = ""
+    var cameraResult = ""
+    var desktopReason = ""
+    var deviceReason = ""
+    var decisionCount = 0
+    var probeFailure: Throwable? = null
+    try {
+        kotlinx.coroutines.runBlocking {
+            profile = engine.openProfile("rfc0025-capture")
+            val liveProfile = requireNotNull(profile)
+            collector = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                liveProfile.capture.decisions.collect { decisions.put(it) }
+            }
+            // The declared capability report is the first observable fact.
+            val capabilities = liveProfile.capture.capabilities
+            require(!capabilities.desktopCapture) {
+                "The runtime declared desktop capture, which it cannot implement."
+            }
+            require(!capabilities.deviceCapture) { "The runtime declared device capture." }
+            surface = NativeEngine.onAwtEventDispatchThread { ComposeBrowserSurface.create(900, 640) }
+            page = liveProfile.openPage(
+                KWebDesktop.composeWindowHost(requireNotNull(surface).window),
+                fixture.pageUrl,
+                KWebRect(0, 0, 900, 640),
+            )
+            val cdp = CdpClient(configured.remoteDebuggingPort)
+            cdp.awaitPage(fixture.pageUrl)
+
+            // 1. A real getDisplayMedia call from a trusted gesture reaches the
+            //    engine, is refused, and produces no stream in the page.
+            val displayCall = cdp.evaluateWithUserGesture("globalThis.__kwebProbeDisplay().then(r => r)")
+            val displayDecision = decisions.poll(30, TimeUnit.SECONDS)
+                ?: error("The real CEF desktop capture request was not published; page reported: $displayCall")
+            decisionCount += 1
+            val displayDenial = displayDecision.decision as io.github.kingsword09.kwebshell.core.KWebCaptureDecision.Denied
+            require(displayDenial.reason == io.github.kingsword09.kwebshell.core.KWebCaptureDecisionReason.DESKTOP_CAPTURE_UNSUPPORTED) {
+                "The desktop capture refusal reason was ${displayDenial.reason}."
+            }
+            require(displayDenial.requested.contains(io.github.kingsword09.kwebshell.core.KWebCaptureKind.DESKTOP_VIDEO)) {
+                "The published request did not name desktop video: ${displayDenial.requested}"
+            }
+            require(displayDenial.isMainFrame) { "The request was not attributed to the main frame." }
+            require(displayDenial.origin == fixture.origin) {
+                "The published origin '${displayDenial.origin}' does not match '${fixture.origin}'."
+            }
+            desktopReason = displayDenial.reason.id
+            cdp.awaitExpression("typeof globalThis.__kwebCaptureResults.display === 'string'")
+            displayResult = cdp.evaluate("globalThis.__kwebCaptureResults.display").trim('"')
+            require(displayResult.startsWith("rejected:")) {
+                "The page received a desktop stream instead of a refusal: $displayResult"
+            }
+            println("KWEBSHELL_CAPTURE_PROBE:display-refused")
+
+            // 2. A real getUserMedia call is refused by its own reason, so camera
+            //    and microphone are not silently granted by this runtime.
+            val cameraCall = cdp.evaluateWithUserGesture("globalThis.__kwebProbeCamera().then(r => r)")
+            cdp.awaitExpression("typeof globalThis.__kwebCaptureResults.camera === 'string'")
+            cameraResult = cdp.evaluate("globalThis.__kwebCaptureResults.camera").trim('"')
+            // The page must never receive a camera stream from this runtime. Whether
+            // the refusal arrives from the engine or from the operating-system camera
+            // permission is a platform fact the evidence records; a grant is a
+            // failure either way.
+            require(cameraResult.startsWith("rejected:")) {
+                "The page received a camera stream instead of a refusal: $cameraResult"
+            }
+            val cameraDecision = decisions.poll(5, TimeUnit.SECONDS)
+            if (cameraDecision == null) {
+                // macOS TCC answers first when this process holds no camera
+                // permission, so the request never reaches the engine. That is a
+                // declared platform boundary, not a silent grant.
+                deviceReason = "os-denied-before-engine"
+            } else {
+                decisionCount += 1
+                val cameraDenial = cameraDecision.decision as io.github.kingsword09.kwebshell.core.KWebCaptureDecision.Denied
+                require(cameraDenial.reason ==
+                    io.github.kingsword09.kwebshell.core.KWebCaptureDecisionReason.DEVICE_CAPTURE_NOT_GRANTED) {
+                    "The device capture refusal reason was ${cameraDenial.reason}."
+                }
+                require(cameraDenial.requested.contains(io.github.kingsword09.kwebshell.core.KWebCaptureKind.CAMERA)) {
+                    "The published request did not name the camera: ${cameraDenial.requested}"
+                }
+                deviceReason = cameraDenial.reason.id
+                require(displayDecision.sequence < cameraDecision.sequence) {
+                    "The capture decisions were not ordered: ${displayDecision.sequence} then ${cameraDecision.sequence}"
+                }
+            }
+            println("KWEBSHELL_CAPTURE_PROBE:device-refused camera=$cameraResult call=$cameraCall")
+
+            // 3. A request is never reported twice and no decision is invented.
+            require(decisions.poll(2, TimeUnit.SECONDS) == null) {
+                "The engine published an unexpected extra capture decision."
+            }
+        }
+    } catch (error: Throwable) {
+        probeFailure = error
+        throw error
+    } finally {
+        collector?.cancel()
+        runCatching { page?.close() }
+        runCatching { profile?.close() }
+        runCatching { engine.close() }
+        surface?.let { surface -> NativeEngine.onAwtEventDispatchThread { surface.close() } }
+        runCatching { fixture.close() }
+        scope.cancel()
+    }
+    require(NativeBrowser.liveNativeBrowserCount() == 0L)
+    require(NativeEngine.liveNativeEngineCount() == 0L)
+    val evidence = buildJsonObject {
+        put("schemaVersion", 1)
+        put("target", currentTargetId())
+        put("cefRuntime", "stock-cef-151")
+        put("contractRevision", "2026-10-17.1")
+        put("engineAbiVersion", 19)
+        put("decisionCount", decisionCount)
+        put("desktopCapture", false)
+        put("deviceCapture", false)
+        put("desktopReason", desktopReason)
+        put("deviceReason", deviceReason)
+        put("displayOutcome", displayResult.substringBefore(':'))
+        put("cameraOutcome", cameraResult.substringBefore(':'))
+        put("framesRetained", false)
+        put("failure", probeFailure?.let { it::class.simpleName } ?: "")
+    }
+    Files.writeString(
+        root.resolve("capture-permission-evidence.json"),
+        evidence.toString() + "\n",
+        StandardCharsets.UTF_8,
+    )
+    println("KWebShell RFC0025 capture refusal passed: decisions=$decisionCount.")
 }
 
 private fun runFilesWorkspaceIntegration() {
@@ -6562,6 +6766,7 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
             mode == IntegrationMode.RENDERER_CRASH ||
             mode == IntegrationMode.FILES_WORKSPACE ||
             mode == IntegrationMode.CONTEXT_MENU ||
+            mode == IntegrationMode.CAPTURE_PERMISSION ||
             mode == IntegrationMode.THEME ||
             mode == IntegrationMode.EXTENSION_LIFECYCLE_CRASH ||
             mode.name.startsWith("EXTENSION_LIFECYCLE_STAGE")

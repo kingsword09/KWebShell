@@ -2,6 +2,9 @@ package io.github.kingsword09.kwebshell.compose
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntSize
+import io.github.kingsword09.kwebshell.core.KWebCaptureCapabilities
+import io.github.kingsword09.kwebshell.core.KWebCapturePermissionEvent
+import io.github.kingsword09.kwebshell.core.KWebCapturePolicy
 import io.github.kingsword09.kwebshell.core.KWebException
 import io.github.kingsword09.kwebshell.core.KWebLifecycleState
 import io.github.kingsword09.kwebshell.core.KWebPage
@@ -188,6 +191,10 @@ private class RecordingProfile : KWebProfile {
     override val securityChallenges = emptyFlow<KWebSecurityChallenge>()
     override val contextMenus = emptyFlow<KWebContextMenuRequest>()
     override val downloads = emptyFlow<KWebDownload>()
+    override val capture: KWebCapturePolicy = object : KWebCapturePolicy {
+        override val capabilities = KWebCaptureCapabilities.DECLARED
+        override val decisions = emptyFlow<KWebCapturePermissionEvent>()
+    }
 
     override suspend fun openPage(host: KWebPageHost, initialUrl: String, bounds: KWebRect): KWebPage =
         RecordingPage()

@@ -44,6 +44,7 @@ import io.github.kingsword09.kwebshell.core.KWebContextMenuDecision
 import io.github.kingsword09.kwebshell.core.KWebContextMenuOutcome
 import io.github.kingsword09.kwebshell.core.KWebContextMenuRequest
 import io.github.kingsword09.kwebshell.core.KWebContextMenuResult
+import io.github.kingsword09.kwebshell.core.KWebCapturePolicy
 import io.github.kingsword09.kwebshell.core.KWebSecurityChallenge
 import io.github.kingsword09.kwebshell.core.KWebSecurityChallengeOutcome
 import io.github.kingsword09.kwebshell.core.KWebSecurityChallengeResult
@@ -338,6 +339,7 @@ internal class KWebDesktopProfile(
     private val mutableLifecycle = MutableStateFlow(KWebLifecycleState.OPEN)
     private val networkEventStream = KWebDesktopNetworkEventStream()
     private val securityChallengeStream = KWebDesktopSecurityChallengeStream()
+    private val capturePolicy = KWebDesktopCapturePolicy()
     private val contextMenuStream = KWebDesktopContextMenuStream()
     private val downloadStream = KWebDesktopDownloadStream()
     private val pages = linkedSetOf<KWebDesktopPage>()
@@ -362,6 +364,7 @@ internal class KWebDesktopProfile(
     override val lifecycle: StateFlow<KWebLifecycleState> = mutableLifecycle.asStateFlow()
     override val networkEvents: Flow<KWebNetworkRequestEvent> = networkEventStream.events
     override val securityChallenges: Flow<KWebSecurityChallenge> = securityChallengeStream.events
+    override val capture: KWebCapturePolicy = capturePolicy
     override val contextMenus: Flow<KWebContextMenuRequest> = contextMenuStream.flow
     override val downloads: Flow<KWebDownload> = downloadStream.flow
 
@@ -484,6 +487,10 @@ internal class KWebDesktopProfile(
                                     )
                                 }
                             }
+                        } else if (event.type == NativeBrowserEventType.MEDIA_PERMISSION) {
+                            // The engine already answered the request; this only
+                            // publishes the typed decision it made.
+                            capturePolicy.publish(event)
                         } else if (event.type == NativeBrowserEventType.CONTEXT_MENU) {
                             val request = try {
                                 KWebDesktopContextMenuJson.parse(
@@ -1778,6 +1785,8 @@ private fun NativeBrowserEvent.toPublicEvent(
             throw IllegalStateException("The Profile download event reached the page mapping.")
         NativeBrowserEventType.CONTEXT_MENU ->
             throw IllegalStateException("The Profile context-menu event reached the page mapping.")
+        NativeBrowserEventType.MEDIA_PERMISSION ->
+            throw IllegalStateException("The Profile media permission event reached the page mapping.")
     }
     val flags = buildSet {
         if (this@toPublicEvent.flags and 1 != 0) add(KWebPageEventFlag.LOADING)

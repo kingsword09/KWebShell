@@ -1,0 +1,1 @@
+{"schemaVersion":1,"target":"macos-arm64","archive":"kweb-service-secure-storage-1.0.0-macos-arm64.zip","sha256":"75e594fdf331c1ca0255b4b50cb0a1d77a1c3c737d14ce9d5f8eb3b58e7179d6","nativeLibrary":"libkwebshell_secure_storage.dylib","exactContents":true}

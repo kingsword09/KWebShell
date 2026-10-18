@@ -7,8 +7,18 @@
 
 _Static_assert(KWEB_INVALID_ENGINE_HANDLE == 0,
                "the invalid engine handle must remain zero");
-_Static_assert(KWEB_ABI_VERSION == 18,
-               "page context menus require ABI version 17");
+_Static_assert(KWEB_ABI_VERSION == 19,
+               "media access decisions require ABI version 19");
+_Static_assert(KWEB_BROWSER_EVENT_MEDIA_PERMISSION == 28,
+               "the media permission browser event type is ABI-stable");
+_Static_assert(KWEB_MEDIA_PERMISSION_ALL == 15,
+               "the media permission mask is ABI-stable");
+_Static_assert(KWEB_MEDIA_PERMISSION_REASON_DESKTOP_CAPTURE_UNSUPPORTED == 1,
+               "the desktop capture refusal reason is ABI-stable");
+_Static_assert(KWEB_MEDIA_PERMISSION_REASON_FRAME_REFUSED == 3,
+               "the frame refusal reason is ABI-stable");
+_Static_assert(KWEB_MEDIA_PERMISSION_REASON_DEVICE_CAPTURE_NOT_GRANTED == 4,
+               "the device capture refusal reason is ABI-stable");
 _Static_assert(KWEB_STATUS_CONTEXT_MENU_NOT_FOUND == 89,
                "the context-menu not-found status is ABI-stable");
 _Static_assert(KWEB_STATUS_CONTEXT_MENU_ALREADY_RESOLVED == 90,

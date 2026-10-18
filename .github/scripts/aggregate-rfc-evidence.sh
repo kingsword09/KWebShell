@@ -24,7 +24,7 @@ if [[ -n "$selection" ]]; then
     echo "No RFC evidence refresh selected."
     exit 0
   fi
-  jq -e '.refreshRfcs - ["0001","0002","0003","0004","0006","0007","0008","0009","0010","0011","0012","0013","0014","0015","0017","0018","0019","0020","0021","0022","0023","0024","0027","0030"] | length == 0' "$selection" > /dev/null
+  jq -e '.refreshRfcs - ["0001","0002","0003","0004","0006","0007","0008","0009","0010","0011","0012","0013","0014","0015","0017","0018","0019","0020","0021","0022","0023","0024","0027","0030","0043"] | length == 0' "$selection" > /dev/null
 fi
 
 selected() {
@@ -267,6 +267,14 @@ record() {
       arguments+=(--artifact "$secrets_key=$secrets_file")
     done
   fi
+  if [ "$rfc" = "0043" ]; then
+    media_file=$(find "$downloaded" -type f -name capture-permission-evidence.json -path "*engine-integration-${target}-*" | head -1)
+    if [ -z "$media_file" ] || [ ! -f "$media_file" ]; then
+      echo "Missing media-access-evidence for $target" >&2
+      exit 1
+    fi
+    arguments+=(--artifact "media-access-evidence=$media_file")
+  fi
   if [ "$rfc" = "0024" ]; then
     arguments+=(--service processes --matrix-row process --from-compatibility-report "$extra_file")
     for processes_spec in \
@@ -325,6 +333,7 @@ for target in macos-arm64 windows-x64 linux-x64; do
     "0022|power.hosted|power-integration|power-integration.json|power-integration|compatibility|compatibility.json|electron-migration"
     "0023|secure-storage.hosted|secure-storage-integration|secure-storage-integration.json|secure-storage-integration|compatibility|compatibility.json|electron-migration"
     "0024|processes.hosted|processes-integration|processes-integration.json|processes-integration|compatibility|compatibility.json|electron-migration"
+    "0043|media-access.hosted|capture-permission-evidence|capture-permission-evidence.json|engine-integration|compatibility|compatibility.json|electron-migration"
     "0027|image.hosted|native-image|native-image-evidence.json|image-integration|compatibility|compatibility.json|electron-migration"
     "0007|window-controls.hosted|window-controls-report|window-controls-report.json|provider-lifecycle"
   )

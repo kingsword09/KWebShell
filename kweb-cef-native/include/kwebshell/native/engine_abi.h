@@ -67,6 +67,9 @@ typedef uint32_t kweb_profile_data_operation_type;
 #define KWEB_BROWSER_EVENT_SECURITY_CHALLENGE ((kweb_browser_event_type)25)
 #define KWEB_BROWSER_EVENT_DOWNLOAD ((kweb_browser_event_type)26)
 #define KWEB_BROWSER_EVENT_CONTEXT_MENU ((kweb_browser_event_type)27)
+/* One media-access decision. The event carries the requesting origin and the
+ * JSON payload documented with kweb_media_permission_type below. */
+#define KWEB_BROWSER_EVENT_MEDIA_PERMISSION ((kweb_browser_event_type)28)
 
 /* Page context-menu decisions. The decision payload is JSON:
  * {"decision":"continue","commandId":"chromium.copy"} when the application
@@ -141,6 +144,24 @@ typedef uint32_t kweb_profile_data_operation_type;
 #define KWEB_BROWSER_FLAG_CAN_GO_FORWARD ((uint32_t)4)
 #define KWEB_BROWSER_FLAG_USER_GESTURE ((uint32_t)8)
 #define KWEB_BROWSER_FLAG_REDIRECT ((uint32_t)16)
+
+typedef uint32_t kweb_media_permission_type;
+
+/* One media-access decision the engine reports to the application. The engine
+ * never grants desktop capture on its own: the desktop bits are refused with
+ * KWEB_MEDIA_PERMISSION_REASON_DESKTOP_CAPTURE_UNSUPPORTED until a runtime that
+ * carries a native source selection publishes them. */
+#define KWEB_MEDIA_PERMISSION_DEVICE_AUDIO ((kweb_media_permission_type)1)
+#define KWEB_MEDIA_PERMISSION_DEVICE_VIDEO ((kweb_media_permission_type)2)
+#define KWEB_MEDIA_PERMISSION_DESKTOP_AUDIO ((kweb_media_permission_type)4)
+#define KWEB_MEDIA_PERMISSION_DESKTOP_VIDEO ((kweb_media_permission_type)8)
+#define KWEB_MEDIA_PERMISSION_ALL ((kweb_media_permission_type)15)
+
+#define KWEB_MEDIA_PERMISSION_REASON_NONE ((uint32_t)0)
+#define KWEB_MEDIA_PERMISSION_REASON_DESKTOP_CAPTURE_UNSUPPORTED ((uint32_t)1)
+#define KWEB_MEDIA_PERMISSION_REASON_ORIGIN_REFUSED ((uint32_t)2)
+#define KWEB_MEDIA_PERMISSION_REASON_FRAME_REFUSED ((uint32_t)3)
+#define KWEB_MEDIA_PERMISSION_REASON_DEVICE_CAPTURE_NOT_GRANTED ((uint32_t)4)
 
 typedef struct kweb_string_view {
   const char *data;

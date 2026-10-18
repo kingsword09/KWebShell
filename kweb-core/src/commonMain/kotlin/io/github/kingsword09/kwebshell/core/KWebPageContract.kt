@@ -181,6 +181,13 @@ public interface KWebProfile : AutoCloseable {
     public val downloads: Flow<KWebDownload>
 
     /**
+     * The capture decisions this Profile's engine made. Every media-access
+     * request is reported here with its typed refusal reason, so an application
+     * never depends on a browser default it cannot observe.
+     */
+    public val capture: KWebCapturePolicy
+
+    /**
      * Page context menus observed on this Profile. Present only while the
      * engine configuration enables application-owned context menus; without a
      * subscriber the engine leaves Chromium's own menu untouched.

@@ -7762,6 +7762,7 @@ private fun startChild(mode: IntegrationMode, root: Path): ChildProcess {
             mode == IntegrationMode.CONTEXT_MENU ||
             mode == IntegrationMode.CAPTURE_PERMISSION ||
             mode == IntegrationMode.PAGE_UTILITIES ||
+            mode == IntegrationMode.PAGE_CONTENT ||
             mode == IntegrationMode.THEME ||
             mode == IntegrationMode.EXTENSION_LIFECYCLE_CRASH ||
             mode.name.startsWith("EXTENSION_LIFECYCLE_STAGE")
